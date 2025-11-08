@@ -1,0 +1,25 @@
+module TopModule(input clk, input reset, input data, output start_shifting);
+  typedef enum logic [2:0] { IDLE, S1, S11, S110, S1101 } state_t;
+  state_t current_state;
+  state_t next_state;
+
+  always_ff @(posedge clk) begin
+    if (reset) 
+      current_state <= IDLE;
+    else 
+      current_state <= next_state;
+  end
+
+  always_comb begin
+    case (current_state)
+      IDLE:  next_state = data ? S1 : IDLE;
+      S1:    next_state = data ? S11 : IDLE;
+      S11:   next_state = data ? S11 : S110;
+      S110:  next_state = data ? S1101 : IDLE;
+      S1101: next_state = S1101;
+      default: next_state = IDLE;
+    endcase
+  end
+
+  assign start_shifting = (current_state == S1101);
+endmodule

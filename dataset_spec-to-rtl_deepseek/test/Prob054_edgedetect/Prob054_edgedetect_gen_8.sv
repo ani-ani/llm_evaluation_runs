@@ -1,0 +1,7 @@
+module TopModule(input clk, input [7:0] in, output [7:0] pedge);
+  logic [7:0] prev_in;
+  always_ff @(posedge clk) begin
+    prev_in <= in;
+  end
+  assign pedge = ~prev_in & in;
+endmodule

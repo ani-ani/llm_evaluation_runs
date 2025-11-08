@@ -1,0 +1,22 @@
+module TopModule(
+  input clk,
+  input reset,
+  input slowena,
+  output logic [3:0] q
+);
+
+  always_ff @(posedge clk) begin
+    if (reset) begin
+      q <= 4'b0;
+    end
+    else if (slowena) begin
+      if (q == 4'd9) begin
+        q <= 4'b0;
+      end
+      else begin
+        q <= q + 4'b1;
+      end
+    end
+  end
+
+endmodule

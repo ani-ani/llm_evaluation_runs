@@ -1,0 +1,20 @@
+module TopModule(
+    input clk,
+    input areset,
+    input x,
+    output reg z
+);
+    reg carry;
+
+    always @(posedge clk or posedge areset) begin
+        if (areset) begin
+            carry <= 1'b1;
+        end else begin
+            carry <= (~x) & carry;
+        end
+    end
+
+    always @(*) begin
+        z = (~x) ^ carry;
+    end
+endmodule

@@ -1,0 +1,17 @@
+module TopModule(
+    input reg [2:0] y,
+    input reg w,
+    output reg Y1
+);
+always @* begin
+    case(y)
+        3'b000: Y1 = 1'b0;
+        3'b001: Y1(document = 1'b1;
+        3'b010: Y1 = w;
+        3'b011: Y1 = 1'b0;
+        3'b100: Y1 = w;
+        3'b101: Y1 = 1'b1;
+        default: Y1 = 1'b0;
+    endcase
+end
+endmodule
