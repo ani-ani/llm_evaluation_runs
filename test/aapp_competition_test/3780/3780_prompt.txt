@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'rescue_time_calculator' that calculates minimum travel time using binary search with Q16.16 fixed-point arithmetic.
+Module interface:
+module rescue_time_calculator(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // pulse high to start computation
+  input signed [15:0] x1, y1, // start point (Q0 format)
+  input signed [15:0] x2, y2, // destination (Q0 format)
+  input [15:0] v_max, // max speed (unsigned Q0)
+  input [15:0] t_wind, // wind change time (unsigned Q0)
+  input signed [15:0] vx, vy, // initial wind vector (Q0)
+  input signed [15:0] wx, wy, // final wind vector (Q0)
+  output reg [31:0] min_time, // result in Q16.16 format
+  output reg done // high when result valid
+);
+
+Behavior:
+1. Performs 16-iteration binary search to find minimum time
+2. Uses Q16.16 fixed-point arithmetic (32-bit) for calculations
+3. Latency: 16 clock cycles after start assertion
+4. States: IDLE, INIT, LOOP, DONE
+5. At each iteration:
+   tx = min(t, wind_change_time)
+   ty = max(0, t - wind_change_time)
+   wind_effect_x = (vx * tx) + (wx * ty)
+   wind_effect_y = (vy * tx) + (wy * ty)
+   net_x = dest_x - start_x - wind_effect_x
+   net_y = dest_y - start_y - wind_effect_y
+   if ((net_x^2 + net_y^2) <= (v_max^2 * t^2)) move upper bound
+   else move lower bound
+6. After 16 iterations, output min_time = upper bound

@@ -1,0 +1,24 @@
+Design a sequential Verilog module named 'service_verifier' that checks car service history validity.
+Module interface:
+module service_verifier(
+  input clk, // Clock signal
+  input rst_n, // Active-low reset
+  input start, // Start processing
+  input [4:0][15:0] years_months, // 5 service entries packed: [31:16] = valid [0/1], [15:8] = year-1950, [7:0] = month
+  input [4:0][16:0] odos // 5 odometer readings (17-bit each)
+);
+///// Behavioral description /////
+1. On reset or power-on, initialize all states.
+2. When start=1, begin processing 5 service entries chronologically.
+3. Convert each entry's (year, month) to months_since_epoch = (year-1950)*12 + (month-1).
+4. For consecutive entries:
+   a. Calculate delta_months = current_months - prev_months (must be >=1)
+   b. Calculate delta_odo:
+      - If current_odo >= prev_odo: delta_odo = current_odo - prev_odo
+      - Else: delta_odo = 100000 - prev_odo + current_odo
+   c. Check constraints:
+      i. delta_odo must be between 2000*delta_months and 20000*delta_months
+      ii. Service interval must be <=30000 km OR <=12 months
+5. Output final state (2-bit):
+   00 = seems legit, 01 = insufficient service, 10 = tampered odometer
+Processing completes in 10 clock cycles. Use state machine with COMPARE state for entry processing.

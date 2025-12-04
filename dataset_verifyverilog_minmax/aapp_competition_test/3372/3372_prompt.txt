@@ -1,0 +1,46 @@
+Design a Verilog module named 'flight_path_finder' to compute minimum flights between two airports with special flight listings.
+
+Module interface:
+module flight_path_finder(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // pulse high to start computation
+  input [2:0] N, // number of airports (3-bit, max 8)
+  input [2:0] s, // source airport (0 <= s < N)
+  input [2:0] t, // target airport (0 <= t < N)
+  input [7:0] adj_types, // 1-bit per airport (0=N, 1=C)
+  input [7:0][7:0] adj_lists, // 8x8 bit adjacency indicators
+  output reg [3:0] hops, // minimum hop count (0-7 or special)
+  output reg done, // high when computation completes
+  output reg impossible // high when no path exists
+);
+
+Behavioral requirements:
+1. On start pulse:
+   - Build adjacency matrix from provided types/lists
+   - Perform BFS from airport s to find shortest path to t
+   - Each airport uses:
+     * adj_types[i]==0: adj_lists[i] shows direct destinations
+     * adj_types[i]==1: adj_lists[i] shows excluded destinations
+2. Matrix construction:
+   - For N-by-N adjacency matrix (N<=8)
+   - adj_matrix[i][j] = 1 when:
+     * (adj_types[i]==0 && adj_lists[i][j]==1) OR
+     * (adj_types[i]==1 && adj_lists[i][j]==0)
+3. BFS requirements:
+   - 3-bit registers for current airport and BFS state
+   - Track visited airports with 8-bit register
+   - Use queue structure with max 8 entries
+   - Maximum 8 hops supported (output impossible if not reachable)
+4. Output rules:
+   - hops = minimum flight count (if possible)
+   - Set impossible=1 and hops=0 if no path exists
+   - done pulses high for 1 cycle when computation completes
+5. Timing:
+   - Result available within 32 clock cycles after start
+   - Use state machine with: IDLE=0, BUILD_MATRIX=1, BFS=2, DONE=3
+
+Implementation notes:
+- All airports numbered 0-7 (upper bits ignored when N<8)
+- Input adj_lists[7][7:0] = 8x8 array (1 bit per airport relation)
+- Output hops=0xF if impossible (with impossible flag set)

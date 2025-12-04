@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'election_predictor' that determines candidate election outcomes.
+
+Module interface:
+module election_predictor(
+  input clk, // Clock
+  input rst_n, // Active-low reset
+  input start, // Start computation
+  input [2:0] n, // Number of candidates (3-bit, max 8)
+  input [2:0] k, // Seats in parliament (max 8)
+  input [7:0] m_remaining, // Remaining votes (max 255 but suggest <= 8)
+  input [2:0] candidate_id, // 3-bit candidate ID (0-7)
+  input [7:0] current_votes, // Current votes for candidate (max 255)
+  input [7:0] last_vote_time, // Timestamp of last vote (max 255)
+  input load_data, // Load candidate data (strobe)
+  output reg [1:0] result, // Result code (1,2,3)
+  output reg done // High when computation complete
+);
+
+Behavior:
+1. Load phase: When load_data=1, store current_votes and last_vote_time for candidate_id.
+2. On start=1:
+   a. Sort candidates by votes (descending) and last vote time (ascending)
+   b. For each candidate, determine one of:
+      - 1: guaranteed seat regardless of remaining votes
+      - 2: possible seat based on remaining votes
+      - 3: no chance of seat
+3. Output results sequentially on result port when done=1
+
+Latency: Completion within 64 cycles (8 candidates × 8 delay) after start.
+Assume max n=8 candidates using internal sorting network.
+Implementation notes:
+- Use parallel comparators for small-n sorting
+- Candidate storage: 8 entries with 8-bit votes + 8-bit timestamps
+- Output result vector stored in 16-bit register (2 bits × 8 candidates)

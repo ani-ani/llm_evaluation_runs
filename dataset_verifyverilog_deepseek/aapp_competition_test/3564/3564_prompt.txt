@@ -1,0 +1,39 @@
+Design a Verilog module named 'tunnel_connector' to compute minimal tunnel length for island connectivity.
+
+Module interface:
+module tunnel_connector(
+  input clk, // system clock
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [2:0] n_islands, // number of active islands (1-8)
+  input [3:0] n_trees, // number of active palm trees (1-16)
+  input [15:0] k, // throw ratio (1-1000)
+  // Island data: x,y(centimetres Q16.0), radius (centimetres)
+  input [23:0] island_x[0:7],
+  input [23:0] island_y[0:7],
+  input [23:0] island_r[0:7],
+  // Palm tree data: x,y(centimetres Q16.0), height (centimetres)
+  input [23:0] tree_x[0:15],
+  input [23:0] tree_y[0:15],
+  input [15:0] tree_h[0:15],
+  
+  output reg done, // high when computation complete
+  output reg impossible, // high if no solution exists
+  output reg [31:0] tunnel_length // minimal tunnel length in centimetres (integer)
+);
+
+Behavior:
+1. When start is asserted after reset, begin computation.
+2. First determine island for each palm tree (tree is inside exactly one island).
+3. Compute maximum throw distance: k * tree_h for each tree.
+4. Build connectivity graph: Islands are connected if any trees can throw between them (distance <= sum of maximum throws).
+5. Use Union-Find algorithm to determine connected components.
+6. If already fully connected, output tunnel_length=0.
+7. Else compute minimal tunnel length between closest unconnected islands (min distance between borders - 200cm buffer).
+8. If no possible tunnel exists, assert impossible.
+9. Computation completes in <= 1024 cycles after start.
+
+Implementation notes:
+- Use Q16.8 fixed-point for distance calculations (16 integer + 8 fractional bits)
+- Islands are 0-indexed in input arrays
+- Max supported input: 8 islands (index 0-7), 16 palm trees (index 0-15)

@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'hill_number_detector' that determines if a number is a hill number and outputs the precomputed count of hill numbers up to that value or -1.
+
+Module interface:
+module hill_number_detector(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // pulse high to start processing
+  input [9:0] num, // 10-bit input number (0-1023)
+  output reg signed [15:0] result, // -1 if invalid, count if valid hill number
+  output reg done // high when result valid
+);
+
+Behavior:
+- On reset (rst_n=0), set result=0 and done=0
+- When start=1, split num into up to 3 digits (hundreds, tens, units)
+- Check digits: must rise (non-decreasing) then fall (non-increasing). Examples:
+  1221 (valid), 1232 (invalid)
+- If not hill number: set result=-1, done=1 for 4 cycles
+- If hill number: lookup precomputed count of hill numbers <= num in ROM (256x16)
+- Output ROM contents with done=1 after 4 clock cycles
+
+Timing:
+- All outputs change on rising clock edge
+- 4 clock cycles latency from start pulse
+- ROM can be implemented as case statement covering test cases and edge values
+
+Digit check requirements:
+1. First digits must be non-decreasing until peak
+2. Remainder digits must be non-increasing
+3. Must have at least one digit before peak (except single-digit numbers)
+4. Examples:
+  0: valid (single digit)
+  121: valid
+  132: invalid (3>2 after peak)
+  112: valid

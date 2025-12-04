@@ -1,0 +1,4 @@
+module max_of_two(input signed [7:0] a, b,
+                    output signed [7:0] out);
+  assign out = (a >= b) ? a : b;
+endmodule

@@ -1,0 +1,38 @@
+Design a Verilog module named 'minimal_settlers' that computes the minimum settlers required to claim coal and iron nodes in a directed graph.
+
+Module interface:
+module minimal_settlers(
+  input clk, // Clock
+  input rst_n, // Active-low reset
+  input start, // Start computation
+  // Graph parameters
+  input [3:0] node_count, // Max 8 nodes (n)
+  input [3:0] iron_count, // Max 3 iron nodes (m)
+  input [3:0] coal_count, // Max 3 coal nodes (k)
+  // Resource lists (active-high flags for nodes)
+  input [7:0] iron_list, // iron_list[i]=1 if node i+1 has iron
+  input [7:0] coal_list, // coal_list[i]=1 if node i+1 has coal
+  // Graph edges - flattened 8x4 array: 8 nodes, 4 neighbors each
+  input [7:0][3:0] neighbor_counts, // neighbor_counts[i] = a_i (0-4)
+  input [7:0][3:0][2:0] neighbors, // neighbors[i][j] = neighbor node ID (1-8)
+  // Outputs
+  output reg [3:0] result, // Min settlers (0-15)
+  output reg done, // High when computation complete
+  output reg impossible // High when solution impossible
+);
+
+Behavioral description:
+1. Starts computation when 'start' is pulsed high.
+2. First performs BFS from node 0 (system start node 1) to find shortest
+   paths to all reachable iron nodes.
+3. Then performs BFS from same start node to find shortest paths to all
+   reachable coal nodes.
+4. Computes the minimal (shortest_iron_path + shortest_coal_path - 1) since
+   start node doesn't require binding settlers.
+5. If both iron and coal nodes are reachable, result = minimal calculation.
+6. If impossible, asserts 'impossible' flag.
+
+Latency: Completes within 32 clock cycles max after 'start' pulse. Use state machine with
+IDLE, IRON_BFS, COAL_BFS, CALCULATE, DONE states. Use non-blocking assignments.
+
+Note: Node IDs use 0-based indexing (node 0 = cell 1 from problem)

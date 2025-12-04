@@ -1,0 +1,32 @@
+Design a sequential Verilog module named "pupil_transport_time" that calculates the minimum time for pupils to reach an excursion using a bus. The module uses Q16.16 fixed-point arithmetic (32-bit: 16 integer, 16 fractional bits).
+
+Inputs:
+  input clk,              // clock signal
+  input rst_n,            // active-low reset
+  input start,            // start calculation (pulse high)
+  input [15:0] n,        // number of pupils (max 16)
+  input [15:0] l,        // total distance (max 65535)
+  input [15:0] v1,       // pupil speed (always < v2)
+  input [15:0] v2,       // bus speed (max 65535)
+  input [15:0] k         // bus capacity (max 16)
+
+Outputs:
+  output reg [31:0] time_q16, // result in Q16.16 format
+  output reg done             // high when result valid
+
+Behavior:
+1. On reset: clear all registers (time_q16=0, done=0)
+2. When start=1: begin calculation with max 16 binary search iterations
+3. Compute using scaled Q16.16 operations:
+   a. Calculate groups_count = ceil(n/k)
+   b. Binary search between 0 and l/v1
+   c. Each iteration checks if (pikap*(groups-1) + group_count*y) <= mid_time
+      where pikap = gap/(v1+v2) and y = (l - v1*mid_time)/(v2-v1)
+4. After 16 cycles, output fixed-point result and assert done
+5. Maintain done until next start pulse
+
+Latency: 16 clock cycles from start assertion
+Fixed-point rules:
+  - All internal calculations use Q16.16 registers
+  - Input values/v1/v2 are zero-extended to 32-bit Q16.16 (integer part)
+  - Final time = (bus_time + walk_time) stored in time_q16

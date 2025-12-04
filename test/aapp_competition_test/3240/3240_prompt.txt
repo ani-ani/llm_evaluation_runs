@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'vote_optimizer' that computes optimal ballots for maximum expected Yraglac positions.
+
+Inputs:
+  input clk,                 // clock
+  input rst_n,               // active-low reset
+  input start,               // start computation (pulse high)
+  input [3:0] v,             // number of voters (2-8)
+  input [15:0] p_i [0:6],    // 7 voter probabilities (Q8.8 fixed-point)
+  input [15:0] b_i [0:6]     // 7 voter ballots (max k=16 bits)
+
+Outputs:
+  output reg [15:0] b_v,     // optimal ballots to cast (16-bit)
+  output reg done            // high when computation complete
+
+Behavior:
+- Supports up to 8 voters (v=8), processing a maximum of 7 other voters
+- Fixed k=16 positions (output ballot uses lower 16 bits)
+- Computes expected value for each b_v candidate (0 to 2^16-1)
+- Active-low reset initializes FSM to IDLE
+- Latency: (2^16) * (2^(v-1)) * 20 + 10 cycles (approx) due to iterative calculation
+
+Operation:
+1. When start pulses high, begin computation
+2. Iterate through all possible b_v (0 to 65535)
+3. For each b_v, iterate through all 2^(v-1) voter combination possibilities
+4. For each combination:
+   a. Calculate total ballots = b_v + Σ(b_i where voter i participates)
+   b. Count Yraglac wins: number of 1s in lower k bits of total ballots
+   c. Accumulate probability-weighted wins (fixed-point arithmetic)
+5. Track b_v with maximum expected value
+6. Assert done and output best b_v when complete

@@ -1,0 +1,30 @@
+Design a sequential Verilog module named 'warlord_region_calc' that calculates additional lines needed for equal sector allocation.
+Inputs:
+  input clk,             // clock
+  input rst_n,           // active-low reset
+  input start,           // start computation
+  input [2:0] W,         // number of warlords (1-8)
+  input [2:0] N_lines,    // number of lines (0-7)
+  input [15:0] lines [0:7][3:0]  // 8 lines of [x1,y1,x2,y2] (16-bit coordinates)
+Outputs:
+  output reg [2:0] k,    // lines to add
+  output reg done        // computation complete
+
+Behavior:
+1. On start, computes number of unique line directions among first N_lines
+2. For each line (0-7): calculates dx = x2-x1, dy = y2-y1
+3. Compares each new direction with predecessors via cross product (dx_i*dy_j == dy_i*dx_j)
+4. Counts unique directions (D) where cross product !=0
+5. Computes current infinite regions R = 2*D
+6. Calculate additional lines needed:
+   k = (R >= W) ? 0 : ((W - R + 1) / 2) (using integer division)
+7. Outputs k after 8 cycles maximum
+
+Timing:
+- All outputs become valid 8 clock cycles after start assertion
+- done asserts for 1 cycle when results are ready
+
+Implementation:
+- Use state machine: IDLE, PROCESSING (8 cycles), DONE
+- Store directions in registered array [0:7] of {dx[16:0], dy[16:0]}
+- Compare new directions against all prior using combinatorial cross-check

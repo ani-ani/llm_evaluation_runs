@@ -1,0 +1,38 @@
+Design a sequential Verilog module named 'flight_scheduler' that computes the minimal cost to gather all jury members in the capital for k consecutive days.
+
+Module interface:
+module flight_scheduler(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // pulse high to start computation
+  input [15:0] k_days, // number of required consecutive days (1-255)
+  input [3:0] num_flights, // actual flights in batch (0-16)
+  input [3:0][15:0] flight_days, // 16 elements, day of flight [15:0]
+  input [3:0][2:0] flight_from, // 16 elements, departure city [0-4] 
+  input [3:0][2:0] flight_to, // 16 elements, arrival city [0-4] 
+  input [3:0][31:0] flight_cost // 16 elements, ticket cost
+  output reg [31:0] min_cost, 
+  output reg done, // high when computation complete
+  output reg impossible // high if no solution found
+);
+
+Behavior: 
+1. On start pulse, reset internal state and begin processing
+2. Process flights in two phases:
+   a. Process incoming flights to city 0 (filling arrival costs)
+   b. Process outgoing flights from city 0 (filling departure costs)
+3. For each city (1-4), track earliest arrival and latest departure
+4. Verify all cities have valid inbound/outbound flights
+5. Find minimal cost combination where departure_day >= arrival_day + k_days + 1
+6. Output either min_cost (with done=1) or impossible=1 after 32 cycles
+
+Timing:
+- Computation completes within 32 clock cycles after start
+- Uses 3 states: IDLE, PROCESSING, DONE
+- Output valid 1 cycle after done asserted
+
+Assumptions:
+- City 0 is Metropolis (handled in FSM logic)
+- Flights sorted by day (ascending) in input array
+- Maximum 4 cities (1-4 = jury cities)
+- Maximum 16 flights

@@ -1,0 +1,38 @@
+Design a sequential Verilog module named 'frog_jump' that processes K jump directions to find Barica's final position.
+
+Module interface:
+module frog_jump(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [3:0] N, // number of plants (1-8)
+  input [3:0] K, // number of jumps (1-16)
+  input [127:0] plant_x, // packed X coordinates (16 bits each * 8 plants)
+  input [127:0] plant_y, // packed Y coordinates (16 bits each * 8 plants)
+  input [31:0] directions, // packed jump directions (2 bits/direction, MSB first)
+  output reg [15:0] final_x, // final X coordinate
+  output reg [15:0] final_y, // final Y coordinate
+  output reg done // high when computation completes
+);
+
+Behavioral description:
+1. On reset: Clear all states. On start:
+   - Unpack plants into 8x16-bit X/Y registers
+   - Initialize valid flags for all N plants
+   - Set current position to first plant (index 0)
+
+2. Process jumps sequentially (1 jump per clock cycle):
+   - For each direction (A=0,B=1,C=2,D=3) from MSB of directions bus:
+     - Compute required deltas for each valid plant
+     - Find minimal P for plants in direction (priority to smallest P)
+     - If found: move to new plant, invalidate previous
+
+3. After K jumps: output final position and assert done
+
+Latency: K+1 clock cycles (1 initialization + K jumps)
+
+Implementation notes:
+- Directions stored as 2-bit codes: A=00, B=01, C=10, D=11
+- Invalidated plants cannot be revisited
+- If no plant in direction - position remains unchanged
+- Max plant coordinates: 16-bit (0-65535)

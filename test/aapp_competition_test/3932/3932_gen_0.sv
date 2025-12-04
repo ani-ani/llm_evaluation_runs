@@ -1,0 +1,3 @@
+// Failed to parse code
+```json
+{"code": "module tree_validator(\n  input  [4:0] n,\n  input  [4:0] c [0:23],\n  output reg   valid\n);\n\n  integer i;\n  reg [4:0] max_val;\n  reg has_two;\n\n  always @* begin\n    max_val = 5'd0;\n    has_two = 1'b0;\n\n    // Compute maximum and detect any value equal to 2 over c[0]..c[n-1]\n    for (i = 0; i < 24; i = i + 1) begin\n      if (i < n) begin\n        // Track maximum value\n        if (c[i] > max_val)\n          max_val = c[i];\n        // Check for disallowed value 2\n        if (c[i] == 5'd2)\n          has_two = 1'b1;\n      end\n    end\n\n    // Condition 1: largest value equals n\n    // Condition 2: no value equals 2\n    valid = (max_val == n) && !has_two;\n  end\n\nendmodule"}\n```

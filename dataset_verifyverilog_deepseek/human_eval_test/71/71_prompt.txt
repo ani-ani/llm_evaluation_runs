@@ -1,0 +1,24 @@
+Design a sequential Verilog module named 'triangle_area' that:
+- Takes input clk, rst_n
+- Takes input [7:0] a, b, c (8-bit unsigned side lengths)
+- Takes input start (begin calculation)
+- Outputs reg [15:0] area (Q8.8 fixed-point: 8 integer bits, 8 fractional)
+- Outputs reg valid (high when calculation complete)
+- Outputs reg error (high when triangle invalid)
+
+Behavior:
+1. On start pulse:
+   - First validate triangle with combinational logic: (a+b > c) && (a+c > b) && (b+c > a)
+   - If invalid: Assert error and keep area at 0xFFFF (-1 in Q8.8) for 1 cycle
+   - If valid: Compute area using Heron's formula with 8.8 fixed-point arithmetic
+2. Formula steps:
+   s = (a + b + c) / 2 (with 9-bit intermediate)
+   area_sq = s*(s-a)*(s-b)*(s-c) (32-bit intermediate)
+   area = sqrt(area_sq) (16-bit Q8.8 result using 5-cycle iterative approximation)
+3. Latency: 8 clock cycles (1 for validation, 2 for multiplication, 5 for sqrt)
+4. Output area rounded to 2 decimal places (i.e., 16'h00C3 for 12.75 → 12.75)
+
+Fixed-point representation:
+- 0x0100 = 1.0, 0x0001 = 1/256 ≈ 0.0039
+- -1 is represented as 0xFFFF
+- Rounding: Truncate to 8 fractional bits (equivalent to 2 decimal digits of precision)

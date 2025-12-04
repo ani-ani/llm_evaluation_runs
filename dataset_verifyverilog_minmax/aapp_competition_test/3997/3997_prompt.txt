@@ -1,0 +1,26 @@
+Design a sequential Verilog module named 'vertex_controller' that computes control counts for an 8-node tree.
+Module interface:
+module vertex_controller(
+  input clk,                         // System clock
+  input rst_n,                       // Active-low reset
+  input start,                       // Start computation
+  input [31:0] vertex_vals [0:7],    // Vertex a_i values (Q16.16 fixed-point)
+  input [31:0] edge_weights [0:6],   // Edge weights (parent connections)
+  output reg [3:0] control_counts [0:7], // Control counts for each vertex
+  output reg done                    // High when computation complete
+);
+
+Behavioral description:
+- On reset: Initialize all registers and set done=0
+- When start=1:
+  1. Precompute parent-child relationships (fixed structure):
+     - Vertex 0 is root (no parent)
+     - Vertex i+1 has parent p_i (from edge_weights index)
+  2. For each vertex (0-7), compute cumulative path distances to all descendants
+  3. For each descendant u, check if dist(v,u) <= vertex_vals[u] (using 32-bit Q16.16 comparison)
+  4. Count valid controls per vertex
+- Use state machine with: IDLE, TRAVERSE, COMPARE, DONE states
+- Latency: Max 256 cycles (for 8-node tree traversal)
+- Store intermediate distances in 32-bit registers
+- Use fixed-point arithmetic with Q16.16 format (scale inputs during testbench setup)
+- Unused nodes (when n<8) should be ignored (a_i=0)

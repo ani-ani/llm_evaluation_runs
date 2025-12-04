@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'gl_bot_tracker' that tracks a robot's movement pattern on an 8x8 grid.
+
+Module interface:
+module gl_bot_tracker(
+  input clk,                   // clock signal
+  input rst_n,                 // active-low reset
+  input start,                 // pulse high to start simulation
+  input [63:0] grid_data,      // 64-bit grid [row][col]: 1=passable, 0=impassable
+  input [7:0] cmd_str,         // flattened command string (8 chars max)
+  input [2:0] grid_size,       // actual grid size (3 <= size <= 8)
+  input [1:0] start_row,       // initial robot row (2 bits for 8x8 grid)
+  input [1:0] start_col,       // initial robot column (2 bits)
+  output reg [5:0] result_x,   // cycle length (1-64) or 1 (finite trail)
+  output reg done              // high when computation complete
+);
+
+Behavior description:
+1. The robot moves according to the command string which loops continuously
+2. Movement follows: '<' left, '>' right, '^' up, 'v' down (skip move if impassable)
+3. Track robot's trail (sequence of positions) over cycles
+4. Detect either:
+   a) Finite trail (output result_x = 1) when stuck in the same position for full command loop
+   b) Cycle length X (smallest repeating subsequence) for infinite trail
+5. Simulation runs for max 64 steps (32'h3F) or until pattern detected
+6. Use state machine with IDLE, SIMULATE, DONE states
+7. Takes 2-64 clock cycles (results valid when done=1)
+8. All movement logic must use grid boundaries based on grid_size input
+
+Implementation notes:
+- Represent positions as {row,col} with 2-bit each (total 4 bits)- Store command index with 3 bits (8 possible positions)
+- Track visited states using 7-bit storage: {row,col,cmd_idx} (3 bits each, 1 bit for vis flag)
+- Detect cycles when identical state (position + cmd_idx) occurs
+- Output X as current step minus previous occurrence of same state
+- Use 6-bit counter for simulation steps (max 64)

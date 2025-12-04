@@ -1,0 +1,26 @@
+Design a sequential Verilog module named "smoothie_transport" that computes the maximum deliverable smoothie.
+
+Inputs:
+input clk,               // clock
+input rst_n,            // active-low reset
+input start,            // pulse high to start computation
+input [15:0] d,         // distance D (meters), max 65535
+input [15:0] w,         // total smoothie W (ml), max 65535
+input [15:0] c          // carry capacity C (ml), max 65535
+
+Outputs:
+output reg [31:0] result, // Q24.8 fixed-point (24 integer, 8 fractional bits)
+output reg done          // high when computation completes
+
+Operation:
+1. When start is asserted, begin computation
+2. If W ≤ C: result = max(0, W - D) (in Q24.8 format)
+3. Else if D ≥ (W/C)*C: result = 0
+4. Else compute using iterative strategy:
+   - Calculate base consumption: D * (W/C + 2*(W/C - 1))
+   - Result = W - base_consumption
+5. Negative results clamp to 0
+6. Computation completes in 16 clock cycles (pipelined division)
+7. Output fixed-point format: result[31:8] = integer part, result[7:0] = fractional
+
+Use iterative division with 16 cycles latency. All intermediate calculations use 32-bit precision. Assume W/C uses 8 fractional bits precision in intermediate steps.

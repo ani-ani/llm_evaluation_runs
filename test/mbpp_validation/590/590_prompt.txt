@@ -1,0 +1,26 @@
+Design a sequential Verilog module named polar_to_rect that converts polar coordinates (r, θ) to rectangular coordinates (x, y) using fixed-point arithmetic and lookup tables.
+
+Inputs:
+input clk              // clock signal
+input rst_n            // active-low reset
+input start            // starts conversion
+input [31:0] r_q16     // magnitude in Q16.16 format (16 integer, 16 fractional bits)
+input [31:0] theta_q16 // angle in radians Q16.16 format (0 to 2*pi mapped to 0x00000-0x28BE5)
+
+Outputs:
+output reg [31:0] x_q16    // x coordinate in Q16.16 format
+output reg [31:0] y_q16    // y coordinate in Q16.16 format
+output reg done           // conversion complete flag
+
+Behavior:
+1. On reset: set x_q16 = 0, y_q16 = 0, done = 0
+2. When start is asserted:
+   a. Look up precomputed cos(theta) and sin(theta) from 1024-entry LUT (theta scaled to LUT index)
+   b. Compute x = r * cos(theta) using Q16.16 fixed-point multiplication
+   c. Compute y = r * sin(theta) using Q16.16 fixed-point multiplication
+3. Result latency: 3 clock cycles (done asserts on 3rd rising edge after start)
+4. Fixed-point format: All values use Q16.16 format (32 bits total)
+5. Trig LUT: Precomputed Q16.16 cos/sin values for 1024 angles (0 to 2π)
+6. Conversion formulas:
+   x_q16 = (r_q16 × cos_q16) >> 16
+   y_q16 = (r_q16 × sin_q16) >> 16

@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'tax_divine_digit' that computes the GCD of banknote denominations and base k to determine valid divine digits.
+Module interface:
+module tax_divine_digit(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [3:0] n, // number of denominations (1 <= n <= 8)
+  input [15:0] k, // base of number system (2 <= k <= 65535)
+  input [15:0] denomination_0, // denomination[0] (mod k applied in hardware)
+  input [15:0] denomination_1, // denomination[1]
+  input [15:0] denomination_2, // denomination[2]
+  input [15:0] denomination_3, // denomination[3]
+  input [15:0] denomination_4, // denomination[4]
+  input [15:0] denomination_5, // denomination[5]
+  input [15:0] denomination_6, // denomination[6]
+  input [15:0] denomination_7, // denomination[7]
+  output reg [15:0] g, // computed GCD (k and all denominations)
+  output reg [15:0] total, // k / g (number of divine digits)
+  output reg done // high for 1 cycle when done
+);
+
+Behavior:
+1. On reset (rst_n=0), initialize: g<=k, total<=0, done<=0
+2. When start=1:
+   a. Precompute all denomination_i mod k (if denomination_i >=k)
+   b. Compute GCD(k, GCD(denomination_0, GCD(denomination_1, ...)))
+      - Start with current_g = k
+      - For each denomination (0 to n-1): current_g = GCD(current_g, denomination_i mod k)
+      - Use sequential GCD computation requiring multiple cycles
+3. After processing all denominations:
+   a. g <= current_g
+   b. total <= k / g (integer division)
+   c. Pulse done high for 1 clock cycle
+4. Maximum latency: n*20 + 10 cycles
+5. Use states: IDLE, MOD_COMPUTE, GCD_ITER, DIVIDE, DONE
+6. Denominations with gcd=0 should resolve to k
+Note: The module does NOT output the list of d values - testbench computes them from g and total.

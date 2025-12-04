@@ -1,0 +1,38 @@
+Design a sequential Verilog module named teacher_rotation_tracker that tracks teacher assignments through weekly rotations and answers queries.
+
+Module interface:
+module teacher_rotation_tracker(
+  input clk, // System clock
+  input rst_n, // Active-low reset (async)
+  input [1:0] cmd_type, // 0=add rotation, 1=query
+  input [2:0] week, // Week number (0-7)
+  input [1:0] K, // Rotation size (2-4) for cmd_type=0
+  input [1:0] teacher_id_in, // Teacher ID (cmd_type=0: rotation list; cmd_type=1: teacher to query)
+  input wr_en, // Pulse high for 1 cycle to write command
+  output reg [1:0] class_out, // Query result (class ID)
+  output reg query_valid // High when result is valid
+);
+
+Behavioral description:
+1. Initialization (rst_n=0): Assign teacher i to class i (for i=0-3)
+2. Processing:
+   - On cmd_type=0 (rotation command): Store cyclic permutation of K teachers affecting specified week.
+     Format: [teacher_id_in] provides teacher list (p1,p2..pK) in sequence (1 entry per clock cycle)
+   - On cmd_type=1 (query): Output teacher's class after all rotations up to specified week
+3. Storage:
+   - Internal memory stores 6 rotation records (week+teacher IDs)
+   - Current teacher_class register (4x2 bits) maintains assignments
+4. Operation:
+   - Queries require back-to-back processing of all rotation commands ≤ query week
+   - Output valid 3 clock cycles after query command
+   - Maximum supported: N=4 teachers/classes, M=8 weeks, K_max=4 teachers per rotation
+Timing: Input commands are written on wr_en rising edge. Query results appear 3 cycles after command. Use casez for safe state transitions.
+
+Architecture outline:
+reg [1:0] teacher_class[0:3]; // Current class assignment (index=teacher ID)
+reg [2:0] rot_weeks[0:5];    // Rotation weeks (6 entries)
+reg [1:0] rot_lists[0:5][0:3]; // Teacher rotation sequences (6 records, 4 teachers each)
+reg [1:0] rot_sizes[0:5];  // K for each rotation record
+// Implement FSM that processes rotations <= queried week when receiving type=1 command
+// Create rotational shift logic for stored teacher permutaitons
+// Ensure all assignments update atomically when processing rotations

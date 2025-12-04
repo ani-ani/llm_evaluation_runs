@@ -1,0 +1,26 @@
+Design a sequential Verilog module named 'taxi_distance_calculator' that calculates the expected Manhattan distance between two randomly chosen points in a convex polygon (up to 8 vertices) using Monte Carlo estimation.
+
+Module interface:
+module taxi_distance_calculator(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // start calculation
+  input [2:0] num_vertices, // number of polygon vertices (3-8)
+  input [31:0] vertices_x [0:7], // Q16.16 x coordinates
+  input [31:0] vertices_y [0:7], // Q16.16 y coordinates
+  output reg [31:0] expected, // Q16.16 expected distance
+  output reg done // high when calculation complete
+);
+
+Behavior:
+1. On reset: Clear all registers and set done=0
+2. When start=1: Begin Monte Carlo estimation with 1024 samples
+3. For each sample:
+   a. Generate two random Q16.16 points within polygon bounds
+   b. Verify points are inside convex polygon using ray casting
+   c. Compute Manhattan distance |x1-x2| + |y1-y2|
+   d. Accumulate sum of valid distances
+4. After 1024 valid samples: Compute average (sum/1024)
+5. Output result in Q16.16 format and assert done=1
+
+Latency: Result becomes valid ~1500 cycles after start due to sample processing. Use an 8-bit LFSR for random number generation. Store polygon vertices in registers.

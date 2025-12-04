@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'julia_betting' that calculates guaranteed lead matches.
+
+Module interface:
+module julia_betting(
+  input clk, 
+  input rst_n, 
+  input start, 
+  input [2:0] n, // Max 8 people (3 bits)
+  input [7:0] julia_score, 
+  input [63:0] p_scores, // Packed 8x8-bit scores (MSB first)
+  output reg [7:0] k, 
+  output reg done
+);
+
+Behavior: 
+1. On start pulse, begin processing. julia_score is p_scores[63:56] 
+2. Extract up to (n-1) opponent scores (excluding Julia's) 
+3. Sort opponent scores in descending order (fixed 7 elements maximum) 
+4. Compute worst-case guaranteed lead matches using sorted scores: 
+   k = max matches before Julia could lose lead 
+5. Done signals valid output 16 cycles after start (n=8 worst-case)
+6. Use state machine: IDLE, COMPARE_DISTANCE, SORTING, CALC_K
+
+Calculation details: 
+Let other_scores[0] >= other_scores[1] >= ...
+For i from 0 to n-2:
+  if (julia_score - other_scores[i]) <= sum_distances[i+1]
+    then total += floor((sum_distances[i+1] - (julia_score - other_scores[i]) + 1) / 2)
+  else
+    total += julia_score - other_scores[i]
+Final k = total

@@ -1,0 +1,34 @@
+Design a Verilog module named 'min_transactions' that computes the least number of transactions needed to settle debts among up to 6 people. The module must be sequential with the following interface:
+module min_transactions(
+  input clk, // system clock
+  input rst_n, // active-low reset
+  input start, // pulse high to start computation
+  input [2:0] m_in, // number of people (2-6)
+  input [3:0] n_in, // number of receipts (0-10)
+  input [2:0] a_in, // payer (0-5)
+  input [2:0] b_in, // payee (0-5)
+  input [9:0] p_in, // amount paid (1-1000)
+  input data_valid, // high when receipt data is valid
+  output reg [2:0] tx_count, // minimal transaction count (0-5)
+  output reg done // high when computation complete
+);
+
+// Behavioral Description:
+// 1. At reset, all internal registers are cleared
+// 2. When start is pulsed high:
+//    a. Module begins accepting receipt data when data_valid=1
+//    b. Stores up to 10 receipts (b_in ignored if m_in-1 < b_in)
+// 3. After all receipts received:
+//    a. Computes net balance for each person (signed 13-bit value)
+//    b. Groups positive and negative balances
+//    c. Finds minimal transaction count using subset elimination method
+// 4. Computation completes in bounded time:
+//    - Up to 50 clock cycles after last receipt
+//    - done signal asserts when tx_count is valid
+//
+// Implementation Notes:
+// - Net balance stored as signed [12:0] (max +/- 6000)
+// - Uses combinatorial logic to test balance subsets
+// - State machine states: IDLE, READ, COMPUTE_BAL, FIND_MIN_TX, DONE
+// - After computation, assert done for 1 cycle then return to IDLE
+// - If m_in < 2, tx_count=0 and done asserts immediately

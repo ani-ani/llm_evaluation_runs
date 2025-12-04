@@ -1,0 +1,29 @@
+Design a sequential Verilog module named 'turtle_tracker' that calculates the earliest and latest marker drying times matching a target pattern. The module processes up to 8 commands on a 4x4 grid.
+Module interface:
+module turtle_tracker(
+  input clk,   // clock
+  input rst_n, // active-low reset
+  input start, // start processing
+  // Target grid (4x4) packed into 16-bit vector (bit=1: #, 0: .)
+  input [15:0] target_grid, 
+  // Preloaded commands (8 commands max):    
+  //   [2:0]: direction encoding (00=up, 01=down, 10=left, 11=right)
+  //   [7:4]: distance (0-15 max)
+  input [7:0] cmd_0, cmd_1, cmd_2, cmd_3, cmd_4, cmd_5, cmd_6, cmd_7, 
+  input [2:0] num_cmds, // actual number of commands (0-7)
+  output reg [6:0] min_time, // earliest dry time (7 bits, max 120 timesteps)
+  output reg [6:0] max_time, // latest dry time
+  output reg done,  // high when computation complete
+  output reg valid_result // high when solution exists (else output -1,-1)
+);
+
+Behavioral description:
+1. Starts at bottom-left corner (row=3, col=0) at timestep 0.
+2. Processes commands in order with state machine.
+3. Tracks two values per cell: first_mark_time and last_mark_time (9 registers).
+4. After processing, compares coverage with target_grid.
+5. Valid min_time = MAX of all cells' first_mark_time (or 0 if not marked).
+6. Valid max_time = MIN of all cells' last_mark_time (or 0 if not marked).
+7. Latency: Up to 120 clock cycles (1 per timestep) plus 3 cycles for analysis.
+8. If any target '#' cell was never marked, output valid_result=0 and min_time/max_time=-1.
+9. Input distances clamped internally to prevent exceeding grid bounds.

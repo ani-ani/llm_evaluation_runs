@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'tournament_disqualify' that solves the disqualification problem for fixed 4-player tournaments.
+Module interface:
+module tournament_disqualify(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [15:0] adj_matrix, // flattened 4x4 adjacency matrix (row-major)
+  input [3:0] original_S_mask // bitmask of originally disqualified players (1=disabled)
+);
+
+output reg [2:0] result; // {impossible_flag, k_prime} - [2]=1 indicates impossible
+output reg done; // high when computation completes
+
+Behavioral description:
+1. The module finds the smallest k' (<k) where some subset S' (disjoint from original_S_mask) makes graph acyclic
+2. Uses Floyd-Warshall algorithm for cycle detection in 4-node subgraphs
+3. Checks all possible subsets size 0..k-1 (max k=3) with priority to smallest k'
+4. Output format: 
+   - result[1:0] = k' when found (0-2)
+   - result[2] = 1 indicates 'impossible'
+5. Latency: Done asserts <= 100 cycles after start
+6. Implementation strategy:
+   - Iterate through k' sizes from 0 to current best
+   - For each subset size, generate all valid player combinations
+   - For each combination, create subgraph and check acyclicity using reachability matrix
+   - Uses 3 pipeline stages: subset generation, graph processing, cycle check
+   - Prioritizes finding smallest valid k'

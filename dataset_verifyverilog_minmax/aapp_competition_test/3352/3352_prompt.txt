@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'magic_color_counter' with the following specifications:
+
+Inputs:
+  input clk,              // clock signal
+  input rst_n,            // active-low reset
+  input start,            // high for 1 cycle to process new command
+  input [2:0] node_id,    // target node for query/update (3 bits for 8 nodes)
+  input [1:0] cmd_data,    // 00=query, others=color update (0-3 mapped to 1-4)\
+
+Config inputs (set during reset):
+  input [2:0] parents [1:7],  // parent nodes for [2..8] (3-bit each)
+  input [1:0] init_colors [0:7], // initial colors for nodes 1-8
+
+Outputs:
+  output reg [2:0] magic_count,  // result for queries (value 0-4)
+  output reg done              // high when result is valid
+
+Functionality:
+1. On reset: Load parent relationships and initial colors into registers.
+2. On start pulse:
+   - If cmd_data == 2'b00: Count magical colors in subtree of node_id
+     * Traverse subtree (BFS or DFS) and count color occurrences
+     * Magic_count = number of colors with odd counts
+   - Else: Update node_id's color to (cmd_data - 1) (map 00→0,01→1,10→2,11→3)
+3. For queries: Compute within 16 clock cycles maximum, assert done when complete.
+
+Implementation constraints:
+- Support up to 8 nodes (3-bit addresses)
+- 4 possible colors (2-bit representation)
+- Use fixed-size registers for subtree traversal state
+- Maintain current colors in 8x2-bit register array
+- Store parent-child relationships in 7x3-bit registers
+- Compute magic colors via combinatorial parity checks after traversal completes
+- Precompute child lists during reset based on parent relationships

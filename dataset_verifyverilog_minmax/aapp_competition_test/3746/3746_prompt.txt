@@ -1,0 +1,28 @@
+Design a sequential Verilog module named 'minimum_hanoi_cost' that calculates the minimal cost for SmallY's Hanoi puzzle with up to 4 disks.
+
+Module interface:
+module minimum_hanoi_cost(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // pulse high to start computation
+  input [15:0] t0_r0, t0_r1, t0_r2, // row0 of cost matrix (3x 16-bit inputs)
+  input [15:0] t1_r0, t1_r1, t1_r2, // row1 of cost matrix
+  input [15:0] t2_r0, t2_r1, t2_r2, // row2 of cost matrix
+  input [3:0] n, // number of disks (1 ≤ n ≤ 4)
+  output reg [31:0] min_cost, // minimum total cost (32-bit output)
+  output reg done // high when computation complete
+);
+
+Behavioral description:
+- On reset: Clear all registers and set done=0.
+- When start is pulsed high: Begin computation with the provided cost matrix and n disks.
+- Implements simplified DP approach:
+  For disk_count from 1 to n:
+    For each move (frm, to) calculate:
+      other = 3-frm-to
+      cost_option1 = dp[i-1][frm][other] + t[frm][to] + dp[i-1][other][to]
+      cost_option2 = dp[i-1][frm][to] + t[frm][other] + dp[i-1][to][frm] + t[other][to] + dp[i-1][frm][to]
+      dp[i][frm][to] = min(cost_option1, cost_option2)
+- Latency: Output valid (n+1) clock cycles after start pulse.
+- Final result: min_cost = dp[n][0][2]
+- States: IDLE (wait for start), INIT (load inputs), PROCESS (compute DP table), DONE (output result)

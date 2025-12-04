@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'network_optimizer' that finds minimal transmission cost when connecting two small trees (max 8 nodes each).
+
+Inputs:
+input clk            // clock signal
+input rst_n          // active-low reset
+input start          // pulse high to start computation
+input [2:0] size_A   // nodes in tree A (1-8)
+input [2:0] size_B   // nodes in tree B (1-8)
+input [63:0] adj_A   // 8x8 adjacency matrix for tree A (packed: adj_A[8*i+j] = 1 if edge)
+input [63:0] adj_B   // 8x8 adjacency matrix for tree B (packed same as adj_A)
+
+Outputs:
+output reg [15:0] min_cost  // minimum transmission cost (16-bit wide)
+output reg done              // high when computation complete
+
+Behavior:
+1. On reset, clear all registers.
+2. When start=1:
+   a. For each node in tree A (0-7), compute sum of squared distances to all others (SSA)
+   b. For each node in tree B (0-7), compute sum of squared distances to all others (SSB)
+   c. Find min SSA[u] (u in A) and min SSB[v] (v in B)
+   d. Compute base cost: sum_over_A(paths^2) + sum_over_B(paths^2) + (|A|*|B|)*(1 + SSA[u]/|A|^2 + SSB[v]/|B|^2) (simplified)
+   e. Store result in min_cost when complete
+3. Assert done=1 for 1 cycle when result is valid (latency ~100 cycles)
+
+Implementation notes:
+- Use BFS to compute distances
+- Sum{paths^2} can be computed from edge contributions (see analysis)
+- All distances stored in 4-bit registers (max distance=7)
+- SSA/SSB stored as 11-bit values (max 8*49=392)
+TECHNICAL NOTE: Actual formula is original_cost_A + original_cost_B + |A|*|B| + SSA[u]*|B| + SSB[v]*|A| where u/v are connection points

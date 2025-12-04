@@ -1,0 +1,37 @@
+Design a Verilog module named 'fog_miss_counter' that counts missed fogs for a scaled-down version of the problem.
+
+Module interface:
+module fog_miss_counter(
+  input clk,                           // clock signal
+  input rst_n,                        // active-low reset
+  input start,                        // pulse high to start computation
+  // Originator fog parameters (4 fogs max, 16-bit values)
+  input [1:0] num_origins,            // number of originators (0-3)
+  input [1:0] m_i [0:3],              // m_i values (1-3)
+  input [15:0] d_i [0:3],             // initial days (0-65535)
+  input signed [15:0] l_i [0:3],      // left coordinates
+  input signed [15:0] r_i [0:3],      // right coordinates
+  input [15:0] h_i [0:3],            // heights
+  input [15:0] delta_d_i [0:3],      // day increments
+  input signed [15:0] delta_x_i [0:3], // x shifts
+  input signed [15:0] delta_h_i [0:3], // height changes
+  output reg [5:0] missed_count,      // total missed fogs (0-63)
+  output reg done                     // high when computation complete
+);
+
+Behavioral description:
+- Sequential implementation with internal state machine
+- Processes up to 4 originator fogs, each generating up to 3 fogs
+- For each fog rectangle, checks if it is fully contained within any existing net
+- Missed count increments if not contained
+- Nets are NOT physically added in this simplified version (only counting misses)
+- New nets are assumed to be added externally after misses are counted
+- Latency: Output valid after maximum 20 clock cycles (1 cycle per fog + overhead)
+
+Implementation notes:
+- Store fog parameters in registers when start is asserted
+- Use signed comparison for x-coordinates and height checks
+- Assume fog events are processed in order of ascending days (requires pre-sorting input)
+- For containment check: fog rectangle [l, r]×[0, h] is contained in a net if ∃ net where net.l ≤ fog.l, net.r ≥ fog.r, net.h ≥ fog.h
+- Max concurrent nets considered: 16 (not stored in this module since only counting misses)
+- Only compare against nets added PRIOR to current fog's day (simplified model)

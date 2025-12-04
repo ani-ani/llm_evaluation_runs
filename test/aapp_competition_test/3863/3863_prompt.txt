@@ -1,0 +1,30 @@
+Design a sequential Verilog module named 'palindromic_sequence_counter' that calculates the number of distinct sequences modulo 10^9+7, given:
+- Scaled N (max value 65535) must be palindrome and support rotations
+- Module uses divisor enumeration and inclusion-exclusion principle
+
+Module interface:
+module palindromic_sequence_counter(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // pulse high to start computation
+  input [15:0] N, // sequence length (1 ≤ N ≤ 65535)
+  input [15:0] K, // max element value (1 ≤ K ≤ 65535)
+  output reg [31:0] result, // final answer
+  output reg done // high when computation finished
+);
+
+Behavior:
+1. On start pulse: Compute all divisors of N (using builtin DIV_LIMIT=32)
+2. Process divisors in ascending order with inclusion-exclusion
+3. For each divisor d: calculate pow(K, (d+1)//2, MOD) - sum of previous terms
+4. Accumulate result: ans += (d * term) if odd, (d//2 * term) if even
+5. Entire computation takes ≤ 70 cycles (1 cycle per divisor + overhead)
+6. Output valid when done=1 with 32-bit result modulo 10^9+7
+
+Implementation notes:
+- Use parameter MOD = 32'd1000000007
+- Precompute powers using repeated multiplication (no floating point)
+- Max divisor count limited to 32 for hardware feasibility
+- All operations performed modulo MOD
+- Sequential state machine with states: IDLE, FIND_DIVS, PROCESS_DIV, COMPLETE
+- Must handle reset properly to cancel operations

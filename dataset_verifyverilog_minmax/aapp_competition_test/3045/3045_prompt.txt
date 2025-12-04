@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'mps_receiver' that determines receiver position from beacon distances.
+
+Module interface:
+module mps_receiver(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [1:0] beacon_count, // 0-3 beacons (N=1-4)
+  input [9:0] x[0:3], // beacon x positions (10-bit signed, -512 to 511)
+  input [9:0] y[0:3], // beacon y positions
+  input [11:0] d[0:3], // Manhattan distances (12-bit unsigned)
+  output reg [9:0] x_r, // receiver x position
+  output reg [9:0] y_r, // receiver y position
+  output reg [1:0] status // 00=computing, 01=unique, 10=uncertain, 11=impossible
+);
+
+Behavioral description:
+1. Searches a bounded grid of possible receiver positions (x:-512 to 511, y:-512 to 511)
+2. For each position (x_cand, y_cand):
+   a. Calculate Manhattan distance to each beacon: |x_cand - xi| + |y_cand - yi|
+   b. Compare against measured distance di
+3. Find ALL positions that satisfy ALL beacon distance constraints
+4. Output:
+   - If exactly 1 valid position: x_r/y_r with status 01
+   - If 0 positions valid: status 11 (impossible)
+   - If >1 positions valid: status 10 (uncertain)
+
+Timing:
+- Output valid 1024 clock cycles max after start asserted (brute-force search)
+- Use state machine: IDLE, SEARCH, CALC_DIST, CHECK, DONE
+- Parallel distance checking for multiple beacons is encouraged if feasible

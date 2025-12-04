@@ -1,0 +1,26 @@
+Design a sequential Verilog module named 'haiku_formatter' that processes up to 8 words (each up to 12 chars) to detect possible haiku structure (5-7-5 syllables). Input: 8x12x8-bit ASCII characters (padded), 3-bit word_count. Output: 3-bit line_breaks, 1-bit is_haiku. Using start/done handshake and syllable FSM with simplified rules.
+
+Module interface:
+module haiku_formatter(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // start processing
+  input [2:0] word_count, // number of words (1-8)
+  input [7:0] words [0:7][0:11], // 8 words x 12 chars (ASCII)
+  output reg [2:0] line_breaks, // word indices for line breaks
+  output reg is_haiku, // 1 if valid structure found
+  output reg done // high when processing complete
+);
+
+Behavior:
+1. On start, processes words sequentially:
+   - Strips non-alphabetic chars except trailing punctuation
+   - Counts syllables per word using simplified rules:
+        • Vowels: A,E,I,O,U (ignore case, Y as consonant)
+        • Ignore silent-E exception
+        • Each vowel group counts as 1 syllable
+2. Tracks syllable totals for lines 1 (5), 2 (7), 3 (5)
+3. Checks possible word groupings within 10 clock cycles
+4. Outputs line_breaks [w1, w2] if valid haiku found
+5. Sets is_haiku=1 and done=1 after 15 cycles max
+6. If no valid structure, outputs is_haiku=0 with done=1

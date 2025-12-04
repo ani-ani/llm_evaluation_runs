@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'plane_scheduler' that calculates the minimum planes needed for up to 4 airports and 4 flights.
+
+Inputs:
+input clk,
+input rst_n, // async active-low reset
+input start, // pulse high to start computation
+input [15:0] inspect_time [0:3], // inspection times for 4 airports (each 16-bit)
+input [15:0] flight_times [0:3][0:3], // 4x4 flight time matrix (each entry 16-bit)
+input [1:0] flight_s [0:3], // source airports for 4 flights (2-bit each)
+input [1:0] flight_f [0:3], // destination airports for 4 flights (2-bit each)
+input [15:0] flight_t [0:3] // departure times for 4 flights (16-bit each)
+
+Outputs:
+output reg [2:0] plane_count, // min planes needed (0-4)
+output reg done // high when computation completes
+
+Behavior:
+1. On reset, all outputs = 0
+2. When start pulses high:
+  a. Compute which flights can reuse same plane (flight X could serve flight Y if: departure_Y >= departure_X + flight_time[X][Y] + inspection_time[Y])
+  b. Treat as bipartite graph matching problem
+  c. Compute maximum matching to determine min planes (total flights - max matches)
+
+Timing:
+- Output valid 100 cycles after start assertion
+- Controller FSM: IDLE->CALC->DONE
+
+Implementation Notes:
+- Precompute all flight connectivity in parallel
+- Use brute-force matching search for 4 flights
+- Edge case: flights with overlapping times require separate planes

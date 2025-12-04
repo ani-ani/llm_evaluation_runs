@@ -1,0 +1,22 @@
+Design a sequential Verilog module named 'arcade_expected_value' that computes the expected payout for a scaled-down arcade game with up to 4 rows (10 holes).
+
+Inputs:
+  input clk,             // clock signal
+  input rst_n,           // active-low reset
+  input start,           // pulse high to start computation
+  input [3:0] num_rows,  // number of rows (1-4)
+  input [7:0] payouts [0:9], // 10 hole payouts (8-bit signed)
+  input [19:0] probs [0:9][0:4] // 10x5 probability matrix (Q10.10 fixed-point)
+
+Outputs:
+  output reg signed [31:0] expected_value, // Q10.22 fixed-point
+  output reg done          // high when computation complete
+
+Behavior:
+1. When start is pulsed, initialize expected values for all holes to 0.
+2. Iteratively update expected values using: E[h] = payout[h] + Σ(probs[h][d] * E[neighbor_d]) for each direction d (neighbors calculated based on hole position).
+3. Use Q10.10 fixed-point arithmetic for probability multiplication (rounding as needed).
+4. Stop after 100 iterations or when max absolute change across all holes < 1/1024 (Q10.10 LSB).
+5. Output the starting hole's expected value (hole 0) in Q10.22 format.
+
+Latency: Result valid within 100 clock cycles after start. Use states: IDLE, INIT, ITERATE, DONE.

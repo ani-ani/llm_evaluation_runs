@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'club_fencing_cost' that calculates fencing costs for a scaled club grid.
+
+Inputs:
+input clk,                // clock
+input rst_n,              // active-low reset
+input start,              // start computation
+input [3:0] B,            // min light level (0-9)
+input [2:0] H,            // ceiling height (1-5)
+input [2:0] R,            // rows (2-4)
+input [2:0] C,            // columns (2-4)
+input [15:0] grid,        // 4x4 grid flattened (4-bits per cell, row-major)
+
+Outputs:
+output reg [10:0] total_cost, // final fencing cost in pounds
+output reg done           // high when computation complete
+
+Behavior:
+1. On reset or power-up, initialize all registers.
+2. When start is asserted:
+   a. Compute light levels for all cells using fixed-point Q16.16 arithmetic.
+      Light at (i,j) = sum_over_all_cells(grid[r][c] * 65536 / (dx^2 + dy^2 + H^2))
+      where dx = |i - r|, dy = |j - c|
+   b. Determine which cells are below B (needing fencing)
+   c. For each internal cell edge (not border), add:
+      - £11 if exactly one adjacent cell meets B
+      - £43 if BOTH adjacent cells meet B
+3. Output total_cost when computation completes.
+
+Latency: Result valid within 1000 clock cycles after start asserted. Use state machine with: IDLE, CALC_LIGHTS, FIND_DARK, CALC_FENCES, DONE.
+
+Implementation Notes:
+- Use Q16.16 fixed-point: 32-bit registers for intermediate calculations
+- Max grid size 4x4 (R,C <= 4)
+- Border cells guaranteed sufficiently lit per problem statement

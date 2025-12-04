@@ -1,0 +1,28 @@
+Design a sequential Verilog module named `train_path_optimizer` that finds the minimal expected travel time between stations considering probabilistic delays.
+
+Module interface:
+module train_path_optimizer(
+  input clk,                      // System clock
+  input rst_n,                    // Active-low reset
+  input start,                    // Start computation (pulse high)
+  input [3:0] num_stations,       // Number of stations (max 8)
+  input [4:0] num_trains,         // Number of trains (max 16)
+  input [3:0] origin_idx,         // Encoded origin station index
+  input [3:0] dest_idx,          // Encoded destination station index
+  input [15:0] train_data [15:0], // Train data packed as [src:4][dst:4][depart:6][time:9][prob:7][delay:7] (255 bits total)
+  output reg [31:0] min_time,     // Min expected time in Q16.16 fixed-point
+  output reg done,                // High when computation completes
+  output reg impossible           // High if destination unreachable
+);
+
+Behavioral description:
+1. Implements a simplified Dijkstra-like algorithm with state machine
+2. Stores station distances in 16-bit Q16.16 format (15:16 fixed-point)
+3. Processes graph with max 8 nodes and 16 trains
+4. Computes expected time per connection: E = ((100-p)*t + p*(t + (d+1)/2))/100
+5. Uses iterative relaxation over 16 clock cycles (1 cycle per potential path)
+6. Outputs IMPOSSIBLE if no path exists after exploration
+7. Computation starts on start pulse, takes 16 cycles for 8 nodes
+8. All arithmetic uses Q16.16 fixed-point precision
+9. Travel time includes departure time alignment when switching trains
+10. Uses adjacency list storage with max 4 connections per station

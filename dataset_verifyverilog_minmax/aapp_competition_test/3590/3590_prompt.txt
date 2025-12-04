@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'polygon_cutter' that calculates minimum cutting cost between convex polygons A and B (max 8 vertices each) using fixed-point arithmetic.
+
+Module Interface:
+module polygon_cutter(
+  input clk, // Clock
+  input rst_n, // Active-low reset
+  input start, // Start computation
+  input [2:0] a_count, // Vertex count for A (3-8)
+  input [2:0] b_count, // Vertex count for B (3-8)
+  input [7:0][15:0] a_x, // Q8.8 x-coords for A vertices
+  input [7:0][15:0] a_y, // Q8.8 y-coords for A vertices
+  input [7:0][15:0] b_x, // Q8.8 x-coords for B vertices
+  input [7:0][15:0] b_y, // Q8.8 y-coords for B vertices
+  output reg [31:0] total_cost, // Q16.16 accumulated cost
+  output reg done // High when computation completes
+);
+
+Behavioral Description:
+1. On reset, initialize all registers and set done=0
+2. When start is asserted:
+   a. Find all supporting edges in A between consecutive counter-clockwise tangent points for B
+   b. Calculate sum of Euclidean distances between these consecutive tangent points
+       - Use fixed-point arithmetic for Q8.8 inputs
+       - Square root calculations should use 32-bit fixed-point Newton-Raphson
+   c. Accumulate total cutting cost
+3. Result valid 20 clock cycles after start (pipelined sqrt approx)
+4. Done signal goes high for 1 cycle when result is valid
+
+Implementation Notes:
+- Use a state machine: IDLE, FIND_TANGENTS, CALC_DISTANCES, SQRT, ACCUMULATE, FINISH
+- Store results in Q16.16 format (32-bit: 16 integer, 16 fractional bits)
+- Support up to 8 vertices for both polygons
+- Assume consecutive tangent points only
+- Fixed point square root: 4 Newton iterations starting with 010000h

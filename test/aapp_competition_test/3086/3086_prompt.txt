@@ -1,0 +1,42 @@
+Design a Verilog module named event_duration_solver to compute event durations from telescope data. The module processes 3 telescopes and 3 event types.
+
+Module interface:
+module event_duration_solver(
+  input clk, // system clock
+  input rst_n, // active-low reset
+  input start, // begins computation
+  // Telescope 0 inputs
+  input [4:0] t0_start_day, // 1-31
+  input [3:0] t0_start_month, // 1-12
+  input [4:0] t0_end_day, // 1-31
+  input [3:0] t0_end_month, // 1-12
+  input [7:0] t0_freq0, t0_freq1, t0_freq2, // event frequencies (0-200)
+  // Telescope 1 inputs
+  input [4:0] t1_start_day,
+  input [3:0] t1_start_month,
+  input [4:0] t1_end_day,
+  input [3:0] t1_end_month,
+  input [7:0] t1_freq0, t1_freq1, t1_freq2,
+  // Telescope 2 inputs
+  input [4:0] t2_start_day,
+  input [3:0] t2_start_month,
+  input [4:0] t2_end_day,
+  input [3:0] t2_end_month,
+  input [7:0] t2_freq0, t2_freq1, t2_freq2,
+  // Outputs
+  output reg [8:0] d0, d1, d2, // event durations (1-365)
+  output reg solution_found, // high when valid solution found
+  output reg done // high when computation completes
+);
+
+Behavior:
+1. The module converts each date to day-of-year using combinational logic with hardcoded month offsets (Jan:0, Feb:31, Mar:59, etc).
+2. On reset, all outputs are zero. When start=1, iterates d0 from 1-365, d1 from 1-365, d2 from 1-365.
+3. For each combination:
+   - For all telescopes: calculate days_diff = (end_day_of_year - start_day_of_year + 365) % 365
+   - Compute sum = freq0*d0 + freq1*d1 + freq2*d2 for each telescope
+   - Check if (sum - days_diff) >=0 and divisible by 365 for all telescopes
+4. If valid combination found: Output durations, assert solution_found=1 and done=1.
+5. If no solution after all iterations: done=1, solution_found=0.
+6. Latency: 48627125 (365^3) cycles worst-case, less if solution found early.
+7. Use three nested counters (d0_cnt, d1_cnt, d2_cnt) for iteration.

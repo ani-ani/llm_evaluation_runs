@@ -1,0 +1,25 @@
+Design a sequential Verilog module named 't_return_day_finder' that finds the earliest day T in [L, L+9] where travel probability to node 4 is exactly 95%.
+
+Module interface:
+module t_return_day_finder(
+  input clk,      // clock signal
+  input rst_n,    // active-low reset
+  input start,    // pulse high to start computation
+  input [4:0] L,  // 5-bit window start (L <= 16)
+  input [15:0] adj_matrix_row0, // 4 entries (j0-3) for node1, 4 bits each [3:0][3:0]
+  input [15:0] adj_matrix_row1, // node2 connections
+  input [15:0] adj_matrix_row2, // node3 connections
+  output reg signed [5:0] T_out,  // -1 to 31 range (6-bit signed)
+  output reg done           // high when result ready
+);
+
+Behavior:
+1. When start=1, compute probabilities for days T=L to L+9 (max T=31).
+2. Model 4-node graph (node1=start, node4=target). Storage for adjacency matrix.
+3. Probabilities use Q10.10 fixed-point (20 bits total). 95% = 973 << 10 (0x3e800).
+4. Day 1: Initialize node1 prob=1.0 (1<<10), others 0.
+5. Each day: For each node, propagate prob to neighbors via transitions.
+6. After each T, check if node4 prob == 0x3e800 (with +/-1 tolerance for rounding).
+7. Output first valid T or -1 after all days checked.
+8. Latency: Up to 15 cycles (1 reset + 10 days max + report).
+9. States: IDLE, INIT, COMPUTE_DAY, STEP_DAY, CHECK_RESULT, DONE.

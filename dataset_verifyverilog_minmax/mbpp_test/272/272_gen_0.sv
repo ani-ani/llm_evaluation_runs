@@ -1,0 +1,18 @@
+module rear_extract (
+  input reg [7:0] tuple0_e0,
+  input reg [7:0] tuple0_e1,
+  input reg [7:0] tuple0_e2,
+  input reg [7:0] tuple1_e0,
+  input reg [7:0] tuple1_e1,
+  input reg [7:0] tuple1_e2,
+  input reg [7:0] tuple2_e0,
+  input reg [7:0] tuple2_e1,
+  input reg [7:0] tuple2_e2,
+  output [7:0] out0,
+  output [7:0] out1,
+  output [7:0] out2
+);
+  assign out0 = tuple0_e2;
+  assign out1 = tuple1_e2;
+  assign out2 = tuple2_e2;
+endmodule

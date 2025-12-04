@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'gesture_classifier' that classifies touch gestures from two 8x16 pixel images.
+
+Module interface:
+module gesture_classifier(
+  input clk,                 // clock signal
+  input rst_n,               // active-low reset
+  input start,               // start processing
+  input [127:0] init_image,  // 8x16 initial image (1 bit per pixel)
+  input [127:0] final_image, // 8x16 final image (1 bit per pixel)
+  output reg [2:0] touch_count,  // number of touches (1-5)
+  output reg [1:0] gesture_type, // 00:pan, 01:zoom, 10:rotate
+  output reg direction,       // 0:in/cw, 1:out/ccw
+  output reg done            // high when result valid
+);
+
+Behavioral description:
+1. The module should process images over multiple clock cycles.
+2. First, detect touches in both images using 4-connected flood fill algorithm adapted for 8x16 grid. Store centroid of each touch in Q8.8 fixed-point format (touch points). Only touches with >=2 pixels are valid.
+3. Compute grip points (average of touch points) for both images.
+4. For each touch, calculate touch vectors (grip→touch) in Q8.8 format.
+5. Find 1:1 correspondence between initial/final touches that minimizes sum of squared distances (use parallel comparators for <=25 combinations).
+6. Calculate three distances:
+   - Pan: Euclidean distance between grip points (Q8.8)
+   - Zoom: Difference in grip spread averages (absolute value)
+   - Rotate: Arc length from avg angle difference (use cross-product sign for direction)
+7. Select gesture with largest value after absolute comparisons with 10⁻⁵ precision (0x28 Q8.8 tolerance).
+Output valid 256 cycles after start assertion. Use states: IDLE, FIND_TOUCHES, CALC_GRIPS, MATCH_TOUCHES, COMPARE, DONE.

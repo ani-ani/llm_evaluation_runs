@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'planet_collision_sim' that models planetoid collisions in a fixed-size 3D space.
+
+Module interface:
+module planet_collision_sim(
+  input clk,
+  input rst_n,
+  input start,
+  input [3:0][8:0] masses_in, // 4 planetoids, 9-bit masses [8:0]
+  input [3:0][2:0] x_in, y_in, z_in, // 3-bit grid positions (0-7)
+  input [3:0][3:0] vx_in, vy_in, vz_in, // 4-bit velocities (signed)
+  output reg [1:0] planet_count,
+  output reg [3:0][8:0] masses_out,
+  output reg [3:0][2:0] x_out, y_out, z_out,
+  output reg [3:0][3:0] vx_out, vy_out, vz_out,
+  output reg done
+);
+
+Behavior: 
+1. On reset, store initial input values
+2. When start=1, begin simulation
+3. Each clock cycle advances time by 1 unit
+4. Per cycle: compute new positions modulo 8
+5. Check collisions in current positions (exact coordinate match)
+6. Merge colliding planetoids: sum masses, average velocities (sum all velocities, divide by count, truncate)
+7. Repeat for max 8 cycles or until no collisions
+8. After simulation, sort outputs by mass (desc), breaking ties with x,y,z coords (asc)
+9. Assign P0-P3 IDs based on sorted order
+10. Assert done=1 when complete (latency: 8-16 cycles)
+
+Collision handling:
+- Process all collisions in single cycle - max 3 merges (4->1)
+- Use priority scheme: lowest index planetoid absorbs higher index ones
+- Remove merged planetoids from simulation
+
+Parameters:
+- MAX_CYCLES = 8
+- MAX_PLANETOIDS = 4

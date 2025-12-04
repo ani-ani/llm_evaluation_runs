@@ -1,0 +1,32 @@
+Design a sequential Verilog module named 'sub_cipher_matcher' that counts valid positions where a decrypted fragment could match an encrypted message via substitution cipher.
+
+Module interface:
+module sub_cipher_matcher(
+  input clk, // system clock
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [79:0] encrypted_msg, // 16 characters (5 bits each)
+  input [19:0] fragment, // 4 characters (5 bits each)
+  output reg [4:0] count, // number of valid matches (0-16)
+  output reg done // high when computation completes
+);
+
+Behavioral description: 
+- Operates on 16-char max message and 4-char fragment (each character 5 bits: 0-25 = 'a'-'z')
+- When 'start' is asserted:
+  1. Checks if fragment length <= message length (output 0 if false)
+  2. For each starting position i (0 to L_msg-L_frag):
+     a. Verifies that fragment can map to message via unique substitutions
+     b. Each character in fragment must map consistently to message characters
+     c. Different fragment letters can't map to same message letter
+  3. Counts valid positions
+  4. After 16 clock cycles: outputs count and asserts 'done'
+- Latency: 16 clock cycles max after start assertion (1 cycle per potential position check)
+- States: IDLE, CHECK_LENGTH, ITERATE, VERIFY, DONE
+- Use reset to initialize FSM and registers.
+
+Substitution rules:
+- For fragment position to be valid at index i:
+  • ∀j∈[0,3]: fragment[j] → message[i+j] must be consistent
+  • ∀j≠k: fragment[j] ≠ fragment[k] → message[i+j] ≠ message[i+k]
+- Example: fragment "abc" cannot match message "xyyx" due to inconsistent b↔y and c↔x mapping.

@@ -1,0 +1,29 @@
+Design a sequential Verilog module named 'boar_charge_probability' that calculates the probability a boar completes its charge without hitting trees.
+
+Module interface:
+module boar_charge_probability(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // start calculation
+  input [2:0] tree_count, // number of trees (0-7)
+  input [15:0] b, // boar radius (unsigned)
+  input [15:0] d, // charge distance (unsigned)
+  input [15:0] tree_x [0:7], // signed x positions (16-bit)
+  input [15:0] tree_y [0:7], // signed y positions (16-bit)
+  input [15:0] tree_r [0:7], // tree radii (unsigned)
+  output reg [31:0] prob_q16, // probability in Q16.16 format
+  output reg done // high when calculation complete
+);
+
+Behavior:
+1. On reset, set done=0 and prob_q16=0
+2. When start=1, begin calculating safe angular intervals for each tree
+3. For each tree:
+   a. Skip trees where (x_i^2 + y_i^2) > (d + b + r_i)^2 
+   b. For impacting trees: calculate angular blocking ranges
+4. Merge overlapping blocked angular intervals
+5. Calculate probability as (360 - total_blocked_deg)/360 in Q16.16 format
+6. Set done=1 after 25 clock cycles (assumes 8 trees * 3 cycles + merge overhead)
+7. Inputs must remain stable until done=1
+
+Note: All geometric calculations must use integer arithmetic with 16-bit inputs. Assume sufficient intermediate precision (e.g., 32-bit for squares). Constant PI = 0x3243F (Q16.16 representation of 3.1415926535)

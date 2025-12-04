@@ -1,0 +1,34 @@
+Design a sequential Verilog module 'rgb_to_hsv' that converts RGB color values to HSV using fixed-point arithmetic.
+
+Inputs:
+input clk               // Clock signal
+input rst_n             // Active-low reset
+input start             // Start computation
+input [7:0] r, g, b     // 8-bit RGB components (0-255)
+
+Outputs:
+output reg [15:0] h     // Hue (0-36000, representing 0.00-360.00)
+output reg [15:0] s     // Saturation (0-10000, representing 0.00%-100.00%)
+output reg [15:0] v     // Value (0-10000, representing 0.00%-100.00%)
+output reg done         // High when computation complete
+
+Behavior:
+- On reset, clear all outputs and internal state
+- When start is asserted, begin computation
+- Compute HSV using scaled integer arithmetic (avoid floating-point)
+- All outputs update simultaneously when done is asserted
+- Latency: 16 clock cycles from start assertion to done output
+
+Conversion algorithm requirements:
+1. Normalize RGB by multiplying to get equivalents scaled by 1000 (r_scaled = r * 1000 / 255)
+2. Find max/min of r,g,b (use parallel comparators)
+3. Calculate delta based on max-min
+4. Hue calculation cases:
+   - If max = r: hue_base = (g_scaled - b_scaled) * 60
+   - If max = g: hue_base = (b_scaled - r_scaled) * 60 + 12000
+   - If max = b: hue_base = (r_scaled - g_scaled) * 60 + 24000
+5. Saturation = (delta * 100000) / max_value (if max != 0)
+6. Value = max_value * 100000 / 300000 (scaled by 100 from 0-300000 to 0-10000)
+7. Handle all special cases (max=min, max=0)
+
+Note: All division operations must use integer division with proper rounding

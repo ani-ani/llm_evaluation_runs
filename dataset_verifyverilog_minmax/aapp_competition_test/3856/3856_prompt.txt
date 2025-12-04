@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'min_photo_area' to find minimum photo area under flip constraints.
+
+Module interface:
+module min_photo_area(
+  input clk, // Clock
+  input rst_n, // Active-low reset
+  input start, // Start computation (pulse)
+  input [1:0] n, // Number of friends (1-4)
+  input [3:0] w0, w1, w2, w3, // Friend widths (4-bit)
+  input [3:0] h0, h1, h2, h3, // Friend heights (4-bit)
+  output reg [15:0] min_area, // Minimum area result
+  output reg done // Asserted when done
+);
+
+Behavior description:
+- On reset: min_area <= 65535, done <= 0
+- When start is asserted: iterates through max_height values 1-15
+- For each max_height:
+  1. Count mandatory flips (friends where h_i > max_height) 
+  2. Reject max_height if:
+     - Mandatory flips exceed floor(n/2)
+     - Any mandatory flip has w_i > max_height
+  3. For non-mandatory friends: label as flippable if h_i <= max_height and w_i > h_i
+  4. Select up to (remaining_flips) flippable friends with largest (w_i - h_i)
+  5. Compute total_width = Σ(flipped? h_i : w_i)
+  6. Update min_area if (total_width * max_height) < current_min
+- Output valid when done=1 (150 cycles max latency)
+- Use state machine with states: IDLE, INIT, LOOP_H, CHECK_MANDATORY, CALC_OPTIONAL, SUM_WIDTH, UPDATE_MIN, DONE
+
+Implementation notes:
+- Use 4-bit comparators for height checks
+- Sum widths with 7-bit accumulator (max 4*15=60)
+- Multiply using combinational 7x4 multiplier (output 11-bit)
+- Store friends in registers [w0,h0] to [w3,h3]

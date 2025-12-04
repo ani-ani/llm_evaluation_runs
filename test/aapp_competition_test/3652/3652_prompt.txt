@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'minimal_column_deletion' with the following specifications:
+
+Inputs:
+- clk: clock input
+- rst_n: active-low reset
+- start: start signal (pulse high to begin computation)
+- [2:0] n: number of columns (1 ≤ n ≤ 8)
+- [23:0] row1: 8 columns of 3-bit values (LSB = col0)
+- [23:0] row2: 8 columns of 3-bit values
+- [23:0] row3: 8 columns of 3-bit values
+
+Outputs:
+- output reg [3:0] result: minimum deletions (n - longest valid subset)
+- output reg done: pulses high when result is valid
+
+Behavior:
+1. On reset, all outputs = 0 and FSM resets to IDLE state
+2. When start is pulsed high:
+   a. Initialize mask_counter = 0, max_kept = 0
+   b. Iterate through all 2^n possible column masks (0 to (1<<n)-1)
+   c. For each mask:
+      i. Count number of 1s (cols_kept)
+      ii. If cols_kept > max_kept:
+          - For each row: create temp array with selected columns (9 for unselected)
+          - Sort each temp array (ascending order)
+          - Compare first 'cols_kept' elements of all 3 sorted arrays
+          - If all match, set max_kept = cols_kept
+   d. After all masks: result = n - max_kept
+3. Assert done when result is ready (holds until next start)
+
+Timing:
+- Computation takes (2^n)+1 cycles after start assertion
+- Done asserts 1 cycle after final mask processed
+
+Implementation Notes:
+- Use FSM with states: IDLE, INIT, PROCESS_MASK, UPDATE_STATE, DONE
+- Use combinational sorting networks for 8-element ascending sort
+- Pad unselected columns with 9 (0b1001) prior to sorting
+- Column extraction based on mask (columns 0-7)

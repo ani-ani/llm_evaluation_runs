@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'student_helper' that processes student data arrivals and helper queries.
+
+Module interface:
+module student_helper(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input cmd, // 0=D command, 1=P command
+  input [2:0] student_id, // 0-7 index for D/P command (student 1 = index 0)
+  input [15:0] A_in, // A value (D command)
+  input [15:0] B_in, // B value (D command)
+  output reg [2:0] result_id, // 0=NE, 1-8=student number
+  output reg result_valid // high when P result valid
+);
+
+Behavior description:
+1. Maintain internal storage for 8 students:
+   - 'A_reg' [7:0][15:0], 'B_reg' [7:0][15:0]
+   - 'valid_reg' [7:0] (1-bit validity flags)
+
+2. On positive clock edge if cmd=0 (D command):
+   - Store A_in/B_in to registers at student_id index
+   - Set valid_reg[student_id]
+
+3. Processing P commands (combinational when cmd=1):
+   a) Retrieve A/B values from query student
+   b) Compare against all other valid students:
+      - Candidates must have A >= student.A and B >= student.B
+      - Select candidate with smallest (B - student.B) difference
+      - On tie select smallest (A - student.A)
+   c) Output candidate student ID (1-8) or 0 (NE)
+   d) Assert result_valid for 1 cycle
+
+4. Reset (rst_n=0):
+   - Clear all valid_reg bits
+   - Clear result outputs
+
+Implementation note: Use parallel comparators and priority encoders suitable for 8 student entries.

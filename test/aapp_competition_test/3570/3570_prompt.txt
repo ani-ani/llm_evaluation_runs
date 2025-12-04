@@ -1,0 +1,29 @@
+Design a sequential Verilog module named 'dream_checker' that processes event/dream/scenario commands.
+
+Module interface:
+module dream_checker(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input [2:0] cmd, // 0=nop, 1=event, 2=dream, 3=scenario
+  input [3:0] data_in, // Event ID for E cmd, 'r' value for D cmd
+  input [19:0] scenario_data, // Packed scenario: 4 events (each 5b: 1b !flag + 4b ID)
+  output reg [1:0] result_type, // 0=Plot Error, 1=Yes, 2=Just A Dream
+  output reg [3:0] dream_r, // Minimal r value when result_type=2
+  output reg result_valid // High when output valid
+);
+
+Behavior:
+1. Maintains event stack (16 deep, 4b IDs) with stack pointer
+2. Processes commands:
+   - E cmd: Push event ID to stack (unless full)
+   - D cmd: Remove last 'r' events by adjusting stack pointer
+   - S cmd: Check if scenario matches current stack:
+     * Check all scenario events: event present if !flag=0, absent if !flag=1
+     * Output "Yes" if all match current stack
+     * Else find minimal r (1-16) that would make scenario valid if D r applied
+     * Output "Plot Error" if no r makes scenario valid
+3. After S cmd, set result_* outputs and pulse result_valid for 1 cycle
+4. Latency: Scenario check completes in 1 clock cycle after cmd=3
+
+Note: Scenario_data format: {event3[4:0], event2[4:0], event1[4:0], event0[4:0]} each 5b={!flag, id[3:0]}
+Reset behavior: Clear stack pointer and event memory on rst_n=0

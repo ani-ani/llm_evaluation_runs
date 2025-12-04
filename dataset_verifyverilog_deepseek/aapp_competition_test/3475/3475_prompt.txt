@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'transport_switch_counter' that calculates the minimal transportation switches needed for visiting up to 8 points.
+
+Module interface:
+module transport_switch_counter(
+  input clk,
+  input rst_n,
+  input start,
+  input [1:0] t,    // Transportation types (0-3)
+  input [2:0] n,    // Number of points (1-8)
+  input [31:0] min_dists [0:3],  // d_min per transport
+  input [31:0] max_angles [0:3], // max_angle ×1000 per transport
+  input [31:0] dists [0:7],     // d_i distances (n-1 values)
+  input [31:0] angles [0:7],    // h_i ×1000 angles (n-1 values)
+  output reg [3:0] switch_count,// k (0-7) or 15 for IMPOSSIBLE
+  output reg done               // High when computation complete
+);
+
+Behavior:
+1. On start=1, compute minimal switches needed
+2. IMPOSSIBLE output represented by switch_count=15 with done=1
+3. Uses DP approach: for each point i (1≤i<n), check valid transports from previous points j (0≤j<i)
+4. Valid segment j→i for transport k must satisfy:
+   a) Sum(dists[j] to dists[i-1]) >= min_dists[k]
+   b) max_angle in segment - min_angle in segment <= max_angles[k]
+5. Latency: Output valid after 20 clock cycles max (cycles through n≤8 points)
+
+Implementation Notes:
+- Use 32-bit accumulators for distance sums
+- Track min/max angles per segment in 32-bit registers
+- Parallel checks for transports at each segment
+- Output IMPOSSIBLE (15) if no valid path to final point
+- Reset sets all registers to 0 and done=0
+
+Timing Requirements:
+- All inputs must remain stable while done=0
+- Start pulse must be at least 1 clock cycle
+- New computation can start after done=1

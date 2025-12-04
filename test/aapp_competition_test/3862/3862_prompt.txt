@@ -1,0 +1,23 @@
+Design a sequential Verilog module named 'min_coke_mixer' that finds minimal liters using BFS.
+Module interface:
+module min_coke_mixer(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // pulse high to start
+  input [9:0] target_n, // desired concentration [0-1000]
+  input [3:0] k, // number of Coke types (1-16)
+  input [9:0] concentrations [0:15], // up to 16 Coke types
+  output reg [6:0] min_liters, // result (0-127 or 7'b1111111 for -1)
+  output reg done // high when complete
+);
+
+Behavior:
+1. On start pulse, compute base_diffs[] = (each concentration - target_n) clamped to [-127,127]
+2. Perform BFS starting from 0 deviation
+3. Track visited deviations with 256-bit vector (indexed by signed 8-bit value)
+4. Use circular buffer queue (max 128 entries) with [value, steps]
+5. For each queued state, add all reachable unvisited deviations (base_diffs[])
+6. If reach 0 deviation again, output step count
+7. If queue empties without solution, output 127 (binary 1111111) for -1
+
+Latency: Maximum 128*16=2048 cycles, typically completes when done=1. Queue implemented with 128 entries, entries are {signed[7:0] deviation, [6:0] steps}.

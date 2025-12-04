@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'gas_station_optimizer' that implements a simplified gas station refueling optimization algorithm.
+
+Inputs:
+input clk,          // Clock signal
+input rst_n,        // Active-low reset
+input start,        // Start computation (pulse high to begin)
+input [3:0] n,      // Number of gas stations (1-8)
+input [15:0] g,     // Fuel tank capacity (1-65535)
+input [15:0] d[0:7],// Station distances (16-bit each, sorted ascending)
+input [15:0] c[0:7],// Station costs (16-bit each, parallel to distances)
+
+Outputs:
+output reg [31:0] total_cost, // Total computed cost (32-bit)
+output reg error,    // High when trip impossible
+output reg done      // High when computation complete
+
+Behavior:
+1. When start is asserted, module begins computation with n stations sorted by distance (d[0] = closest).
+2. Algorithm phases:
+   - Start with full tank (fuel = g) at position 0
+   - At each station:
+     - Find cheaper station within fuel range (modulo n)
+     - If next station is unreachable with current fuel:
+       error <= 1, done <= 1
+     - Refuel only if next cheaper station requires more fuel than current tank
+     - Subtract fuel for distance traveled
+3. Output total_cost when done asserted (error=0), 32'hFFFFFFFF if error=1.
+4. Latency: Completion within 256 cycles max (n <= 8).
+
+Implementation constraints:
+- Use state machine with states: IDLE, INIT, FIND_CHEAPER, REFUEL, UPDATE, DONE
+- All arithmetic wrapped to prevent overflow/underflow
+- Stations must be pre-sorted by distance (d[0] < d[1] <...< d[n-1])

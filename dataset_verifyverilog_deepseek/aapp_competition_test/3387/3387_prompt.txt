@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'bandwidth_allocator' that implements constrained fairness allocation for 4 cat species.
+
+Module interface:
+module bandwidth_allocator(
+  input clk,
+  input rst_n,
+  input start,
+  input [31:0] t_fixed,  // Q16.16 format (total bandwidth)
+  input [31:0] a0, a1, a2, a3, // Q16.16 min bandwidth per species
+  input [31:0] b0, b1, b2, b3, // Q16.16 max bandwidth per species
+  input [31:0] d0, d1, d2, d3, // Q16.16 demand ratios (>=1)
+  output reg [31:0] x0, x1, x2, x3, // Q16.16 allocated bandwidths
+  output reg done
+);
+
+Behavioral description:
+1. On reset: Clear all outputs and done flag
+2. When start is asserted:
+   a) Calculate total demand: sum_d = d0 + d1 + d2 + d3
+   b) Calculate fair shares: y_i = (d_i * t_fixed) / sum_d (Q16.16 arithmetic)
+   c) Apply min/max constraints: x_i = clamp(y_i, a_i, b_i)
+   d) Calculate total allocated bandwidth T = sum(x_i)
+   e) Distribute remaining bandwidth (t_fixed - T) proportionally to non-constrained species
+   f) Iteratively adjust allocation until sum(x_i) = t_fixed
+3. Result valid after 50 clock cycles (worst-case). done goes high on completion.
+4. Use 32-bit fixed-point arithmetic with overflow protection.
+5. Implement iterative adjustment using a state machine with 6 states: IDLE, CALC_FAIR, CLAMP, DISTRIBUTE, VERIFY, DONE

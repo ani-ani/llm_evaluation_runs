@@ -1,0 +1,29 @@
+Design a sequential Verilog module named 'energy_balance_line' that finds the shortest continuous line dividing lamps into two equal-energy subsets.
+
+Inputs:
+  input clk              // Clock
+  input rst_n            // Active-low reset
+  input [2:0] n          // Number of lamps (3-bit, 2-8 lamps)
+  input [6:0] x_i [0:7]  // 8x7-bit X coordinates (1-99 cm)
+  input [6:0] y_i [0:7]  // 8x7-bit Y coordinates
+  input [12:0] e_i [0:7] // 8x13-bit energy values (signed ±2000)
+  input start            // Start computation
+
+Outputs:
+  output reg [31:0] min_length  // Q16.16 fixed-point length (16 integer, 16 fractional bits)
+  output reg impossible        // High when no solution
+  output reg done              // High when computation complete
+
+Behavior:
+1. Module computes all possible lamp subset pairs (subset vs complement)
+2. For each pair with equal energy sum (+/-15% tolerance for fixed-point rounding):
+   - Compute convex hull perimeter for the subset
+   - Track minimum perimeter length
+3. Uses 16-bit fixed-point arithmetic (Q16.16) for distances
+4. After reset, wait for start pulse. Computation takes ≤4096 cycles (12 clock cycles per subset × 2^8 subsets)
+5. If no valid subset pair found, set impossible=1 when done
+
+Implementation notes:
+- Energy sum tolerance: |subset_sum - total_sum/2| <= 15% of total_sum
+- Square root approximation using Q16.16 fixed-point
+- Convex hull uses Graham's scan adapted for 8 points maximum

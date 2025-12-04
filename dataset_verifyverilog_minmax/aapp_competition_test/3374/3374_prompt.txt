@@ -1,0 +1,31 @@
+Design a sequential Verilog module named min_uw_distance to find the minimum UW distance between human ("h") and alien ("a") systems. UW distance formula: |alien_gravity^3 - human_gravity^3|. Optional gravity dispersal device adjustment for single node (+1 to neighbors, -1 to self).
+
+Module interface:
+module min_uw_distance(
+  input clk, // system clock
+  input rst_n, // active-low reset
+  input start, // pulse to start computation
+  input [7:0] gravity [0:7], // gravity values for 8 systems (8-bit each)
+  input [7:0] system_type, // system_type[i] = 0 for human, 1 for alien
+  input [7:0][7:0] adjacency_matrix, // adjacency_matrix[i][j] = 1 indicates link
+  output reg [23:0] min_distance, // minimum UW distance (24-bit)
+  output reg done // high when computation completes
+);
+
+Behavioral requirements:
+1. Synchronous operation with posedge clk and active-low reset
+2. When start asserted, iterate through all 9 device placement options (0=none, 1-8=system indices)
+3. For each device option a) Calculate adjusted gravities (self-1, neighbors+1) b) Find all human-alien pairs c) Compute |alien_g^3 - human_g^3| for each
+4. Track minimum value across all comparisons
+5. Assert done after (number_of_options * num_human * num_alien + 20) clock cycles
+6. Prevent overflow with 24-bit storage for cube differences
+
+Gravity adjustment rules:
+- Device off: Use original gravities
+- Device on node N: gravity[N] -= 1; each neighbor M (adjacency_matrix[N][M]==1) gravity[M] += 1
+Use adjusted gravities ONLY for UW distance calculations
+
+Implementation notes:
+- Requires state machine with counters for options/pairs
+- Always use pipeline stages for cube calculations
+- min_distance initialized to 24'hFFFFFF at reset

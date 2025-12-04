@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'string_explosion_filter' that processes a character string to remove explosions iteratively.
+
+Module interface:
+module string_explosion_filter(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // pulse high to begin processing
+  input [127:0] input_str, // 16-byte input string (8-bit per char)
+  input [31:0] explosion, // 4-byte explosion pattern (8-bit per char)
+  input [2:0] str_len, // actual input length (0-15)
+  input [1:0] exp_len, // actual explosion length (1-4)
+  output reg [127:0] result_str, // processed output string
+  output reg [3:0] out_len, // final string length (0-15)
+  output reg done // high when processing completes
+);
+
+Behavioral description:
+1. On reset, clear all internal states.
+2. When start is pulsed high:
+   a. Load input_str into working buffer, track length with internal counter.
+   b. Iteratively search for explosion pattern in current buffer:
+      - Compare all possible positions in parallel (max 16 compare windows)
+      - Remove first detected explosion in each iteration cycle
+   c. Repeat process until no explosions remain
+   d. Output:
+      - If final string length = 0: output_str = "FRULA0" (with 2F 52 55 4C 41 + null padding)
+      - Else: output_str=processed buffer with valid chars
+3. Processing must complete within 64 cycles maximum. Use multi-cycle state machine.
+4. Implement with 16-byte working buffer and combinational explosion detection.
+5. Latency: Done asserts after N+2 cycles where N = iterations needed (0-15 iterations).
+6. Priority: Remove leftmost explosion first if multiple present.
+
+Timing requirements:
+- Inputs registered on rising clock edge
+- Output stages pipelined for timing closure
+- Setup: inputs stable 1 cycle before start pulse
+- Hold: outputs valid until next start pulse

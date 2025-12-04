@@ -1,0 +1,36 @@
+Design a Verilog module named `photo_filter` that checks if a family photo meets specific height criteria. The module must implement the following behavior:
+- For a single photo with up to 16 people (n <= 16), determine if there exists a position i such that:
+  1. There exists j < i where height[j] > height[i] (Alice left of me) 
+  2. There exists k > i where height[k] > height[j] and height[k] > height[i] (Bob right of me)
+
+Module interface:
+module photo_filter(
+  input clk,               // clock signal
+  input rst_n,             // active-low reset
+  input start,             // pulse high to start processing
+  input [3:0] n,           // number of people in photo (3-16)
+  input [15:0] heights [0:15],  // height array (16 elements max), valid when start=1
+  output reg valid,        // 1 if photo meets criteria
+  output reg processing    // 1 while processing
+);
+
+Behavior:
+- When start pulses high for 1 cycle:
+  - Loads input data (n and heights)
+  - Begins computation on next rising clock edge
+- Processing completes in fixed 16 clock cycles after start
+- On cycle 16:
+  - valid = 1 if any valid (Alice/me/Bob) triplet exists
+  - valid = 0 otherwise
+  - processing goes low
+
+Implementation requirements:
+- Use a 4-bit counter to index through all possible 'me' positions (i from 0 to n-1)
+- For each i (1 clock per position):
+  - Track max_left: maximum height from positions 0 to i-1 
+  - Track max_right: maximum height from positions i+1 to n-1 
+  - If max_left > heights[i] AND max_right > max_left: valid found
+- Compute max_right in reverse during pre-processing stage
+- All comparisons use 16-bit unsigned arithmetic
+
+Note: This implementation computes max_right values in reverse during the 16-cycle processing period.

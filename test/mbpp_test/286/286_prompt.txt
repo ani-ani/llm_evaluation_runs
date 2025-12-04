@@ -1,0 +1,39 @@
+Design a sequential Verilog module 'max_subarray_sum_repeat' that computes the largest sum of a contiguous subarray formed by repeating an input array k times.
+
+Inputs:
+  input clk                 // Clock signal
+  input rst_n               // Active-low asynchronous reset
+  input start               // Start signal to begin computation
+  input [1:0] n             // Actual array length (1-4 elements)
+  input [1:0] k             // Repeat count (1-3 times)
+  input [7:0] a0, a1, a2, a3  // 4 array elements (8-bit signed)
+
+Outputs:
+  output reg [15:0] max_sum // Signed maximum sum (16-bit)
+  output reg done           // Asserted when computation complete
+
+Behavior:
+1. On rising clock edge when start=1 and done=0, sample inputs n, k, and array elements
+2. Process n*k elements using circular buffer addressing (element i selects via i %% n)
+3. Implements Kadane's algorithm (max_ending_here + current element, reset when <0)
+4. Max_sum stores maximum value found
+5. 'done' asserts 1 cycle after final element processed
+
+Latency: Computation takes exactly n*k + 2 clock cycles:
+  - 1 cycle to initialize registers
+  - n*k cycles for element processing
+  - 1 cycle to finalize output
+
+Implement with state machine:
+  - IDLE: Wait for start signal
+  - INIT: Reset temp registers
+  - PROCESS: Compute each element
+  - FINAL: Latch output
+
+Signals:
+  max_sum: 16-bit signed (handles worst-case sum 4*3*127 = 1524 < 32768)
+  temp registers: 16-bit signed for max_ending_here and max_so_far
+
+Special Cases:
+  - All negative arrays return least negative value
+  - Empty subarray not allowed (must select at least 1 element)

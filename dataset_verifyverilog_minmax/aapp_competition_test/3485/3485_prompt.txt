@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'max_payout' that calculates the maximum attainable card average payout with stop/start commands.
+
+Module interface:
+module max_payout(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // start computation when high
+  input [7:0] card_count, // number of cards (0-8)
+  input [31:0] card0, // card value (signed)
+  input [31:0] card1, // card value (signed)
+  input [31:0] card2, // card value (signed)
+  input [31:0] card3, // card value (signed)
+  input [31:0] card4, // card value (signed)
+  input [31:0] card5, // card value (signed)
+  input [31:0] card6, // card value (signed)
+  input [31:0] card7, // card value (signed)
+  output reg [31:0] max_avg, // maximum average payout in Q16.16 format
+  output reg done // high when computation completes
+);
+
+Parameter:
+Q = 16; // fractional bits for fixed-point
+
+Behavior:
+The module should find the maximum average payout using stop/start commands by:
+1. Considering all possible stop_index (0 <= stop < 8) and start_index (stop < start <= 8)
+2. Calculating payout as (counted_sum / counted_cards) where:
+   - Cards before stop_index are counted
+   - Cards after start_index are counted
+   - If no counted cards, payout = 0
+3. Returns maximum average as Q16.16 fixed-point number
+
+Implementation:
+- Use a state machine with IDLE, CALCULATE, DONE states
+- When start is high:
+  * Clear max_avg to 0
+  * Use nested loops (unrolled or state-based) to test all stop/start pairs
+  * For each stop/start: Calculate total sum of counted cards and card count
+  * Compute average using fixed-point division (sum << Q) / card_count (for card_count > 0)
+  * Track maximum average encountered
+- The module should complete in < 100 cycles
+- Output 'done' pulses high for 1 cycle when result is ready
+
+Timing:
+- Latency: Output valid 3 cycles after start assertion if no cards
+- Latency: Output valid within 100 cycles for worst-case 8 cards

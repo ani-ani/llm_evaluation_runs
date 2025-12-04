@@ -1,0 +1,37 @@
+Design a sequential Verilog module named "prescription_scheduler" that computes average completion times for pharmacy prescriptions with in-store priority.
+
+Module interface:
+module prescription_scheduler(
+  input clk, // Clock signal
+  input rst_n, // Active-low reset
+  input start, // Start processing (pulse high to begin)
+  // Config inputs valid when start=1
+  input [2:0] num_prescriptions, // Max 8 prescriptions (0-7)
+  input [1:0] num_techs, // Max 4 technicians (0-3)
+  // Prescription data (8 entries max)
+  input [15:0] presc_drop_time [0:7], // Drop time in seconds (16-bit)
+  input [7:0] presc_type [0:7], // 0='R', 1='S' (8-bit)
+  input [8:0] presc_fill_time [0:7], // Fill duration in seconds (9-bit)
+  
+  output reg [31:0] avg_s, // Avg S completion (Q16.16 fixed-point)
+  output reg [31:0] avg_r, // Avg R completion (Q16.16 fixed-point)
+  output reg done // High when computation completes
+);
+
+Behavioral description:
+- On start pulse, begin processing all prescriptions
+- Process prescriptions in order:
+  1. Higher priority to in-store (S) prescriptions first
+  2. For same drop time: S > R types
+  3. For same drop time and type: shorter fill time first
+- Use NUM_TECHS technicians that can work in parallel
+- Each technician processes one prescription at a time
+- Compute completion time for each prescription as:
+  (start processing time + fill_time) - drop_time
+- Maintain separate totals for S and R prescriptions
+- Output averages as (total_time / count) in Q16.16 format
+- If no prescriptions of type, output 0
+Timing requirements:
+- Latency: Variable (depends on prescription count, max ~100 cycles)
+- Processing begins on start pulse, finishes when done=1
+- Technician allocation handled via FSM with states: IDLE, PROCESSING, CALCULATING, DONE

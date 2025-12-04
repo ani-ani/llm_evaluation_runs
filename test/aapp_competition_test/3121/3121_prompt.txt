@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'cave_pathfinder' that computes whether Unnar can traverse a cave system while maximizing remaining health.
+
+Module interface:
+module cave_pathfinder(
+  input clk, // Clock signal
+  input rst_n, // Active-low reset
+  input start, // Start computation (pulse high)
+  input [15:0] unnars_attack, // Unnar's attack points (A) scaled to 16-bit
+  input [15:0] unnars_health, // Unnar's initial health (H) scaled to 16-bit
+  input [3:0] num_nodes, // Number of areas (n), max 8 (value 1-8)
+  input [3:0] num_passages, // Number of passages (m), max 16
+  input [63:0] passages [0:15], // Packed passage data (4x16-bit fields per passage) [from(3:0), to(3:0), enemy_a(15:0), enemy_h(15:0)]
+  output reg [15:0] max_health, // Best found health (0 if no path)
+  output reg done, // High when computation complete
+  output reg oh_no // High when no valid path found
+);
+
+Behavioral description:
+1. On reset: Initialize all registers, set done=0, oh_no=0
+2. When start is pulsed high: 
+   a. Build adjacency list from passages array (max 16 edges, 8 nodes)
+   b. Perform bounded DFS from node 1 (index 0) to target node (num_nodes-1)
+   c. For each path: Calculate resultant health after fighting all enemies along path
+   d. Track maximum health reaching target node
+3. After computation:
+   a. If no valid path found: Set oh_no=1 and max_health=0
+   b. Else: Set max_health to best value found
+   c. Set done=1
+
+Fight calculation logic (combinational):
+- For enemy(a, h), Unnar's rounds_needed = ceil(h/A) = (h + A - 1) / A
+- Damage taken = (rounds_needed - 1) * a  (enemy gets (rounds_needed-1) attacks)
+- Remaining health = current_health - damage. If <1: invalid path
+
+Timing: Requires max 100 clock cycles to explore all possible paths in 8-node graph. Output valid when done=1.

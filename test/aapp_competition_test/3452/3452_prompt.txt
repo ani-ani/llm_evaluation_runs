@@ -1,0 +1,32 @@
+Design a sequential Verilog module named 'room_equivalence_detector' that identifies sets of effectively identical rooms in a maze with up to 8 rooms.
+
+Inputs:
+  input clk // system clock
+  input rst_n // active-low reset
+  input start // pulse high to begin processing
+  input [2:0] room_count // number of rooms (1-8)
+  input [7:0][2:0] rooms [0:3] // room configs: 8 rooms × 4 exits (3-bit room index each), MSB=1 marks valid exit
+
+Outputs:
+  output reg [2:0] set_count // number of non-singleton sets found
+  output reg [7:0][2:0] equivalent_sets // 3-bit room numbers per set (packed)
+  output reg done // high when computation complete
+
+Behavior:
+1. On reset, clear all registers
+2. When start is pulsed:
+  a. Compute signatures for each room through 2-hop traversal:
+    i. Signature = {degree, neighbor1_degree, neighbor2_degree, ...}
+    ii. Pad with zeros for room_idx > room_count
+  b. Group rooms with identical signatures
+  c. Output non-singleton sets in increasing order, sorted by smallest room index
+3. Use 3-stage pipeline:
+  - Stage 1 (1 cycle): Capture inputs
+  - Stage 2 (8 cycles): Compute signatures
+  - Stage 3 (8 cycles): Compare signatures and build sets
+4. Assert done after 18 clock cycles, hold outputs stable until next start
+
+Timing:
+- Output valid 18 cycles after start pulse
+- Maximum room count: 8
+- Maximum exits per room: 4

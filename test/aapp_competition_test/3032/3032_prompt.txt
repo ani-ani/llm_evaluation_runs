@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'harvard_min_instructions' that calculates the minimum instruction count for a Harvard architecture program.
+
+Module interface:
+module harvard_min_instructions(
+  input clk, 
+  input rst_n, 
+  input start, 
+  input [3:0] b, // number of banks (1-13)
+  input [3:0] s, // variables per bank (1-13)
+  input [95:0] program, // 16x6-bit tokens (packed)
+  output reg [31:0] min_instructions, 
+  output reg done // high when computation complete
+);
+
+Behavioral description:
+1. The module implements a state machine with states: IDLE, PARSE, CALC_COST, DONE.
+2. On start pulse, parse the program (16 tokens max) into an internal representation:
+   - Each token is 6 bits: [5:4]=type (00=V, 01=R, 10=E), [3:0]=value
+3. Calculate minimal execution cost via 3 steps:
+   a. Generate all possible variable-to-bank mappings (max 4 banks x 4 variables)
+   b. For each mapping, compute program cost considering:
+      - BSR changes require explicit instruction (1 cycle)
+      - Instructions with same bank need no BSR change
+   c. Handle loops via cost multiplication (shift-add for efficiency)
+4. Supports:
+   - Max 16 program elements (4-bit element counter)
+   - Max 4 loop nesting levels
+   - Max bank count = 4 (derive from b input)
+   - Max variables = 16 (b * s, capped at 16)
+5. Latency: Output valid 256 cycles after start assertion.
+6. Use non-blocking assignments and synchronous reset.

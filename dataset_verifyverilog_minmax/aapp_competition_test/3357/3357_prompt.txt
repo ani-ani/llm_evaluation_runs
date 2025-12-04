@@ -1,0 +1,29 @@
+Design a sequential Verilog module named 'sunlight_calculator' that calculates sunlight hours for up to 8 buildings.
+
+Inputs:
+input clk, // Clock
+input rst_n, // Active-low reset
+input start, // Pulse high to start computation
+input [3:0] num_buildings, // Number of buildings (1-8)
+input [15:0] x_pos [7:0], // Building X positions (west to east)
+input [15:0] height [7:0], // Building heights
+
+Outputs:
+output reg [31:0] sunlight [7:0], // Q16.16 fixed-point hours (12.0 max)
+output reg done // High when computation complete
+
+Behavior:
+1. On reset, clear all outputs
+2. When start pulses high:
+   a. Iterate through buildings to calculate maximum heights to west/east
+   b. For each building i:
+      - Compute left_angle = max(atan2(h[j]-h[i], x[i]-x[j])) for j < i
+      - Compute right_angle = max(atan2(h[k]-h[i], x[k]-x[i])) for k > i
+      - Sunlight[i] = (180° - left_angle - right_angle)/15° * Q16.16(12) (max 12 hours)
+3. Results valid 60 clock cycles after start assertion
+4. Outputs remain valid until next start pulse
+
+Implementation notes:
+- Use Q8.8 fixed-point for angle calculations (0-180° = 0x00FF - 0xFF00)
+- Multiply by 0xCCC.(16'hCCCC) for /15 *12 in Q16.16
+- Angles computed via CORDIC or lookup table approximation

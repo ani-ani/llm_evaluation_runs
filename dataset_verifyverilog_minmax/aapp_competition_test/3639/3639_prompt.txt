@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'optimal_cycling' that finds the minimal wetness when cycling home through predicted rain. Rain intensity data and cycling parameters are constant during computation.
+
+Key simplifications:
+- Time window T: 1-16 minutes (4-bit input)
+- Speed choices: 8 discrete values (5-30 km/h in steps)
+- Use Q16.16 fixed-point format (32-bit total) for all calculations
+
+Module Interface:
+module optimal_cycling(
+  input clk, // Clock
+  input rst_n, // Active-low reset
+  input start, // Start computation
+  input [3:0] T, // Minutes to departure (1-16)
+  input [31:0] c_fp, // Sweat constant in Q16.16 format
+  input [31:0] d_fp, // Distance in km Q16.16 format
+  input [7:0] rain [0:15], // Rain intensity array (0-100) per minute
+  output reg [31:0] min_wetness_fp, // Result in Q16.16 format
+  output reg done // High when result valid
+);
+
+Behavioral description:
+1. Precompute all possible wetness values for:
+   - Leave time options: 0 to T-1 minutes (4-bit)
+   - Speed options: 8 discrete values (5,10,...,30 km/h) stored in ROM
+2. For combination:
+   a. Calculate travel time: d_fp / speed (fp division)
+   b. Compute sweat component: c_fp * speed^2 * travel_time
+   c. Compute rain component: fraction of rain intervals covered
+   d. Sum components to get total wetness
+3. Find minimum of all combinations
+4. Output result when complete
+
+Latency: 256 cycles maximum (16 leave_t × 8 speeds × 2 cycles/combo) + 2 cycles startup. done asserts 1 cycle after result valid.

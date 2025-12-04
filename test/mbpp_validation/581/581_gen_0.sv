@@ -1,0 +1,3 @@
+// Failed to parse code
+```json
+{"code": "module pyramid_surface(\n  input  [3:0] b,\n  input  [3:0] s,\n  output [9:0] area\n);\n\n  wire [7:0] mult_bs;\n  wire [8:0] two_bs;\n  wire [7:0] b_sq;\n\n  assign mult_bs = b * s;       // 4x4 -> 8 bits\n  assign two_bs  = {1'b0, mult_bs} << 1; // 2*b*s -> up to 9 bits\n  assign b_sq    = b * b;       // 4x4 -> 8 bits\n  assign area    = two_bs + b_sq; // result fits in 10 bits\n\nendmodule"}

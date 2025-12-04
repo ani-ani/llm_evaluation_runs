@@ -1,0 +1,26 @@
+Design a sequential Verilog module named 'grade_optimizer' that computes maximum average grade for up to 8 subjects.
+Module interface:
+module grade_optimizer(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [2:0] N, // number of subjects (1-8)
+  input [7:0] T, // total hours (0-255)
+  input [31:0] a0, // Q16.16 fixed-point a_i for subject 0
+  input [31:0] b0, // Q16.16 fixed-point b_i for subject 0
+  input [31:0] c0, // Q16.16 fixed-point c_i for subject 0
+  // ... repeat for subjects 1-7 (a1,b1,c1 to a7,b7,c7) 
+  output reg [31:0] avg_grade, // Q16.16 result
+  output reg done // high when result valid
+);
+
+Behavior:
+1. On start=1, initialize time allocation t[0:7] = T/N (rounded)
+2. Compute derivatives for all subjects: deriv_i = (2*a_i*t_i + b_i) using Q16.16 fixed-point arithmetic
+3. Iteratively adjust times toward equal derivatives: at each cycle, increase time for max_deriv subject and decrease for min_deriv subject (total T preserved)
+4. After 100 cycles (fixed latency), compute avg_grade = (sum(f_i(t_i)))/N where f_i(t_i) = a_i*t_i^2 + b_i*t_i + c_i
+5. Set done=1 for one cycle when result is ready
+Timing:
+- Output valid 100 clock cycles after start assertion
+- All arithmetic uses signed Q16.16 fixed-point with rounding-to-nearest
+- Precision: Results must match software implementation within ±0.01 grade equivalence

@@ -1,0 +1,31 @@
+Design a Verilog module named 'pirates_game_solver' that calculates the minimum moves to empty chests.
+
+Module interface:
+module pirates_game_solver(
+  input clk,               // clock signal
+  input rst_n,             // active-low reset
+  input start,             // start computation
+  input [3:0] n_in,        // number of chests (1-15)
+  input [9:0] a[0:14],     // chest coin values (max 1000 each)
+  output reg [13:0] result,// minimum moves (-1 if invalid)
+  output reg done           // high when computation complete
+);
+
+Behavioral description:
+1. Checks if n_in≤1 or n_in is even: immediately outputs -1 with done=1
+2. For valid n (odd ≥3):
+   - Processes chests from index (n_in-1) downto 1
+   - For each x: subtract max(a[2x], a[2x+1]) from parent a[x]
+   - Accumulates sum of all max values
+   - Adds root chest value a[0] to final result
+3. Uses 3-state FSM:
+   IDLE: Waits for start
+   PROCESSING: Computes moves over 15 cycles
+   DONE: Asserts done for 1 cycle
+4. Latency: 1 cycle for validity check, 15 cycles processing + 1 cycle result
+
+// Internal registers:
+reg [3:0] x_ptr;          // current chest index (15-1)
+reg [13:0] acc_sum;        // accumulated moves sum
+reg [9:0] data_reg[0:14]; // working copy of chest values
+reg [1:0] state;          // FSM state (0=IDLE, 1=PROC, 2=DONE)

@@ -1,0 +1,3 @@
+// Failed to parse code
+```json
+{"code":"module even_divisor_count(\n  input  [7:0] n,\n  output       is_even\n);\n\n  // Combinational calculation of the number of divisors parity\n  integer count;\n  integer i;\n\n  always @* begin\n    count = 0;\n    for (i = 1; i <= 15; i = i + 1) begin\n      if (i <= n && (n % i) == 0) begin\n        if ((n / i) == i)\n          count = count + 1;\n        else\n          count = count + 2;\n      end\n    end\n  end\n\n  assign is_even = (count[0] == 1'b0);\n\nendmodule"}\n```

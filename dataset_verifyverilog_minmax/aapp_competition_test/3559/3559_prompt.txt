@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'zerg_rush_simulator' that simulates t turns of Zergling battles on a 2x2 grid.
+
+Module interface:
+module zerg_rush_simulator(
+  input clk,
+  input rst_n,
+  input start,
+  input [1:0] p1_attack_upgrade,
+  input [1:0] p1_armor_upgrade,
+  input [1:0] p2_attack_upgrade,
+  input [1:0] p2_armor_upgrade,
+  input [7:0] init_grid, // Flattened 2x2 grid as 8-bit: [row0_col0, row0_col1, row1_col0, row1_col1]*2
+  input [1:0] turns, // 0-3 turns
+  output reg [7:0] final_grid,
+  output reg done
+);
+
+// Representation: Each grid cell uses 2 bits:
+// 00 = empty, 01 = player1, 10 = player2 + remaining 6 bits = HP (6 bits: 0-63)
+
+Behavior: On start=1, simulate 'turns' cycles of battle:
+1. Attack phase: For each Zergling, check 8 adjacent directions (wrap-around not allowed) for enemies.
+   Damage = (5 + attacker\'s attack) - defender\'s armor, clamped to min 1.
+   Attacks occur simultaneously. HP cannot go below 0.
+2. Movement phase: Each non-attacking Zergling moves towards nearest enemy
+   by Manhattan distance (north > northeast > east > ... tie-breaker).
+   Movement conflicts resolved with northernmost then westernmost priority.
+3. Regeneration: After both phases, increase each live Zergling\'s HP by 1 if <35.
+4. Increment turn counter each 5 clock cycles (1 cycle per phase + regen).
+
+Latency: Output valid after (turns+1)*5 + 3 cycles max. Include state machine with:
+IDLE, COMPUTE_ATTACK, APPLY_ATTACK, COMPUTE_MOVE, APPLY_MOVE, REGEN, DONE.
+All grid states stored in 8-bit registers (2 bits per cell).

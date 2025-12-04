@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'secure_telecom_network' to compute the minimum-cost secure telephone network for up to 8 buildings. 
+
+Inputs:
+input clk,                   // clock signal
+input rst_n,                 // active-low reset
+input start,                 // start computation (pulse high)
+input [2:0] num_buildings,   // 1-8 buildings (n)
+input [3:0] num_edges,       // 0-16 edges (m)
+input [2:0] num_insecure,    // 0-8 insecure buildings (p)
+input [7:0] insecure_mask,   // bitmask of insecure buildings [7:1] unused, [0] = bldg1
+input [2:0] edge_src[0:15],  // source buildings per edge (3 bits each)
+input [2:0] edge_dst[0:15],  // destination buildings per edge
+input [15:0] edge_cost[0:15],// edge costs (0-65535)
+
+Outputs:
+output reg [15:0] total_cost,// computed total cost (0xFFFF = impossible)
+output reg done              // high when computation complete
+
+Functionality:
+1. On start pulse, compute Minimum Spanning Tree (MST) considering:
+   - All buildings must be connected
+   - Insecure buildings (per insecure_mask) must be leaf nodes (degree = 1) in MST
+2. Use Kruskal's-like algorithm with these steps:
+   a. Sort edges by cost (ascending) using insertion sort
+   b. Iteratively add lowest cost edges that don't form cycles (using Union-Find)
+   c. Track node degrees/insecure status during MST construction
+3. If valid MST exists satisfying constraints: output total cost (else 0xFFFF)
+
+Timing:
+- Requires up to 256 cycles after start:
+  - 16 cycles for edge sorting (16 edges max)
+  - 16 cycles for edge processing
+  - 16 cycles for validation checks
+- done asserts after computation completes
+
+Implementation notes:
+- Use 3-bit building IDs (1-8 mapped to 0-7)
+- Track MST connections with 8-entry parent array
+- Track node degrees in 4-bit counters (max degree 7)

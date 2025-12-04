@@ -1,0 +1,30 @@
+Design a sequential Verilog module named 'airline_review_cost' that calculates the minimal total flight cost for Frida's reviews.
+
+Module interface:
+module airline_review_cost(
+  input clk,               // System clock
+  input rst_n,             // Active-low reset
+  input start,             // Start computation (pulse high)
+  input [3:0] N,           // Number of airports (2-8)
+  input [2:0] R,           // Number of required flights (0-5)
+  input [2:0] F,           // Number of additional flights (0-5)
+  input [5:0][13:0] req_flights,  // Packed required flights {a,b,c} (R elements)
+  input [5:0][13:0] add_flights,   // Packed additional flights {a,b,c} (F elements)
+  output reg [16:0] minimal_cost, // Total minimal cost (17-bit to handle ≤130K)
+  output reg done          // Computation completed
+);
+
+Behavior:
+1. Start calculation on rising edge of 'start'
+2. Sum all required flight costs
+3. Calculate minimal cost to connect all required airports using additional flights only (MST)
+4. Output sum = required_flights_total + MST_cost
+5. Assert 'done' after max 40 clock cycles
+
+Implementation notes:
+- Maximum 8 airports (N ≤ 8)
+- Use Prim's algorithm with priority queue for MST calculation
+- Input packing format: Each flight {a,b,c} uses 4 bits for a (1-8), 4 bits for b (1-8), 14 bits for c (up to 16383)
+- Ignore flights where a or b > N
+- States: IDLE, SUM_REQ_CALC, BUILD_GRAPH, PRIM_MST, COMPLETE
+- Not required to handle parallel edges beyond first min cost

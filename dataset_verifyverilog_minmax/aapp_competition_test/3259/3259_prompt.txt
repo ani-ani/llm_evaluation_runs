@@ -1,0 +1,29 @@
+Design a sequential Verilog module named 'alien_box_controller' that processes two types of box operations:
+1. Type 1: Update boxes L to R with stones = ((X-L+1)*A) mod B (X=box label)
+2. Type 2: Sum stones in boxes L to R
+Module interface:
+module alien_box_controller(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input input_valid, // high when new input available
+  input query_type, // 1: update operation, 0: sum query
+  input [3:0] L, // box start (1-16)
+  input [3:0] R, // box end (1-16, L <= R)
+  input [9:0] A, // parameter (1-1023)
+  input [9:0] B, // modulus (1-1023)
+  output reg output_valid, // high when result ready
+  output reg [14:0] sum_out // result for type 2 queries
+);
+
+Behavior:
+- Uses internal 16x10-bit register file for box values (initialized to 0)
+- On type 1 input_valid:
+  * For each box X from L to R: stone_count = ((X-L+1)*A) mod B
+  * Completes in (R-L+1)+1 cycles (min 2, max 17 cycles)
+- On type 2 input_valid:
+  * Sum boxes L to R over (R-L+1)+1 cycles (min 2, max 17)
+- Output_valid asserts for 1 cycle when result ready (type 2) or operation complete (type 1)
+- Processes queries sequentially in-order with pipeline stalling
+- Implement with state machine: IDLE, CALCULATE_OFFSET (for both types), UPDATE_BOX (type 1), ACCUMULATE (type 2), DONE
+- All inputs captured on input_valid rising edge
+- Use blocking assignments for combinatorial logic, non-blocking for sequential logic

@@ -1,0 +1,24 @@
+Design a sequential Verilog module named 'autocorrect_min_keystrokes' that calculates the minimum keystrokes required to type a word using autocorrect suggestions from a fixed dictionary.
+Module interface:
+module autocorrect_min_keystrokes(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // start calculation
+  input [7:0][39:0] dictionary, // 8 dictionary words (40 bits each: 8 chars * 5 bits/char)
+  input [39:0] target_word, // word to type (40 bits: 8 chars * 5 bits/char)
+  output reg [4:0] keystrokes, // minimum keystrokes required (max 31)
+  output reg done // high when calculation complete
+);
+
+Behavior description:
+1. The module processes words of max 8 characters (5 bits per char, 0-25 for a-z, 31 indicates unused)
+2. Precompute for each possible prefix the best autocorrect suggestion (longest match from dictionary in priority order)
+3. For target_word, calculate minimum keystrokes by considering at each prefix:
+   a. Continue typing normally (cost +1 per char)
+   b. If suggestion available: TAB (1) + backspace cost (difference from suggestion) + remaining chars cost
+4. Operates sequentially with 3-cycle latency:
+   Cycle 1: Reset/Idle
+   Cycle 2: Start processing when start=1
+   Cycle 3: Compute keystrokes
+   Cycle 4: Output result (done=1)
+5. Dictionary is preloaded before start signal

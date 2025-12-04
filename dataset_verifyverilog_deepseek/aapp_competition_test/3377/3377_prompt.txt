@@ -1,0 +1,35 @@
+Design a Verilog module named 'peg_sequence_checker' that validates wet climbing peg sequences.
+
+Module interface:
+module peg_sequence_checker(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // start validation
+  input op, // 0: add peg, 1: remove peg
+  input [3:0] point_id, // 4-bit point ID (0-15)
+  output reg valid, // 1 when current sequence is still valid
+  output reg done // validation complete
+);
+
+// Dependency matrix: M[i] = bitmask of dependencies for point i+1 (since points start at 1)
+parameter [15:0] DEPENDENCY [0:15] = '{16'h0000, ...}; // To be initialized with actual dependencies
+
+Behavior:
+1. On reset: Clear all pegs (set peg_mask=0) and stored support states
+2. When start=1: Begin processing sequence steps
+3. For each clock cycle while valid=1:
+   a. If op=0 (add peg):
+      - Check if all dependencies in DEPENDENCY[point_id-1] are set in current peg_mask
+      - If yes: Set peg_mask[point_id] and store support_mask[point_id] = current peg_mask
+      - Else: Set valid=0 (invalid operation)
+   b. If op=1 (remove peg):
+      - Check if current peg_mask == stored support_mask[point_id]
+      - If yes: Clear peg_mask[point_id]
+      - Else: Set valid=0 (invalid operation)
+4. Set done=1 when sequence processing completes or invalid operation detected
+
+Implementation details:
+- Use 16-bit registers for peg_mask and support_mask[16] (one per point)
+- Points are numbered 1-16 (point_id=0 unused)
+- Latency: 1 cycle per step, done asserts 1 cycle after last step
+- Supports sequences up to 32 steps (could be extended with input length counter)

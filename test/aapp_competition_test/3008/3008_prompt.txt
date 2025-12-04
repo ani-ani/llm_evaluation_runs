@@ -1,0 +1,29 @@
+Design a sequential Verilog module named 'assistant_ranker' that calculates the maximum number of distinct ranks for up to 8 assistants. The module must satisfy:
+- If a_i + K < a_j OR b_i + K < b_j, then rank[j] ≤ rank[i]
+
+Module interface:
+module assistant_ranker(
+  input clk, // system clock
+  input rst_n, // active-low reset
+  input start, // assertion starts computation
+  input [15:0] K, // threshold (0-65535)
+  input [15:0] a_array [0:7], // 8 measurements (each 0-65535)
+  input [15:0] b_array [0:7], // 8 measurements (each 0-65535)
+  output reg [3:0] max_ranks, // result (1-8 possible)
+  output reg done // high when result valid
+);
+
+Behavior:
+1. On reset (rst_n=0), all internal state resets.
+2. When start=1, begin processing.
+3. Compare all 8x8 assistant pairs (i,j) to establish dominance relations:
+   dominance[i][j] = (a[i]+K < a[j] || b[i]+K < b[j])
+4. Compute maximum distinct ranks by finding the largest anti-chain in this partial order.
+5. Result available as max_ranks when done=1 (min 1 cycle, max 100 cycles latency).
+6. While processing, ignore input changes.
+
+Implementation notes:
+- Use state machine with states: IDLE, COMPARE, BUILD_GRAPH, COMPUTE_RANKS, DONE
+- Allow 64 cycles for pairwise comparisons (1 pair/cycle)
+- Use adjacency matrix for dominance storage
+- The COMPUTE_RANKS stage should implement Hardware-Dilworth: find minimum chain cover

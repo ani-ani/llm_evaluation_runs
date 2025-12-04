@@ -1,0 +1,38 @@
+Design a sequential Verilog module named 'badge_path_counter' that computes the number of valid badge numbers allowing passage from start room S to destination room D through locks with range constraints.
+
+Module interface:
+module badge_path_counter(
+  input clk,
+  input rst_n,
+  input start,
+  // Room configuration (max 4 rooms, 3 locks) 
+  input [1:0] S,
+  input [1:0] D,
+  // Lock database (5 locks max): each lock = [src, dst, min, max] 
+  input [1:0] lock_src[0:4],
+  input [1:0] lock_dst[0:4],
+  input [3:0] lock_min[0:4],
+  input [3:0] lock_max[0:4],
+  output reg [3:0] result,
+  output reg done
+);
+
+Behavior: 
+- On reset, module enters IDLE state 
+- When start=1:
+  - For each badge_id from 1 to 10: 
+    - Perform BFS from S using only locks where badge_id >= min and <= max 
+    - If path exists to D, increment count 
+- After all badge_ids processed (10), output count on result and assert done 
+- Latency: Maximum 10*(4+1) = 50 cycles
+Phase states:
+ - IDLE: Wait for start
+ - INIT: Reset counters
+ - CHECK_BADGE: Setup current badge_id
+ - BFS: Perform BFS traversal for current badge_id
+ - COUNT: Update valid count if path exists
+ - FINISH: Output result
+BFS implementation:
+ - Use 4-bit visited register (1 bit per room)
+ - FIFO queue for current rooms
+ - 3-cycle BFS steps: queue pop, lock check, queue push

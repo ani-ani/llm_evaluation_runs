@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'ski_path_finder' that computes maximum non-fall probabilities for small ski paths.
+
+Module interface:
+module ski_path_finder(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [1:0] num_cabins, // N (2-4 cabins)
+  input [2:0] num_pistes, // M (0-6 pistes)
+  input [287:0] adjacency_input // flattened 4x4x32b Q16.16 matrix (cabins [1:0] × [1:0] → prob_fall[31:0])
+  output reg [127:0] results, // 4×32b Q16.16 probabilities for k=0-3
+  output reg done // high when results valid
+);
+
+Behavioral description:
+1. On reset, initialize all states to zero
+2. When start is asserted:
+   - Load adjacency matrix as 4x4 array of 32-bit fixed-point probabilities (Q16.16 format)
+   - For N cabins (2-4), perform dynamic programming with state[3:0]: current_cabin[1:0] × walks_used[1:0]
+   - For each state, compute maximum survival probability (1 - fall_prob) using DP with Bellman-Ford-like relaxation
+   - Walking edges can reverse direction (special 0% fall rate when walking)
+3. After calculation completes (fixed latency of 20 cycles), output:
+   - Four 32-bit results (packed in 128-bit bus): p_0, p_1, p_2, p_3 in Q16.16 format
+   - Results for unused k>num_cabins-1 remain zero
+4. Results become valid 20 cycles after start assertion, signaled by 'done'
+
+Note: Use Q16.16 fixed-point representation where 0x00010000 = 1.0, 0x00008000 = 0.5 etc.

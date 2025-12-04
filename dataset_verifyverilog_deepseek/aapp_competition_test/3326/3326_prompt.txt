@@ -1,0 +1,32 @@
+Design a sequential Verilog module named 'monotonic_subgrid_counter' that counts monotonic subgrids in a 4x4 grid.
+Module interface:
+module monotonic_subgrid_counter(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [1:0] r_in, // actual rows used (1-4)
+  input [1:0] c_in, // actual columns used (1-4)
+  input [15:0][4:0] grid, // flattened 4x4 grid (5-bit values per cell)
+  output reg [7:0] count, // monotonic subgrid count
+  output reg done // computation complete
+);
+
+Behavior:
+- On reset: count=0, done=0
+- When start=1: begin processing all non-empty row/column subsets
+- For each row subset (4-bit mask) and column subset (4-bit mask):
+  a. If subset rows >0 and subset cols >0 (non-empty)
+  b. Check if all subgrid rows are non-decreasing OR non-increasing
+  c. Check if all subgrid columns are non-decreasing OR non-increasing
+  d. If all conditions met, increment count
+- Output becomes valid after all 225 subsets processed (done=1)
+Latency: Completes in ~1800 cycles (225 subsets * (4 row checks +4 col checks))
+General strategies:
+- Use nested loops for row_mask [1..15] and col_mask [1..15]
+- Subgrid checks require variable element extraction - use mask indexing
+- Implement parallel comparison logic for row/column direction checks
+Fixed assumptions:
+- Maximum grid configuration: 4x4 (16 elements)
+- Input grid values include unused cells (ignored based on r_in/c_in)
+- r_in=1 means only row0 used; mask bits beyond r_in are forced to 0
+Note: Don't implement grid storage logic - assume grid input remains stable

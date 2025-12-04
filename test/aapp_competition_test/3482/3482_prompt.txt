@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'transit_card_minimizer' that calculates the minimal transit cost for up to 16 days with up to 4 trips away and up to 8 price levels.
+
+Module interface:
+module transit_card_minimizer(
+  input clk, // system clock
+  input rst_n, // active-low reset
+  input start, // start calculation
+  input [2:0] l, // number of price levels (1-8)
+  input [11:0] p [0:7], // price levels (12-bit each)
+  input [11:0] d [0:6], // threshold days (12-bit each)
+  input [3:0] n, // number of trips (0-4)
+  input [3:0] t, // total days (1-16)
+  input [63:0] trips, // packed trip data (4 trips * 8 bits: 4b a + 4b b)
+  output reg [15:0] total_cost, // minimized total cost
+  output reg done // high when calculation complete
+);
+
+Behavior:
+1. On reset: outputs reset to zero, done goes low
+2. When start asserted: begin computation
+3. Compute minimal cost for t days considering n trips and price levels
+4. Price thresholds: each price level activates after sum of d[] values
+5. Algorithm: dynamic programming approach with memoization
+
+Timing:
+- Computation completes within (t * 2) clock cycles
+- done asserts when calculation finishes
+
+Implementation note:
+- Use state machine with states IDLE, LOAD_DATA, CALCULATE, DONE
+- Memoization storage: 16-element array (1 per day) of 16-bit costs
+- Trips are unpacked from 64-bit input:
+  trips[3:0] = a1, trips[7:4] = b1, trips[15:8] = a2, etc.
+- Price calculation: determine which price level applies for each day then sum.
+- Days with trips (a <= day <= b) are marked as skipped.

@@ -1,0 +1,42 @@
+Design a Verilog module named 'monstermind_score_calculator' that calculates expected score using optimal interruption strategy.
+Module type: Sequential (requires multiple cycles)
+
+Inputs:
+  input clk,          // clock signal
+  input rst_n,        // active-low reset
+  input start,        // pulse high to start computation
+  input [3:0] t,      // quiz duration (4-bit, max 15s)
+  input [1:0] n,      // number of questions (2-bit, max 4)
+  input [4:0] wcnt0,  // word count question 0 (5-bit)
+  input [4:0] wcnt1,  // word count question 1
+  input [4:0] wcnt2,  // word count question 2
+  input [4:0] wcnt3   // word count question 3
+
+Outputs:
+  output reg [31:0] expected_score, // Q16.16 fixed-point format
+  output reg done                   // high when computation complete
+
+Behavior:
+1. On reset: Initialize all registers to 0, done=0
+2. When start=1:
+a) For each possible interrupt time s (1 to t):
+   - Count how many questions have unique prefix at s words (word count ≤ s)
+   - Compute instantaneous score (count_unique / n)
+b) Find s value that maximizes (score * (1 + remaining_time_in_quiz))
+   where remaining_time = t - s - 1 (1s answer time)
+3. Compute cumulative expected score using optimal s
+4. Output Q16.16 fixed-point result (expected_score)
+5. Set done=1 when complete
+
+Latency: 16 clock cycles max after start assertion.
+
+Fixed-point details:
+- All internal calculations use Q16.16 format
+- Division by n implemented via precomputed reciprocals
+- Example: 2.0 = 0x00020000, 1.333333 = ~0x00015555
+
+Implementation note:
+- Use FSM with states: IDLE, CALC_UNIQUE, FIND_MAX, COMPUTE, DONE
+- Store word counts in a register array
+- Use comparators to check word_count <= current_time
+- Use priority encoder for uniqueness checks

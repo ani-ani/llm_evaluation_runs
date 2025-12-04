@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'package_dependency_solver' that determines install order for packages with dependencies.
+
+Parameters:
+  parameter P = 8   // Max packages
+
+Inputs:
+  input clk         // Clock
+  input rst_n       // Active-low reset
+  input start       // Start computation
+  input [2:0] num_pkgs  // Actual packages (1-8)
+  input [P-1:0][P-1:0] dep_matrix // Dependency matrix: dep_matrix[i][j]=1 means package i depends on j
+  input [P-1:0][2:0] pkg_ids // Lex priorities assigned by input order (LSB first)
+
+Outputs:
+  output reg [2:0] order [0:P-1] // Installation order (package indices)
+  output reg done          // Computation complete
+  output reg valid         // 1=valid order exists, 0=cyclic dependency
+
+Behavior:
+1. On reset, all outputs = 0
+2. When start=1:
+   a. Perform topological sort on the dependency matrix
+   b. At each step select smallest lex priority package (using pkg_ids) with unfulfilled dependencies=0
+   c. Output order array and valid flag
+   - If cyclic dependency detected: valid=0 and done=1
+3. Latency: Maximum P+1 cycles after start
+
+Implementation notes:
+- Use FSM with states: IDLE, PROCESSING, DONE
+- Maintain current dependencies as working register
+- Store remaining packages in processing queue
+- Lex priority defined by input order (pkg_ids)
+- Package index (0-7) represents original input position

@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'snake_path_finder' that determines if a safe path exists across a 256x256 field with up to 16 snakes.
+
+Interface:
+module snake_path_finder(
+    input clk, // clock signal
+    input rst_n, // active-low reset
+    input start, // start computation
+    input [23:0] snake_data, // [7:0]=x, [15:8]=y, [23:16]=d (scaled values)
+    input snake_valid, // high when snake_data is valid
+    input [7:0] snake_count, // number of snakes (0-16)
+    output reg [15:0] entry_exit, // [7:0]=entry_y, [15:8]=exit_y (scaled)
+    output reg valid_out, // high when result valid
+    output reg bitten // 1=no safe path, 0=path exists
+);
+
+Behavior:
+- On reset: Initialize registers and FSM
+- On start: Begin loading snake data when snake_valid=1 over multiple cycles
+- After all snakes loaded: Find highest entry/exit y-coords (0-255) on west/east sides with straight-line path that maintains safe distance from all snakes
+- Safe distance: sqrt((x-xl)^2 + (y-yl)^2) >= d (use squared comparison to avoid sqrt)
+- Output most northerly (highest y) valid entry (x=0)/exit (x=255) pair found
+- Takes 1024 clock cycles (max) after data loading: checks 16 entry points * 16 snakes * 4 iterations
+- Set bitten=1 if no safe path, valid_out=1 when done
+
+State machine:
+IDLE → LOAD_SNAKES → PROCESS → DONE
+Guaranteed latency: 1024 cycles after LOAD_SNAKES completes

@@ -1,0 +1,32 @@
+Design a sequential Verilog module named 'delivery_distance' that calculates minimum total delivery distance for a simplified 8-node graph.
+Module interface:
+module delivery_distance(
+  input clk, // clock signal
+  input rst_n, // active-low reset
+  input start, // start computation
+  input [2:0] warehouse1, // warehouse 1 location (3-bit node index)
+  input [2:0] warehouse2, // warehouse 2 location (3-bit node index)
+  input [2:0] employees [0:7], // 8x3-bit employee locations (max 8 employees)
+  input [2:0] clients [0:7], // 8x3-bit client locations (max 8 deliveries)
+  input [7:0] num_deliveries, // number of deliveries to process (1-8)
+  input [7:0] adj_matrix [0:7][0:7], // 8x8 adjacency matrix (8-bit distances)
+  output reg [15:0] total_distance, // 16-bit total distance result
+  output reg done // high when computation complete
+);
+
+Behavior:
+1. On reset or power-up, module enters IDLE state
+2. When start is asserted:
+   a. Compute shortest paths from warehouse1 and warehouse2 to all nodes
+   b. For each delivery i (0 to num_deliveries-1):
+      i. Calculate min(employee_dist_to_w1 + w1_to_client, employee_dist_to_w2 + w2_to_client)
+      ii. Assign smallest valid employee-delivery pair (each employee used at most once)
+   c. Accumulate total distance
+3. Result available after deterministic latency:
+   - 8 cycles (graph processing) + 8 cycles (delivery matching) = 16 cycles max
+   - done asserts for 1 cycle when result ready
+4. All distance calculations use 8-bit values with 16-bit accumulation to prevent overflow
+5. Implementation must include:
+   - State machine with states: IDLE, COMPUTE_W1, COMPUTE_W2, MATCH_DELIVERIES, DONE
+   - Dijkstra algorithm implementation for 8-node graph
+   - Priority queue for 8 nodes during pathfinding

@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'maximum_gig_earnings' to find optimal gig selection overcoming 3 key hardware challenges: travel time precomputation (Floyd-Warshall for 4 venues), gig conflict checking, and earnings maximization.
+
+Module interface:
+module maximum_gig_earnings(
+  input clk,               // system clock
+  input rst_n,              // active-low reset
+  input start,              // start computation
+  input [7:0] road_a,       // 4 road sources (2-bits each: [7:6]=road3)
+  input [7:0] road_b,       // 4 road destinations
+  input [63:0] road_t,      // 4 road times (16-bits each: [63:48]=road3)
+  input [7:0] gig_v,        // 4 gig venues (2-bits each: [7:6]=gig3)
+  input [63:0] gig_s,       // 4 gig start times (16-bits each)
+  input [63:0] gig_e,       // 4 gig end times
+  input [63:0] gig_m,       // 4 gig earnings
+  output reg [15:0] max_earnings,  // maximum cryptocents
+  output reg done           // high when computation completes
+);
+
+Behavior:
+1. At start==1:
+   a. Build 4x4 distance matrix initialized with max value (65535)
+   b. Load roads - set distance[A][B] and [B][A] = min(current_value, road_T)
+   c. Compute all-pairs shortest paths using 3-stage Floyd-Warshall
+2. For all 4! (24) valid gig orders (permutations of active gigs with V≠0):
+   a. Check time feasibility: previous_end + travel_time ≤ next_start
+   b. Accumulate total earnings
+3. Output max_earnings after 22 clock cycles (timed for 6 ALU stages x 4 permutations)
+4. Set done=1 when output valid
+
+Notes:
+- Ignore gigs with V=0
+- Treat [gig_s, gig_e) as inclusive-start exclusive-end
+- Handle up to 4 concurrent gig evaluation paths

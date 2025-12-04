@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'max_connected_towers' that computes the maximum connected tower count after adding one tower.
+
+Inputs:
+input clk // system clock
+input rst_n // active-low reset (asynchronous)
+input start // pulse high to begin computation
+input [15:0] tower_x[0:7] // Q10.6 fixed-point X coordinates (max 8 towers)
+input [15:0] tower_y[0:7] // Q10.6 fixed-point Y coordinates
+input [3:0] num_towers // current number of towers (1-8)
+
+Outputs:
+output reg [3:0] max_count // max connected towers possible (including new tower)
+output reg done // high when computation complete
+
+Behavior:
+1. On reset: Initialize internal state, set done low
+2. When start pulses high:
+   a. Compute pairwise connectedness of existing towers (connected if squared distance <= 4.0 km²)
+   b. Find connected components in current tower graph
+   c. For each existing tower position as candidate for new tower:
+      i. Calculate new connections formed between components (within 2 km of new tower)
+      ii. Track largest combined component size
+   d. Add 1 (the new tower itself) to largest combined size
+   e. Set max_count to maximum value found across all candidates
+3. Assert done high for 1 cycle when complete (2 clock cycles per tower + fixed overhead)
+
+Latency: (6 + 2*num_towers) clock cycles from start assertion. Use squared distance comparisons (avoid square roots): (x1-x2)^2 + (y1-y2)^2 <= (2.0)^2 << 12 (4.0 in Q10.6 fixed-point = 0x4000).

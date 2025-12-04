@@ -1,0 +1,37 @@
+Design a Verilog module named luggage_speed_calculator that computes maximum non-colliding speed.
+
+Inputs:
+input clk
+input rst_n
+input start
+input [31:0] L_fixed // Circular belt length in Q16.16 format
+input [31:0] positions [0:7] // Up to 8 luggage positions in Q16.16 format
+input [2:0] num_items // Actual number of luggage (1-8)
+
+Outputs:
+output reg [31:0] speed_fixed // Max speed in Q16.16 (0xFFFFFFFF = "no fika")
+output reg done
+output reg valid // 1 = valid speed, 0 = "no fika"
+
+Behavior:
+1. On reset: clear all registers
+2. When start=1:
+   a. Sort positions array (8 elements, with valid items marked by num_items)
+   b. Compute all adjacent gaps (including wrap-around gap between last-first)
+   c. For each gap G: calculate min_speed = L / (G - 1.0)  (fixed-point)
+   d. Find the MINIMUM of these min_speeds (this is the max safe conveyor speed)
+   e. Ensure speed stays between 0.1 and 10.0 m/s (Q16.16: 0x00001999 - 0x00A00000)
+3. Output constraints:
+   - done asserts when computation complete
+   - If no valid speed in range: valid=0, speed_fixed=0xFFFFFFFF
+   - Else: valid=1, speed_fixed=computed speed
+
+Timing:
+- Computation completes in 128 cycles max after start (1 cycle per sort iteration + gap calc)
+
+Fixed-point format:
+- All values use Q16.16 format (16 integer, 16 fractional bits)
+- Example: 2.00 m/s = 0x00020000, 0.5 = 0x00008000
+- Safety margin: 1.0 meter = 0x00010000 in Q16.16
+
+Note: Internal calculations should maintain 32-bit precision with proper fixed-point arithmetic.

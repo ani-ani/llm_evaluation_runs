@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'onion_protection' that finds the maximum number of onions protected by any combination of K laser fence posts from M possible posts.
+
+Module interface:
+module onion_protection(
+  input clk, // System clock
+  input rst_n, // Active-low reset
+  input start, // Start computation
+  input [3:0] N, // Number of onions (max 8)
+  input [3:0] M, // Number of fence posts (max 8)
+  input [3:0] K, // Number of upgraded posts (max 4)
+  input [11:0] onion_x [0:7], // Q4.8 fixed point X coord (8 onions max)
+  input [11:0] onion_y [0:7], // Q4.8 fixed point Y coord (8 onions max)
+  input [11:0] post_x [0:7],  // Q4.8 fixed point X coord (8 posts max)
+  input [11:0] post_y [0:7],  // Q4.8 fixed point Y coord (8 posts max)
+  output reg [3:0] max_count, // Maximum protected onions (will be <=8)
+  output reg done // High when computation complete
+);
+
+Behavior:
+1. On reset or when not started: outputs zero, done=0
+2. When start is asserted:
+   - Tests all C(M,K) combinations of upgraded posts
+   - For each combination:
+      a) Compute convex hull of selected K posts
+      b) Count onions strictly inside this convex hull
+   - Keeps track of maximum count found
+3. After final combination processed:
+   - Outputs max_count and asserts done
+4. Latency: Worst-case C(8,4) = 70 combinations * (1 cycle per point-in-hull check * 8 onions) = ~560 cycles
+
+Implementation notes:
+- Use Q4.8 fixed-point (4 integer bits, 8 fractional bits) for all coordinates
+- Point-in-convex-polygon check using cross product method with 12-bit arithmetic
+- Array inputs must be packed as bit vectors for synthesis (e.g., [11:0] for each coordinate)
+- Test with modelsim/verilator using cocotb testbench

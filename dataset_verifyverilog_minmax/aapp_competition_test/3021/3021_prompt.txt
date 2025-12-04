@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'lex_order_solver' that determines lexicographical order from word lists.
+Inputs:
+    input clk,             // clock
+    input rst_n,           // active-low reset
+    input start,           // pulse to start processing
+    input [2:0] L,         // highest character index (0=a, 7=h)
+    input [2:0] N,         // number of words (1-8)
+    input [191:0] words    // 8 words packed (8 words * 8 chars * 3 bits)
+Outputs:
+    output reg done,        // high when computation complete
+    output reg [1:0] status, // 00=unique, 01=impossible, 10=ambiguous
+    output reg [23:0] order  // 8 characters * 3 bits (left-padded when alphabet <8)
+
+Behavior:
+1. On start, extract alphabet characters (0 to L) representing letters a to highest letter
+2. Compare adjacent words to build directed graph (character precedence rules)
+3. Use Kahn's algorithm for topological sort with the following constraints:
+   - Alphabet size = L+1 (max 8 characters)
+   - Process word list length N (max 8 words)
+4. Check for cycles (IMPOSSIBLE) or multiple valid sort orders (AMBIGUOUS)
+5. Produce unique order when possible
+
+Timing:
+- Uses 2 pipeline stages:
+  1. 1 cycle for edge detection (word comparisons)
+  2. L+2 cycles for topological sort processing (0-8 char sort)
+- Total latency of L+3 cycles from start pulse
+- done asserts for 1 cycle when result is ready
+
+Implementation notes:
+- Represent graph as 8x8 adjacency matrix
+- Use parallel comparators for character edge detection
+- Pad words shorter than 8 characters with 0's (eqv to 'a') at end

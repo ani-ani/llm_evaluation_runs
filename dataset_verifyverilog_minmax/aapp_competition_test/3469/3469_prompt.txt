@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'gon_win_prob' that computes the probability Gon wins a coin game given two 4-character coin patterns.
+
+Module interface:
+module gon_win_prob(
+  input clk, // Clock signal
+  input rst_n, // Active-low reset
+  input start, // Starts computation when high
+  input [3:0] g, // Gon's pattern (0=H,1=T per bit)
+  input [3:0] k, // Killua's pattern (0=H,1=T per bit)
+  input [7:0] p, // Head probability Q8.8 fixed-point (0.5 -> 0x0080)
+  output reg [23:0] prob_out, // Gon's win probability in Q16.8 format
+  output reg done // High when computation completes
+);
+
+Behavior:
+1. Resets to IDLE state on rst_n low
+2. When start asserted, begins computation via state machine
+3. Simulates up to 16 coin flips building string s
+4. Uses two state machines tracking:
+   - Current match length for g (0-4)
+   - Current match length for k (0-4)
+5. For each flip, updates probabilities for:
+   - Gon win (g completes first)
+   - Killua win (k completes first)
+   - Draw (both complete simultaneously)
+6. Accumulates Gon's win probability in Q16.8 fixed-point
+7. After simulation depth or terminal state reached, outputs result
+8. Asserts 'done' for 1 cycle when result is ready (16 clock cycles after start)
+
+Implementation note:
+- Use 24-bit arithmetic for probability accumulation
+- String matching shifts bits in after each flip decision
+- Store probabilities as (p_head * state_prob) Q16.8 precision

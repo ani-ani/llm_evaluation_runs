@@ -1,0 +1,32 @@
+Design a sequential Verilog module named 'pizza_topping_selector' that solves the simplified topping selection problem for 4 friends and 8 possible toppings.
+
+Inputs:
+input clk,                    // clock
+input rst_n,                 // active-low reset
+input start,                 // pulse high to start computation
+input [1:0] num_friends,     // actual friends = num_friends+1 (0=1, 3=4)
+input [71:0] friend_wishes    // 4×18-bit fields (1 field per friend)
+                            // per friend: [17:16]=wish_count (wish_count+1 = actual wishes)
+                            //             [15:0]=4×4-bit wishes {type[3],topping_id[2:0]}
+                            //             e.g. wish0 = field[15:12]: type=msb, topping=lower 3
+                            // Unused wishes for friends with <4 wishes should be zero
+
+Outputs:
+output reg [7:0] selected_toppings, // mask for topping inclusion (1=enabled, index 0=top0)
+output reg done,             // high when valid solution found
+
+Functionality:
+1. On reset (rst_n=0): selected_toppings=0, done=0
+2. When start=1: begin checking all 256 possible topping combos (candidate = 8'b0000_0000 to 8'b1111_1111)
+3. For each candidate: Check for all friends (friend_index 0 to num_friends) if 3*satisfied_wishes > total_wishes
+   a) For each friend: Extract wish_count+1 = total wishes for that friend
+   b) For each valid wish: Check if (type=1 && topping enabled) || (type=0 && topping disabled)
+   c) If all friends meet 3*satisfied > total, set selected_toppings=candidate, done=1, and terminate
+4. Latency: Maximum 256 cycles (average << 256). Done=1 indicates valid output.
+5. If no solution found (not possible per problem), behavior undefined
+
+Implementation:
+- Use states: IDLE, CHECK, COMPLETE with 8-bit candidate counter
+- Use combinational logic to verify current candidate against friend constraints
+- Sequential tour via candidate counter
+- Assume solution exists per problem statement

@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'staircase_solver' that finds a sequence of up to 16 button presses to transform a room of staircases between two configurations.
+Inputs:
+  input clk,             // Clock signal
+  input rst_n,           // Active-low reset
+  input start,           // Start computation (pulse high)
+  input [1:0] N,         // Fixed to 4 floors (ignore input, included for interface)
+  input [2:0] M,         // Number of staircases (0-6)
+  input [5:0][3:0] current_edges, // 6 edges max, each edge encoded as [i,j] (2x2 bits per edge)
+  input [5:0][3:0] desired_edges  // Desired edges in same format
+Outputs:
+  output reg [3:0] sequence_type,   // 4 press types (R/G per step) - 0=R,1=G
+  output reg [15:0][1:0] sequence_floor, // 16 steps of floor indices (2 bits each)
+  output reg [4:0] solution_length, // Valid solution length (0-16)
+  output reg done,       // High when solution found or search complete
+  output reg valid       // High when solution is valid
+The module should implement a state machine with these states:
+  IDLE, INIT, CHECK_MATCH, PRESS_RED, PRESS_GREEN, UPDATE_STATE, DONE
+Latency: Must complete within 1000 clock cycles after start. Description:
+1. On start, initialize working state from current_edges
+2. Iterate over possible button press sequences up to 16 steps
+3. For each step, attempt pressing red then green on each floor (0-3)
+4. After each press, update edge connections per these rules:
+   - Red_button[i]: For each edge connected to i, j → (j+1)%4 unless (j+1)%4=i → then j → (j+2)%4
+   - Green_button[i]: Inverse operation (applies red press 2 times)
+5. Compare working edges with desired_edges (order-insensitive)
+6. If match found, output sequence and assert valid.
+Note: All edge comparisons should be order-insensitive (treat [i,j] same as [j,i]).

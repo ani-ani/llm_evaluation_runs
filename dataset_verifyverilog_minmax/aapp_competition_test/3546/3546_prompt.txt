@@ -1,0 +1,38 @@
+Design a Verilog module named "theorem_dag_min_length" that computes the shortest article length for Theorem 0 given dependency constraints.
+
+Module interface:
+module theorem_dag_min_length(
+  input clk, // Clock signal
+  input rst_n, // Active-low reset
+  input start, // Start computation (pulse high)
+  input [3:0] num_theorems, // 0-4 theorems (<= n≤4)
+  input [3:0] num_proofs [0:3], // Array of 4 elements (max 10 each)
+  input [31:0] proof_lengths [0:3][0:9], // proof_lengths[thm][p]
+  input [1:0] num_deps [0:3][0:9], // num_deps[thm][p] (max 3)
+  input [1:0] deps [0:3][0:9][0:2], // deps[thm][proof][dep_idx]
+  output reg [31:0] min_length, // Final result
+  output reg done // High when computation completes
+);
+
+Behavior:
+1. On reset, initialize all registers.
+2. When start is pulsed:
+   - Use topological order (assume inputs are a DAG, ordered by thm ID)
+   - For each theorem 0 to num_theorems-1:
+     - For each proof option p:
+       - Calculate total length = p_len + sum of min_lengths for dependencies
+     - Select minimum total length as this theorem's min_length
+3. Store theorem 0's min_length in output register
+4. Assert 'done' for 1 cycle when complete (after n+1 cycles)
+
+Timing:
+- Output valid 8 clock cycles after start (max n=4 + processing)
+- Use state machine: IDLE, INIT, PROCESS_THM, PROCESS_PROOF, UPDATE, DONE.
+
+Notes:
+- Assume theorems are numbered 0 to 3 (for n≤4)
+- All proofs without dependencies use their base length.
+- Dependency deps may reference lower-numbered theorems only (topological order).
+- Use logic [31:0] min_lengths [0:3] to store intermediate results.
+- Handle up to 4 theorems, 10 proofs per theorem, 3 deps per proof (scaled from original).
+- Worst-case timing: O(n*p*deps) cycles with early termination.

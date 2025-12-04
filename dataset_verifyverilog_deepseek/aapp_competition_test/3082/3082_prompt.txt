@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'buffet_optimizer' that computes maximum tastiness for a meal using discrete and continuous dishes.
+
+Inputs:
+input clk,                   // system clock
+input rst_n,                 // active-low reset
+input start,                 // start computation (pulse high)
+input [1:0] dish_type [0:3], // 4 dishes max: 0=discrete, 1=continuous (2-bit array)
+input [7:0] w_i [0:3],       // dish weights (8-bit Q4.4: 0-15.9375g)
+input [7:0] t_i [0:3],       // initial tastiness (8-bit Q8.0: 0-255)
+input [7:0] dt_i [0:3],      // decay rate (8-bit Q8.0: 0-255)
+input [7:0] target_w,        // target weight (8-bit Q4.4: 0-15.9375g)
+
+Outputs:
+output reg [15:0] max_taste, // max tastiness (16-bit Q8.8: 0-127.996)
+output reg impossible,        // high when solution impossible
+output reg done              // pulse high when computation finished
+
+Behavior:
+- When start is asserted, begins computation using a greedy algorithm
+- Dishes must be sorted by (t_i / w_i) descending (assume pre-sorted)
+- For discrete dishes: calculate maximum possible items N where N*w_i <= remaining weight
+  Taste contribution: sum_{n=1}^N (t_i - (n-1)*dt_i) (integer arithmetic)
+- For continuous dishes: take min(available_weight, t_i/dt_i)
+  Taste contribution: (t_i*X - 0.5*dt_i*X^2) (fixed-point math)
+- State machine sequence: IDLE -> ITERATE_DISHES -> CHECK_WEIGHT -> UPDATE -> DONE
+- Requires 4 clock cycles per dish (max latency: 4*4 + 2 = 18 cycles)
+- Output valid when done=1, impossible=0 indicates max_taste is valid

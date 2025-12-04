@@ -1,0 +1,3 @@
+// Failed to parse code
+```json
+{"code":"module max_valid_int(\n  input  [7:0] data [0:7],\n  input  [7:0] valid_mask,\n  output reg [7:0] max_val\n);\n\n  integer i;\n  reg found_valid;\n\n  always @* begin\n    max_val     = 8'd0;\n    found_valid = 1'b0;\n\n    for (i = 0; i < 8; i = i + 1) begin\n      if (valid_mask[i]) begin\n        if (!found_valid || (data[i] > max_val)) begin\n          max_val     = data[i];\n          found_valid = 1'b1;\n        end\n      end\n    end\n  end\n\nendmodule"}\n```
