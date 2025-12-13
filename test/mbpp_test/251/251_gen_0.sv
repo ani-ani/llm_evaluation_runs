@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code": "module insert_element(\n  input  [63:0]        element_in,\n  input  [3:0]         input_length,\n  input  [7:0][63:0]   list_in,\n  output [15:0][63:0]  list_out\n);\n\n  genvar i;\n  generate\n    for (i = 0; i < 8; i = i + 1) begin : gen_insert\n      // For i < input_length: insert element_in then list_in[i]\n      // For i >= input_length: positions are left unassigned (undefined)\n      assign list_out[2*i]   = (i < input_length) ? element_in : {64{1'bx}};\n      assign list_out[2*i+1] = (i < input_length) ? list_in[i] : {64{1'bx}};\n    end\n  endgenerate\n\nendmodule"}

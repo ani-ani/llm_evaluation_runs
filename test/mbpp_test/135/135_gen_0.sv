@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code":"module hexagonal_num(\n  input  [7:0]  n,\n  output [17:0] result\n);\n\n  // Intermediate signals\n  wire [8:0]  two_n;      // 2*n fits in 9 bits (max 510)\n  wire [8:0]  two_n_minus1; // (2*n - 1) also fits in 9 bits\n  wire [17:0] product;    // n * (2*n - 1) fits in 18 bits\n\n  assign two_n        = {n, 1'b0};        // 2*n via left shift\n  assign two_n_minus1 = two_n - 9'd1;     // 2*n - 1\n  assign product      = n * two_n_minus1; // combinational multiply\n\n  assign result = product;\n\nendmodule"}

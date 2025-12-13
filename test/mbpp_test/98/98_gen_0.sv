@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code": "module scaled_mult_div(\n  input  signed [7:0] num0,\n  input  signed [7:0] num1,\n  input  signed [7:0] num2,\n  input  signed [7:0] num3,\n  output signed [31:0] result\n);\n\n  wire signed [15:0] mult01;\n  wire signed [23:0] mult012;\n  wire signed [31:0] mult0123;\n\n  assign mult01   = num0 * num1;\n  assign mult012  = mult01 * num2;\n  assign mult0123 = mult012 * num3;\n\n  assign result = mult0123 >>> 2;\n\nendmodule"}\n```

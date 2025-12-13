@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code":"module sum_odds_range(\n  input  [7:0]  l,\n  input  [7:0]  r,\n  output [15:0] sum\n);\n\n  wire [8:0] r_plus1;\n  wire [8:0] half_r;\n  wire [8:0] half_l;\n  wire [17:0] r_sum;\n  wire [17:0] l_sum;\n  wire [17:0] diff;\n\n  assign r_plus1 = {1'b0, r} + 9'd1;\n  assign half_r  = r_plus1 >> 1;       // (r + 1) >> 1\n  assign half_l  = {1'b0, l} >> 1;     // l >> 1\n\n  assign r_sum = half_r * half_r;      // up to 18 bits\n  assign l_sum = half_l * half_l;      // up to 18 bits\n\n  assign diff = r_sum - l_sum;\n  assign sum  = diff[15:0];            // lower 16 bits as specified\n\nendmodule"}

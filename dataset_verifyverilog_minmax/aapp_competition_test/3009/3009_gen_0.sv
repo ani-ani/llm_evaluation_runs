@@ -1,3 +1,449 @@
-// Failed to parse code
-```json
-{"code": "module energy_balance_line (\n  input clk,\n  input rst_n,\n  input [2:0] n,\n  input [6:0] x_i [0:7],\n  input [6:0] y_i [0:7],\n  input [12:0] e_i [0:7],\n  input start,\n  output reg [31:0] min_length,\n  output reg impossible,\n  output reg done\n);\n\n  // FSM states\n  typedef enum logic [3:0] {\n    S_IDLE      = 4'd0,\n    S_SUMSETUP  = 4'd1,\n    S_SORT_MIN  = 4'd2,\n    S_SORT_REST = 4'd3,\n    S_BUILD     = 4'd4,\n    S_POP       = 4'd5,\n    S_DIST      = 4'd6,\n    S_DONE      = 4'd7\n  } state_t;\n\n  state_t state;\n\n  // Iteration counters\n  reg [11:0] cycle_cnt;       // up to 4095\n  reg [7:0] subset_idx;       // 0..255\n  reg [2:0] p_cnt;            // number of points in current subset (<=8)\n  reg [2:0] i_idx;            // generic index\n\n  // Energy arithmetic\n  reg [14:0] total_sum_int;   // sum of e_i (signed, 15 bits is enough for 8*2000=16000)\n  reg [15:0] total_sum_abs;   // abs(total_sum_int)\n  reg [14:0] subset_sum_int;  // subset sum (signed)\n  reg [15:0] subset_sum_abs;  // abs(subset_sum_int)\n  reg subset_valid;           // energy tolerance pass\n\n  // Points: Q16.16 fixed-point coordinates (xi, yi)\n  reg [31:0] x_fp [0:7];\n  reg [31:0] y_fp [0:7];\n\n  // Sorting (Graham's scan base point and rest sort)\n  reg [2:0] min_idx;          // index of min (by y, then x)\n  reg [31:0] ref_x, ref_y;    // base point Q16.16\n  reg [2:0] rest_cnt;         // number of non-base points in subset\n  reg [31:0] rest_angles [0:7]; // Q16.16 tangents (0..1)\n  reg [31:0] rest_dx [0:7], rest_dy [0:7]; // Q16.16 deltas to ref\n\n  // Point arrays after sorting by angle\n  reg [31:0] ang_pts_x [0:7]; // Q16.16\n  reg [31:0] ang_pts_y [0:7]; // Q16.16\n  reg [2:0] sort_inner;\n  reg [2:0] sort_outer;\n  reg [31:0] tmp_ang, tmp_dx, tmp_dy;\n  reg [31:0] tmp_x, tmp_y;\n\n  // Hull stack\n  reg [31:0] stack_x [0:7]; // Q16.16\n  reg [31:0] stack_y [0:7]; // Q16.16\n  reg [2:0] sp;             // stack pointer (points to next free slot)\n\n  // Cross product in Q16.16 (result is effectively Q16.16 since operands are Q16.16)\n  // To avoid size explosion, we keep 32-bit operands. The full product is 64-bit.\n  logic signed [63:0] cross_full;\n  reg signed [63:0] cross_reg;\n  reg [31:0] cross_hi; // high 32 bits of the 64-bit product (used when we need to inspect sign)\n\n  // Distance and perimeter (Q16.16)\n  reg [31:0] dx_fp, dy_fp;          // Q16.16\n  logic [63:0] dist2_full;          // dx^2 + dy^2 (Q32.32)\n  reg [31:0] dist2_hi;              // high 32 bits of dist2_full\n  logic [31:0] dist_sqrt_q16_16;    // sqrt approximation (Q16.16)\n  reg [31:0] hull_perimeter;        // Q16.16\n  reg [2:0] dist_idx;               // index for perimeter accumulation\n\n  // Sqrt approximation (Q16.16 input -> Q16.16 output)\n  function [31:0] sqrt_q16_16;\n    input [31:0] x; // Q16.16 unsigned, assumed 32-bit\n    integer i, k, left, right, mid;\n    reg [63:0] est_full;\n    reg [31:0] est, est_sq, err;\n    begin\n      // handle zero\n      if (x == 32'd0) begin\n        sqrt_q16_16 = 32'd0;\n        return;\n      end\n      // initial guess: shift right 2 bits (sqrt(x*2^-2) ~ sqrt(x)/2)\n      left = 0;\n      right = 32'h00010000; // 65536 in Q16.16\n      // 20 iterations should be enough for 16.16 range\n      for (i = 0; i < 20; i = i + 1) begin\n        mid = (left + right) >> 1;\n        est = mid;\n        est_full = $unsigned(($signed(est) * $signed(est)));\n        est_sq = est_full[63:32]; // high 32 bits\n        if (est_sq == x) begin\n          left = right = mid;\n        end else if (est_sq > x) begin\n          right = mid - 1;\n        end else begin\n          left = mid + 1;\n        end\n      end\n      // average to get closer\n      est = (left + right) >> 1;\n      // one-step Newton refinement\n      if (est != 0) begin\n        est_full = $unsigned($signed(x) * $signed(est));\n        // est_next = (est + x/est)/2; compute est_next^2 to compare with x\n        // Use k = (est + (x>>16)/est) for integer-like; For 16.16 we can approximate:\n        // Instead, do a simple integer Newton using hi parts:\n        // Compute y = (est + (x / est)) >> 1, then square y and compare with x.\n        // To keep it small, do two Newton iterations in Q16.16 space using high 32 bits as integer approx.\n        // First iteration:\n        err = x / est; // approximate in Q16.16 (coarse but ok)\n        est = (est + err) >> 1;\n        // Second iteration:\n        err = x / est;\n        est = (est + err) >> 1;\n      end\n      sqrt_q16_16 = est;\n    end\n  endfunction\n\n  // Combinational cross product result update\n  always @(*) begin\n    cross_full = $signed(dx_fp) * $signed(dy_fp);\n    cross_hi = cross_full[63:32];\n  end\n\n  // Combinational distance sqrt (approx) update\n  assign dist2_full = $unsigned($signed(dx_fp) * $signed(dx_fp)) + $unsigned($signed(dy_fp) * $signed(dy_fp));\n  assign dist_sqrt_q16_16 = sqrt_q16_16(dist2_full[63:32]);\n\n  // Main FSM and datapath\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      state <= S_IDLE;\n      cycle_cnt <= 12'd0;\n      subset_idx <= 8'd0;\n      min_length <= 32'h7fffffff; // very large\n      impossible <= 1'b0;\n      done <= 1'b0;\n      hull_perimeter <= 32'd0;\n      sp <= 3'd0;\n    end else begin\n      case (state)\n        S_IDLE: begin\n          if (start) begin\n            // Initialize\n            done <= 1'b0;\n            impossible <= 1'b0;\n            min_length <= 32'h7fffffff;\n            cycle_cnt <= 12'd0;\n            subset_idx <= 8'd0;\n            // compute total sum and abs\n            total_sum_int <= 15'd0;\n            for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin\n              total_sum_int <= total_sum_int + e_i[i_idx];\n            end\n            total_sum_abs <= (total_sum_int[14] == 1'b0) ? {1'b0, total_sum_int[14:0]} : (~{1'b0, total_sum_int[14:0]} + 1);\n            state <= S_SUMSETUP;\n          end\n        end\n\n        S_SUMSETUP: begin\n          // Setup subset points and sum\n          p_cnt <= 3'd0;\n          subset_sum_int <= 15'd0;\n          // clear point arrays\n          for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin\n            x_fp[i_idx] <= 32'd0;\n            y_fp[i_idx] <= 32'd0;\n          end\n          // gather points for current subset (bits 0..n-1)\n          for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin\n            if (subset_idx[i_idx] && (i_idx < n)) begin\n              x_fp[p_cnt] <= {x_i[i_idx], 16'd0}; // Q16.16\n              y_fp[p_cnt] <= {y_i[i_idx], 16'd0};\n              subset_sum_int <= subset_sum_int + e_i[i_idx];\n              p_cnt <= p_cnt + 1;\n            end\n          end\n          // check energy tolerance: |2*s - T| <= 0.3*T, T>0\n          subset_sum_abs <= (subset_sum_int[14] == 1'b0) ? {1'b0, subset_sum_int[14:0]} : (~{1'b0, subset_sum_int[14:0]} + 1);\n          state <= S_SORT_MIN;\n        end\n\n        S_SORT_MIN: begin\n          // Determine base point (min y, then min x)\n          if (p_cnt == 0) begin\n            subset_valid <= 1'b0;\n            state <= S_DIST; // perimeter remains 0\n            dist_idx <= 3'd0;\n            hull_perimeter <= 32'd0;\n          end else begin\n            min_idx <= 3'd0;\n            for (i_idx = 1; i_idx < 8; i_idx = i_idx + 1) begin\n              if (i_idx < p_cnt) begin\n                // compare y, then x\n                if ({1'b0, y_fp[i_idx]} < {1'b0, y_fp[min_idx]} ||\n                    ({1'b0, y_fp[i_idx]} == {1'b0, y_fp[min_idx]} && {1'b0, x_fp[i_idx]} < {1'b0, x_fp[min_idx]})) begin\n                  min_idx <= i_idx;\n                end\n              end\n            end\n            // prepare reference (base)\n            ref_x <= x_fp[min_idx];\n            ref_y <= y_fp[min_idx];\n            // collect rest\n            rest_cnt <= 3'd0;\n            for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin\n              if (i_idx != min_idx && i_idx < p_cnt) begin\n                rest_angles[rest_cnt] <= 32'd0; // will compute below\n                rest_dx[rest_cnt] <= x_fp[i_idx] - ref_x;\n                rest_dy[rest_cnt] <= y_fp[i_idx] - ref_y;\n                rest_cnt <= rest_cnt + 1;\n              end\n            end\n            // compute tangents for rest (dy/dx) in Q16.16\n            for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin\n              if (i_idx < rest_cnt) begin\n                if (rest_dx[i_idx] == 0 && rest_dy[i_idx] == 0) begin\n                  rest_angles[i_idx] <= 32'h00010000; // set to 1 to push later (identical point)\n                end else if (rest_dx[i_idx] == 0) begin\n                  rest_angles[i_idx] <= 32'h7fffffff; // +inf\n                end else begin\n                  rest_angles[i_idx] <= rest_dy[i_idx] / rest_dx[i_idx];\n                end\n              end\n            end\n            state <= S_SORT_REST;\n            sort_outer <= 3'd0;\n          end\n        end\n\n        S_SORT_REST: begin\n          // Simple bubble sort by angle (ascending)\n          if (rest_cnt <= 1) begin\n            // copy sorted rest into ang_pts\n            for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin\n              if (i_idx == 0) begin\n                ang_pts_x[i_idx] <= ref_x;\n                ang_pts_y[i_idx] <= ref_y;\n              end else if (i_idx < rest_cnt) begin\n                ang_pts_x[i_idx] <= ref_x + rest_dx[i_idx-1];\n                ang_pts_y[i_idx] <= ref_y + rest_dy[i_idx-1];\n              end else begin\n                ang_pts_x[i_idx] <= 32'd0;\n                ang_pts_y[i_idx] <= 32'd0;\n              end\n            end\n            sp <= 3'd0;\n            state <= S_BUILD;\n          end else begin\n            if (sort_outer < rest_cnt - 1) begin\n              if (sort_inner < (rest_cnt - 1 - sort_outer)) begin\n                // compare rest_angles[sort_inner] > rest_angles[sort_inner+1]\n                if (rest_angles[sort_inner] > rest_angles[sort_inner+1]) begin\n                  // swap angle\n                  tmp_ang <= rest_angles[sort_inner];\n                  rest_angles[sort_inner] <= rest_angles[sort_inner+1];\n                  rest_angles[sort_inner+1] <= tmp_ang;\n                  // swap dx, dy\n                  tmp_dx <= rest_dx[sort_inner];\n                  tmp_dy <= rest_dy[sort_inner];\n                  rest_dx[sort_inner] <= rest_dx[sort_inner+1];\n                  rest_dy[sort_inner] <= rest_dy[sort_inner+1];\n                  rest_dx[sort_inner+1] <= tmp_dx;\n                  rest_dy[sort_inner+1] <= tmp_dy;\n                end\n                sort_inner <= sort_inner + 1;\n              end else begin\n                sort_inner <= 3'd0;\n                sort_outer <= sort_outer + 1;\n              end\n            end else begin\n              // copy to ang_pts\n              for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin\n                if (i_idx == 0) begin\n                  ang_pts_x[i_idx] <= ref_x;\n                  ang_pts_y[i_idx] <= ref_y;\n                end else if (i_idx < rest_cnt) begin\n                  ang_pts_x[i_idx] <= ref_x + rest_dx[i_idx-1];\n                  ang_pts_y[i_idx] <= ref_y + rest_dy[i_idx-1];\n                end else begin\n                  ang_pts_x[i_idx] <= 32'd0;\n                  ang_pts_y[i_idx] <= 32'd0;\n                end\n              end\n              sp <= 3'd0;\n              state <= S_BUILD;\n            end\n          end\n        end\n\n        S_BUILD: begin\n          // Graham's scan: push points in order (skip duplicates) to stack\n          if (i_idx < rest_cnt) begin\n            // skip duplicate points (exactly same as ref)\n            if (ang_pts_x[i_idx+1] == ref_x && ang_pts_y[i_idx+1] == ref_y) begin\n              i_idx <= i_idx + 1;\n            end else begin\n              stack_x[sp] <= ang_pts_x[i_idx+1];\n              stack_y[sp] <= ang_pts_y[i_idx+1];\n              sp <= sp + 1;\n              i_idx <= i_idx + 1;\n            end\n          end else begin\n            // After pushing all, ensure at least 2 points are in stack for meaningful perimeter\n            if (sp == 0) begin\n              // Only base point (all rest were duplicates or none)\n              // Perimeter will be handled below\n              dist_idx <= 3'd0;\n              hull_perimeter <= 32'd0;\n              state <= S_POP;\n            end else if (sp == 1) begin\n              // Only two points: base + one more\n              // Perimeter will be handled below\n              dist_idx <= 3'd0;\n              hull_perimeter <= 32'd0;\n              state <= S_POP;\n            end else begin\n              // Initialize cross product check index\n              i_idx <= 3'd2; // start checking from third point in stack\n              state <= S_POP;\n            end\n          end\n        end\n\n        S_POP: begin\n          // Pop while cross <= 0\n          if (sp > 1 && i_idx < sp) begin\n            // cross of (p[sp-2], p[sp-1], p[i_idx])\n            dx_fp <= stack_x[sp-1] - stack_x[sp-2];\n            dy_fp <= stack_y[sp-1] - stack_y[sp-2];\n            cross_reg <= cross_full;\n            if (cross_reg <= 0) begin\n              // pop\n              sp <= sp - 1;\n            end else begin\n              i_idx <= i_idx + 1;\n            end\n          end else begin\n            // Finalize stack size (if sp==1 -> one point; sp==0 -> empty)\n            if (sp == 0) begin\n              // no valid hull (e.g., all same point), perimeter = 0\n              dist_idx <= 3'd0;\n              hull_perimeter <= 32'd0;\n            end else if (sp == 1) begin\n              // single point: perimeter = 0\n              dist_idx <= 3'd0;\n              hull_perimeter <= 32'd0;\n            end else begin\n              // start distance accumulation\n              dist_idx <= 1; // next edge from stack[0] to stack[1]\n              dx_fp <= stack_x[1] - stack_x[0];\n              dy_fp <= stack_y[1] - stack_y[0];\n              hull_perimeter <= 32'd0; // will accumulate in S_DIST\n            end\n            state <= S_DIST;\n          end\n        end\n\n        S_DIST: begin\n          // Accumulate perimeter over edges in the stack\n          if (sp <= 1) begin\n            // no edges\n            // hull_perimeter already 0\n            // Determine subset validity once (check tolerance)\n            if (total_sum_abs == 0) begin\n              // degenerate: allow only if subset == complement and sums equal\n              subset_valid <= (subset_sum_int == 0);\n            end else begin\n              // |2*s - T| <= 0.3*T using scaled inequality: 10*|2*s - T| <= 3*T\n              // Avoid division by using abs(2*s - T) * 10\n              // All values are integers; T is total_sum_abs (>=0)\n              logic [31:0] lhs, rhs;\n              logic [31:0] two_s, diff;\n              logic [31:0] diff_abs;\n              two_s = {1'b0, subset_sum_int, 1'b0}; // 2*s (shift-left 1)\n              if (total_sum_int >= 0) begin\n                diff = two_s - total_sum_int;\n              end else begin\n                diff = two_s + (~total_sum_int + 1); // subtract negative\n              end\n              if (diff[31] == 1'b0) diff_abs = diff; else diff_abs = ~diff + 1;\n              lhs = diff_abs * 10;\n              rhs = total_sum_abs * 3;\n              subset_valid <= (lhs <= rhs);\n            end\n            // Update min_length if valid\n            if (subset_valid) begin\n              if (hull_perimeter < min_length) begin\n                min_length <= hull_perimeter;\n              end\n            end\n            // Prepare next subset\n            cycle_cnt <= cycle_cnt + 12'd1;\n            subset_idx <= subset_idx + 8'd1;\n            if (subset_idx == 8'd255) begin\n              state <= S_DONE;\n            end else begin\n              state <= S_SUMSETUP;\n            end\n          end else begin\n            if (dist_idx < sp) begin\n              // dist2_full[63:32] is high 32 bits (Q16.16 squared value)\n              dist2_hi <= dist2_full[63:32];\n              // wait one cycle for sqrt (combinational but per cycle, simple pipeline)\n              state <= S_DIST; // stay in S_DIST, advance dist_idx next cycle after adding\n              // Add after sqrt becomes available next cycle. Use a flag to accumulate on next tick.\n              // Use dist_idx to control accumulation in following cycle using a latch-like reg\n              dist_idx <= dist_idx + 3'd1; // advance for next edge next cycle\n              // Actually accumulate now: use sqrt output combinatorially\n              hull_perimeter <= hull_perimeter + dist_sqrt_q16_16;\n            end else begin\n              // close hull: from last point to first\n              dx_fp <= stack_x[0] - stack_x[sp-1];\n              dy_fp <= stack_y[0] - stack_y[sp-1];\n              dist2_hi <= dist2_full[63:32];\n              // accumulate this last edge in the next cycle\n              dist_idx <= 3'd0; // marker to indicate just finished last edge\n              state <= S_DIST; // next cycle will add last segment\n            end\n          end\n        end\n\n        S_DONE: begin\n          done <= 1'b1;\n          impossible <= (min_length == 32'h7fffffff);\n          state <= S_IDLE; // latch here until next start\n        end\n\n        default: begin\n          state <= S_IDLE;\n        end\n      endcase\n    end\n  end\n\n  // Enforce total <= 4096 cycles; we design to finish in 256*16 = 4096 cycles.\n  // All path delays are within 1 cycle per operation above.\n\nendmodule\n"}
+module energy_balance_line (
+  input clk,
+  input rst_n,
+  input [2:0] n,
+  input [6:0] x_i [0:7],
+  input [6:0] y_i [0:7],
+  input [12:0] e_i [0:7],
+  input start,
+  output reg [31:0] min_length,
+  output reg impossible,
+  output reg done
+);
+
+  // FSM states
+  typedef enum logic [3:0] {
+    S_IDLE      = 4'd0,
+    S_SUMSETUP  = 4'd1,
+    S_SORT_MIN  = 4'd2,
+    S_SORT_REST = 4'd3,
+    S_BUILD     = 4'd4,
+    S_POP       = 4'd5,
+    S_DIST      = 4'd6,
+    S_DONE      = 4'd7
+  } state_t;
+
+  state_t state;
+
+  // Iteration counters
+  reg [11:0] cycle_cnt;       // up to 4095
+  reg [7:0] subset_idx;       // 0..255
+  reg [2:0] p_cnt;            // number of points in current subset (<=8)
+  reg [2:0] i_idx;            // generic index
+
+  // Energy arithmetic
+  reg [14:0] total_sum_int;   // sum of e_i (signed, 15 bits is enough for 8*2000=16000)
+  reg [15:0] total_sum_abs;   // abs(total_sum_int)
+  reg [14:0] subset_sum_int;  // subset sum (signed)
+  reg [15:0] subset_sum_abs;  // abs(subset_sum_int)
+  reg subset_valid;           // energy tolerance pass
+
+  // Points: Q16.16 fixed-point coordinates (xi, yi)
+  reg [31:0] x_fp [0:7];
+  reg [31:0] y_fp [0:7];
+
+  // Sorting (Graham's scan base point and rest sort)
+  reg [2:0] min_idx;          // index of min (by y, then x)
+  reg [31:0] ref_x, ref_y;    // base point Q16.16
+  reg [2:0] rest_cnt;         // number of non-base points in subset
+  reg [31:0] rest_angles [0:7]; // Q16.16 tangents (0..1)
+  reg [31:0] rest_dx [0:7], rest_dy [0:7]; // Q16.16 deltas to ref
+
+  // Point arrays after sorting by angle
+  reg [31:0] ang_pts_x [0:7]; // Q16.16
+  reg [31:0] ang_pts_y [0:7]; // Q16.16
+  reg [2:0] sort_inner;
+  reg [2:0] sort_outer;
+  reg [31:0] tmp_ang, tmp_dx, tmp_dy;
+  reg [31:0] tmp_x, tmp_y;
+
+  // Hull stack
+  reg [31:0] stack_x [0:7]; // Q16.16
+  reg [31:0] stack_y [0:7]; // Q16.16
+  reg [2:0] sp;             // stack pointer (points to next free slot)
+
+  // Cross product in Q16.16 (result is effectively Q16.16 since operands are Q16.16)
+  // To avoid size explosion, we keep 32-bit operands. The full product is 64-bit.
+  logic signed [63:0] cross_full;
+  reg signed [63:0] cross_reg;
+  reg [31:0] cross_hi; // high 32 bits of the 64-bit product (used when we need to inspect sign)
+
+  // Distance and perimeter (Q16.16)
+  reg [31:0] dx_fp, dy_fp;          // Q16.16
+  logic [63:0] dist2_full;          // dx^2 + dy^2 (Q32.32)
+  reg [31:0] dist2_hi;              // high 32 bits of dist2_full
+  logic [31:0] dist_sqrt_q16_16;    // sqrt approximation (Q16.16)
+  reg [31:0] hull_perimeter;        // Q16.16
+  reg [2:0] dist_idx;               // index for perimeter accumulation
+
+  // Sqrt approximation (Q16.16 input -> Q16.16 output)
+  function [31:0] sqrt_q16_16;
+    input [31:0] x; // Q16.16 unsigned, assumed 32-bit
+    integer i, k, left, right, mid;
+    reg [63:0] est_full;
+    reg [31:0] est, est_sq, err;
+    begin
+      // handle zero
+      if (x == 32'd0) begin
+        sqrt_q16_16 = 32'd0;
+        return;
+      end
+      // initial guess: shift right 2 bits (sqrt(x*2^-2) ~ sqrt(x)/2)
+      left = 0;
+      right = 32'h00010000; // 65536 in Q16.16
+      // 20 iterations should be enough for 16.16 range
+      for (i = 0; i < 20; i = i + 1) begin
+        mid = (left + right) >> 1;
+        est = mid;
+        est_full = $unsigned(($signed(est) * $signed(est)));
+        est_sq = est_full[63:32]; // high 32 bits
+        if (est_sq == x) begin
+          left = right = mid;
+        end else if (est_sq > x) begin
+          right = mid - 1;
+        end else begin
+          left = mid + 1;
+        end
+      end
+      // average to get closer
+      est = (left + right) >> 1;
+      // one-step Newton refinement
+      if (est != 0) begin
+        est_full = $unsigned($signed(x) * $signed(est));
+        // est_next = (est + x/est)/2; compute est_next^2 to compare with x
+        // Use k = (est + (x>>16)/est) for integer-like; For 16.16 we can approximate:
+        // Instead, do a simple integer Newton using hi parts:
+        // Compute y = (est + (x / est)) >> 1, then square y and compare with x.
+        // To keep it small, do two Newton iterations in Q16.16 space using high 32 bits as integer approx.
+        // First iteration:
+        err = x / est; // approximate in Q16.16 (coarse but ok)
+        est = (est + err) >> 1;
+        // Second iteration:
+        err = x / est;
+        est = (est + err) >> 1;
+      end
+      sqrt_q16_16 = est;
+    end
+  endfunction
+
+  // Combinational cross product result update
+  always @(*) begin
+    cross_full = $signed(dx_fp) * $signed(dy_fp);
+    cross_hi = cross_full[63:32];
+  end
+
+  // Combinational distance sqrt (approx) update
+  assign dist2_full = $unsigned($signed(dx_fp) * $signed(dx_fp)) + $unsigned($signed(dy_fp) * $signed(dy_fp));
+  assign dist_sqrt_q16_16 = sqrt_q16_16(dist2_full[63:32]);
+
+  // Main FSM and datapath
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      state <= S_IDLE;
+      cycle_cnt <= 12'd0;
+      subset_idx <= 8'd0;
+      min_length <= 32'h7fffffff; // very large
+      impossible <= 1'b0;
+      done <= 1'b0;
+      hull_perimeter <= 32'd0;
+      sp <= 3'd0;
+    end else begin
+      case (state)
+        S_IDLE: begin
+          if (start) begin
+            // Initialize
+            done <= 1'b0;
+            impossible <= 1'b0;
+            min_length <= 32'h7fffffff;
+            cycle_cnt <= 12'd0;
+            subset_idx <= 8'd0;
+            // compute total sum and abs
+            total_sum_int <= 15'd0;
+            for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin
+              total_sum_int <= total_sum_int + e_i[i_idx];
+            end
+            total_sum_abs <= (total_sum_int[14] == 1'b0) ? {1'b0, total_sum_int[14:0]} : (~{1'b0, total_sum_int[14:0]} + 1);
+            state <= S_SUMSETUP;
+          end
+        end
+
+        S_SUMSETUP: begin
+          // Setup subset points and sum
+          p_cnt <= 3'd0;
+          subset_sum_int <= 15'd0;
+          // clear point arrays
+          for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin
+            x_fp[i_idx] <= 32'd0;
+            y_fp[i_idx] <= 32'd0;
+          end
+          // gather points for current subset (bits 0..n-1)
+          for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin
+            if (subset_idx[i_idx] && (i_idx < n)) begin
+              x_fp[p_cnt] <= {x_i[i_idx], 16'd0}; // Q16.16
+              y_fp[p_cnt] <= {y_i[i_idx], 16'd0};
+              subset_sum_int <= subset_sum_int + e_i[i_idx];
+              p_cnt <= p_cnt + 1;
+            end
+          end
+          // check energy tolerance: |2*s - T| <= 0.3*T, T>0
+          subset_sum_abs <= (subset_sum_int[14] == 1'b0) ? {1'b0, subset_sum_int[14:0]} : (~{1'b0, subset_sum_int[14:0]} + 1);
+          state <= S_SORT_MIN;
+        end
+
+        S_SORT_MIN: begin
+          // Determine base point (min y, then min x)
+          if (p_cnt == 0) begin
+            subset_valid <= 1'b0;
+            state <= S_DIST; // perimeter remains 0
+            dist_idx <= 3'd0;
+            hull_perimeter <= 32'd0;
+          end else begin
+            min_idx <= 3'd0;
+            for (i_idx = 1; i_idx < 8; i_idx = i_idx + 1) begin
+              if (i_idx < p_cnt) begin
+                // compare y, then x
+                if ({1'b0, y_fp[i_idx]} < {1'b0, y_fp[min_idx]} ||
+                    ({1'b0, y_fp[i_idx]} == {1'b0, y_fp[min_idx]} && {1'b0, x_fp[i_idx]} < {1'b0, x_fp[min_idx]})) begin
+                  min_idx <= i_idx;
+                end
+              end
+            end
+            // prepare reference (base)
+            ref_x <= x_fp[min_idx];
+            ref_y <= y_fp[min_idx];
+            // collect rest
+            rest_cnt <= 3'd0;
+            for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin
+              if (i_idx != min_idx && i_idx < p_cnt) begin
+                rest_angles[rest_cnt] <= 32'd0; // will compute below
+                rest_dx[rest_cnt] <= x_fp[i_idx] - ref_x;
+                rest_dy[rest_cnt] <= y_fp[i_idx] - ref_y;
+                rest_cnt <= rest_cnt + 1;
+              end
+            end
+            // compute tangents for rest (dy/dx) in Q16.16
+            for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin
+              if (i_idx < rest_cnt) begin
+                if (rest_dx[i_idx] == 0 && rest_dy[i_idx] == 0) begin
+                  rest_angles[i_idx] <= 32'h00010000; // set to 1 to push later (identical point)
+                end else if (rest_dx[i_idx] == 0) begin
+                  rest_angles[i_idx] <= 32'h7fffffff; // +inf
+                end else begin
+                  rest_angles[i_idx] <= rest_dy[i_idx] / rest_dx[i_idx];
+                end
+              end
+            end
+            state <= S_SORT_REST;
+            sort_outer <= 3'd0;
+          end
+        end
+
+        S_SORT_REST: begin
+          // Simple bubble sort by angle (ascending)
+          if (rest_cnt <= 1) begin
+            // copy sorted rest into ang_pts
+            for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin
+              if (i_idx == 0) begin
+                ang_pts_x[i_idx] <= ref_x;
+                ang_pts_y[i_idx] <= ref_y;
+              end else if (i_idx < rest_cnt) begin
+                ang_pts_x[i_idx] <= ref_x + rest_dx[i_idx-1];
+                ang_pts_y[i_idx] <= ref_y + rest_dy[i_idx-1];
+              end else begin
+                ang_pts_x[i_idx] <= 32'd0;
+                ang_pts_y[i_idx] <= 32'd0;
+              end
+            end
+            sp <= 3'd0;
+            state <= S_BUILD;
+          end else begin
+            if (sort_outer < rest_cnt - 1) begin
+              if (sort_inner < (rest_cnt - 1 - sort_outer)) begin
+                // compare rest_angles[sort_inner] > rest_angles[sort_inner+1]
+                if (rest_angles[sort_inner] > rest_angles[sort_inner+1]) begin
+                  // swap angle
+                  tmp_ang <= rest_angles[sort_inner];
+                  rest_angles[sort_inner] <= rest_angles[sort_inner+1];
+                  rest_angles[sort_inner+1] <= tmp_ang;
+                  // swap dx, dy
+                  tmp_dx <= rest_dx[sort_inner];
+                  tmp_dy <= rest_dy[sort_inner];
+                  rest_dx[sort_inner] <= rest_dx[sort_inner+1];
+                  rest_dy[sort_inner] <= rest_dy[sort_inner+1];
+                  rest_dx[sort_inner+1] <= tmp_dx;
+                  rest_dy[sort_inner+1] <= tmp_dy;
+                end
+                sort_inner <= sort_inner + 1;
+              end else begin
+                sort_inner <= 3'd0;
+                sort_outer <= sort_outer + 1;
+              end
+            end else begin
+              // copy to ang_pts
+              for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin
+                if (i_idx == 0) begin
+                  ang_pts_x[i_idx] <= ref_x;
+                  ang_pts_y[i_idx] <= ref_y;
+                end else if (i_idx < rest_cnt) begin
+                  ang_pts_x[i_idx] <= ref_x + rest_dx[i_idx-1];
+                  ang_pts_y[i_idx] <= ref_y + rest_dy[i_idx-1];
+                end else begin
+                  ang_pts_x[i_idx] <= 32'd0;
+                  ang_pts_y[i_idx] <= 32'd0;
+                end
+              end
+              sp <= 3'd0;
+              state <= S_BUILD;
+            end
+          end
+        end
+
+        S_BUILD: begin
+          // Graham's scan: push points in order (skip duplicates) to stack
+          if (i_idx < rest_cnt) begin
+            // skip duplicate points (exactly same as ref)
+            if (ang_pts_x[i_idx+1] == ref_x && ang_pts_y[i_idx+1] == ref_y) begin
+              i_idx <= i_idx + 1;
+            end else begin
+              stack_x[sp] <= ang_pts_x[i_idx+1];
+              stack_y[sp] <= ang_pts_y[i_idx+1];
+              sp <= sp + 1;
+              i_idx <= i_idx + 1;
+            end
+          end else begin
+            // After pushing all, ensure at least 2 points are in stack for meaningful perimeter
+            if (sp == 0) begin
+              // Only base point (all rest were duplicates or none)
+              // Perimeter will be handled below
+              dist_idx <= 3'd0;
+              hull_perimeter <= 32'd0;
+              state <= S_POP;
+            end else if (sp == 1) begin
+              // Only two points: base + one more
+              // Perimeter will be handled below
+              dist_idx <= 3'd0;
+              hull_perimeter <= 32'd0;
+              state <= S_POP;
+            end else begin
+              // Initialize cross product check index
+              i_idx <= 3'd2; // start checking from third point in stack
+              state <= S_POP;
+            end
+          end
+        end
+
+        S_POP: begin
+          // Pop while cross <= 0
+          if (sp > 1 && i_idx < sp) begin
+            // cross of (p[sp-2], p[sp-1], p[i_idx])
+            dx_fp <= stack_x[sp-1] - stack_x[sp-2];
+            dy_fp <= stack_y[sp-1] - stack_y[sp-2];
+            cross_reg <= cross_full;
+            if (cross_reg <= 0) begin
+              // pop
+              sp <= sp - 1;
+            end else begin
+              i_idx <= i_idx + 1;
+            end
+          end else begin
+            // Finalize stack size (if sp==1 -> one point; sp==0 -> empty)
+            if (sp == 0) begin
+              // no valid hull (e.g., all same point), perimeter = 0
+              dist_idx <= 3'd0;
+              hull_perimeter <= 32'd0;
+            end else if (sp == 1) begin
+              // single point: perimeter = 0
+              dist_idx <= 3'd0;
+              hull_perimeter <= 32'd0;
+            end else begin
+              // start distance accumulation
+              dist_idx <= 1; // next edge from stack[0] to stack[1]
+              dx_fp <= stack_x[1] - stack_x[0];
+              dy_fp <= stack_y[1] - stack_y[0];
+              hull_perimeter <= 32'd0; // will accumulate in S_DIST
+            end
+            state <= S_DIST;
+          end
+        end
+
+        S_DIST: begin
+          // Accumulate perimeter over edges in the stack
+          if (sp <= 1) begin
+            // no edges
+            // hull_perimeter already 0
+            // Determine subset validity once (check tolerance)
+            if (total_sum_abs == 0) begin
+              // degenerate: allow only if subset == complement and sums equal
+              subset_valid <= (subset_sum_int == 0);
+            end else begin
+              // |2*s - T| <= 0.3*T using scaled inequality: 10*|2*s - T| <= 3*T
+              // Avoid division by using abs(2*s - T) * 10
+              // All values are integers; T is total_sum_abs (>=0)
+              logic [31:0] lhs, rhs;
+              logic [31:0] two_s, diff;
+              logic [31:0] diff_abs;
+              two_s = {1'b0, subset_sum_int, 1'b0}; // 2*s (shift-left 1)
+              if (total_sum_int >= 0) begin
+                diff = two_s - total_sum_int;
+              end else begin
+                diff = two_s + (~total_sum_int + 1); // subtract negative
+              end
+              if (diff[31] == 1'b0) diff_abs = diff; else diff_abs = ~diff + 1;
+              lhs = diff_abs * 10;
+              rhs = total_sum_abs * 3;
+              subset_valid <= (lhs <= rhs);
+            end
+            // Update min_length if valid
+            if (subset_valid) begin
+              if (hull_perimeter < min_length) begin
+                min_length <= hull_perimeter;
+              end
+            end
+            // Prepare next subset
+            cycle_cnt <= cycle_cnt + 12'd1;
+            subset_idx <= subset_idx + 8'd1;
+            if (subset_idx == 8'd255) begin
+              state <= S_DONE;
+            end else begin
+              state <= S_SUMSETUP;
+            end
+          end else begin
+            if (dist_idx < sp) begin
+              // dist2_full[63:32] is high 32 bits (Q16.16 squared value)
+              dist2_hi <= dist2_full[63:32];
+              // wait one cycle for sqrt (combinational but per cycle, simple pipeline)
+              state <= S_DIST; // stay in S_DIST, advance dist_idx next cycle after adding
+              // Add after sqrt becomes available next cycle. Use a flag to accumulate on next tick.
+              // Use dist_idx to control accumulation in following cycle using a latch-like reg
+              dist_idx <= dist_idx + 3'd1; // advance for next edge next cycle
+              // Actually accumulate now: use sqrt output combinatorially
+              hull_perimeter <= hull_perimeter + dist_sqrt_q16_16;
+            end else begin
+              // close hull: from last point to first
+              dx_fp <= stack_x[0] - stack_x[sp-1];
+              dy_fp <= stack_y[0] - stack_y[sp-1];
+              dist2_hi <= dist2_full[63:32];
+              // accumulate this last edge in the next cycle
+              dist_idx <= 3'd0; // marker to indicate just finished last edge
+              state <= S_DIST; // next cycle will add last segment
+            end
+          end
+        end
+
+        S_DONE: begin
+          done <= 1'b1;
+          impossible <= (min_length == 32'h7fffffff);
+          state <= S_IDLE; // latch here until next start
+        end
+
+        default: begin
+          state <= S_IDLE;
+        end
+      endcase
+    end
+  end
+
+  // Enforce total <= 4096 cycles; we design to finish in 256*16 = 4096 cycles.
+  // All path delays are within 1 cycle per operation above.
+
+endmodule

@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code":"module undulating_check (\n  input  [31:0] num,\n  output        is_undulating\n);\n\n  wire [3:0] d0 = num[31:28];\n  wire [3:0] d1 = num[27:24];\n  wire [3:0] d2 = num[23:20];\n  wire [3:0] d3 = num[19:16];\n  wire [3:0] d4 = num[15:12];\n  wire [3:0] d5 = num[11:8];\n  wire [3:0] d6 = num[7:4];\n  wire [3:0] d7 = num[3:0];\n\n  assign is_undulating =\n       (d0 == d2) & (d0 == d4) & (d0 == d6) &\n       (d1 == d3) & (d1 == d5) & (d1 == d7) &\n       (d0 != d1);\n\nendmodule"}

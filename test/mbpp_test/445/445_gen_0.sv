@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code": "module tuple_mult(\n  input  [7:0]  test_tup1 [0:3][0:1],\n  input  [7:0]  test_tup2 [0:3][0:1],\n  output reg [15:0] res       [0:3][0:1]\n);\n\n  integer i, j;\n\n  // Purely combinational element-wise multiplication\n  always @* begin\n    for (i = 0; i < 4; i = i + 1) begin\n      for (j = 0; j < 2; j = j + 1) begin\n        res[i][j] = test_tup1[i][j] * test_tup2[i][j];\n      end\n    end\n  end\n\nendmodule"}\n```

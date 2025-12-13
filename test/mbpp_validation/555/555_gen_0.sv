@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code":"module sum_cube_difference(\n  input  [7:0]  n,\n  output [29:0] result\n);\n\n  // Intermediate signals sized to avoid overflow\n  wire [8:0]   n_plus_1;   // n + 1 (max 256)\n  wire [16:0]  prod;       // n * (n + 1) (max 255*256 = 65280 < 2^16)\n  wire [15:0]  sum_s;      // Sum_S = (n*(n+1))/2 (max 32640 < 2^16)\n  wire [15:0]  sum_s_minus1;\n  wire [31:0]  full_mult;  // sum_s * (sum_s - 1) (max ~1.06e9 < 2^30)\n\n  assign n_plus_1    = n + 8'd1;\n  assign prod        = n * n_plus_1;\n  assign sum_s       = prod[16:1];       // divide by 2 (unsigned)\n  assign sum_s_minus1 = sum_s - 16'd1;\n  assign full_mult   = sum_s * sum_s_minus1;\n  assign result      = full_mult[29:0];  // 30-bit unsigned result\n\nendmodule"}\n```

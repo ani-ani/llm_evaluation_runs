@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code": "module elementwise_subtractor(\n  input  signed [6:0] tuple1 [3:0],\n  input  signed [6:0] tuple2 [3:0],\n  output signed [6:0] result [3:0]\n);\n\n  // Element-wise signed subtraction\n  assign result[0] = tuple1[0] - tuple2[0];\n  assign result[1] = tuple1[1] - tuple2[1];\n  assign result[2] = tuple1[2] - tuple2[2];\n  assign result[3] = tuple1[3] - tuple2[3];\n\nendmodule"}\n```

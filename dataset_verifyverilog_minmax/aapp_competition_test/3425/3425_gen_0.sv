@@ -1,4 +1,148 @@
-// Failed to parse code
+module queen_placement_calculator(
+  input clk,
+  input rst_n,
+  input start,
+  input [15:0] board_layout,  // Flattened 4x4 grid (1=usable, 0=broken)
+  output reg [3:0] max_queens,
+  output reg [15:0] num_ways,
+  output reg done
+);
 
-```json
-{"code": "module queen_placement_calculator(\n  input clk,\n  input rst_n,\n  input start,\n  input [15:0] board_layout,  // Flattened 4x4 grid (1=usable, 0=broken)\n  output reg [3:0] max_queens,\n  output reg [15:0] num_ways,\n  output reg done\n);\n\n  // State encoding\n  localparam IDLE      = 2'b00;\n  localparam PROCESS   = 2'b01;\n  localparam FINISHED  = 2'b10;\n\n  // Internal signals\n  reg [1:0] state, state_next;\n  reg [15:0] cfg, cfg_next;           // Current queen configuration under test\n  reg [3:0] cur_max, cur_max_next;    // Current maximum queens found\n  reg [15:0] cur_ways, cur_ways_next; // Number of ways achieving cur_max\n  reg [4:0] count_ones;               // Queen count for current configuration\n  reg conflict;                       // 1 if current configuration invalid (attack condition)\n\n  // Distance-based bitwise attack checks\n  // Each queen can attack another if:\n  // - same row:           dr == 0\n  // - same column:        dc == 0\n  // - same diagonal:      abs(dr) == abs(dc)\n  // We detect any attack between any two queens.\n  // This is equivalent to "no pair of queens attack each other";\n  // if there is no pairwise attack, there cannot be a 3-queen mutual-attack set.\n\n  // Row-major index mapping:\n  // bit k = row = k>>2, col = k&2'b11\n\n  // Compute conflicts using combinational logic (uses current 'cfg')\n  integer i, j, dr, dc;\n  always @(*) begin\n    conflict = 1'b0;\n    if (cfg == 16'b0) begin\n      conflict = 1'b0; // no queens, no conflicts\n    end else begin\n      for (i = 0; i < 16; i = i + 1) begin\n        if (cfg[i]) begin\n          for (j = i + 1; j < 16; j = j + 1) begin\n            if (cfg[j]) begin\n              dr = (i >> 2) - (j >> 2);\n              dc = (i & 3) - (j & 3);\n              if ((dr == 0) || (dc == 0) || ($abs(dr) == $abs(dc))) begin\n                conflict = 1'b1;\n                // No early-exit from combinatorial loop; conflict remains 1\n              end\n            end\n          end\n        end\n      end\n    end\n  end\n\n  // Count number of set bits in 'cfg' (combinational)\n  always @(*) begin\n    count_ones = 5'd0;\n    for (i = 0; i < 16; i = i + 1) begin\n      if (cfg[i]) count_ones = count_ones + 1'b1;\n    end\n  end\n\n  // Sequential logic (synchronous reset, positive clk)\n  always @(posedge clk) begin\n    if (!rst_n) begin\n      state     <= IDLE;\n      cfg       <= 16'b0;\n      cur_max   <= 4'd0;\n      cur_ways  <= 16'b0;\n      done      <= 1'b0;\n    end else begin\n      state     <= state_next;\n      cfg       <= cfg_next;\n      cur_max   <= cur_max_next;\n      cur_ways  <= cur_ways_next;\n      done      <= (state_next == FINISHED);\n    end\n  end\n\n  // State machine next logic\n  always @(*) begin\n    // defaults\n    state_next = state;\n    cfg_next   = cfg;\n    cur_max_next = cur_max;\n    cur_ways_next = cur_ways;\n\n    case (state)\n      IDLE: begin\n        if (start) begin\n          cfg_next   = 16'b0;\n          cur_max_next = 4'd0;\n          cur_ways_next = 16'b0;\n          state_next = PROCESS;\n        end\n      end\n\n      PROCESS: begin\n        // Evaluate current configuration 'cfg'\n        if ((cfg & ~board_layout) == 16'b0) begin // all queens on usable cells\n          if (!conflict) begin // no pairwise attacks => also no 3-queen mutual attack\n            if (count_ones > cur_max) begin\n              cur_max_next  = count_ones;\n              cur_ways_next = 16'd1;\n            end else if (count_ones == cur_max) begin\n              cur_ways_next = cur_ways + 1'b1;\n            end\n          end\n        end\n\n        // Move to next configuration (2^16 possible patterns)\n        if (cfg == 16'hFFFF) begin\n          state_next = FINISHED;\n        end else begin\n          cfg_next = cfg + 1'b1;\n        end\n      end\n\n      FINISHED: begin\n        if (!start) begin\n          state_next = IDLE; // allow re-start after 'start' deasserts\n        end\n        // otherwise stay finished until start deasserts\n      end\n\n      default: begin\n        state_next = IDLE;\n      end\n    endcase\n  end\n\n  // Output assignments (registered for stable results after 'done')\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      max_queens <= 4'd0;\n      num_ways   <= 16'd0;\n    end else begin\n      max_queens <= cur_max;\n      num_ways   <= cur_ways;\n    end\n  end\n\nendmodule\n"}
+  // State encoding
+  localparam IDLE      = 2'b00;
+  localparam PROCESS   = 2'b01;
+  localparam FINISHED  = 2'b10;
+
+  // Internal signals
+  reg [1:0] state, state_next;
+  reg [15:0] cfg, cfg_next;           // Current queen configuration under test
+  reg [3:0] cur_max, cur_max_next;    // Current maximum queens found
+  reg [15:0] cur_ways, cur_ways_next; // Number of ways achieving cur_max
+  reg [4:0] count_ones;               // Queen count for current configuration
+  reg conflict;                       // 1 if current configuration invalid (attack condition)
+
+  // Distance-based bitwise attack checks
+  // Each queen can attack another if:
+  // - same row:           dr == 0
+  // - same column:        dc == 0
+  // - same diagonal:      abs(dr) == abs(dc)
+  // We detect any attack between any two queens.
+  // This is equivalent to "no pair of queens attack each other";
+  // if there is no pairwise attack, there cannot be a 3-queen mutual-attack set.
+
+  // Row-major index mapping:
+  // bit k = row = k>>2, col = k&2'b11
+
+  // Compute conflicts using combinational logic (uses current 'cfg')
+  integer i, j, dr, dc;
+  always @(*) begin
+    conflict = 1'b0;
+    if (cfg == 16'b0) begin
+      conflict = 1'b0; // no queens, no conflicts
+    end else begin
+      for (i = 0; i < 16; i = i + 1) begin
+        if (cfg[i]) begin
+          for (j = i + 1; j < 16; j = j + 1) begin
+            if (cfg[j]) begin
+              dr = (i >> 2) - (j >> 2);
+              dc = (i & 3) - (j & 3);
+              if ((dr == 0) || (dc == 0) || ($abs(dr) == $abs(dc))) begin
+                conflict = 1'b1;
+                // No early-exit from combinatorial loop; conflict remains 1
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  // Count number of set bits in 'cfg' (combinational)
+  always @(*) begin
+    count_ones = 5'd0;
+    for (i = 0; i < 16; i = i + 1) begin
+      if (cfg[i]) count_ones = count_ones + 1'b1;
+    end
+  end
+
+  // Sequential logic (synchronous reset, positive clk)
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      state     <= IDLE;
+      cfg       <= 16'b0;
+      cur_max   <= 4'd0;
+      cur_ways  <= 16'b0;
+      done      <= 1'b0;
+    end else begin
+      state     <= state_next;
+      cfg       <= cfg_next;
+      cur_max   <= cur_max_next;
+      cur_ways  <= cur_ways_next;
+      done      <= (state_next == FINISHED);
+    end
+  end
+
+  // State machine next logic
+  always @(*) begin
+    // defaults
+    state_next = state;
+    cfg_next   = cfg;
+    cur_max_next = cur_max;
+    cur_ways_next = cur_ways;
+
+    case (state)
+      IDLE: begin
+        if (start) begin
+          cfg_next   = 16'b0;
+          cur_max_next = 4'd0;
+          cur_ways_next = 16'b0;
+          state_next = PROCESS;
+        end
+      end
+
+      PROCESS: begin
+        // Evaluate current configuration 'cfg'
+        if ((cfg & ~board_layout) == 16'b0) begin // all queens on usable cells
+          if (!conflict) begin // no pairwise attacks => also no 3-queen mutual attack
+            if (count_ones > cur_max) begin
+              cur_max_next  = count_ones;
+              cur_ways_next = 16'd1;
+            end else if (count_ones == cur_max) begin
+              cur_ways_next = cur_ways + 1'b1;
+            end
+          end
+        end
+
+        // Move to next configuration (2^16 possible patterns)
+        if (cfg == 16'hFFFF) begin
+          state_next = FINISHED;
+        end else begin
+          cfg_next = cfg + 1'b1;
+        end
+      end
+
+      FINISHED: begin
+        if (!start) begin
+          state_next = IDLE; // allow re-start after 'start' deasserts
+        end
+        // otherwise stay finished until start deasserts
+      end
+
+      default: begin
+        state_next = IDLE;
+      end
+    endcase
+  end
+
+  // Output assignments (registered for stable results after 'done')
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      max_queens <= 4'd0;
+      num_ways   <= 16'd0;
+    end else begin
+      max_queens <= cur_max;
+      num_ways   <= cur_ways;
+    end
+  end
+
+endmodule

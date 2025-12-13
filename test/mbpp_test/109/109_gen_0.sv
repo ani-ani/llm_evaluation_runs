@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code":"module odd_equivalent(\n  input  [7:0] s,\n  input  [2:0] n,\n  output [3:0] count\n);\n\n  integer i;\n  reg [3:0] cnt;\n  reg [7:0] rotated;\n\n  always @* begin\n    cnt = 4'd0;\n    for (i = 0; i < n; i = i + 1) begin\n      rotated = (s >> i) | (s << (8 - i));\n      if (rotated[0])\n        cnt = cnt + 1'b1;\n    end\n  end\n\n  assign count = cnt;\n\nendmodule"}\n```

@@ -1,4 +1,0 @@
-// Failed to parse code
-```json
-{"code": "module max_sublist_length(\n  input  [2:0] length1,\n  input  [2:0] length2,\n  input  [2:0] length3,\n  input  [2:0] length4,\n  output reg [2:0] max_length\n);\n\n  reg [2:0] temp_max1;\n  reg [2:0] temp_max2;\n\n  always @(*) begin\n    // Step 1: Compare length1 and length2\n    if (length1 >= length2)\n      temp_max1 = length1;\n    else\n      temp_max1 = length2;\n\n    // Step 2: Compare length3 and length4\n    if (length3 >= length4)\n      temp_max2 = length3;\n    else\n      temp_max2 = length4;\n\n    // Step 3: Compare temp_max1 and temp_max2\n    if (temp_max1 >= temp_max2)\n      max_length = temp_max1;\n    else\n      max_length = temp_max2;\n  end\n\nendmodule"}}
-```

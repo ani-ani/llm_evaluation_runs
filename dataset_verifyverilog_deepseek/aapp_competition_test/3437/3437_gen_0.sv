@@ -76,12 +76,12 @@ module max_tube_pairs (
                 reg [14:0] split3_p1 = tubes_reg[i] + tubes_reg[l];
                 reg [14:0] split3_p2 = tubes_reg[j] + tubes_reg[k];
                 
-                // 분기 체크
+         
                 valid_split = (split1_p1 <= L1_reg && split1_p2 <= L2_reg) ||
                              (split2_p1 <= L1_reg && split2_p2 <= L2_reg) ||
                              (split3_p1 <= L1_reg && split3_p2 <= L2_reg);
 
-                // sum 병렬 계산
+ 
                 total = tubes_reg[i] + tubes_reg[j] + tubes_reg[k] + tubes_reg[l];
 
                 // Update best solution

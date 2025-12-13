@@ -1,3 +1,174 @@
-// Failed to parse code
-```json
-{"code": "module zamboni_controller(\n  input clk, // clock\n  input rst_n, // active-low reset\n  input start, // start signal\n  input [2:0] r, // rows (3-bit, max 8)\n  input [2:0] c, // columns (3-bit, max 8)\n  input [2:0] start_i, // start row (1-8)\n  input [2:0] start_j, // start column (1-8)\n  input [3:0] n, // num steps (4-bit, max 16)\n  output reg [4:0] grid [0:7][0:7], // 8x8 grid (5 bits: 0=., 1=@, 2-27=A-Z)\n  output reg done // high when finished\n);\n\n  // Grid/char constants\n  localparam GRID_W = 8;\n  localparam GRID_H = 8;\n  localparam CHAR_DOT = 5'd0;\n  localparam CHAR_AT  = 5'd1;\n  localparam CHAR_A   = 5'd2;\n  localparam CHAR_Z   = 5'd27;\n\n  // FSM states\n  localparam ST_IDLE = 1'b0;\n  localparam ST_RUN  = 1'b1;\n\n  // Direction encoding: 00=up, 01=right, 10=down, 11=left\n  reg state;\n  reg start_sync, start_prev;\n\n  // Iteration and step counters\n  reg [3:0] step_size;       // 1..n per-iteration step size\n  reg [3:0] iter_cnt;        // 1..n iteration counter\n  reg [3:0] step_cnt;        // 0..step_size-1 within an iteration\n\n  // Position and direction\n  reg [2:0] cur_x, cur_y;    // current grid cell (0..7)\n  reg [1:0] dir;             // 2-bit direction\n\n  // Letter/color state: 2..27 (A..Z)\n  reg [4:0] letter_val;      // current color value (2..27)\n\n  // Internal wires for next values\n  wire [2:0] nxt_x, nxt_y;\n  wire [4:0] next_letter;\n  wire [1:0] next_dir;\n\n  // Next-position logic based on direction with wrapping\n  assign nxt_x = (dir == 2'b00) ? (cur_x - 1) :\n                 (dir == 2'b10) ? (cur_x + 1) : cur_x;\n  assign nxt_y = (dir == 2'b01) ? (cur_y + 1) :\n                 (dir == 2'b11) ? (cur_y - 1) : cur_y;\n  // Wrap within 0..7 using modulo 8\n  assign nxt_x = nxt_x % GRID_W;\n  assign nxt_y = nxt_y % GRID_H;\n\n  // Next letter wraps Z->A\n  assign next_letter = (letter_val == CHAR_Z) ? CHAR_A : (letter_val + 1);\n\n  // Next direction: 90° clockwise rotation\n  // 00(up)->01(right)->10(down)->11(left)->00\n  assign next_dir = (dir == 2'b00) ? 2'b01 :\n                    (dir == 2'b01) ? 2'b10 :\n                    (dir == 2'b10) ? 2'b11 : 2'b00;\n\n  integer i, j;\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      // Reset state\n      state <= ST_IDLE;\n      done <= 1'b0;\n      start_sync <= 1'b0;\n      start_prev <= 1'b0;\n\n      // Clear grid\n      for (i = 0; i < GRID_W; i = i + 1) begin\n        for (j = 0; j < GRID_H; j = j + 1) begin\n          grid[i][j] <= CHAR_DOT;\n        end\n      end\n\n      // Counters and control\n      step_size <= 4'd0;\n      iter_cnt  <= 4'd0;\n      step_cnt  <= 4'd0;\n\n      // Position, direction, color\n      cur_x     <= 3'd0;\n      cur_y     <= 3'd0;\n      dir       <= 2'b00;\n      letter_val<= CHAR_A;\n    end else begin\n      // Synchronize/start edge detection\n      start_sync <= start;\n      start_prev <= start_sync;\n\n      case (state)\n        ST_IDLE: begin\n          if (start_prev && !start_sync) begin\n            // Initialize\n            done      <= 1'b0;\n\n            // Clear grid\n            for (i = 0; i < GRID_W; i = i + 1) begin\n              for (j = 0; j < GRID_H; j = j + 1) begin\n                grid[i][j] <= CHAR_DOT;\n              end\n            end\n\n            // Start position (1-based inputs)\n            cur_x <= (start_j - 1) % GRID_W;\n            cur_y <= (start_i - 1) % GRID_H;\n\n            // Control\n            step_size <= 4'd1;     // first iteration uses 1 step\n            iter_cnt  <= 4'd1;     // just started first iteration\n            step_cnt  <= 4'd0;     // no steps taken yet in this iteration\n\n            // Direction and color\n            dir       <= 2'b00;    // initial direction: up\n            letter_val<= CHAR_A;   // initial color: 'A'\n\n            state <= ST_RUN;\n          end else begin\n            done <= 1'b0;\n          end\n        end\n\n        ST_RUN: begin\n          // One step per cycle in current direction\n          if (iter_cnt > 0 && iter_cnt <= n) begin\n            // Move and paint current cell with current letter\n            grid[cur_x][cur_y] <= letter_val;\n\n            // Advance position\n            cur_x <= nxt_x;\n            cur_y <= nxt_y;\n\n            // Update step counter\n            step_cnt <= step_cnt + 1;\n\n            // If finished all steps in this iteration, prepare next iteration\n            if (step_cnt == (step_size - 1)) begin\n              // Rotate direction\n              dir <= next_dir;\n              // Next letter\n              letter_val <= next_letter;\n              // Prepare next iteration or finish\n              if (iter_cnt == n) begin\n                // Mark final cell as '@'\n                grid[cur_x][cur_y] <= CHAR_AT;\n                done <= 1'b1;\n                state <= ST_IDLE;\n              end else begin\n                iter_cnt <= iter_cnt + 1;\n                step_size <= step_size + 1;\n                step_cnt <= 4'd0;\n              end\n            end\n          end else begin\n            // Should not happen; safety fallback\n            done <= 1'b1;\n            state <= ST_IDLE;\n          end\n        end\n\n        default: begin\n          state <= ST_IDLE;\n        end\n      endcase\n    end\n  end\n\nendmodule\n"}
+module zamboni_controller(
+  input clk, // clock
+  input rst_n, // active-low reset
+  input start, // start signal
+  input [2:0] r, // rows (3-bit, max 8)
+  input [2:0] c, // columns (3-bit, max 8)
+  input [2:0] start_i, // start row (1-8)
+  input [2:0] start_j, // start column (1-8)
+  input [3:0] n, // num steps (4-bit, max 16)
+  output reg [4:0] grid [0:7][0:7], // 8x8 grid (5 bits: 0=., 1=@, 2-27=A-Z)
+  output reg done // high when finished
+);
+
+  // Grid/char constants
+  localparam GRID_W = 8;
+  localparam GRID_H = 8;
+  localparam CHAR_DOT = 5'd0;
+  localparam CHAR_AT  = 5'd1;
+  localparam CHAR_A   = 5'd2;
+  localparam CHAR_Z   = 5'd27;
+
+  // FSM states
+  localparam ST_IDLE = 1'b0;
+  localparam ST_RUN  = 1'b1;
+
+  // Direction encoding: 00=up, 01=right, 10=down, 11=left
+  reg state;
+  reg start_sync, start_prev;
+
+  // Iteration and step counters
+  reg [3:0] step_size;       // 1..n per-iteration step size
+  reg [3:0] iter_cnt;        // 1..n iteration counter
+  reg [3:0] step_cnt;        // 0..step_size-1 within an iteration
+
+  // Position and direction
+  reg [2:0] cur_x, cur_y;    // current grid cell (0..7)
+  reg [1:0] dir;             // 2-bit direction
+
+  // Letter/color state: 2..27 (A..Z)
+  reg [4:0] letter_val;      // current color value (2..27)
+
+  // Internal wires for next values
+  wire [2:0] nxt_x, nxt_y;
+  wire [4:0] next_letter;
+  wire [1:0] next_dir;
+
+  // Next-position logic based on direction with wrapping
+  assign nxt_x = (dir == 2'b00) ? (cur_x - 1) :
+                 (dir == 2'b10) ? (cur_x + 1) : cur_x;
+  assign nxt_y = (dir == 2'b01) ? (cur_y + 1) :
+                 (dir == 2'b11) ? (cur_y - 1) : cur_y;
+  // Wrap within 0..7 using modulo 8
+  assign nxt_x = nxt_x % GRID_W;
+  assign nxt_y = nxt_y % GRID_H;
+
+  // Next letter wraps Z->A
+  assign next_letter = (letter_val == CHAR_Z) ? CHAR_A : (letter_val + 1);
+
+  // Next direction: 90° clockwise rotation
+  // 00(up)->01(right)->10(down)->11(left)->00
+  assign next_dir = (dir == 2'b00) ? 2'b01 :
+                    (dir == 2'b01) ? 2'b10 :
+                    (dir == 2'b10) ? 2'b11 : 2'b00;
+
+  integer i, j;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      // Reset state
+      state <= ST_IDLE;
+      done <= 1'b0;
+      start_sync <= 1'b0;
+      start_prev <= 1'b0;
+
+      // Clear grid
+      for (i = 0; i < GRID_W; i = i + 1) begin
+        for (j = 0; j < GRID_H; j = j + 1) begin
+          grid[i][j] <= CHAR_DOT;
+        end
+      end
+
+      // Counters and control
+      step_size <= 4'd0;
+      iter_cnt  <= 4'd0;
+      step_cnt  <= 4'd0;
+
+      // Position, direction, color
+      cur_x     <= 3'd0;
+      cur_y     <= 3'd0;
+      dir       <= 2'b00;
+      letter_val<= CHAR_A;
+    end else begin
+      // Synchronize/start edge detection
+      start_sync <= start;
+      start_prev <= start_sync;
+
+      case (state)
+        ST_IDLE: begin
+          if (start_prev && !start_sync) begin
+            // Initialize
+            done      <= 1'b0;
+
+            // Clear grid
+            for (i = 0; i < GRID_W; i = i + 1) begin
+              for (j = 0; j < GRID_H; j = j + 1) begin
+                grid[i][j] <= CHAR_DOT;
+              end
+            end
+
+            // Start position (1-based inputs)
+            cur_x <= (start_j - 1) % GRID_W;
+            cur_y <= (start_i - 1) % GRID_H;
+
+            // Control
+            step_size <= 4'd1;     // first iteration uses 1 step
+            iter_cnt  <= 4'd1;     // just started first iteration
+            step_cnt  <= 4'd0;     // no steps taken yet in this iteration
+
+            // Direction and color
+            dir       <= 2'b00;    // initial direction: up
+            letter_val<= CHAR_A;   // initial color: 'A'
+
+            state <= ST_RUN;
+          end else begin
+            done <= 1'b0;
+          end
+        end
+
+        ST_RUN: begin
+          // One step per cycle in current direction
+          if (iter_cnt > 0 && iter_cnt <= n) begin
+            // Move and paint current cell with current letter
+            grid[cur_x][cur_y] <= letter_val;
+
+            // Advance position
+            cur_x <= nxt_x;
+            cur_y <= nxt_y;
+
+            // Update step counter
+            step_cnt <= step_cnt + 1;
+
+            // If finished all steps in this iteration, prepare next iteration
+            if (step_cnt == (step_size - 1)) begin
+              // Rotate direction
+              dir <= next_dir;
+              // Next letter
+              letter_val <= next_letter;
+              // Prepare next iteration or finish
+              if (iter_cnt == n) begin
+                // Mark final cell as '@'
+                grid[cur_x][cur_y] <= CHAR_AT;
+                done <= 1'b1;
+                state <= ST_IDLE;
+              end else begin
+                iter_cnt <= iter_cnt + 1;
+                step_size <= step_size + 1;
+                step_cnt <= 4'd0;
+              end
+            end
+          end else begin
+            // Should not happen; safety fallback
+            done <= 1'b1;
+            state <= ST_IDLE;
+          end
+        end
+
+        default: begin
+          state <= ST_IDLE;
+        end
+      endcase
+    end
+  end
+
+endmodule

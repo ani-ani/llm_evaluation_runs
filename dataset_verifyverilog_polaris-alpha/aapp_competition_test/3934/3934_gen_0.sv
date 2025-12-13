@@ -1,0 +1,54 @@
+module tree_edge_operation_check(
+  input  [2:0] node_id [7:0],
+  input  [7:0] adj_matrix [7:0],
+  output reg result
+);
+
+  // Degree wires for each node (0-7), 3 bits are enough (0-7)
+  wire [2:0] deg [7:0];
+
+  // Compute degrees using parallel additions of adjacency bits
+  assign deg[0] = adj_matrix[0][0] + adj_matrix[0][1] + adj_matrix[0][2] + adj_matrix[0][3]
+                + adj_matrix[0][4] + adj_matrix[0][5] + adj_matrix[0][6] + adj_matrix[0][7];
+
+  assign deg[1] = adj_matrix[1][0] + adj_matrix[1][1] + adj_matrix[1][2] + adj_matrix[1][3]
+                + adj_matrix[1][4] + adj_matrix[1][5] + adj_matrix[1][6] + adj_matrix[1][7];
+
+  assign deg[2] = adj_matrix[2][0] + adj_matrix[2][1] + adj_matrix[2][2] + adj_matrix[2][3]
+                + adj_matrix[2][4] + adj_matrix[2][5] + adj_matrix[2][6] + adj_matrix[2][7];
+
+  assign deg[3] = adj_matrix[3][0] + adj_matrix[3][1] + adj_matrix[3][2] + adj_matrix[3][3]
+                + adj_matrix[3][4] + adj_matrix[3][5] + adj_matrix[3][6] + adj_matrix[3][7];
+
+  assign deg[4] = adj_matrix[4][0] + adj_matrix[4][1] + adj_matrix[4][2] + adj_matrix[4][3]
+                + adj_matrix[4][4] + adj_matrix[4][5] + adj_matrix[4][6] + adj_matrix[4][7];
+
+  assign deg[5] = adj_matrix[5][0] + adj_matrix[5][1] + adj_matrix[5][2] + adj_matrix[5][3]
+                + adj_matrix[5][4] + adj_matrix[5][5] + adj_matrix[5][6] + adj_matrix[5][7];
+
+  assign deg[6] = adj_matrix[6][0] + adj_matrix[6][1] + adj_matrix[6][2] + adj_matrix[6][3]
+                + adj_matrix[6][4] + adj_matrix[6][5] + adj_matrix[6][6] + adj_matrix[6][7];
+
+  assign deg[7] = adj_matrix[7][0] + adj_matrix[7][1] + adj_matrix[7][2] + adj_matrix[7][3]
+                + adj_matrix[7][4] + adj_matrix[7][5] + adj_matrix[7][6] + adj_matrix[7][7];
+
+  // Flags for nodes having degree 2
+  wire has_deg2_0 = (deg[0] == 3'd2);
+  wire has_deg2_1 = (deg[1] == 3'd2);
+  wire has_deg2_2 = (deg[2] == 3'd2);
+  wire has_deg2_3 = (deg[3] == 3'd2);
+  wire has_deg2_4 = (deg[4] == 3'd2);
+  wire has_deg2_5 = (deg[5] == 3'd2);
+  wire has_deg2_6 = (deg[6] == 3'd2);
+  wire has_deg2_7 = (deg[7] == 3'd2);
+
+  // OR all degree-2 flags to get failure
+  wire any_deg2 = has_deg2_0 | has_deg2_1 | has_deg2_2 | has_deg2_3 |
+                  has_deg2_4 | has_deg2_5 | has_deg2_6 | has_deg2_7;
+
+  // Combinational result: 1 if no degree-2 node, else 0
+  always @* begin
+    result = ~any_deg2;
+  end
+
+endmodule

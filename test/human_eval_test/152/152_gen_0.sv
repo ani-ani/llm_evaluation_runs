@@ -1,3 +1,0 @@
-// Failed to parse code
-```json
-{"code": "module score_comparator(\n  input  signed [7:0] scores  [0:7],\n  input  signed [7:0] guesses [0:7],\n  output reg   [7:0] differences [0:7]\n);\n\n  integer i;\n  reg signed [8:0] diff;\n\n  always @* begin\n    for (i = 0; i < 8; i = i + 1) begin\n      if (scores[i] == guesses[i]) begin\n        differences[i] = 8'd0;\n      end else begin\n        diff = scores[i] - guesses[i];\n        if (diff[8] == 1'b1) begin\n          differences[i] = (~diff[7:0]) + 8'd1;\n        end else begin\n          differences[i] = diff[7:0];\n        end\n      end\n    end\n  end\n\nendmodule"}\n```

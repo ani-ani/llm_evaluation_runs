@@ -199,7 +199,7 @@ module tree_optimizer (
   function [7:0] component_mask_from_edge_removal(input [2:0] rem_index);
     // Start with full adjacency
     for (int i = 0; i < 8; i++) adj_work[i] = adj[i];
-    if (|rem_index) begin // just to keep仿真友善
+    if (|rem_index) begin // just to keep
     end
     // Remove edge rem_i from working graph
     if (o_valid[rem_index]) begin
