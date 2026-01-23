@@ -1,0 +1,116 @@
+Design a sequential Verilog module named 'fruit_distribution' that computes the number of mangoes by subtracting apples and oranges from a total fruit count.
+
+The module parses a fixed-width string representing apples and oranges. The string format is strictly: "[A] apples and [B] oranges", where [A] and [B] are 1-2 digit decimal numbers (0-99).
+
+Inputs:
+  input clk                // Clock signal
+  input rst_n              // Active-low reset
+  input start              // Start computation (high for 1 cycle)
+  input [7:0] char_in      // Input character (ASCII) for string loading
+  input [5:0] char_index   // Index to write char_in (0-31)
+  input [7:0] total_fruits // Total number of fruits (0-255)
+
+Outputs:
+  output reg [7:0] mangoes // Result: number of mangoes
+  output reg done          // High for 1 cycle when result is valid
+
+Internal Behavior:
+1. String Storage: The module must store the input string in an internal memory. The testbench will write the string character-by-character using 'char_in' and 'char_index' before asserting 'start'.
+2. Parsing: On 'start', the FSM scans the stored string to find the two numbers.
+   - Scan for the first digit to get 'apples' (A).
+   - Scan for the second digit after "and" to get 'oranges' (B).
+   - Handle 1 or 2 digit numbers.
+3. Calculation: Compute result = total_fruits - apples - oranges.
+4. Range: Inputs A, B, and Total are 0-99, 0-99, and 0-255 respectively. Result fits in 8 bits (handling negative results as 0 is acceptable, but typical signed logic works).
+
+States: IDLE, READ_APPLE, READ_ORANGE, CALCULATE, DONE.
+Latency: Result valid approx 50-60 clock cycles after start (allowing for string scan).
+
+Verilog Constraints:
+- Use Icarus Verilog compatible syntax.
+- Implement internal storage (e.g., reg [7:0] string_mem [0:31]) to hold the string.
+- Character ASCII codes: '0' is 48 (0x30), '9' is 57 (0x39).
+- Helper characters: ' ' (32), 'a' (97), 'n' (110), 'd' (100), 'o' (111), 'r' (114), 'g' (103), 'e' (101), 's' (115).
+
+Wait, actually, let's simplify the interface to match the text processing capability. The testbench will need to handle the ASCII parsing. To make the testbench robust, the Verilog module should just act as the solver, but wait, Verilog doesn't parse strings.
+
+Correction on Design:
+To make this implementable in HDL while keeping the 'string parsing' theme, we will implement a parser that reads a fixed-width byte stream.
+
+Revised Interface for Implementability:
+The 'String Processing' rule says treat strings as fixed-width byte arrays. However, a pure hardware string parser is complex. To make this a valid benchmark, we will change the input interface to match the math, or implement a specific state machine for the *exact* format.
+
+Let's go with a state machine that consumes the ASCII stream.
+
+Inputs:
+  input clk;
+  input rst_n;
+  input start;
+  input [7:0] char_in;  // ASCII character input
+  input valid_char;     // Pulse high when char_in is valid
+  input [7:0] total;    // Total fruits (0-255)
+
+Outputs:
+  output reg [7:0] mangoes;
+  output reg done;
+
+Behavior: The state machine reads ASCII characters one by one via 'char_in' (pushed by testbench). It waits for start, then looks for digits.
+
+Wait, the prompt needs to be exactly what the LLM needs to generate. If I ask for a string parser, it might fail. But the instructions say 'Be Creative'.
+
+Let's assume the 'Prompt' should instruct the LLM to build the parser. The testbench will feed characters.
+
+Let's refine the inputs to make the testbench easier to write.
+
+Interface:
+  input clk, rst_n, start;
+  input [7:0] char_data; // Current ASCII char
+  input [4:0] char_valid;// High to load char_data
+  input [7:0] total;
+  output [7:0] mangoes;
+  output done;
+
+Internal: Buffer for string. Max length 20 chars. 
+
+Wait, the original problem has specific test cases. The testbench needs to feed these strings.
+
+Alternative simplified approach for HDL:
+It is very difficult to implement a generic string parser in Verilog without a soft-core processor. 
+
+Constraint Adjustment: The problem is "String Parsing + Math". The math is easy. The string part is hard. 
+
+However, the 'core philosophy' says: "String operations: Treat strings as fixed-width byte arrays".
+
+Let's design the module to accept the numbers directly? No, that defeats the purpose.
+
+Let's design it as a "Byte Stream Parser". 
+
+Prompt Logic:
+1. Store the incoming byte stream (characters).
+2. On 'start', scan the stored buffer.
+3. Identify digits based on ASCII codes.
+4. Extract values.
+5. Subtract.
+
+Let's tighten the input specification to make it robust.
+
+Inputs:
+  - clk, rst_n, start
+  - char_in [7:0]: The character byte.
+  - write_en: High to write char_in to internal buffer.
+  - total [7:0]: The total fruits.
+
+Outputs:
+  - result [7:0]: The mango count.
+  - done: High when finished.
+
+This implies an internal buffer. The testbench writes the string to the buffer, then asserts start.
+
+Let's assume the string format is fixed enough that we can parse it with a state machine looking for "apples", "and", "oranges".
+
+Actually, a safer bet for a benchmark that won't flake out is to limit the input format strictly.
+
+Format: "[A] apples and [B] oranges"
+Example: "5 apples and 6 oranges"
+
+Let's try to write the prompt for this.

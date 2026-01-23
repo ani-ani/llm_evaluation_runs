@@ -1,0 +1,30 @@
+Design a combinational Verilog module named 'balloon_eq' that determines equivalence of two simplified Balloon programs. The programs are parsed into a tree structure represented by a list of nodes provided as inputs.
+
+The module should compute the canonical multiset representation of the expression tree for both programs and compare them. Two programs are equivalent if they produce the same multiset of values with the same probability distribution (ignoring order).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] program_id // 0 for A, 1 for B
+input [7:0] node_type // Node type: 0=VALUE, 1=CONCAT, 2=SHUFFLE, 3=SORTED
+input [31:0] node_value // Integer value if type=VALUE, else unused
+input [7:0] child1_idx // Index of first child node (255 if none)
+input [7:0] child2_idx // Index of second child node (255 if none)
+input [7:0] num_nodes // Number of nodes in the current program (max 8)
+input node_valid // High when node input is valid
+
+Outputs:
+output reg [1:0] result // 0=Processing, 1=Equal, 2=Not Equal
+output reg done // High when computation complete
+
+The module operates in two phases per program:
+1. Load nodes: Receive node data sequentially. Store in internal memory.
+2. Compute: Evaluate the expression tree. For CONCAT, combine multisets. For SHUFFLE/SORTED, the multiset is the same as the child, so they are identity operations for multiset comparison. For VALUE, return a single-element multiset.
+3. Compare: Compare the resulting multisets (sorted lists of values).
+
+The module must handle up to 8 nodes per program, with integers up to 32 bits.
+
+Latency: Done will be high 10 clock cycles after start is asserted.
+
+Use a state machine with states: IDLE, LOAD_A, LOAD_B, COMPUTE_A, COMPUTE_B, COMPARE, DONE.

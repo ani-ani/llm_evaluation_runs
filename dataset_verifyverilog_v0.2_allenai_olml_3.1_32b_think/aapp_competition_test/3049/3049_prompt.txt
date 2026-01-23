@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'substitution_cipher_matcher' that finds if a decrypted fragment can match positions in an encrypted message using substitution cipher rules.
+
+Problem Adaptation:
+- Limit inputs to max 16 characters each (encrypted message and fragment)
+- Substitution cipher: each letter maps to exactly one other letter (bijective)
+- Fragment matches if there exists a valid substitution mapping that transforms it into the substring
+- A mapping is valid if: each source character maps to exactly one target character, and each target character comes from exactly one source character (isomorphic)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [127:0] encrypted_msg // 16 chars × 8 bits (ASCII 'a'-'z')
+input [63:0] fragment // 8 chars × 8 bits (ASCII 'a'-'z')
+input [4:0] msg_len // actual length of encrypted message (1-16)
+input [3:0] frag_len // actual length of fragment (1-8)
+
+Outputs:
+output reg [127:0] result_string // matching substring (16 chars, padded with spaces if shorter)
+output reg [4:0] result_pos // position (0-15, 0 means no match)
+output reg [7:0] match_count // number of positions where fragment could occur
+output reg done // high when computation complete
+
+Latency: Result valid 256 clock cycles after start asserted (allows for exhaustive search across all positions and character mappings).
+
+The module should:
+1. Iterate through all possible start positions (0 to msg_len - frag_len)
+2. For each position, check if fragment can map to the substring using substitution cipher rules
+3. For isomorphic check: ensure 1-to-1 character mapping between fragment and substring
+4. Count all valid positions
+5. If exactly 1 position found, output the corresponding substring
+6. If multiple positions, output count only (result_pos = 0)
+7. If no positions, result_pos = 0 and match_count = 0
+
+Use state machine with states: IDLE, INIT, CHECK_POSITION, CHECK_MAPPING, COUNT_UPDATES, UPDATE_RESULT, DONE.
+
+Module should track:
+- Current position being checked
+- Character mapping arrays (26 entries for 'a'-'z')
+- Mapping validity flags
+- Count of valid positions
+- Last valid position for substring extraction
+
+The mapping check should ensure that for each character in the fragment, there exists a consistent mapping to the corresponding character in the substring, and vice versa.

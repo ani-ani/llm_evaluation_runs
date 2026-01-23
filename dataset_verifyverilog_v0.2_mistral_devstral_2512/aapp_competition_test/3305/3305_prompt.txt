@@ -1,0 +1,36 @@
+Design a sequential Verilog module named `almost_palindrome_counter` that counts the number of non-empty almost palindromic substrings in a fixed-width string.
+
+**Problem Adaptation:**
+- The input string length is fixed to `N=16` characters.
+- Characters are limited to lowercase Latin alphabet ('a'-'z').
+- "Almost palindromic" is defined as: 1) The substring is a palindrome, OR 2) The substring can be made a palindrome by swapping exactly two characters.
+- The module processes the entire string to count all valid substrings (from length 1 to 16).
+
+**Module Interface:**
+`input clk`: System clock.
+`input rst_n`: Active-low reset.
+`input start`: High for one cycle to start processing.
+`input [4:0] length_in`: The actual length of the string (1 to 16). 
+`input [127:0] char_flat`: The string packed into 128 bits (8 bits per character). 
+  - Mapping: `char_flat[7:0]` is 1st char, `char_flat[15:8]` is 2nd char, etc.
+  - Only the first `length_in` characters are valid.
+
+`output reg [15:0] result`: The count of almost palindromic substrings.
+`output reg done`: High when calculation is complete.
+
+**Behavior:**
+- The module uses a state machine (IDLE, COUNTING).
+- In IDLE: Waits for `start`.
+- In COUNTING: Iterates through all possible substrings defined by start index `i` (0 to `length_in-1`) and end index `j` (i to `length_in-1`).
+- For each substring, it verifies the condition.
+  - Optimization: Since max total substrings for N=16 is 136, and max length is 16, the FSM can unroll loops or use a nested state structure.
+  - Verification Logic for a substring:
+    1. Check if palindrome: Compare char[k] vs char[len-1-k].
+    2. If not palindrome: Count mismatches. If exactly 2 mismatches, check if swapping the mismatching characters makes it a palindrome. (i.e., if mismatch at (p, q) and mismatch at (r, s), check if char[p] == char[s] and char[r] == char[q]). If exactly 1 mismatch? Single swap cannot fix (requires 2 swaps or 0). If >2 mismatches, cannot fix with 1 swap.
+- `done` goes high after all substrings are checked. Result accumulates valid counts.
+- Latency: Approximately 1500 cycles (enough for nested loops and checks).
+
+**Fixed-Point/Scaling:**
+- No floating point. 
+- Inputs are discrete chars and indices.
+- Output is integer count.

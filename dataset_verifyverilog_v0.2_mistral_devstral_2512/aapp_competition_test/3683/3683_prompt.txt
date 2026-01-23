@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'miniature_golf_rank' that computes the minimum possible rank for each player given score constraints. 
+
+**Module Specification:**
+- **Input:**
+  - `clk`: System clock
+  - `rst_n`: Active-low reset
+  - `start`: Start computation (pulse high)
+  - `p`: 3-bit input (number of players, 1-4)
+  - `h`: 3-bit input (number of holes, 1-4)
+  - `score_addr`: 4-bit input (address for score memory, 0 to p*h-1)
+  - `score_in`: 8-bit input (score value for current address)
+  - `score_write`: 1-bit input (write enable for score memory)
+
+- **Output:**
+  - `result_addr`: 3-bit output (address for rank result, 0 to 3)
+  - `result_data`: 3-bit output (minimum rank for player at address)
+  - `result_valid`: 1-bit output (high when all results are ready)
+  - `busy`: 1-bit output (high during computation)
+
+**Behavior:**
+1.  **Score Loading:** When `start` is high and `score_write` is high, write `score_in` to internal memory at `score_addr`. 
+2.  **Computation State Machine:**
+    -   **IDLE:** Wait for `start` (with `score_write` low). Then transition to processing.
+    -   **PROCESSING:** Iterate through possible limit values `l`. The candidate `l` values are derived from the unique scores present in the input (sorted) plus a large value. For each `l`:
+        -   Calculate adjusted scores for all players: `score[i][j] = min(score[i][j], l)`.
+        -   Calculate total scores for all players.
+        -   Calculate ranks. Rank of player `i` is `1 + count(j where total_score[j] < total_score[i])`. Ties share the same rank (count of players with strictly lower score + 1).
+        -   Update `best_rank[i]` if the calculated rank is lower than the current `best_rank[i]`.
+    -   **DONE:** Set `result_valid` high. Output results sequentially when `result_addr` changes.
+
+**Constraints:**
+- Use 8-bit logic for scores.
+- Use 16-bit logic for total scores (max 4 holes * 255 = 1020).
+- Use 3-bit logic for ranks (max 4 players).
+- The module must handle the full range of inputs defined by the scaled problem (p=4, h=4, scores <= 255).
+- Latency: Result valid approximately 100-200 cycles after start.
+
+**Interface:**
+All signals are synchronous to `clk`. Output `result_data` should be valid when `result_valid` is high.

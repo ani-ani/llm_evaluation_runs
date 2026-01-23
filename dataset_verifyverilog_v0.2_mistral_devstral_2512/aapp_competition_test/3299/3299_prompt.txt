@@ -1,0 +1,118 @@
+Design a sequential Verilog module named 'magic_checkerboard_2x2' that finds the minimum sum for a simplified 2x2 magic checkerboard.
+
+Problem Simplification:
+- Grid: 2x2 (N=2, M=2)
+- Input values: 4-bit integers (0-15)
+- Zero (0) indicates an empty cell to be filled with a positive integer (1-15).
+- Constraints:
+  1. Row strictly increasing: grid[r][c] < grid[r][c+1]
+  2. Column strictly increasing: grid[r][c] < grid[r+1][c]
+  3. Diagonal parity: cells (0,0) and (1,1) must have different parity (one even, one odd). (Constraint applies to the main diagonal).
+- Goal: Find the minimum sum of all 4 cells. Return -1 (1111... binary) if impossible.
+
+Inputs:
+input clk // Clock
+input rst_n // Active low reset
+input start // Start computation
+input [3:0] grid_00, grid_01, grid_10, grid_11 // The 2x2 grid inputs (row-major)
+
+Outputs:
+output reg [7:0] result // Minimum sum (max 15*4=60, fits in 8 bits). 0xFF (255) represents -1.
+output reg done // High when computation is complete
+
+Behavior:
+- The module should use a state machine to iterate through possible values for the zero cells.
+- Since the grid is small (2x2), it can brute-force the missing values (1-15 range).
+- States: IDLE, CHECK_1_0 (value for grid[1][0]), CHECK_0_1 (value for grid[0][1]), CHECK_1_1 (value for grid[1][1]), DONE.
+- Or simply a single process that iterates 15x15x15 possibilities (since one value is always fixed or we can fix one variable based on others).
+- Actually, with 4 cells, if 1 is fixed, we have 3 unknowns. 15^3 = 3375. This fits in a 12-bit counter.
+- Inside the state machine (or combinational logic driven by a counter), verify constraints:
+  1. All filled values > 0.
+  2. Row 0: grid_00 < grid_01 (if both non-zero/valid)
+  3. Row 1: grid_10 < grid_11
+  4. Col 0: grid_00 < grid_10
+  5. Col 1: grid_01 < grid_11
+  6. Parity: (grid_00[0] ^ grid_11[0]) == 1 (different parity)
+- If valid, update `result` with min sum.
+- Latency: Since this involves iteration, the module might take several cycles. Let's say it processes one candidate set per cycle. With 3375 candidates, latency is ~3375 cycles.
+
+Module Definition:
+module magic_checkerboard_2x2 (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] grid_00, grid_01, grid_10, grid_11,
+    output reg [7:0] result,
+    output reg done
+);
+    // Internal registers for candidate values
+    reg [3:0] v10, v01, v11; // Values for positions (1,0), (0,1), (1,1)
+    reg [11:0] iteration_count; // 15*15*15 = 3375 < 2^12
+    reg searching;
+    
+    wire [3:0] c00 = grid_00;
+    wire [3:0] c01 = (grid_01 == 4'd0) ? v01 : grid_01;
+    wire [3:0] c10 = (grid_10 == 4'd0) ? v10 : grid_10;
+    wire [3:0] c11 = (grid_11 == 4'd0) ? v11 : grid_11;
+    
+    // Constraints (all must be true for valid)
+    wire valid;
+    wire [7:0] current_sum;
+    
+    assign current_sum = c00 + c01 + c10 + c11;
+    
+    assign valid = (c00 > 0) && (c01 > 0) && (c10 > 0) && (c11 > 0) &&
+                   (c00 < c01) && (c10 < c11) &&
+                   (c00 < c10) && (c01 < c11) &&
+                   (c00[0] ^ c11[0]);
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            result <= 8'hFF; // -1
+            done <= 0;
+            searching <= 0;
+            iteration_count <= 0;
+            v10 <= 1; v01 <= 1; v11 <= 1;
+        end else begin
+            if (start && !searching) begin
+                // Initialize search
+                searching <= 1;
+                done <= 0;
+                result <= 8'hFF; // Reset result to -1
+                v10 <= 1; v01 <= 1; v11 <= 1;
+                iteration_count <= 0;
+            end else if (searching) begin
+                if (iteration_count < 12'd3375) begin
+                    // Check current configuration
+                    if (valid) begin
+                        if (result == 8'hFF || current_sum < result) begin
+                            result <= current_sum;
+                        end
+                    end
+                    
+                    // Increment counter logic (Manual carry propagation for 3 digits of base 15)
+                    // v10 is digit 0, v01 is digit 1, v11 is digit 2
+                    if (v10 < 15) begin
+                        v10 <= v10 + 1;
+                    end else begin
+                        v10 <= 1; // Reset digit 0
+                        if (v01 < 15) begin
+                            v01 <= v01 + 1;
+                        end else begin
+                            v01 <= 1; // Reset digit 1
+                            if (v11 < 15) begin
+                                v11 <= v11 + 1;
+                            end
+                        end
+                    end
+                    iteration_count <= iteration_count + 1;
+                end else begin
+                    searching <= 0;
+                    done <= 1;
+                end
+            end else begin
+                done <= 0; // Ensure done pulses only once
+            end
+        end
+    end
+endmodule

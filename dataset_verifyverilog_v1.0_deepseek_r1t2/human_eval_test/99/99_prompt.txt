@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'closest_integer' that computes the nearest integer to a string-represented number with tie-breaking away from zero.
+
+Inputs:
+  input clk                      // Clock signal
+  input rst_n                    // Active-low reset
+  input start                    // Start computation (pulse high)
+  input [7:0] char_in            // Current character input (ASCII)
+  input [2:0] char_index         // Index of current character (0-7)
+  input valid_char               // High when char_in is valid
+
+Outputs:
+  output reg signed [15:0] result  // Signed integer result
+  output reg done                 // High when computation is complete
+  output reg error                // High if invalid input format
+
+Interface Notes:
+  - The string should be provided one character per clock cycle
+  - Character sequence: send character at index 0 in cycle 0, index 1 in cycle 1, etc.
+  - After sending all characters, set valid_char low and pulse start high
+  - ASCII format: '0'-'9', '.', '-', '+' (optional)
+  - Max 8 characters including sign and decimal point
+
+Behavior:
+  1. Parse the input string to extract sign, integer part, and fractional part
+  2. Convert to fixed-point representation (Q16.16 format)
+  3. Check if fractional part >= 0.5 (in Q16.16: >= 0x00008000)
+  4. If fractional part > 0.5, round up
+  5. If fractional part < 0.5, round down
+  6. If fractional part == 0.5, round away from zero (up for positive, down for negative)
+  7. Return signed 16-bit integer result
+
+States: IDLE, COLLECT, PARSE, COMPUTE, DONE
+
+Latency: Result valid approximately 20 clock cycles after start is asserted.
+
+Implementation notes:
+  - Use state machine for parsing
+  - Store integer and fractional parts as integers
+  - For tie-breaking (fractional part exactly 0.5), check sign bit and round accordingly
+  - Handle positive/negative signs
+  - Use Q16.16 format for fractional comparison (0.5 = 32768)
+  - Report error on invalid characters or format

@@ -1,0 +1,53 @@
+Design a combinational Verilog module named 'rain_accumulator' that calculates the expected rain on a route given discrete cloud data and a specific wait strategy.
+
+The problem is scaled as follows:
+- Maximum 8 clouds (C=8).
+- Distance d and maximum time t are 8-bit values (max 255).
+- Walking speed is 1 m/s.
+- The route has a maximum of 2 roof segments, defined by start (x) and end (y) coordinates.
+- Cloud probabilities are represented as Q8.8 fixed-point format (integer value = probability * 256).
+- Cloud rain amounts (intensity) are 8-bit integers.
+- Time is discrete (1-second resolution).
+
+**Algorithm Description:**
+The user defines a `wait_duration` at the start (position 0). 
+1.  **Wait Phase**: 
+    - Check if position 0 is inside any roof segment (`roof_start <= 0 < roof_end`).
+    - If under roof: Rain accumulated during wait is 0.
+    - If not under roof: Sum rain from all active clouds during seconds 0 to `wait_duration - 1`.
+        - A cloud is active at second `T` if `cloud_start <= T < cloud_end`.
+        - Expected rain per second = `cloud_amount * cloud_probability`.
+2.  **Walk Phase**: 
+    - The user walks `d` meters taking `d` seconds.
+    - The arrival time is `wait_duration + d`.
+    - The module must ensure `arrival_time <= t`. If `arrival_time > t`, output 0 (invalid scenario).
+    - During the walk (seconds `wait_duration` to `arrival_time - 1`), rain accumulates from active clouds (roofs do not cover the walk).
+
+**Inputs:**
+input [7:0] d, t, wait_duration; // Distance, Max Time, Wait Time
+input [2:0] num_clouds; // Number of active clouds (0-8)
+input [2:0] num_roofs; // Number of roof segments (0-8)
+
+// Clouds: Array of 8. Each cloud has {start, end, prob (Q8.8), amount}
+input [7:0] cloud_start [0:7];
+input [7:0] cloud_end [0:7];
+input [15:0] cloud_prob [0:7]; // Q8.8 format (e.g. 0.5 = 128)
+input [7:0] cloud_amount [0:7];
+
+// Roofs: Array of 8. Each roof has {start, end}
+input [7:0] roof_start [0:7];
+input [7:0] roof_end [0:7];
+
+output reg [31:0] total_rain; // Output in Q24.8 format (scaled by 256)
+
+**Behavior:**
+The module uses combinational logic (large case/if statements) or a loop unrolled structure to iterate over the 8 possible clouds and the time windows. Since Verilog cannot handle variable loops in synthesis easily, the logic should be structured as follows:
+1. Check `arrival_time <= t`. If false, `total_rain = 0`.
+2. Check if `wait_duration > 0`. If yes, check roof at 0.
+   - If not roofed, sum cloud contributions for T = 0 to `wait_duration-1`.
+3. Sum cloud contributions for T = `wait_duration` to `arrival_time - 1` (Walk phase).
+4. Output the sum.
+
+For the sum: `Contribution = cloud_amount * (cloud_prob >> 8)` if we want integer output, or keep it scaled. Let's keep it scaled by 256 (i.e., raw accumulation of `amount * prob`) to keep precision, then divide by 256 in the testbench.
+
+**Constraint:** The module must be purely combinational.

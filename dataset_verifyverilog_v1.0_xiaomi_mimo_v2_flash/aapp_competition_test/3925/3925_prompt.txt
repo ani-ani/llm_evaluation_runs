@@ -1,0 +1,96 @@
+module zebra_max (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] actual_length,   // 1 to 16
+    input [15:0] string_in,       // each bit: 0 for 'b', 1 for 'w'
+    output reg [4:0] result,
+    output reg done
+);
+
+// Internal state
+reg [1:0] state;
+reg [4:0] i;          // 0 to 31 (2*n)
+reg [3:0] idx;        // circular index (0 to 15)
+reg [4:0] run_reg;    // current run length
+reg [4:0] max_run_reg; // max run length
+reg prev_char;        // previous character
+reg [15:0] string_storage;
+reg [3:0] n;          // actual_length
+
+// Combinational next index
+wire [3:0] next_idx = (idx == n-1) ? 0 : idx + 1;
+wire next_char = string_storage[next_idx];
+
+// States
+localparam IDLE = 0;
+localparam NEXT = 1;
+localparam DONE = 2;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        i <= 0;
+        idx <= 0;
+        run_reg <= 0;
+        max_run_reg <= 0;
+        prev_char <= 0;
+        string_storage <= 0;
+        n <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    if (actual_length == 0) begin
+                        result <= 0;
+                        done <= 1;
+                        state <= DONE;
+                    end else begin
+                        n <= actual_length;
+                        string_storage <= string_in;
+                        i <= 0;
+                        idx <= 0;
+                        run_reg <= 1;
+                        max_run_reg <= 1;
+                        prev_char <= string_in[0];
+                        state <= NEXT;
+                    end
+                end
+            end
+
+            NEXT: begin
+                // Check alternation
+                if (next_char != prev_char) begin
+                    if (run_reg < n)
+                        run_reg <= run_reg + 1;
+                    else
+                        run_reg <= n;
+                    if (run_reg + 1 > max_run_reg)
+                        max_run_reg <= run_reg + 1;
+                end else begin
+                    run_reg <= 1;
+                end
+
+                // Update state
+                prev_char <= next_char;
+                idx <= next_idx;
+                i <= i + 1;
+
+                // Finish after 2*n-1 iterations
+                if (i == 2*n - 2)
+                    state <= DONE;
+            end
+
+            DONE: begin
+                // Cap result at n
+                result <= (max_run_reg > n) ? n : max_run_reg;
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+endmodule

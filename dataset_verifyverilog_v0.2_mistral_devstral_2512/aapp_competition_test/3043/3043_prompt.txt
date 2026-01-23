@@ -1,0 +1,47 @@
+Design a sequential Verilog module named 'treasure_hunter' that finds the minimum number of days to reach 'G' from 'S' on an 8x8 grid.
+
+Inputs:
+input clk: System clock
+input rst_n: Active-low reset
+input start: Start computation
+input [5:0] grid [0:63]: Flattened 8x8 grid where each byte represents a character:
+  'S' (0x53), 'G' (0x47), '.' (0x2E), 'F' (0x46), 'M' (0x4D), '#' (0x23)
+input [5:0] K: Maximum stamina (0-63)
+
+Outputs:
+output reg [5:0] days: Minimum days found
+output reg [5:0] visited_count: Number of cells visited (for debugging)
+output reg done: High when computation is complete
+output reg impossible: High if destination is unreachable
+
+Behavioral Specification:
+The module implements a Breadth-First Search (BFS) to find the minimum days. Since it is hard to store a full distance map in a single clock cycle, we use a state machine that explores the grid level by level (day by day).
+
+State Machine States:
+1. IDLE: Wait for start signal.
+2. FIND_S: Scan the grid to locate the starting position (S).
+3. INIT_DAY: Reset the visited states for the current day's traversal. Initialize the current queue with the starting position and full stamina K.
+4. PROCESS_DAY: Process all reachable cells within the current day's stamina limit. It uses an internal loop to traverse the graph until the queue is empty or stamina is exhausted. It updates the 'next_queue' with positions accessible on the NEXT day (if 'G' is not found).
+5. CHECK_SUCCESS: Check if 'G' was reached during PROCESS_DAY. If yes, output days.
+6. INCREMENT_DAY: Increment day counter and swap queues (next_queue becomes current_queue).
+7. DONE: Set 'done' high.
+8. IMPOSSIBLE: Set 'impossible' high.
+
+Logic Details:
+- Grid Size: 8x8.
+- Coordinate System: Row [2:0] and Col [2:0].
+- Pathfinding: Maintain a 'visited' array to avoid cycles. 
+- State Tracking: We need to store the 'distance' or 'days' to reach a cell. Since we want minimum days, we can track the minimum days needed to reach each cell.
+- Optimization: To keep the design synthesizable and simple, we will implement a fixed-step traversal. The 'PROCESS_DAY' state will iterate through a small buffer (size 64) of active nodes for the current day. 
+
+Note on Implementation:
+Due to hardware constraints, we will assume a maximum path length. The module will process the grid to find the shortest path based on days. We treat the problem as a layered graph search where each layer corresponds to a day.
+
+The module must handle:
+- Moving to '.' costs 1 stamina.
+- Moving to 'F' costs 2 stamina.
+- Moving to 'M' costs 3 stamina.
+- Moving to '#' is forbidden.
+- If stamina is insufficient to move to a neighbor, that neighbor is added to the 'next day' queue.
+
+Latency: Result valid approximately 2000 clock cycles after start.

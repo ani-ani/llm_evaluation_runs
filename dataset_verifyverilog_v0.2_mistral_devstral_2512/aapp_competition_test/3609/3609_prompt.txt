@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'tree_assignment' that determines if edges between nodes 1 to n can be partitioned into two trees: a 'Left' tree rooted at 1 where edges connect parent to child with parent < child, and a 'Right' tree rooted at n where edges connect parent to child with parent > child.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] n // Number of nodes (max 8)
+input [4:0] edge_u [14:0] // Array of upper node indices for up to 15 edges
+input [4:0] edge_v [14:0] // Array of lower node indices for up to 15 edges
+
+Outputs:
+output reg [14:0] l_mask // Bitmask: 1 if corresponding edge is assigned to Left tree
+output reg valid // High if a valid assignment exists
+output reg done // High when computation complete
+
+Specification:
+The module must handle n up to 8 and up to 15 edges. It should implement a backtracking algorithm (Depth First Search) to assign edges.
+
+Algorithm:
+1. Reset: Initialize state machine, clear masks.
+2. Processing:
+   - Use a state machine (IDLE -> PROCESSING -> DONE).
+   - Recursively try to assign each edge to Left or Right.
+   - Check intermediate validity: An edge assigned to Left must connect a reachable node (from 1) to a new node. 
+   - To avoid cycles, the set of edges for each tree must maintain a forest property. Since we need a tree rooted at 1 for Left and rooted at n for Right, we can track parent relationships.
+   - Left tree constraint: Edge (u,v) with u<v. If u is reachable from 1 (or is 1), this edge can extend the Left tree. New node v becomes child of u.
+   - Right tree constraint: Edge (u,v) with u<v. If v is reachable from n (or is n), this edge can extend the Right tree. New node u becomes child of v (since parent > child).
+   - Backtracking: Iterate through edges. For each edge, try Left, then Right. Undo assignment if it leads to a dead end.
+3. Termination:
+   - If all edges assigned and both trees span all n nodes, assert valid and done.
+   - If backtracking completes without solution, valid = 0, done = 1.
+
+State Machine States: IDLE, PROCESSING (iterate edges), CHECKING (verify spans), DONE.
+
+Latency: Result valid within 2000 clock cycles (sufficient for n=8 backtracking).
+
+Implementation Note: Since n is small (<=8), unroll logic or small lookup tables are acceptable. A simple recursive state machine is preferred.

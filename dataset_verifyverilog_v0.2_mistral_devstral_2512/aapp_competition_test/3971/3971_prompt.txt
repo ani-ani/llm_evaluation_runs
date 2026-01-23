@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'max_points_game' that implements a simplified version of the maximum points game algorithm.
+
+The module computes the maximum score obtainable by choosing elements from a sequence, where choosing an element `k` removes `k-1` and `k+1` and adds `k` to the score. This is modeled using dynamic programming: `DP[i] = max(DP[i-1], DP[i-2] + count[i] * i)`.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation (loads the sequence)
+input [7:0] sequence_in // Input value for the sequence (0-255 range)
+input load_valid // High when sequence_in is valid
+
+Outputs:
+output reg [15:0] max_score // The maximum score calculated (16-bit to hold sum)
+output reg done // High when computation is complete
+
+Constraints:
+- The sequence length is fixed at 16 elements (scaled down from 10^5).
+- The numbers in the sequence range from 0 to 255 (8-bit).
+- The module should use a lookup table (LUT) to store counts of each number.
+- Once loading is complete (after 16 cycles), the module enters a processing state.
+- The processing state iterates from 0 to 255 to compute the DP recurrence.
+- Latency: Result valid approximately 272 clock cycles after start asserted (16 for load + 256 for processing).
+
+Behavioral Description:
+1. **IDLE State**: Waits for `start` signal.
+2. **LOAD State**: Active for 16 cycles. In each cycle, increments the count in the LUT at the index specified by `sequence_in`. Transitions to PROCESSING after 16 cycles.
+3. **PROCESSING State**: Iterates `i` from 2 to 255. Maintains `dp_i` (current value) and `dp_i_minus_1` (value at i-1) and `dp_i_minus_2` (value at i-2). 
+   - `current_points = i * count[i]`
+   - `candidate = dp_i_minus_2 + current_points`
+   - `dp_i = max(dp_i_minus_1, candidate)`
+   - Updates history registers.
+4. **DONE State**: Assigns the final computed `dp_i` to `max_score` and asserts `done`.
+
+Use a standard Moore state machine with states: IDLE, LOAD, PROCESSING, DONE.

@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'gas_trip_optimizer' that implements a simplified greedy algorithm for the gas station optimization problem.
+
+Problem Adaptation:
+- Maximum 8 gas stations (N=8)
+- Tank capacity g is limited to 255 km (8-bit)
+- Distances are scaled to 12-bit unsigned integers (max 4095 km)
+- Costs are represented in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Goal: Find minimum cost to reach the furthest station starting with a full tank
+
+Algorithm Description:
+The module processes stations sorted by distance. It uses a greedy approach: at each station, look ahead within the tank range (current distance + g) to find the cheapest station. If a cheaper station exists within range, buy just enough fuel to reach it. If no cheaper station exists within range, fill the tank completely. The module must handle the case where the next station is unreachable (output 'cancel' flag).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] num_stations // Number of stations (1-8)
+input [11:0] station_dist [0:7] // Distances of stations (sorted)
+input [31:0] station_cost [0:7] // Costs in Q16.16 format
+input [7:0] tank_capacity // Tank capacity in km
+
+Outputs:
+output reg [31:0] total_cost // Total cost in Q16.16 format
+output reg done // High when computation complete
+output reg cancel // High if trip impossible
+
+Specification:
+- Use a state machine with states: IDLE, CHECK_REACHABLE, FIND_CHEAPEST, BUY_FUEL, NEXT_STATION, DONE, CANCEL
+- Start with full tank (current_fuel = tank_capacity)
+- Current position starts at station_dist[0]
+- Check if initial distance > tank_capacity (cannot reach first station) -> CANCEL
+- For each station, iterate through stations within range (i+1 to last_idx where dist <= current_dist + tank_capacity)
+- If no stations within range and not at destination -> CANCEL
+- If destination is within range and no cheaper station found, compute cost to destination
+- Use combinational logic to find minimum cost station within range
+- Latency: approximately 100 clock cycles for 8 stations
+- Output total_cost in Q16.16 format (multiply decimal by 65536 for test values)
+- Example: 10.0 cost = 0x000A0000
+
+Behavioral Description:
+1. IDLE: Wait for start signal, initialize variables
+2. CHECK_REACHABLE: Verify can reach current station with current fuel
+3. FIND_CHEAPEST: Scan stations within tank range to find minimum cost
+4. BUY_FUEL: Calculate fuel needed and add to total cost
+5. NEXT_STATION: Move to next station or destination
+6. DONE: Result ready
+7. CANCEL: Trip impossible
+
+Test Case Constraints:
+- Maximum 8 stations per test
+- Distances 0-4095 km
+- Tank capacity 1-255 km
+- Costs 0-65535 in Q16.16 (0-0.99998)
+- Stations are sorted by distance in input

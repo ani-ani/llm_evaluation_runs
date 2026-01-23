@@ -1,0 +1,3 @@
+module tuple_to_string (input [7:0] char_0, input [7:0] char_1, input [7:0] char_2, input [7:0] char_3, input [7:0] char_4, input [7:0] char_5, input [7:0] char_6, input [7:0] char_7, input [2:0] length, output [63:0] result);
+assign result = { (length > 0) ? char_0 : 8'b0, (length > 1) ? char_1 : 8'b0, (length > 2) ? char_2 : 8'b0, (length > 3) ? char_3 : 8'b0, (length > 4) ? char_4 : 8'b0, (length > 5) ? char_5 : 8'b0, (length > 6) ? char_6 : 8'b0, (length > 7) ? char_7 : 8'b0 };
+endmodule

@@ -1,0 +1,189 @@
+module clock_setting (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] orig_time_h,  // original hours (00-23)
+    input wire [7:0] orig_time_m,  // original minutes (00-59)
+    input wire [7:0] target_time_h, // target hours (00-23)
+    input wire [7:0] target_time_m, // target minutes (00-59)
+    output reg [7:0] current_time_h,
+    output reg [7:0] current_time_m,
+    output reg valid,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 3'b000;
+    localparam CHANGE_MINUTE_ONES = 3'b001;
+    localparam CHANGE_MINUTE_TENS = 3'b010;
+    localparam CHANGE_HOUR_ONES = 3'b011;
+    localparam CHANGE_HOUR_TENS = 3'b100;
+    localparam FINISHED = 3'b101;
+
+    reg [2:0] state;
+    reg [2:0] next_state;
+    
+    // Current values being adjusted
+    reg [7:0] current_h;
+    reg [7:0] current_m;
+    reg [7:0] target_h;
+    reg [7:0] target_m;
+    
+    // Helper: increment digit with wrap
+    function [3:0] inc_digit;
+        input [3:0] digit;
+        begin
+            inc_digit = (digit == 9) ? 0 : digit + 1;
+        end
+    endfunction
+    
+    // Helper: check if time is valid
+    function is_valid_time;
+        input [7:0] hours;
+        input [7:0] minutes;
+        begin
+            is_valid_time = (hours < 24) && (minutes < 60);
+        end
+    endfunction
+    
+    // State transition
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            current_h <= 8'b0;
+            current_m <= 8'b0;
+            target_h <= 8'b0;
+            target_m <= 8'b0;
+            valid <= 1'b0;
+            done <= 1'b0;
+        end else begin
+            state <= next_state;
+            
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        current_h <= orig_time_h;
+                        current_m <= orig_time_m;
+                        target_h <= target_time_h;
+                        target_m <= target_time_m;
+                        valid <= 1'b1;
+                        done <= 1'b0;
+                    end else begin
+                        valid <= 1'b0;
+                    end
+                end
+                
+                CHANGE_MINUTE_ONES: begin
+                    // Increment minute ones digit
+                    if (current_m[3:0] != target_m[3:0]) begin
+                        current_m[3:0] <= inc_digit(current_m[3:0]);
+                        if (is_valid_time(current_h, current_m)) begin
+                            valid <= 1'b1;
+                        end else begin
+                            valid <= 1'b0;
+                        end
+                    end else begin
+                        valid <= 1'b0;
+                    end
+                end
+                
+                CHANGE_MINUTE_TENS: begin
+                    // Increment minute tens digit
+                    if (current_m[7:4] != target_m[7:4]) begin
+                        current_m[7:4] <= inc_digit(current_m[7:4]);
+                        if (is_valid_time(current_h, current_m)) begin
+                            valid <= 1'b1;
+                        end else begin
+                            valid <= 1'b0;
+                        end
+                    end else begin
+                        valid <= 1'b0;
+                    end
+                end
+                
+                CHANGE_HOUR_ONES: begin
+                    // Increment hour ones digit
+                    if (current_h[3:0] != target_h[3:0]) begin
+                        current_h[3:0] <= inc_digit(current_h[3:0]);
+                        if (is_valid_time(current_h, current_m)) begin
+                            valid <= 1'b1;
+                        end else begin
+                            valid <= 1'b0;
+                        end
+                    end else begin
+                        valid <= 1'b0;
+                    end
+                end
+                
+                CHANGE_HOUR_TENS: begin
+                    // Increment hour tens digit
+                    if (current_h[7:4] != target_h[7:4]) begin
+                        current_h[7:4] <= inc_digit(current_h[7:4]);
+                        if (is_valid_time(current_h, current_m)) begin
+                            valid <= 1'b1;
+                        end else begin
+                            valid <= 1'b0;
+                        end
+                    end else begin
+                        valid <= 1'b0;
+                    end
+                end
+                
+                FINISHED: begin
+                    done <= 1'b1;
+                    valid <= 1'b0;
+                end
+            endcase
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    // Always output the original time first
+                    next_state = CHANGE_MINUTE_ONES;
+                end
+            end
+            
+            CHANGE_MINUTE_ONES: begin
+                if (current_m[3:0] == target_m[3:0]) begin
+                    next_state = CHANGE_MINUTE_TENS;
+                end
+            end
+            
+            CHANGE_MINUTE_TENS: begin
+                if (current_m[7:4] == target_m[7:4]) begin
+                    next_state = CHANGE_HOUR_ONES;
+                end
+            end
+            
+            CHANGE_HOUR_ONES: begin
+                if (current_h[3:0] == target_h[3:0]) begin
+                    next_state = CHANGE_HOUR_TENS;
+                end
+            end
+            
+            CHANGE_HOUR_TENS: begin
+                if (current_h[7:4] == target_h[7:4]) begin
+                    next_state = FINISHED;
+                end
+            end
+            
+            FINISHED: begin
+                next_state = FINISHED;
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+    
+    // Output assignments
+    always @(posedge clk) begin
+        current_time_h <= current_h;
+        current_time_m <= current_m;
+    end
+
+endmodule

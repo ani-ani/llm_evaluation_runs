@@ -1,0 +1,65 @@
+module divisor_counter (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] n,           // Input number (max 255)
+    output reg [7:0] result, // Number of divisors
+    output reg done          // Asserted when computation complete
+);
+
+    // State machine states
+    localparam IDLE = 2'b00;
+    localparam COMPUTE = 2'b01;
+    localparam FINISH = 2'b11;
+    
+    reg [1:0] state;
+    reg [7:0] counter;       // Current number being tested (1 to n)
+    reg [7:0] divisor_count; // Accumulated divisor count
+    reg [7:0] n_reg;         // Store input n
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            counter <= 8'd0;
+            divisor_count <= 8'd0;
+            n_reg <= 8'd0;
+            result <= 8'd0;
+            done <= 1'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        n_reg <= n;
+                        counter <= 8'd1;  // Start from 1
+                        divisor_count <= 8'd0;
+                        state <= (n == 8'd0) ? FINISH : COMPUTE;
+                    end
+                end
+                
+                COMPUTE: begin
+                    // Check if counter divides n
+                    if (n_reg % counter == 8'd0) begin
+                        divisor_count <= divisor_count + 1'b1;
+                    end
+                    
+                    // Move to next or finish
+                    if (counter < n_reg) begin
+                        counter <= counter + 1'b1;
+                    end else begin
+                        state <= FINISH;
+                    end
+                end
+                
+                FINISH: begin
+                    result <= divisor_count;
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

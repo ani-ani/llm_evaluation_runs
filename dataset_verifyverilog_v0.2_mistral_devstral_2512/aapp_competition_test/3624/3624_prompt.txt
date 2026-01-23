@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'trek_planner' that computes the waiting time difference between two hiking strategies on a small graph.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [3:0] node_count // Number of nodes (2-16)
+input [3:0] edge_count // Number of edges (2-16)
+input [5:0] edge_u // Edge source node
+input [5:0] edge_v // Edge destination node  
+input [5:0] edge_weight // Edge weight (0-12 hours)
+input edge_valid // Edge data valid
+input compute_start // Trigger computation after all edges loaded
+
+Outputs:
+output reg [7:0] wait_time // Result: hours Dr. Knight waits
+output reg done // High when computation complete
+output reg error // High if no path exists
+
+Specification:
+The graph has nodes 0 to n-1. Start at node 0, destination at node n-1. Each day is 12 hours max (08:00 to 20:00).
+
+Strategy 1 (Dr. Knight): Walk as far as possible each day, sleep anywhere. Minimize total days/hours.
+Strategy 2 (Mr. Day): Must sleep at cabins only. Each day max 12 hours, stop at cabin even if time remains.
+
+Algorithm:
+1. Load graph edges via edge_valid signals
+2. Compute shortest path for Dr. Knight using modified Dijkstra:
+   - Track cumulative time
+   - Days = ceil(total_time / 12)
+   - Total hours = days * 12 + (total_time % 12)
+3. Compute shortest path for Mr. Day using constrained DP:
+   - Each day starts fresh at 08:00
+   - Can only stop at nodes (cabins)
+   - Minimize total days, then hours
+4. Output difference: (MrDay_total - Knight_total)
+
+State Machine:
+- IDLE: Wait for compute_start
+- LOAD_EDGES: Store edge data
+- COMPUTE_KNIGHT: Run Dijkstra for Knight
+- COMPUTE_DAY: Run constrained DP for Day
+- CALC_RESULT: Compute difference
+- DONE: Output result
+
+Use Q16.16 format for time calculations if needed. Result fits in 8 bits for scaled problem (max ~255 hours).
+
+Latency: Result valid ~256 clock cycles after start (for 16-node graph with sequential processing).

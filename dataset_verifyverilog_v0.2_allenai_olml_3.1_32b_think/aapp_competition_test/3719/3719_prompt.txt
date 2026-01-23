@@ -1,0 +1,32 @@
+Design a sequential Verilog module named 'laser_maximizer' that implements a simplified version of the problem: find the maximum number of enemies destroyed by two lasers in a 2D plane.
+
+The problem is simplified as follows:
+1. Enemy positions: Left group at x=-16, Right group at x=16 (scaled from -100/100).
+2. Coordinate precision: 8-bit fixed-point Q4.4 (4 integer bits, 4 fractional bits). Integers are multiplied by 16.
+3. Input size: Max 16 enemies per group (scaled from 60).
+4. Algorithm: Compute all possible sums of y-coordinates (y_left + y_right) for all pairs. Then find two sums (or one sum) that cover the maximum number of unique pairs (left_index + right_index).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] y_left [0:15] // Fixed-point Q4.4 y-coordinates for left enemies
+input [7:0] y_right [0:15] // Fixed-point Q4.4 y-coordinates for right enemies
+input [3:0] n_left // Number of valid left enemies
+input [3:0] n_right // Number of valid right enemies
+
+Outputs:
+output reg [7:0] result // Maximum number of enemies destroyed (up to 32)
+output reg done // High when computation complete
+
+Latency: Approx 4096 clock cycles (iterates through all pairs and potential sums).
+
+Behavior:
+The module should use a state machine (IDLE, PREPARE_SOURCES, PROCESS_PAIRS, CALCULATE_MAX, DONE).
+1. PREPARE_SOURCES: Copy input arrays to internal buffers.
+2. PROCESS_PAIRS: Iterate through all pairs (i < n_left, j < n_right). For each pair, calculate sum = y_left[i] + y_right[j]. Store a bitmask (32-bit) where bit (i*n_right + j) is set. Accumulate these bitmasks into a lookup table (SRAM-like) indexed by sum.
+   - To save logic, we can use a simplified approach: compute sums and use a small internal memory to store which pairs are covered. Since max pairs is 16x16=256, we can use an array of 256 bitmasks for the sums.
+3. CALCULATE_MAX: Iterate through all possible sums (even indices due to Q4.4 precision) and find the combination of two sums (s1, s2) that maximizes the number of set bits in (mask[s1] | mask[s2]).
+4. DONE: Output the count.
+
+Note: Due to resource constraints, we assume the range of sums is small enough (or we use a smaller accumulator array). A practical implementation in Verilog for this scale will use a simple iterative comparator.

@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'salary_damage_calculator' that calculates the expected damage for a simplified version of the problem.
+
+**Problem Adaptation:**
+- N = 4 workers (fixed)
+- Each worker's salary range [L_i, R_i] is given in Q16.16 fixed-point format
+- You must compute: sum of (expected pairwise differences) / N^2
+- Expected difference between worker i and j (i < j) where salary_i < salary_j is: (R_j - L_i)^2 / (2*(R_i - L_i)*(R_j - L_j)) clipped to 0 if ranges don't overlap properly
+- Actually simplified: Compute expected sum of (salary_j - salary_i) for all i < j, divide by N^2
+- Since salaries are uniform, expected difference is: E[salary_j] - E[salary_i] = (L_j+R_j)/2 - (L_i+R_i)/2
+- Wait, let's use the correct formula: For i < j, if we want E[max(0, salary_j - salary_i)]
+- With uniform distributions, E[salary_j - salary_i | salary_j > salary_i] * P(salary_j > salary_i)
+- Simplified for hardware: Compute sum_{i<j} (E[salary_j] - E[salary_i]) = sum_{i<j} [(L_j+R_j) - (L_i+R_i)]/2
+- Output result in Q16.16 format
+
+**Inputs:**
+- input clk: clock signal
+- input rst_n: active-low reset
+- input start: start computation
+- input [31:0] L0, R0: Q16.16 fixed-point
+- input [31:0] L1, R1: Q16.16 fixed-point
+- input [31:0] L2, R2: Q16.16 fixed-point
+- input [31:0] L3, R3: Q16.16 fixed-point
+
+**Outputs:**
+- output reg [31:0] result: Q16.16 format (expected damage / N^2)
+- output reg done: high when computation complete
+
+**Latency:** 20 clock cycles after start
+
+**Behavior:**
+1. On start, compute expected salary for each worker: E[i] = (L[i] + R[i]) / 2
+2. Compute sum of all pairwise differences: For i from 0 to 3, j from i+1 to 3: sum += E[j] - E[i]
+3. Divide by N^2 = 16 to get final answer
+4. Use state machine: IDLE -> CALCE -> CALCSUM -> DIVIDE -> DONE
+5. For division by 16, use right shift by 4 bits
+6. All arithmetic in Q16.16 format

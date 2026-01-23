@@ -1,0 +1,67 @@
+Design a sequential Verilog module named 'word_len_checker' that checks whether any word in a space-separated string has odd length.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] char_in // ASCII character input (one byte per cycle)
+input char_valid // high when char_in contains valid character
+input char_last // high when this is the last character
+
+Outputs:
+output reg result // 1 if any word has odd length, 0 otherwise
+output reg done // high when computation complete
+
+Latency: Result valid 1-16 clock cycles after start asserted (depends on input length).
+
+Behavioral Description:
+The module should process characters sequentially and:
+1. Track current word length as characters arrive
+2. When a space character (0x20) is encountered, check if the previous word length was odd
+3. If any word has odd length, set result=1
+4. When char_last is high, check the final word's length
+5. Use a state machine with states: IDLE, READING, DONE
+
+State Machine:
+- IDLE: Wait for start signal, then move to READING
+- READING: Process characters, track word length, detect spaces
+- DONE: Assert done signal with final result
+
+Character Handling:
+- Space character: 0x20 (ASCII)
+- Any non-space character increments current word length
+- Space or end-of-input triggers odd-length check
+
+Register Requirements:
+- current_length[4:0]: Track length of current word (max 16)
+- result_reg: Store result (1 if any odd-length word found)
+- state[1:0]: FSM state register
+- char_count[4:0]: Count total characters processed
+
+Logic:
+- On each valid character:
+  * If character is space:
+    - Check if current_length is odd (current_length[0]==1)
+    - If odd, set result_reg=1
+    - Reset current_length to 0
+  * Else (non-space):
+    - Increment current_length
+    - If current_length exceeds 15, we can flag error or saturate
+- On char_last or when char_valid goes low after last char:
+  * Check if final current_length is odd
+  * Set result_reg accordingly if not already set
+- Output result should be the final result_reg value
+
+Example sequence for "great":
+Cycle 1: 'g' -> current_length=1
+Cycle 2: 'r' -> current_length=2
+Cycle 3: 'e' -> current_length=3
+Cycle 4: 'a' -> current_length=4
+Cycle 5: 't' -> current_length=5
+Cycle 6: char_last=1 -> check length=5 (odd) -> result=1, done=1
+
+Example sequence for "Hadoop":
+Cycle 1-6: process 'H','a','d','o','o','p' -> current_length=6
+Cycle 7: char_last=1 -> check length=6 (even) -> result=0, done=1
+
+The module should assert done=1 when computation is complete and result contains the final answer.

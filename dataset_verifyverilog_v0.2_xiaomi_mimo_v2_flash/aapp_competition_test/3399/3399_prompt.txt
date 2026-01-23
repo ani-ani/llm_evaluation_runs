@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'gridnavia_solver' that solves a simplified version of the Gridnavia problem on an 8x8 grid.
+
+Problem Adaptation:
+- Grid size: 8x8 (N=8, M=8)
+- Input: 64 cells, each with 1 bit indicating '1' (exactly one language) or '2' (at least two languages)
+- Output: Three 8x8 grids indicating regions for languages A, B, and C
+- Constraints: All three regions must be connected, non-empty, and cover all cells
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [63:0] single_lang_mask // 64-bit mask, 1 = cell needs exactly 1 language, 0 = needs >=2
+
+Outputs:
+output reg [63:0] lang_a_mask // 64-bit mask for language A
+output reg [63:0] lang_b_mask // 64-bit mask for language B  
+output reg [63:0] lang_c_mask // 64-bit mask for language C
+output reg done // High when computation complete
+output reg valid // High if valid solution found
+
+Latency: Result valid 1024 clock cycles after start (allows flood fill iterations)
+
+Algorithm Description:
+The module uses a state machine with states: IDLE, SEED_REGIONS, GROW_A, GROW_B, GROW_C, VALIDATE, DONE.
+
+1. SEED_REGIONS: Initialize three seed cells for A, B, C (e.g., top-left, top-right, bottom-center)
+2. GROW_A/B/C: Sequentially grow each region using a flood-fill approach. For each region:
+   - Scan all cells
+   - Add adjacent unassigned cells that satisfy: if cell is '2' (needs >=2 languages), it can be added if the cell doesn't already have 2 languages
+   - Priority: cells marked '2' should be shared by multiple regions
+   - Limit growth to ensure connectivity
+3. VALIDATE: Check that all cells are assigned, all regions are non-empty and connected (can use simple reachability check)
+4. DONE: Output final masks
+
+For '2' cells, the module should allow them to be part of multiple regions. For '1' cells, they must be in exactly one region.
+
+Since this is a sequential module, use a simple iterative approach. Track assigned cells and grow regions in phases. The 1024 cycle budget allows scanning the 8x8 grid multiple times.
+
+Key implementation notes:
+- Use 8x8 = 64 bit masks for each language
+- Cell index: row*8 + col (0 to 63)
+- Adjacent cells: check up/down/left/right (handle boundaries)
+- Connectedness: ensure each region can reach all its cells
+- Start with 3 seed cells, each in one language
+- Grow greedily to satisfy '2' cells first

@@ -1,0 +1,65 @@
+Design a sequential Verilog module named 'rocket_fuel_calculator' that computes the minimum fuel required for a multi-planet trip using iterative backward calculation.
+
+Problem Context: We need to find the initial fuel `F`. We can determine the total weight needed at step `k` given the weight at step `k+1` using the formula: `W_k = W_{k+1} * (a_k / (a_k - 1))`. Since `W_k = P + F_k` (Payload + Fuel at step k), and we want to find the initial `F`, we can iterate backwards starting from the payload `P`. 
+
+Simplified Algorithm (Iterative Backward):
+1. Start with `TotalWeight` = `Payload` (payload is the dry mass `m`).
+2. Process the landing/take-off pairs in reverse order (excluding the first take-off which is handled last).
+   - Landing at planet `i`: `TotalWeight = TotalWeight * b_i / (b_i - 1)`
+   - Take-off from planet `i`: `TotalWeight = TotalWeight * a_i / (a_i - 1)`
+3. Finally, handle the first take-off (from Earth):
+   - `TotalWeight = TotalWeight * a_0 / (a_0 - 1)`
+4. Initial Fuel = `TotalWeight - Payload`.
+
+If any coefficient `a_i` or `b_i` is 1 (or effectively 1 in fixed-point), the result is impossible (-1).
+
+Fixed-Point Arithmetic:
+Use Q16.16 format (16 integer bits, 16 fractional bits).
+Input values `a_i`, `b_i`, `m` are integers. Convert them to Q16.16 by shifting left by 16.
+Division `X / Y` is implemented as `(X << 16) / Y`.
+Multiplication `X * Y` is implemented as `(X * Y) >> 16`.
+
+Module Interface:
+- Inputs: Clock, Reset, Start signal, Payload (`m`), Arrays `a` and `b`.
+- Outputs: Result (Total Fuel in Q16.16), Done signal, Error signal (if impossible).
+
+State Machine:
+- IDLE: Wait for Start.
+- PREPARE: Load initial TotalWeight = Payload.
+- LOOP: Iterate through planets backwards. Requires multiple states per planet for division and multiplication steps.
+- FINAL: Perform the last multiplication for the first planet.
+- DONE: Output result.
+- ERROR: If any coefficient is 1.
+
+Ports:
+input clk;
+input rst_n;
+input start;
+input [15:0] payload; // m in Q16.16
+input [7:0] a [0:7]; // Array of 8 coefficients (Q16.16)
+input [7:0] b [0:7]; // Array of 8 coefficients (Q16.16)
+input [7:0] num_planets; // Number of planets N (max 8)
+output reg [31:0] result; // Total Fuel in Q16.16
+output reg done;
+output reg error;
+
+Internal Logic:
+- Need registers for `current_weight`, `i` (loop counter), `temp_val`.
+- Division module or state machine to handle `(val * b) >> 16` logic (actually `val / (b-1)`). Since `val` is Q16.16, `val / C` where C is integer constant can be approximated or computed precisely. 
+  Precise logic for `val / C`: `val * (1/C)` where `1/C` is precomputed Q16.16? Or perform long division. Let's use state machine for division.
+  `val / (C - 1)` where `C` is `a[i]` or `b[i]`.
+  Let `denom = C - 1`. If `denom <= 0`, Error.
+  Result = `val / denom`. Since `val` is Q16.16, we want result as Q16.16.
+  `val_q16 = val`. 
+  `result_q16 = (val_q16 << 16) / denom`.
+- Need a small state machine for the division operation (Iterative divider) or unrolled logic given small inputs.
+
+Assume a helper state `DIVIDE` within the main LOOP state.
+
+Test Case Constraints:
+- N <= 8
+- Coefficients >= 2 (since we skip 1s). Max 1000.
+- Payload m <= 100.
+- Output error if impossible.
+
+This module will perform the calculation `Result = (Payload * Factor1 * Factor2 * ... * FactorN) - Payload` sequentially.

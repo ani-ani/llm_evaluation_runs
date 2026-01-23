@@ -1,0 +1,35 @@
+Design a sequential Verilog module named `min_scc_finder` that implements a simplified version of the problem using Kosaraju's algorithm for Strongly Connected Components (SCC) on a fixed-size graph.
+
+**Problem Adaptation:**
+- The module handles a graph with a maximum of `N=10` nodes and `M=20` edges.
+- Nodes are indexed 1 to 10 (stored as 0 to 9 in hardware).
+- The goal is to identify the SCC with the fewest nodes that has no outgoing edges to other SCCs.
+
+**Inputs:**
+- `clk`: System clock.
+- `rst_n`: Active-low reset.
+- `start`: High for one cycle to start the computation.
+- `edge_valid`: High when `src_node` and `dst_node` contain valid edge data.
+- `src_node [3:0]`: Source node index of an edge (0-9).
+- `dst_node [3:0]`: Destination node index of an edge (0-9).
+
+**Outputs:**
+- `result_size [3:0]`: The size (number of nodes) of the smallest SCC with zero out-degree.
+- `result_nodes [10][3:0]`: The list of node indices in the selected SCC. Unused entries are 0.
+- `done`: High for one cycle when computation is complete.
+
+**Behavior:**
+1. **Load Phase:** When `start` is high, the module expects `edge_valid` signals to load the adjacency matrix (or adjacency lists) for up to `M` edges. After loading, the user should lower `edge_valid` and raise a `compute_start` signal (internal or external control).
+2. **Computation Phase:**
+   - **First Pass (Order):** Perform an iterative DFS on the original graph to populate a finish-time stack.
+   - **Second Pass (SCCs):** Perform iterative DFS on the transpose graph using the finish-time stack to identify SCCs.
+   - **Selection:** For each SCC found, check its outgoing edges. If an SCC has zero outgoing edges to other SCCs, compare its size to the current minimum. Keep the smallest.
+3. **Output:** Present the size and node list of the selected SCC on `result_size` and `result_nodes` when `done` is high.
+
+**Constraints:**
+- Use state machines for DFS iterations.
+- Fixed-size arrays for stack, visited flags, and graph storage.
+- The module must handle the input of edges via a streaming interface (`edge_valid`).
+
+**Testbench Expectation:**
+The attached testbench will load specific graph configurations (via `edge_valid`) and verify that the module correctly identifies the smallest sink SCC.

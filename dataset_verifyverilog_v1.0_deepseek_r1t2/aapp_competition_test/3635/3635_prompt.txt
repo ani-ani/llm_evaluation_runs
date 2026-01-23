@@ -1,0 +1,224 @@
+module max_executables (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [7:0] arr_5,
+    input wire [7:0] arr_6,
+    input wire [7:0] arr_7,
+    input wire [3:0] N,
+    output reg [7:0] result,
+    output reg done
+);
+
+parameter DATA_WIDTH = 8;
+parameter SUM_WIDTH = 32;
+parameter INDEX_WIDTH = 4;
+parameter RESULT_WIDTH = 8;
+
+// State definitions
+localparam S_IDLE = 0;
+localparam S_COMPUTE_PREFIX = 1;
+localparam S_SET_BEST0 = 2;
+localparam S_INIT_I = 3;
+localparam S_LOOP_J_START = 4;
+localparam S_COMPUTE_S = 5;
+localparam S_COMPARE = 6;
+localparam S_UPDATE = 7;
+localparam S_NEXT_J = 8;
+localparam S_NEXT_I = 9;
+localparam S_DONE = 10;
+
+reg [4:0] state, next_state;
+
+// Arrays
+reg [SUM_WIDTH-1:0] prefix [0:8];
+reg [RESULT_WIDTH-1:0] best [0:7];
+reg [SUM_WIDTH-1:0] sum [0:7];
+
+// Temporary registers
+reg [INDEX_WIDTH-1:0] i_idx, j_idx;
+reg [SUM_WIDTH-1:0] temp_s;
+reg [RESULT_WIDTH-1:0] candidate;
+reg [SUM_WIDTH-1:0] temp_sum_reg;
+reg [RESULT_WIDTH-1:0] temp_best_reg;
+
+reg [INDEX_WIDTH-1:0] prefix_idx;
+
+// Helper function to get arr value by index
+function [DATA_WIDTH-1:0] get_arr;
+    input [INDEX_WIDTH-1:0] idx;
+    begin
+        case (idx)
+            0: get_arr = arr_0;
+            1: get_arr = arr_1;
+            2: get_arr = arr_2;
+            3: get_arr = arr_3;
+            4: get_arr = arr_4;
+            5: get_arr = arr_5;
+            6: get_arr = arr_6;
+            7: get_arr = arr_7;
+            default: get_arr = 0;
+        endcase
+    end
+endfunction
+
+// State register
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= S_IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        S_IDLE: begin
+            if (start)
+                next_state = S_COMPUTE_PREFIX;
+        end
+        S_COMPUTE_PREFIX: begin
+            if (prefix_idx > N)
+                next_state = S_SET_BEST0;
+        end
+        S_SET_BEST0: begin
+            next_state = S_INIT_I;
+        end
+        S_INIT_I: begin
+            next_state = S_LOOP_J_START;
+        end
+        S_LOOP_J_START: begin
+            next_state = S_COMPUTE_S;
+        end
+        S_COMPUTE_S: begin
+            next_state = S_COMPARE;
+        end
+        S_COMPARE: begin
+            if (temp_s >= sum[j_idx])
+                next_state = S_UPDATE;
+            else
+                next_state = S_NEXT_J;
+        end
+        S_UPDATE: begin
+            next_state = S_NEXT_J;
+        end
+        S_NEXT_J: begin
+            if (j_idx < i_idx)
+                next_state = S_LOOP_J_START;
+            else
+                next_state = S_NEXT_I;
+        end
+        S_NEXT_I: begin
+            if (i_idx < N-1) // after increment, check if more i to process
+                next_state = S_INIT_I;
+            else
+                next_state = S_DONE;
+        end
+        S_DONE: begin
+            if (!start)
+                next_state = S_IDLE;
+        end
+        default: next_state = S_IDLE;
+    endcase
+end
+
+// Datapath
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset registers
+        prefix_idx <= 0;
+        i_idx <= 0;
+        j_idx <= 0;
+        temp_s <= 0;
+        candidate <= 0;
+        temp_sum_reg <= 0;
+        temp_best_reg <= 0;
+        result <= 0;
+        done <= 0;
+        // Reset arrays
+        for (integer k=0; k<9; k=k+1) prefix[k] <= 0;
+        for (integer k=0; k<8; k=k+1) begin
+            best[k] <= 0;
+            sum[k] <= 0;
+        end
+    end else begin
+        case (state)
+            S_IDLE: begin
+                done <= 0;
+                if (start) begin
+                    prefix_idx <= 1;
+                    prefix[0] <= 0;
+                end
+            end
+
+            S_COMPUTE_PREFIX: begin
+                if (prefix_idx <= N) begin
+                    prefix[prefix_idx] <= prefix[prefix_idx-1] + get_arr(prefix_idx-1);
+                    prefix_idx <= prefix_idx + 1;
+                end
+            end
+
+            S_SET_BEST0: begin
+                best[0] <= 1;
+                sum[0] <= prefix[1];
+                i_idx <= 1;
+            end
+
+            S_INIT_I: begin
+                temp_best_reg <= 1;
+                temp_sum_reg <= prefix[i_idx+1];
+                j_idx <= 0;
+            end
+
+            S_LOOP_J_START: begin
+                // No operation
+            end
+
+            S_COMPUTE_S: begin
+                temp_s <= prefix[i_idx+1] - prefix[j_idx+1];
+            end
+
+            S_COMPARE: begin
+                // No operation
+            end
+
+            S_UPDATE: begin
+                candidate <= best[j_idx] + 1;
+                if (best[j_idx] + 1 > temp_best_reg) begin
+                    temp_best_reg <= best[j_idx] + 1;
+                    temp_sum_reg <= temp_s;
+                end else if (best[j_idx] + 1 == temp_best_reg && temp_s < temp_sum_reg) begin
+                    temp_sum_reg <= temp_s;
+                end
+            end
+
+            S_NEXT_J: begin
+                j_idx <= j_idx + 1;
+            end
+
+            S_NEXT_I: begin
+                best[i_idx] <= temp_best_reg;
+                sum[i_idx] <= temp_sum_reg;
+                i_idx <= i_idx + 1;
+            end
+
+            S_DONE: begin
+                result <= best[N-1];
+                done <= 1;
+            end
+
+            default: begin
+                // No operation
+            end
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,46 @@
+Module: shuffle_count
+
+Parameters:
+- N = 8 (number of cards)
+- WIDTH = 3 (bits to represent card positions 0..7)
+- RESULT_WIDTH = 8 (bits for result, sufficient for max 30)
+
+Ports:
+- input clk: clock, rising edge
+- input rst_n: active-low synchronous reset
+- input start: pulse high for one cycle to start computation
+- input [WIDTH-1:0] a [0:N-1]: Alice's permutation, a[i] = new position of card i
+- input [WIDTH-1:0] b [0:N-1]: Bob's permutation
+- output reg [RESULT_WIDTH-1:0] result: minimal number of shuffles
+- output reg done: asserted high for one cycle when result is valid
+
+Description:
+The module computes the minimal number of alternating shuffles (Alice, Bob, Alice, ...) required to return a deck of N cards to its original sorted state.
+
+Algorithm steps:
+1. On start pulse, reset internal state and begin computation.
+2. Compute inverse of Alice's permutation A_inv: for each i (0..N-1), find j such that a[j] = i.
+3. Compute X = B ∘ A: for each i, x[i] = b[a[i]].
+4. Find order L of X: the smallest L > 0 such that X^L = identity. Compute powers of X iteratively: start with identity, repeatedly compute next = X ∘ current, increment k, until next equals identity. L is that k.
+5. Find d (0 ≤ d < L) such that X^d = A_inv. Start with current = identity, d=0. If current equals A_inv, record d. Otherwise, for each step up to L-1: compute next = X ∘ current; if next equals A_inv, record d = step+1; set current = next.
+6. Compute candidates:
+   - even_candidate = 2 * L
+   - if d found: odd_candidate = 2 * d + 1
+   - else: odd_candidate = INF (e.g., 255)
+7. result = min(even_candidate, odd_candidate)
+8. Assert done for one cycle (e.g., in the state after result is ready).
+
+Implementation details:
+- Use a finite state machine with states: IDLE, COMP_A_INV, COMP_X, FIND_ORDER, FIND_D, COMPUTE_RESULT, DONE.
+- Use registers to store A_inv, X, current_power, next_power, order, d, d_found, and counters.
+- For array operations, use combinational logic to compute next values, then latch in registers on clock edge.
+- Since N is small (8), loops can be unrolled or implemented with small counters.
+- All operations are bounded; limit iterations to 16 for order finding and 16 for d finding.
+- Result fits in 8 bits, so RESULT_WIDTH=8.
+
+Timing:
+- After start, the module takes several cycles to compute.
+- done is asserted for one cycle when result is ready.
+- Reset before first use.
+
+Note: Permutations are 0-based (positions 0..N-1).

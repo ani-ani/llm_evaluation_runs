@@ -1,0 +1,139 @@
+module fruit_slicer (
+  input clk,
+  input rst_n,
+  input start,
+  input [5:0] n,        // Number of circles (1-8)
+  input [31:0] x [0:7], // Q16.16 fixed-point x coordinates
+  input [31:0] y [0:7], // Q16.16 fixed-point y coordinates
+  output reg [7:0] max_count,
+  output reg done
+);
+
+// Parameters
+parameter ANGLE_STEPS = 16;
+parameter RADIUS_SCALED = 32'h00010000; // 1.0 in Q16.16
+
+// State machine states
+parameter IDLE = 3'b000;
+parameter COMPUTE_PROJECTIONS = 3'b001;
+parameter SORT_EVENTS = 3'b010;
+parameter SWEEP = 3'b011;
+parameter UPDATE_MAX = 3'b100;
+parameter NEXT_ANGLE = 3'b101;
+parameter DONE_STATE = 3'b110;
+
+reg [2:0] state;
+reg [4:0] angle_index; // 0-15
+reg [4:0] circle_index; // 0-7
+reg [31:0] cos_val, sin_val; // Current cos/sin in Q16.16
+reg [63:0] projection; // Q32.32 for accumulation
+reg [63:0] events [0:15]; // Events: lower 32 bits = value, upper 32 = type+1/-1
+reg [4:0] event_count; // Number of events (2*n)
+reg [7:0] current_max;
+reg [7:0] overlap_count;
+
+// Precomputed cos/sin values for 16 angles in [0, π/2) - Q16.16
+// These would be ROM in actual implementation
+wire [31:0] cos_table [0:15];
+wire [31:0] sin_table [0:15];
+assign cos_table[0] = 32'h00010000; // cos(0) = 1
+assign sin_table[0] = 32'h00000000; // sin(0) = 0
+assign cos_table[1] = 32'h0000EC83; // cos(π/32) ≈ 0.995184
+assign sin_table[1] = 32'h00003240; // sin(π/32) ≈ 0.195090
+// ... (would continue for all 16 steps)
+// For brevity, only 2 shown, in practice all 16 would be defined
+
+always @(posedge clk or negedge rst_n) begin
+  if (!rst_n) begin
+    state <= IDLE;
+    max_count <= 8'd0;
+    done <= 1'b0;
+    angle_index <= 5'd0;
+    circle_index <= 5'd0;
+    event_count <= 5'd0;
+    current_max <= 8'd0;
+    overlap_count <= 8'd0;
+  end else begin
+    case (state)
+      IDLE: begin
+        done <= 1'b0;
+        if (start && n > 0 && n <= 8) begin
+          angle_index <= 5'd0;
+          current_max <= 8'd0;
+          state <= COMPUTE_PROJECTIONS;
+          circle_index <= 5'd0;
+        end
+      end
+      
+      COMPUTE_PROJECTIONS: begin
+        if (circle_index < n) begin
+          // Get cos/sin for current angle
+          cos_val <= cos_table[angle_index];
+          sin_val <= sin_table[angle_index];
+          // Compute projection = x*cos + y*sin
+          projection <= ($signed(x[circle_index]) * $signed(cos_val)) + 
+                       ($signed(y[circle_index]) * $signed(sin_val));
+          // Create events: (proj - RADIUS) with +1, (proj + RADIUS) with -1
+          events[2*circle_index] <= {32'h00000001, projection - RADIUS_SCALED};
+          events[2*circle_index+1] <= {32'hFFFFFFFF, projection + RADIUS_SCALED};
+          circle_index <= circle_index + 1;
+        end else begin
+          event_count <= n << 1; // 2*n events
+          state <= SORT_EVENTS;
+          circle_index <= 5'd0;
+        end
+      end
+      
+      SORT_EVENTS: begin
+        // Bubble sort for small event count (max 16 events)
+        // Implementation omitted for brevity - would swap events based on value
+        state <= SWEEP;
+        overlap_count <= 8'd0;
+        circle_index <= 5'd0;
+      end
+      
+      SWEEP: begin
+        if (circle_index < event_count) begin
+          // Update overlap count based on event type
+          if (events[circle_index][63:32] == 32'h00000001) // +1 event
+            overlap_count <= overlap_count + 1;
+          else // -1 event
+            overlap_count <= overlap_count - 1;
+          
+          // Update current maximum
+          if (overlap_count > current_max)
+            current_max <= overlap_count;
+            
+          circle_index <= circle_index + 1;
+        end else begin
+          state <= UPDATE_MAX;
+        end
+      end
+      
+      UPDATE_MAX: begin
+        if (current_max > max_count)
+          max_count <= current_max;
+        state <= NEXT_ANGLE;
+      end
+      
+      NEXT_ANGLE: begin
+        if (angle_index < ANGLE_STEPS - 1) begin
+          angle_index <= angle_index + 1;
+          circle_index <= 5'd0;
+          state <= COMPUTE_PROJECTIONS;
+        end else begin
+          state <= DONE_STATE;
+        end
+      end
+      
+      DONE_STATE: begin
+        done <= 1'b1;
+        state <= IDLE;
+      end
+      
+      default: state <= IDLE;
+    endcase
+  end
+end
+
+endmodule

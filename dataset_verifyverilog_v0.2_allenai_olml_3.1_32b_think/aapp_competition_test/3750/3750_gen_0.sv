@@ -1,0 +1,1 @@
+module table_tennis_sets(input [15:0]k,input [15:0]a,input [15:0]b,output reg [15:0]result);always@(*)begin integer count_a=a/k; integer rem_a=a%k; integer count_b=b/k; integer rem_b=b/k; if(rem_a!=0&&count_b==0||rem_b!=0&&count_a==0)begin result=16'd65535; end else begin result=count_a+count_b; end end endmodule

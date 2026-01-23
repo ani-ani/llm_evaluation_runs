@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'turtle_dry_finder' that implements the marker drying logic for a scaled-down problem.
+
+Problem Context:
+Turtle moves on a 4x4 grid. The target pattern is provided. Commands are given. We need to find min and max dry times.
+
+Inputs:
+input clk // Clock
+input rst_n // Active-low reset
+input start // Start signal
+input [15:0] target_pattern // 4x4 grid flattened. Bit i corresponds to cell (i%4, i//4). 1 = marked.
+input [127:0] commands_packed // 32 commands, 4 bits each. Format: [3:2]=Distance code (0=1, 1=2, 2=3, 3=4), [1:0]=Direction (00=up, 01=right, 10=down, 11=left).
+
+Outputs:
+output reg [5:0] min_time // Result min (0-32)
+output reg [5:0] max_time // Result max (0-32)
+output reg valid // 1 if valid times exist
+output reg done // 1 when finished
+
+Internal Logic:
+Use a state machine with states: IDLE, FETCH, CALCULATE, CHECK, NEXT, FINISHED.
+- IDLE: Wait for start.
+- FETCH: Extract command bits for current step index.
+- CALCULATE: Perform the move (X, Y update). Note: Movement is 1 step at a time to mark intermediate cells. So we need a sub-counter for distance.
+- CHECK: After moving 1 unit (if distance remains), update the `current_marking` register (16 bits) by setting the bit at current (X,Y). Then, check if `current_marking` == `target_pattern`. If yes, record current total_step_count as a candidate for min/max.
+- NEXT: Increment counters. If finished all commands, go to FINISHED.
+- FINISHED: Latch results.
+
+Constraints:
+Grid is 4x4 (X, Y in 0-3). Max steps 32. Max distance per command 4.
+Start position is (0,0) (Bottom-Left). 
+Path must stay within bounds (assumed valid per problem).
+
+Latency: Several cycles (depending on total distance).

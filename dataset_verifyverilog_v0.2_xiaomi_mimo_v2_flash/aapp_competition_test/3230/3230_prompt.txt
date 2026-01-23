@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'tram_explosion_counter' that counts the number of explosions in a tram layout.
+
+The module processes a grid of size 10x10 (scaled down from 100x100) with characters representing the layout:
+- 'X': Rude passenger (value 1)
+- 'L': Empty seat (value 2)
+- '.': Floor/Other (value 0)
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High to start processing the next frame
+input [7:0] char_in // ASCII character input (only 'X', 'L', '.' are valid)
+output reg [7:0] char_addr // Address to read char_in from external memory (0 to 99)
+
+Outputs:
+output reg [3:0] explosions // Number of explosions detected (max 4 bits for small grid)
+output reg done // High when processing is complete
+
+Algorithm:
+1. State Machine: IDLE -> READ_GRID -> CALC_DISTANCES -> RESOLVE_CONFLICTS -> COUNT_EXPLOSIONS -> FINISHED.
+2. In READ_GRID state, iterate char_addr from 0 to 99, storing positions of 'X' and 'L' in internal BRAMs.
+3. In CALC_DISTANCES state, for each 'X', find the closest 'L' by calculating Euclidean distance squared (avoiding sqrt for hardware simplicity) between (row_X, col_X) and (row_L, col_L). Store the closest seat index and distance for each passenger.
+4. In RESOLVE_CONFLICTS state, iterate through seats to check if multiple passengers target the same seat. If distance is equal, it's a conflict. If one is closer, that passenger wins. Mark winning passengers and seats as occupied/resolved.
+5. In COUNT_EXPLOSIONS state, check the conflict resolution. If a seat had multiple passengers with equal minimal distance, increment explosions counter.
+6. Limitations: Max 8 passengers (X) and 8 seats (L) to fit in internal storage.
+
+Detailed Behavior:
+- Use fixed-point logic if needed, but distances are integers (squared Euclidean distance).
+- The grid is 10x10. Row and Col indices are 4 bits (0-9).
+- Distance squared: (row_diff^2 + col_diff^2). Max diff is 9, so max sq is 81+81=162. Fits in 8 bits.
+- Internal storage for 8 X's and 8 L's.
+
+Example Logic:
+case (state)
+  IDLE: if (start) begin load_idx <= 0; state <= READ_GRID; end
+  READ_GRID: if (char_in == "X") store X position; if (char_in == "L") store L position. Increment load_idx. If load_idx == 100, state <= CALC_DISTANCES.
+  CALC_DISTANCES: Loop over each X. For each X, loop over each L. Calculate dist_sq. If dist_sq < min_dist, update min_dist and target_seat_idx. If dist_sq == min_dist, mark conflict (though problem says input ensures no ties for unique closest). Wait, problem says: "there will be no two ‘L’ characters such that they are both equally distant to some ‘X’". But we must handle "If however they are all equally close, they will all run to the seat". This refers to multiple X's targeting the same L. So we must check for X vs X conflicts for the same L.
+  RESOLVE_CONFLICTS: Create an array `target_counts[L_idx]` and `min_dist_for_L[L_idx]`. For each X, find its closest L. Then increment `target_counts[L_idx]`. Track the minimum distance found for that L. If two X's have the same distance to L, that's a tie.
+  COUNT_EXPLOSIONS: Iterate L. If `target_counts[L] > 1`, check if all targeting X's have equal distance. If yes, `explosions++`.
+endcase
+
+Verification:
+- Inputs are provided serially or via a memory model.
+- The testbench will feed the grid characters.
+- Wait for `done`.
+- Check `explosions` value.
+
+Testbench constraints:
+- Use 10x10 grid size.
+- Max 8 X's and 8 L's.
+- Input format: 100 characters stream.
+- Clock frequency: 100MHz.
+
+Prompt structure:
+1. Header comments.
+2. Module definition with ports.
+3. Parameters for sizes (MAX_X, MAX_L, GRID_SIZE).
+4. Internal signals and state definitions.
+5. State machine logic description.
+6. Datapath logic (distance calculation).
+7. Output assignment.
+
+Return the Verilog code implementing this.

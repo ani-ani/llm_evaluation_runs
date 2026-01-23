@@ -1,0 +1,51 @@
+module spec_tuple_grouping:
+
+This module performs tuple grouping on fixed-size arrays. It takes a list of pairs and groups them by their first element, concatenating the second elements.
+
+Interface:
+  Inputs:
+    - clk: Clock signal (rising edge triggered)
+    - rst_n: Active-low reset
+    - start: Start pulse (1 cycle) to begin computation
+    - input_pairs[0:7]: 8-element array, each is 8-bit (representing a pair: we split into [7:4]=first, [3:0]=second for simplicity)
+                       OR use separate arrays: first[0:7] and second[0:7]
+    - valid_count: 4-bit input (1-8), number of valid pairs
+
+  Outputs:
+    - output_groups[0:7]: 8-element array of 8-bit values, storing grouped results
+                          Format: Each entry = {group_id[3:0], value[3:0]}
+                          Groups are stored consecutively
+    - group_counts[0:7]: 8-element array of 4-bit counts for each group
+    - done: Asserted high for 1 cycle when grouping is complete
+    - result_valid: High when outputs are valid
+
+Behavior:
+  1. On start pulse, read all valid pairs
+  2. For each pair, check if first element matches existing group
+  3. If match: append second element to that group's values
+  4. If no match: create new group
+  5. Output format: Pack grouped values into output_groups array
+
+Constraints:
+  - Max 8 input pairs
+  - Max 8 distinct groups
+  - Each group can accumulate up to 8 values
+  - First element: 4 bits, Second element: 4 bits (simplified for hardware)
+  - Output groups are 8-bit: {group_id, accumulated_value}
+
+Timing:
+  - start = 1 for 1 cycle
+  - Computation takes up to 128 cycles (worst case)
+  - done = 1 for 1 cycle when complete
+  - Output remains stable until next start
+
+Reset:
+  - rst_n=0: clears all internal state, done=0, outputs=0
+  - Need 2 clock cycles of reset
+
+Implementation approach:
+  - Use a state machine with states: IDLE, READ, CHECK, ACCUMULATE, STORE, DONE
+  - Use a small BRAM or registers for group lookup
+  - For each input: iterate through existing groups to find match
+  - Accumulate values in a temporary buffer
+  - Pack results into output array when finished

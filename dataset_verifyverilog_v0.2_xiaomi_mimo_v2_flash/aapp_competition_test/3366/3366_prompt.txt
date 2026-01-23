@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'sum_collatz' that computes the sum of f(X) for X in range [L, R], where f(X) is defined as:
+  iterations := 0
+  while X != 1:
+    if X is even: X = X / 2
+    else: X = X + 1
+    iterations += 1
+
+The module should handle inputs up to 16-bit integers (scaling down from 10^18). The range size (R - L) should be limited to a maximum of 256 to fit within reasonable hardware iteration count.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] L // Start of range
+input [15:0] R // End of range
+
+Outputs:
+output reg [31:0] sum // The sum f(L) + ... + f(R)
+output reg done // High when computation is complete
+
+Latency: Result valid ~1000 cycles after start asserted (depends on max X value and range size).
+
+Behavior:
+The module should use a state machine:
+1. IDLE: Wait for start signal.
+2. CALC_F: Calculate f(X) for current X. Since X can be up to 65535, the path to 1 is at most ~32 steps. This can be done in a sub-state machine or sequential process. Use a temporary register for current X value. Handle 'X even -> X/2' and 'X odd -> X+1'. Increment counter until X==1.
+3. ACCUM: Add the calculated f(X) to the sum.
+4. INCREMENT_X: Increment current X. If X > R, go to DONE. Else go to CALC_F.
+5. DONE: Assert done signal.
+
+Constraints:
+- Use 32-bit registers for the sum and internal counters.
+- Use 16-bit registers for current X and range limits.
+- The module must be purely synchronous logic.

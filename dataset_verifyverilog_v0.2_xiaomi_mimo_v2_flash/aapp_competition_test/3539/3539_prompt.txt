@@ -1,0 +1,52 @@
+Design a combinational Verilog module named 'bipartite_battle' that counts the number of losing configurations for a small N bipartite graphs game.
+
+Problem Adaptation:
+- Number of graphs N: Parameterized (default 2)
+- Max vertices per set (a_i, b_i): Fixed to 7 (allows 7x7 adjacency matrix)
+- Total states per graph: 2^(7*7) = 2^49 is too large, so we iterate over number of edges M from 0 to 49.
+- We assume a_i = b_i = 7 for this implementation to allow exhaustive search.
+- The game state is defined by (a, b, e) where e is the number of edges. However, the Grundy number depends on the specific graph structure. For a simplified hardware implementation, we will iterate through adjacency matrices for a 3x3 bipartite graph (total states 2^9 = 512) and compute the Grundy number for each.
+- We will implement a sequential FSM to iterate through all possible graphs for N=2.
+
+Inputs:
+input clk: System clock
+input rst_n: Active low reset
+input start: Start the computation
+
+Outputs:
+output reg [31:0] result: The count of losing configurations modulo 10^9+7
+output reg done: High when computation is finished
+
+Module Behavior:
+1. The module implements an iterative solver for the Grundy numbers of the game.
+2. Since the graph size is small (3x3), we can represent the graph as a 9-bit vector.
+3. We iterate through all 2^9 possible graphs for the first graph, and 2^9 for the second graph (simplified to just one graph for verification to keep it feasible, or N=2 with small graphs).
+4. For each graph, we compute its Grundy number by solving the impartial game.
+5. The total game is the XOR sum of Grundy numbers of individual graphs.
+6. Socket wins if the XOR sum is non-zero. We want to count losing configurations (XOR sum == 0).
+
+State Machine States:
+- IDLE: Wait for start
+- PREP: Initialize counters (graph index, memory pointers)
+- CALC_G: Calculate Grundy number for current graph configuration. This requires a sub-FSM to solve the game tree. Since the graph is small (max 9 edges), we can unroll the calculation.
+- COMPARE: XOR results, check if 0, increment winning count if not.
+- UPDATE: Move to next graph iteration
+- DONE: Finish signal
+
+Constraints:
+- We will parameterize MAX_VERTICES = 3 (so 3x3 graph).
+- We iterate 2^(3*3) = 512 times.
+- We need internal memory to store Grundy numbers (or compute on the fly).
+- Result modulo 10^9+7.
+
+Verilog Logic Description:
+The module uses a Main FSM to iterate through graph configurations (0 to 511).
+For each configuration, a Sub-FSM computes the Grundy number.
+The Grundy number computation (Sub-FSM) recursively calculates the mex (minimum excludant) of reachable states.
+Reachable states are derived by deleting vertices or edges.
+- Deleting a vertex removes all edges incident to it.
+- Deleting an edge removes one edge.
+The state space is small enough to be solved in hardware.
+
+Note: This implementation assumes a single graph configuration check (N=1) to fit within reasonable synthesis bounds for this format, or N=2 with simplified logic where we assume graph 2 is empty (trivial).
+To handle N=2 properly, we would need 2^9 * 2^9 iterations. We will implement N=1 with 3x3 graph for full verification.

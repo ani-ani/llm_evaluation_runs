@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'pattern_matcher' that implements wildcard pattern matching for fixed-length strings.
+
+The module should match patterns with exactly one '*' character that can be at any position (beginning, middle, or end).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start matching for current pattern
+input [7:0][7:0] word_char // 8-character word (8 chars, 8 bits each), unused chars are 0
+input [7:0][7:0] pattern_char // 8-character pattern (8 chars, 8 bits each), unused chars are 0
+input [3:0] pattern_len // actual length of pattern (1 to 8)
+input [3:0] word_len // actual length of word (0 to 8)
+
+Outputs:
+output reg match // high when word matches pattern
+output reg done // high when computation complete
+
+Behavior:
+The pattern contains exactly one '*' character. The '*' can be at any position.
+The pattern matches a word if the word can be formed by replacing '*' with some substring (including empty).
+
+Algorithm:
+1. Find position of '*' in pattern (0 to 7)
+2. Split pattern into prefix (before *) and suffix (after *)
+3. Check if word starts with prefix AND ends with suffix
+4. For match: word_len >= (pattern_len - 1) since '*' can be empty
+5. If prefix_len = a, suffix_len = b, then word must have length >= a+b
+6. Prefix check: word[0:a] == pattern[0:a]
+7. Suffix check: word[word_len-b:word_len] == pattern[a+1:a+1+b]
+
+Implementation:
+Use a state machine with states: IDLE, FIND_STAR, CHECK_PREFIX, CHECK_SUFFIX, MATCH_DONE, NO_MATCH.
+
+The module processes one word-pattern pair per start signal.
+Latency: 10 clock cycles (computation happens over multiple cycles).
+
+Note: All strings are fixed 8-char arrays, unused positions should be 0.
+Characters are 8-bit ASCII values (a-z).
+
+Example:
+word = "aba" (0x61,0x62,0x61,0,0,0,0,0), word_len = 3
+pattern = "a*a" (0x61,0x2A,0x61,0,0,0,0,0), pattern_len = 3
+Result: match = 1 (pattern matches "aba" and "aaa")
+
+word = "abc" (0x61,0x62,0x63,0,0,0,0,0), word_len = 3
+pattern = "a*a" (0x61,0x2A,0x61,0,0,0,0,0), pattern_len = 3
+Result: match = 1 (pattern matches "aba", "aca", but "abc" doesn't end with 'a')
+
+Wait - pattern "a*a" matches words that start with 'a', end with 'a', and have any middle content (including empty).
+"aba": starts 'a', ends 'a' -> MATCH
+"abc": starts 'a', ends 'c' -> NO MATCH
+"aaa": starts 'a', ends 'a' -> MATCH
+
+For word_len < pattern_len - 1: NO MATCH (even if '*' is empty, minimum length is pattern_len - 1)

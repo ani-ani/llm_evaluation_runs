@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'grade_converter' that converts GPA scores to letter grades.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start processing a new grade
+input [31:0] gpa_fixed // Q16.16 fixed-point GPA value
+
+Outputs:
+output reg [39:0] letter_grade // 5-character ASCII grade string (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, E)
+output reg done // high when grade conversion complete
+
+Specification:
+- Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+- Input values represent GPA multiplied by 65536
+- Example: 4.0 = 4.0 * 65536 = 0x00040000
+- Example: 3.7 = 3.7 * 65536 = 0x0003B333
+- Output letter_grade is 5 ASCII bytes: characters 4:0
+- Convert GPA to letter grade using this table:
+  GPA >= 4.0        => "A+  " (0x412B2020)
+  GPA >= 3.7        => "A   " (0x41202020)
+  GPA >= 3.3        => "A-  " (0x412D2020)
+  GPA >= 3.0        => "B+  " (0x422B2020)
+  GPA >= 2.7        => "B   " (0x42202020)
+  GPA >= 2.3        => "B-  " (0x422D2020)
+  GPA >= 2.0        => "C+  " (0x432B2020)
+  GPA >= 1.7        => "C   " (0x43202020)
+  GPA >= 1.3        => "C-  " (0x432D2020)
+  GPA >= 1.0        => "D+  " (0x442B2020)
+  GPA >= 0.7        => "D   " (0x44202020)
+  GPA >= 0.0        => "D-  " (0x442D2020)
+  GPA == 0.0        => "E   " (0x45202020)
+- Note: Each comparison is inclusive (>=)
+- Latency: 3 clock cycles after start asserted
+- Use state machine with states: IDLE, COMPARE_1, COMPARE_2, DONE
+- In IDLE: wait for start signal
+- In COMPARE_1: compare against thresholds >= 2.0 (4.0, 3.7, 3.3, 3.0, 2.7, 2.3, 2.0)
+- In COMPARE_2: compare against thresholds < 2.0 (1.7, 1.3, 1.0, 0.7, 0.0)
+- In DONE: assert done and output result
+- Threshold constants in Q16.16 format:
+  4.0 = 0x00040000
+  3.7 = 0x0003B333
+  3.3 = 0x00034CCC
+  3.0 = 0x00030000
+  2.7 = 0x0002B333
+  2.3 = 0x00024CCC
+  2.0 = 0x00020000
+  1.7 = 0x0001B333
+  1.3 = 0x00014CCC
+  1.0 = 0x00010000
+  0.7 = 0x0000B333
+  0.0 = 0x00000000

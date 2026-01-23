@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'tsp_solver' that computes the minimum total flight duration for a constrained Travelling Salesman Problem.
+
+Problem Constraint: For city K (1-indexed), all cities < K must be visited either entirely before K or entirely after K.
+
+Scaling: The problem supports N up to 1500, but we will scale down to N=4 for hardware implementation. This corresponds to 4 cities, which allows for a manageable DP state size.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] city_distance_0_1, city_distance_0_2, city_distance_0_3, // Distance matrix inputs for N=4
+             city_distance_1_2, city_distance_1_3, 
+             city_distance_2_3;
+
+Outputs:
+output reg [15:0] min_cost // Minimum total flight duration (unsigned integer)
+output reg done // High when computation is complete
+
+Behavior: 
+The module should compute the minimum cost path visiting all 4 cities exactly once, satisfying the constraint.
+For N=4, the DP state can be represented by (mask, last_city). 
+We can solve this using a state machine that iterates through masks from 1 to (1<<4)-1.
+Alternatively, since N=4 is small, we can use a brute-force approach with a state machine that enumerates all 4! = 24 permutations and checks the constraint, calculating the total cost for valid ones.
+State Machine States: IDLE, INIT, CHECK_PERMUTATION, UPDATE_MIN, DONE.
+1. IDLE: Wait for start signal.
+2. INIT: Initialize variables (current permutation counter, min_cost to max value).
+3. CHECK_PERMUTATION: Generate next permutation (e.g., using Gray code or simple increment + Rejection Sampling to ensure valid permutation). Check if it satisfies the peculiar condition. 
+   Constraint Check: For each city K (1,2,3), check if all smaller cities are on one side. For N=4, we check for K=1 (trivial), K=2 (city 1 must be on one side), K=3 (cities 1,2 on same side).
+4. UPDATE_MIN: If valid, calculate total flight duration for this permutation (sum of distances between consecutive cities in the sequence) and update min_cost if smaller.
+5. DONE: Assert done signal.
+
+The distances are small integers (0-1000). The module should use an internal distance matrix initialized from the inputs.
+Output min_cost is a 16-bit unsigned integer (max possible cost for N=4, max dist 1000 is roughly 3000, so 16 bits is safe).
+
+Note: The prompt specifies 'tsp_solver'. The inputs provided in the Python example are matrices. Since Verilog inputs must be flat for this testbench style, we list individual distance inputs. The module logic should reconstruct the matrix or pass it flattened. Let's assume the logic handles the specific N=4 case directly.

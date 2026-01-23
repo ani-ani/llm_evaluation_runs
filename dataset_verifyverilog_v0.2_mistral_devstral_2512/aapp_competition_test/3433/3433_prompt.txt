@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'maze_escape' that solves a simplified maze escape problem.
+
+Problem Adaptation:
+- Maze size: 8x8 grid (fixed)
+- Row width: 8 characters ('J', 'F', '.', '#')
+- Maximum steps: 64 cycles
+- Fire spreads one step per cycle, Joe moves one step per cycle
+- Joe wins if he reaches any boundary cell before fire
+- Joe loses if fire reaches him or time runs out
+
+Inputs:
+input clk: Clock signal
+input rst_n: Active-low reset
+input start: Start computation
+input [7:0] row_data: 8-bit row data representing characters ('J'=0x4A, 'F'=0x46, '.'=0x2E, '#'=0x23)
+input [2:0] row_index: Row index (0-7) for loading
+input load: High to load current row_data into row_index
+
+Outputs:
+output reg result: 1 if Joe can escape, 0 if impossible
+output reg [5:0] escape_time: Time in minutes to escape (0-63)
+output reg done: High when computation complete
+
+Behavior:
+1. IDLE state: Wait for start signal
+2. LOADING state: Accept 8 rows of data via load signal
+3. SIMULATION state: 
+   - Initialize Joe position and fire positions
+   - Cycle-by-cycle simulation (max 64 cycles):
+     * Update fire: Spread to adjacent passable cells
+     * Check Joe's position: If boundary, assert result=1 and capture escape_time
+     * Update Joe: Move to adjacent passable, non-burned cells
+     * Check collision: If Joe reaches fire, result=0
+4. DONE state: Set done=1
+
+Fire Spread Rules:
+- Fire spreads to adjacent (up/down/left/right) '.' or 'J' cells
+- Walls '#' block fire
+
+Joe Movement Rules:
+- Joe can move to adjacent '.' cells
+- Joe cannot move to '#' walls or 'F' fire cells
+- Joe can exit from any boundary cell
+
+Latency: Result valid after approximately 72 clock cycles (8 loading + max 64 simulation).
+
+State Machine States: IDLE, LOADING, SIMULATING, DONE
+
+Internal Storage:
+- 8x8 grid of 2-bit values: 00=empty, 01=wall, 10=fire, 11=Joe
+- Fire queue for spread simulation (FIFO of 16 positions)
+- Joe position registers (3-bit x, 3-bit y)
+
+Output encoding:
+result=1: Escape successful, escape_time contains minutes
+result=0: Impossible, escape_time invalid
+
+Note: The module loads maze data via a streaming interface, then performs cycle-accurate simulation.

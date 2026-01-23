@@ -1,0 +1,36 @@
+Module: square_intersection
+
+Interface:
+  Inputs:
+    - clk: Clock signal (rising edge triggered)
+    - rst_n: Active-low synchronous reset
+    - start: Start pulse (assert for 1 cycle to begin computation)
+    - square1_coords: 32-bit input containing 4 vertices of axis-aligned square, packed as {x0,y0,x1,y1,x2,y2,x3,y3} where each coordinate is 8-bit signed
+    - square2_coords: 32-bit input containing 4 vertices of rotated square, packed as {a0,b0,a1,b1,a2,b2,a3,b3} where each coordinate is 8-bit signed
+  
+  Outputs:
+    - result: 1-bit output (1 if squares intersect, 0 otherwise)
+    - done: Asserted high for 1 cycle when computation completes
+
+  Timing:
+    - Assert start for 1 clock cycle
+    - done will go high within 10 cycles
+    - Sample result on the same cycle done is high
+
+  Reset behavior:
+    - On rst_n=0: result=0, done=0
+    - Minimum 2 clock cycles of reset required
+
+  Functionality:
+    The module checks intersection of two squares:
+    1. Axis-aligned square from square1_coords
+    2. 45-degree rotated square from square2_coords
+    
+    Algorithm:
+    - Extract bounding box for axis-aligned square (min/max x,y)
+    - Transform rotated square vertices to (u,v) space: u=x+y, v=x-y
+    - Check if any vertex of square1 is inside square2 using UV bounds
+    - Check if any vertex of square2 is inside square1 using XY bounds
+    - Check if any edges intersect
+    
+  All arithmetic uses 8-bit signed coordinates. Intermediate results use 16-bit to prevent overflow.

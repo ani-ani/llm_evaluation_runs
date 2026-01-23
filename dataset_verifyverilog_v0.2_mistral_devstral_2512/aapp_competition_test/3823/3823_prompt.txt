@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'min_rounding_error' that implements the minimum absolute difference calculation after performing floor/ceil operations on real numbers.
+
+The problem is adapted as follows:
+- Input numbers are in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- We process 2n numbers (scaled to n=4 for hardware feasibility)
+- Count numbers with fractional parts != 0
+- Calculate sum of fractional parts in Q16.16 format
+- Determine optimal count of numbers to round up vs down
+- Output the minimum absolute error in Q16.16 format
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] n // Number of pairs (n=4 max)
+input [31:0] numbers [7:0] // 8 numbers in Q16.16 format (max 2n=8)
+
+Outputs:
+output reg [31:0] result // Minimum absolute error in Q16.16 format
+output reg done // High when computation complete
+
+Latency: Approximately 20 clock cycles after start asserted.
+
+Behavioral Description:
+1. Reset: Initialize state machine, counters, and sums
+2. Processing State:
+   - Iterate through all 2n numbers
+   - Extract fractional part: frac = number[15:0]
+   - If frac != 0:
+     - Increment fractional_count
+     - Add frac to fractional_sum (32-bit accumulator)
+   - Store fractional parts in a small buffer (8 entries)
+3. Calculation State:
+   - Compute valid range for number of round-ups:
+     - min_up = max(0, n - (2n - fractional_count)) = max(0, n - integer_count)
+     - max_up = min(n, fractional_count)
+   - Calculate target_sum = fractional_count * 0.5 in Q16.16 (0x00008000 per unit)
+   - Find optimal_up that minimizes |sum - optimal_up|:
+     - This can be approximated as optimal_up = round(sum / 0x00008000)
+     - But we need to search in valid range [min_up, max_up]
+   - For hardware feasibility, we compute:
+     - diff_if_all_floor = fractional_sum
+     - diff_if_all_ceil = fractional_count * 0x00010000 - fractional_sum
+     - Hybrid: we need to choose k round-ups and (fractional_count-k) round-downs
+     - Total error = |fractional_sum - k * 0x00008000|
+4. Optimization:
+   - We want to minimize |fractional_sum - k * 0x00008000|
+   - Optimal k ≈ fractional_sum / 0x00008000 (integer division)
+   - Check values around this estimate within [min_up, max_up]
+5. Output: Store result, assert done
+
+The module uses a state machine with states: IDLE, COLLECT, CALCULATE, DONE.
+Use a simple state machine to iterate through numbers and compute the result.

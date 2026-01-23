@@ -1,0 +1,23 @@
+Design a sequential Verilog module named 'subsequence_counter' that solves the given subsequence counting problem.
+
+**Problem Description**: Given four integers a_00, a_01, a_10, a_11 representing counts of subsequences '00', '01', '10', '11' in a binary string, construct a valid string of '0's and '1's. If impossible, indicate failure.
+
+**Inputs**: 
+- `clk`: System clock
+- `rst_n`: Active-low reset
+- `start`: High to start computation
+- `a00`, `a01`, `a10`, `a11`: 16-bit inputs representing the required counts (scaled down max value 10000).
+
+**Outputs**:
+- `done`: High when computation is complete
+- `valid`: High if a solution exists, low if impossible
+- `length`: 16-bit output indicating length of the result string
+- `result_index`: 8-bit input for reading the result string
+- `result_bit`: 1-bit output, the character at `result_index` ('0'=0, '1'=1).
+
+**Internal Logic & Constraints**:
+1. **Count Determination**: Compute `n0` (count of '0's) and `n1` (count of '1's) using the formulas `n0*(n0-1)/2 = a00` and `n1*(n1-1)/2 = a11`. Use a combinational loop or state machine to find `n0` and `n1` up to a maximum of 255 (since `255*254/2 < 2^16`). Handle edge cases where `a00` or `a11` are 0 (n could be 0 or 1).
+2. **Consistency Check**: Verify `n0 * n1 == a01 + a10`. If not, output `valid = 0`.
+3. **String Construction**: Construct the string to match `a01` exactly. The string consists of `n0` '0's. We need to distribute `n1` '1's into the `n0+1` gaps between/around '0's. To get `a01` (transitions from 0 to 1), we must place `k` '1's immediately after the first `k` '0's. The remaining `n1 - k` '1's go after all '0's. Here `k = a01 / n1`. The number of '1's placed immediately after a '0' is `r = a01 % n1`. The construction pattern is: `k` copies of '01', then 1 copy of '0' followed by `r` '1's, then `(n0 - k - 1)` copies of '0', then remaining '1's.
+4. **Memory**: Use a small internal buffer (e.g., 64-bit shift register or distributed RAM) to store the constructed string bits.
+5. **Latency**: Result valid after approx 200 clock cycles (enough for loops).

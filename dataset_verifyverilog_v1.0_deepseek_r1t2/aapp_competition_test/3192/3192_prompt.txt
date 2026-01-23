@@ -1,0 +1,160 @@
+module shortest_cycle_finder (
+    input clk, rst_n, start,
+    input [3:0] n,
+    input [63:0] graph,
+    output reg done,
+    output reg [2:0] cycle_length,
+    output reg [23:0] cycle
+);
+
+// State encoding
+localparam IDLE = 3'd0;
+localparam INIT = 3'd1;
+localparam BFS_INIT = 3'd2;
+localparam BFS_PROCESS = 3'd3;
+localparam NEXT_START = 3'd4;
+localparam DONE = 3'd5;
+
+reg [2:0] state, next_state;
+
+// Internal registers
+reg [2:0] current_start;        // Current start node for BFS
+reg [2:0] current_distance;     // Current BFS distance
+reg [7:0] current_set;          // Nodes at current distance
+reg [7:0] next_set;             // Nodes for next distance
+reg [2:0] current_node;         // Currently processing node
+reg [2:0] neighbor_idx;         // Current neighbor index
+reg [7:0] dist [0:7];           // Distance from start node
+reg [2:0] parent [0:7];         // Parent in BFS tree
+reg [2:0] best_cycle_len;       // Best cycle length found
+reg [23:0] best_cycle;          // Best cycle (packed)
+reg [2:0] temp_cycle [0:7];     // Temporary cycle storage
+reg [2:0] temp_idx;             // Temp index for reconstruction
+
+// Helper to get graph edge
+wire graph_edge = graph[current_node * 8 + neighbor_idx];
+
+// State register
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        current_start <= 0;
+        current_distance <= 0;
+        current_set <= 0;
+        next_set <= 0;
+        current_node <= 0;
+        neighbor_idx <= 0;
+        best_cycle_len <= 3'd7; // Initialize with max+1
+        best_cycle <= 0;
+        temp_idx <= 0;
+        done <= 0;
+        cycle_length <= 0;
+        cycle <= 0;
+    end else begin
+        state <= next_state;
+        
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    done <= 0;
+                    best_cycle_len <= 3'd7;
+                    best_cycle <= 0;
+                    current_start <= 0;
+                end
+            end
+            
+            INIT: begin
+                // Initialize for next start node
+                current_start <= current_start + 1;
+            end
+            
+            BFS_INIT: begin
+                // Initialize BFS for current_start
+                current_distance <= 0;
+                current_set <= (1 << current_start);
+                next_set <= 0;
+                dist[current_start] <= 0;
+                // Initialize distances to 8+1=9 (infinity)
+                for (integer i = 0; i < 8; i = i + 1) begin
+                    if (i != current_start)
+                        dist[i] <= 8;
+                end
+            end
+            
+            BFS_PROCESS: begin
+                if (current_set != 0) begin
+                    // Find first set bit in current_set
+                    for (integer i = 0; i < 8; i = i + 1) begin
+                        if (current_set[i] && current_node != i) begin
+                            current_node <= i;
+                            current_set[i] <= 0;
+                            neighbor_idx <= 0;
+                        end
+                    end
+                end else if (current_distance < 4'd8) begin
+                    // Move to next distance level
+                    current_distance <= current_distance + 1;
+                    current_set <= next_set;
+                    next_set <= 0;
+                end
+            end
+            
+            NEXT_START: begin
+                // Move to next start node or finish
+                if (current_start >= n - 1) begin
+                    // All start nodes processed
+                    if (best_cycle_len == 3'd7) begin
+                        cycle_length <= 0;
+                        cycle <= 0;
+                    end else begin
+                        cycle_length <= best_cycle_len;
+                        cycle <= best_cycle;
+                    end
+                    done <= 1;
+                end
+            end
+        endcase
+        
+        // Process neighbor
+        if (state == BFS_PROCESS && current_set != 0 && neighbor_idx < n) begin
+            if (graph_edge) begin
+                if (neighbor_idx == current_start && dist[current_node] != 8) begin
+                    // Found cycle
+                    best_cycle_len <= dist[current_node] + 1;
+                    // Reconstruct cycle and store in best_cycle
+                    // (This would require additional states for full implementation)
+                end else if (dist[neighbor_idx] > current_distance + 1) begin
+                    dist[neighbor_idx] <= current_distance + 1;
+                    parent[neighbor_idx] <= current_node;
+                    next_set <= next_set | (1 << neighbor_idx);
+                end
+            end
+            neighbor_idx <= neighbor_idx + 1;
+        end
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: if (start) next_state = INIT;
+        INIT: next_state = BFS_INIT;
+        BFS_INIT: next_state = BFS_PROCESS;
+        BFS_PROCESS: begin
+            if (current_set == 0 && current_distance >= 4'd8)
+                next_state = NEXT_START;
+            else if (current_set == 0)
+                next_state = BFS_PROCESS; // Continue to next distance
+        end
+        NEXT_START: begin
+            if (current_start >= n - 1)
+                next_state = DONE;
+            else
+                next_state = INIT;
+        end
+        DONE: next_state = IDLE;
+    endcase
+end
+
+endmodule

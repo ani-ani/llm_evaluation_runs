@@ -1,0 +1,33 @@
+Design a combinational Verilog module named 'rgb_to_hsv' that converts RGB color values to HSV color space.
+
+**Fixed-Point Specification**: Use Q16.16 format (16 integer bits, 16 fractional bits). 
+- Input RGB values are normalized to range 0.0-1.0 (i.e., 255 maps to 1.0).
+- Output H range: 0 to 360.0
+- Output S range: 0 to 100.0
+- Output V range: 0 to 100.0
+
+**Inputs**: 
+input [31:0] r, g, b  // Q16.16 format
+
+**Outputs**:
+output [31:0] h, s, v // Q16.16 format
+
+**Logic Description**:
+1. **Normalization**: Input values (0-255 in integer part) are treated as 0.0-1.0 in Q16.16. For example, 255 is 0x00FF0000 (approx 1.0). 
+2. **Max/Min**: Determine max_val (mx) and min_val (mn) of r, g, b. 
+3. **Delta**: Calculate df = mx - mn.
+4. **Hue (H) Calculation**:
+   - If mx == mn: H = 0
+   - If mx == r: H = (60 * ((g - b) / df) + 360) % 360
+   - If mx == g: H = (60 * ((b - r) / df) + 120) % 360
+   - If mx == b: H = (60 * ((r - g) / df) + 240) % 360
+   - Note: Division requires scaling. Multiply by 60 (0x3C0000) and divide by df. The modulo 360 is performed by subtracting 360 if result >= 360.
+5. **Saturation (S) Calculation**:
+   - If mx == 0: S = 0
+   - Else: S = (df / mx) * 100. (Multiply by 100 (0x640000) and divide by mx).
+6. **Value (V) Calculation**:
+   - V = mx * 100. (Multiply mx by 100).
+
+Note: Division in Verilog requires keeping track of scaling factors. Since inputs are Q16.16, intermediate results should be scaled to avoid loss. For division A/B, we can compute (A * 65536) / B to maintain Q16.16 output.
+
+The module should be purely combinational.

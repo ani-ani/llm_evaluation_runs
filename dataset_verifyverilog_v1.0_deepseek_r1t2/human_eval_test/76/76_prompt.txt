@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'is_simple_power' that implements a power check algorithm.
+
+The module should check if input x is a power of n (i.e., x = n^k for some integer k >= 0).
+
+**Interface:**
+Inputs:
+  input clk          // Clock signal
+  input rst_n        // Active-low reset
+  input start        // Start computation (pulse high)
+  input [7:0] x      // Number to check (8-bit unsigned)
+  input [7:0] n      // Base number (8-bit unsigned)
+
+Outputs:
+  output reg result  // 1 if x is a power of n, 0 otherwise
+  output reg done    // High for 1 cycle when result is valid
+
+**Behavioral Description:**
+1. The module uses an iterative algorithm based on repeated division:
+   - If x == 1, then x is a power of n (result=1, done).
+   - If n == 1, then x must be 1 (already handled) or n^1, so x==1 is the only valid case. If x != 1, result=0.
+   - If n == 0, valid powers are 0^0 (undefined, treat as fail) or 0^1=0. We will handle n=0 as: if x==0 or x==1 (0^0=1 convention), return 1, else 0. However, strictly 0^0 is undefined. Let's assume standard math: if n=0 and x=1 (0^0), return 1. If n=0 and x=0 (0^1), return 1. Else 0.
+   - If x % n != 0, then x is not a power of n (result=0, done).
+   - If x % n == 0, update x = x / n and repeat.
+
+2. States: IDLE, CHECK, DIVIDE, DONE.
+   - IDLE: Wait for start. On start, go to CHECK.
+   - CHECK: Evaluate conditions (x==1, n==1, n==0, divisibility).
+   - DIVIDE: Calculate x / n and loop back to CHECK.
+   - DONE: Assert done and return to IDLE.
+
+3. Constraints: Inputs are 8-bit. Division is integer division. Iteration count is bounded (max 8 iterations for 256). 
+
+4. Interface Mapping:
+   - Clock: `clk`
+   - Reset: `rst_n` (active low)
+   - Start: `start`
+   - Input `x`: `x`
+   - Input `n`: `n`
+   - Output `result`: `result`
+   - Output `done`: `done`
+
+5. Latency: Max 16 clock cycles (worst case). Result valid when `done` is high.

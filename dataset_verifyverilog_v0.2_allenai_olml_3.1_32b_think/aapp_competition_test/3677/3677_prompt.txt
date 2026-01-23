@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'largest_committee' that finds the size of the largest clique in an N-vertex graph with bounded degree K.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [5:0] N // number of vertices (max 50)
+input [3:0] K // degree bound (max 10)
+input [5:0] current_vertex // vertex index for adjacency input
+input [4:0] num_neighbors // number of neighbors for current vertex
+input [5:0] neighbor_addr // neighbor index being provided
+input neighbor_valid // high when neighbor data is valid
+input [5:0] neighbor_id // neighbor vertex ID
+
+Outputs:
+output reg [5:0] max_clique_size // result: size of largest committee
+output reg done // high when computation complete
+output reg busy // high when computing
+
+Specification:
+The module computes the largest clique size using the following approach:
+1. Store adjacency matrix for up to 50 vertices (using distributed RAM)
+2. Use recursive backtracking with pruning to find maximum clique
+3. Since K ≤ 10, maximum clique size is ≤ K, bounding the search
+4. Implement as a state machine with bounded iteration
+
+Implementation details:
+- Use block RAM to store adjacency matrix (50x50 bits = 2500 bits)
+- Use stack for backtracking (depth ≤ K = 10)
+- Candidate set pruning based on degree constraint
+- State machine: IDLE, LOAD_GRAPH, BUILD_CLIQUE, BACKTRACK, UPDATE_MAX, DONE
+- Latency: up to 2^20 clock cycles in worst case (acceptable for K≤10)
+- Clock and reset: standard synchronous design
+
+For adjacency input:
+- Accept graph as edge list during LOAD_GRAPH state
+- Store as adjacency matrix in BRAM
+- Use neighbor_valid and neighbor_id to build connections
+
+Algorithm:
+1. Initialize: Load adjacency matrix from input stream
+2. For each vertex as potential start:
+   a. Initialize clique with this vertex
+   b. Recursively add vertices that are adjacent to all current clique members
+   c. Track maximum size found
+3. Backtrack when no more vertices can be added
+4. Prune branches that cannot exceed current max
+
+The module should be fully synchronous with proper state transitions and bounded resource usage.

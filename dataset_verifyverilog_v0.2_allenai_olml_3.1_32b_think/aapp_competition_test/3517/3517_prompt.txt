@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'airplane_construction' that computes the shortest construction time after eliminating exactly one step.
+
+The problem is adapted to N≤8 steps, using a fixed-size representation.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] step_count // number of steps (N), 1 to 8
+input [7:0] step_times [0:7] // time for each step (0-255)
+input [7:0] dependencies [0:7] // bit mask of dependencies for each step
+// bit i = 1 means depends on step i
+// step 0 has no dependencies (always 0x00)
+
+Outputs:
+output reg [15:0] min_time // minimum time after eliminating best step
+output reg done // high when computation complete
+
+Specify latency: Result valid 200 clock cycles after start asserted.
+Use state machine with states: IDLE, BUILD_GRAPH, COMPUTE_ORIGINAL, TRY_ELIMINATE, COMPUTE_ELIMINATED, UPDATE_MIN, DONE.
+
+Algorithm:
+1. Parse dependencies (bitmask format)
+2. For each step i from 0 to N-1:
+   - Temporarily remove step i (set its time to 0)
+   - Compute critical path (longest path from step 0 to step N-1)
+   - Track minimum result
+3. Critical path computation: Use DP with topological order
+   - dist[0] = step_times[0]
+   - For each node in topological order, update dist[dest] = max(dist[dest], dist[src] + time[dest])
+
+Fixed-size constraints:
+- Maximum 8 steps (N=8)
+- Each step time fits in 8 bits (0-255)
+- Critical path fits in 16 bits
+- Dependencies stored as bit mask (8 bits per step)
+
+Output format:
+- min_time in Q16.0 format (raw integer)
+- done signal indicates completion
+
+The module should iterate through all possible steps to eliminate and compute the resulting critical path, then output the minimum.

@@ -1,0 +1,75 @@
+Design a sequential Verilog module named 'drawing_canvas' that reconstructs a lost painting from a command log.
+
+The problem is adapted for hardware simulation with the following scaled constraints:
+- Canvas size: 4x4 (N=4)
+- Colors: 1 to 15 (K=15, 4 bits)
+- Commands: Up to 8 (M=8)
+- SAVE/LOAD stack: Depth 2 (max 2 saves)
+
+**Module Interface:**
+
+Inputs:
+  input clk             // Clock signal
+  input rst_n           // Active-low reset
+  input start           // Start processing the log
+  input [5:0] cmd_type  // 0=PAINT, 1=SAVE, 2=LOAD
+  input [3:0] color     // Color for PAINT (1-15)
+  input [1:0] x1, y1    // Upper-left coords (0-3)
+  input [1:0] x2, y2    // Lower-right coords (0-3)
+  input [1:0] load_idx  // Load index for LOAD command (1-2)
+
+Outputs:
+  output reg [3:0] pixel_data  // The color of the pixel currently being written
+  output reg [3:0] pixel_addr_x  // X coordinate for pixel write
+  output reg [3:0] pixel_addr_y  // Y coordinate for pixel write
+  output reg pixel_wr            // Write enable signal
+  output reg done                // High when all commands processed
+
+**Behavioral Description:**
+
+The module must implement a controller that iterates through commands. Since the input stream is serialized (sent one command per cycle or burst), the module processes them sequentially.
+
+For PAINT commands:
+  1. Iterate through all cells in the rectangle defined by (x1, y1) to (x2, y2).
+  2. For each cell (x, y), check if (x + y) is even.
+     - If even: The cell gets the input `color`.
+     - If odd: The cell retains its previous color (no write).
+  3. Update the pixel at (x, y) with the new color if applicable.
+  4. The checkerboard pattern ensures adjacent cells have different colors.
+
+For SAVE commands:
+  1. Snapshot the current 4x4 grid state (16 pixels) into one of two internal memory banks (Save Slot 1 or 2).
+
+For LOAD commands:
+  1. Restore the 4x4 grid state from the specified Save Slot (load_idx).
+
+**Control Flow:**
+- The module should be driven by a state machine: IDLE -> PROCESSING -> DONE.
+- In IDLE, wait for `start` signal.
+- In PROCESSING, execute commands. Since the grid is small, a PAINT command can unroll the loop for the maximum 4x4 area.
+- The `pixel_wr` signal should be high only when a cell is actually updated (i.e., when (x+y) is even for PAINT).
+- Note: To support multiple commands in a single simulation test, assume `cmd_type`, `color`, etc. are held stable or updated externally, and the FSM advances through the internal command queue.
+
+**Implementation Details:**
+- Use internal registers for the 4x4 grid state (16 x 4-bit registers).
+- Use internal registers for the save buffers (2 x 16 x 4-bit).
+- The output `pixel_data` and `pixel_addr` should be valid when `pixel_wr` is high.
+- The `done` signal asserts when the internal command counter reaches the end (M=8).
+
+**State Machine States:**
+- IDLE: Wait for start.
+- FETCH_CMD: Decode the current command type.
+- PAINT_LOOP: Iterate over the rectangular area. Calculate parity. Update grid if (x+y) even.
+- SAVE_OP: Copy current grid to save buffer.
+- LOAD_OP: Copy save buffer to current grid.
+- DONE: Assert done signal.
+
+**Example Trace:**
+Command: PAINT 2 0 0 3 3
+Updates: (0,0)=2, (0,2)=2, (1,1)=2, (1,3)=2, (2,0)=2, (2,2)=2, (3,1)=2, (3,3)=2.
+Skips: (0,1), (0,3), etc.
+
+Command: PAINT 3 0 3 3 3 (Row 3, Col 3 only, i.e., single cell if x2=y2=3)
+Updates: (3,3) becomes 3 (since 3+3=6 even).
+
+The testbench will verify the final state of the grid.

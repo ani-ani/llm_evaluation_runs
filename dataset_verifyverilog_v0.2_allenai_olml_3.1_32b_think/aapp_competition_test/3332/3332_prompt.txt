@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'max_priority_subset' that computes the maximum total priority of a subset of data streams that can be processed with a single OGU using a stack.
+
+The problem reduces to finding the maximum weight non-crossing subset of intervals. Two intervals [s_i, e_i) and [s_j, e_j) conflict (cannot both be selected) if they overlap but neither is strictly contained within the other. Specifically, if i is selected and j is selected, they must satisfy either:
+1. e_i <= s_j (i ends before j starts)
+2. e_j <= s_i (j ends before i starts)
+3. [s_i, e_i) is strictly inside [s_j, e_j) (nested)
+4. [s_j, e_j) is strictly inside [s_i, e_i) (nested)
+
+We scale the problem parameters:
+- Max streams N = 8
+- Max start time s, duration d: fit in 8 bits (0-255)
+- End time e = s + d (max 510, fits in 9 bits)
+- Priority p: 8 bits (0-255)
+- Max total priority: fits in 12 bits.
+
+The module should use a state machine to:
+1. Accept input streams (start times, durations, priorities) and calculate end times.
+2. Sort the streams based on end times (E[S] <= E[K] condition for DP).
+3. Compute the DP table DP[i] = max priority subset in first i streams.
+   Transition: DP[i] = max(DP[i-1], P[i] + max{DP[k] | E[k] <= S[i]}).
+   Since N=8, we can iterate k from 0 to i-1 and check the non-overlap condition in parallel or sequence.
+
+Inputs:
+input clk
+input rst_n
+input start                      // Start signal
+input [7:0] s_i, d_i, p_i        // Input stream data
+input valid_in                   // Input valid
+output reg [11:0] result         // Max priority
+output reg done                  // Computation complete
+
+Latency: ~500 clock cycles (allow enough time for sorting and DP loops). Use state machine with states: IDLE, LOAD, SORT, DP_COMPUTE, FINISH.
+
+Behavior:
+- In IDLE, wait for start.
+- In LOAD, read 8 pairs of (s, d, p) from the inputs.
+- In SORT, sort the 8 streams by end time (e = s + d). You may use bubble sort or a sorting network.
+- In DP_COMPUTE, fill the DP table.
+  - Initialize dp[0] = 0.
+  - For i from 1 to 8:
+    - Option 1: Exclude stream i (dp[i] = dp[i-1]).
+    - Option 2: Include stream i. Find max dp[k] such that stream k ends before stream i starts (or k=0). Add p[i].
+    - Take max of Option 1 and Option 2.
+- In FINISH, output dp[8].

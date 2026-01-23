@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'sunlight_hours' that computes sunlight exposure for buildings in a fixed east-west line.
+
+**Adaptation Details:**
+- Max 8 buildings (N <= 8)
+- X coordinates: 0-65535
+- Heights: 0-65535
+- Fixed-point arithmetic: Use Q16.16 format (16 integer bits, 16 fractional bits)
+- Time calculation: 18 hours * (visible sky fraction)
+- Sky fraction approximation: Uses 16-bit integer arithmetic to compute max slope seen from West and East
+
+**Algorithm:**
+1. Receive building data as two 8-element arrays (X and H)
+2. Compute West-to-East sweep: For each building, find max slope from previous buildings (simplified tangent: (h_curr - h_prev) / (x_curr - x_prev))
+3. Compute East-to-West sweep: For each building, find max slope from subsequent buildings
+4. Combine: Sun hours = 18 * (1 - (max_slope_west + max_slope_east) / 180_deg_factor)
+   *Actually simplified to:* 18.0 hours if fully visible, reduced by shadow obstruction
+
+**Simplified Algorithm (Hardware-Friendly):**
+- Use state machine to process buildings in two passes
+- Pass 1: West-to-East. Store max height ratio (simplified as height * 1000 / distance)
+- Pass 2: East-to-West. Same logic
+- Result: Hours = 18 - (shadows_from_west + shadows_from_east)
+- Shadows calculated as: (max_height_diff / distance) * scale_factor
+
+**Module Interface:**
+Inputs:
+input clk // Clock
+input rst_n // Active low reset
+input start // Start computation
+input [2:0] n_valid // Number of valid buildings (1 to 8)
+input [15:0] x_data [0:7] // X coordinates (fixed point 16.0)
+input [15:0] h_data [0:7] // Heights (fixed point 16.0)
+
+Outputs:
+output reg [15:0] sun_hours [0:7] // Result in Q16.16 format
+output reg done // High when computation complete
+
+**Internal Logic:**
+- State machine: IDLE -> LOAD -> SWEEP_WEST -> SWEEP_EAST -> CALC -> DONE
+- Use 64-bit accumulator for intermediate calculations to prevent overflow
+- Fixed-point division approximated or simplified to multiplication for small N
+- Maximum 1000 cycles latency (bounded by N*N operations)
+
+**Note on Fixed-Point:**
+- Q16.16 means value = register / 65536.0
+- Input 1.5 is 0x00018000
+- Output 18.0 is 0x120000
+- Slope calculation uses approximation: slope = (dh << 16) / dx (integer division)
+- Visibility fraction is simplified: Calculate shadow cast and subtract from 18.0 hours
+
+**Timing:**
+- Result valid 200-500 cycles after start (depends on N)
+- Arrays are packed into registers, valid on start pulse

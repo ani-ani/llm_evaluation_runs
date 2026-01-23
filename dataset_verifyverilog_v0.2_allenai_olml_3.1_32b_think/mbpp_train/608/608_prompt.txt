@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'bell_number' that computes the nth Bell number using dynamic programming (Bell triangle method).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] n // input number (0-8, n=0 returns 1)
+
+Outputs:
+output reg [15:0] result // Bell number result (max B8=4140 fits in 16 bits)
+output reg done // high when computation complete
+
+Specification:
+- Implement Bell triangle algorithm with maximum n=8
+- Bell triangle stores values in triangular format: bell[i][j] for 0<=j<=i
+- Bell numbers: B0=1, B1=1, B2=2, B3=5, B4=15, B5=52, B6=203, B7=877, B8=4140
+- Use state machine: IDLE, INIT, COMPUTE_ROW, COMPUTE_COL, UPDATE, DONE
+- Latency: approximately (n*(n+1)/2) + 5 clock cycles after start
+- When n=0, return 1 immediately
+- Store bell triangle values in internal registers (9x9 triangular array)
+- Each computation step updates bell[i][j] = bell[i-1][j-1] + bell[i][j-1]
+- Result is bell[n][0] after computation completes
+- Reset initializes all internal state to 0
+
+Algorithm details:
+1. Initialize bell[0][0] = 1
+2. For i from 1 to n:
+   a. bell[i][0] = bell[i-1][i-1]
+   b. For j from 1 to i:
+      bell[i][j] = bell[i-1][j-1] + bell[i][j-1]
+3. Return bell[n][0]
+
+State machine:
+- IDLE: Wait for start signal, initialize done=0
+- INIT: Set bell[0][0] = 1, initialize i=1, j=0
+- COMPUTE_ROW: Calculate bell[i][0] = bell[i-1][i-1]
+- COMPUTE_COL: Calculate bell[i][j] = bell[i-1][j-1] + bell[i][j-1] for j=1 to i
+- UPDATE: Increment j, if j>i increment i, if i>n go to DONE
+- DONE: Set result = bell[n][0], assert done, return to IDLE
+
+Output signal widths:
+- result: 16 bits (B8=4140 < 2^16)
+- n: 4 bits (max 8)
+- Internal counters: 4 bits (i, j)
+- Internal storage: 9x9 array of 16-bit values

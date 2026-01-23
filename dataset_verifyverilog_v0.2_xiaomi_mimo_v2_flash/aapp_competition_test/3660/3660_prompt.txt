@@ -1,0 +1,26 @@
+Design a sequential Verilog module named 'sticker_solver' that computes the minimal cost to form a message using stickers with overlap constraint (max 2 stickers per position).
+
+Interface:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] message_len // length of message (max 16)
+input [15:0][7:0] message_chars // message letters (each 8-bit ASCII uppercase, only 0-25 used)
+input [7:0] num_stickers // number of sticker types (max 8)
+input [7:0] sticker_len [0:7] // sticker lengths (max 20, but we use 8)
+input [19:0][7:0] sticker_chars [0:7] // sticker characters (20 chars each, padded with zeros if shorter)
+input [19:0] sticker_price [0:7] // sticker prices (max 100000, fits in 20 bits)
+output reg [31:0] result // minimal cost or 0xFFFFFFFF if impossible
+output reg done // high when computation complete
+
+Behavior: The module should implement dynamic programming where state is represented by a bitmask of covered positions and two overlapping subsets (each up to 16 bits). Since fully unrolling DP for 16 positions is complex, implement a state machine that iterates through possible sticker placements. The DP state uses (position, mask, overlap subsets) where: position is current index (0-15), mask indicates covered positions, overlap subsets track which positions have 1 or 2 overlays. The algorithm iteratively tries to place stickers starting at each position, checking overlap constraints, and updates the DP table. For small sizes, use lookup-style updates.
+
+Latency: Result valid within 100,000 clock cycles after start (state machine with loops).
+
+States: IDLE, LOAD, INITIALIZE, DP_LOOP, FIND_RESULT, DONE.
+
+Note: Since the problem is complex, the design should focus on correct logic for small fixed sizes. Use combinational blocks for overlap checking and cost updates. Store DP values in a register file or BRAM-like structure indexed by (mask, overlap subsets).
+
+Signal widths: costs up to sum of 100k * small number, so 32 bits. Overlap subsets: two 16-bit masks, but for simplicity, we can compress or iterate. For this spec, assume internal state is stored in a large lookup table (2^16 * 2^16 is too big, so we iterate and keep a minimal set). The core is: try all placements, update best cost per coverage. Since 16 positions and max 8 stickers, the solution space is bounded. Implement as: for each position i (0 to message_len-1), for each state in current DP set, try adding sticker if it fits and overlaps ≤2, update new state. Use combinational logic to compute valid placements and costs. The module should output minimal cost or 0xFFFFFFFF if no valid coverage exists.
+
+Edge cases: If message is empty, output 0. If impossible, output 0xFFFFFFFF. Output is 0xFFFFFFFF for IMPOSSIBLE.

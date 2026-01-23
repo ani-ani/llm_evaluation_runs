@@ -1,0 +1,135 @@
+module min_cost_tour (
+  input clk,
+  input rst_n,
+  input start,
+  input [2:0] flight_count,   // number of flights (1-8)
+  input [7:0] flight_seq,      // packed: bit0=flight0 direction (0: 1->2, 1: 2->1), bit1=flight1, ...
+  input [7:0] price_ow_12,     // one-way 1->2 price
+  input [7:0] price_ow_21,     // one-way 2->1 price
+  input [7:0] price_rt_12,     // round-trip 1->2 price
+  input [7:0] price_rt_21,     // round-trip 2->1 price
+  output reg [15:0] result,
+  output reg done
+);
+
+  // Parameters
+  parameter MAX_FLIGHTS = 8;
+  parameter MAX_OPEN = 8;
+  parameter INF = 16'hFFFF;
+
+  // Internal state
+  reg [2:0] flight_index;               // current flight being processed
+  reg [2:0] a, b;                       // loop variables for DP state
+  reg [15:0] dp [0:MAX_OPEN][0:MAX_OPEN];      // current DP table
+  reg [15:0] new_dp [0:MAX_OPEN][0:MAX_OPEN];  // next DP table
+  reg [7:0] dir;                        // direction of current flight
+  reg processing;                       // flag indicating processing in progress
+
+  // State machine states
+  localparam IDLE = 2'b00;
+  localparam PROCESS = 2'b01;
+  localparam DONE = 2'b10;
+  reg [1:0] state;
+
+  integer i, j;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      // Reset
+      state <= IDLE;
+      done <= 0;
+      result <= 0;
+      flight_index <= 0;
+      processing <= 0;
+      // Initialize DP table
+      for (i = 0; i <= MAX_OPEN; i = i + 1) begin
+        for (j = 0; j <= MAX_OPEN; j = j + 1) begin
+          dp[i][j] <= INF;
+        end
+      end
+      dp[0][0] <= 0;
+    end else begin
+      case (state)
+        IDLE: begin
+          if (start) begin
+            // Initialize DP table
+            for (i = 0; i <= MAX_OPEN; i = i + 1) begin
+              for (j = 0; j <= MAX_OPEN; j = j + 1) begin
+                dp[i][j] <= INF;
+              end
+            end
+            dp[0][0] <= 0;
+            flight_index <= 0;
+            processing <= 1;
+            state <= PROCESS;
+            done <= 0;
+          end
+        end
+
+        PROCESS: begin
+          if (flight_index < flight_count) begin
+            // Extract direction for current flight
+            dir = flight_seq[flight_index];
+            // Compute new_dp from dp
+            // Initialize new_dp to INF
+            for (i = 0; i <= MAX_OPEN; i = i + 1) begin
+              for (j = 0; j <= MAX_OPEN; j = j + 1) begin
+                new_dp[i][j] = INF;
+              end
+            end
+            // Update DP for each state
+            for (i = 0; i <= MAX_OPEN; i = i + 1) begin
+              for (j = 0; j <= MAX_OPEN; j = j + 1) begin
+                if (dp[i][j] != INF) begin
+                  if (dir == 1'b0) begin
+                    // Flight 1->2
+                    // Option 1: one-way ticket
+                    if (dp[i][j] + price_ow_12 < new_dp[i][j])
+                      new_dp[i][j] = dp[i][j] + price_ow_12;
+                    // Option 2: use return of open round-trip 2->1 (if j>0)
+                    if (j > 0 && dp[i][j] < new_dp[i][j-1])
+                      new_dp[i][j-1] = dp[i][j];
+                    // Option 3: start round-trip 1->2 (if i < MAX_OPEN)
+                    if (i < MAX_OPEN && dp[i][j] + price_rt_12 < new_dp[i+1][j])
+                      new_dp[i+1][j] = dp[i][j] + price_rt_12;
+                  end else begin
+                    // Flight 2->1
+                    // Option 1: one-way ticket
+                    if (dp[i][j] + price_ow_21 < new_dp[i][j])
+                      new_dp[i][j] = dp[i][j] + price_ow_21;
+                    // Option 2: use return of open round-trip 1->2 (if i>0)
+                    if (i > 0 && dp[i][j] < new_dp[i-1][j])
+                      new_dp[i-1][j] = dp[i][j];
+                    // Option 3: start round-trip 2->1 (if j < MAX_OPEN)
+                    if (j < MAX_OPEN && dp[i][j] + price_rt_21 < new_dp[i][j+1])
+                      new_dp[i][j+1] = dp[i][j] + price_rt_21;
+                  end
+                end
+              end
+            end
+            // Copy new_dp to dp
+            for (i = 0; i <= MAX_OPEN; i = i + 1) begin
+              for (j = 0; j <= MAX_OPEN; j = j + 1) begin
+                dp[i][j] <= new_dp[i][j];
+              end
+            end
+            flight_index <= flight_index + 1;
+          end else begin
+            // All flights processed
+            processing <= 0;
+            result <= dp[0][0];
+            state <= DONE;
+            done <= 1;
+          end
+        end
+
+        DONE: begin
+          // Wait for next start
+          done <= 0;
+          state <= IDLE;
+        end
+      endcase
+    end
+  end
+
+endmodule

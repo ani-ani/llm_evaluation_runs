@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'josip_painter' that computes the minimum difference and an optimal painting for an 8×8 binary grid using Josip's recursive process.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] target_addr // address for loading target pixels (3 bits for 8 rows)
+input [7:0] target_row // 8 pixels for current row (0=white, 1=black)
+input target_write_en // enable writing target row
+
+Outputs:
+output reg [6:0] min_diff // minimum difference (max 64 pixels)
+output reg done // high when computation complete
+
+Internal Memory:
+- Store target 8×8 grid in 8×8 SRAM
+- Compute optimal painting recursively
+
+Process:
+1. Load target grid row-by-row using target_addr and target_row
+2. Once loaded, start recursive computation
+3. Use bottom-up dynamic programming: process 1×1, 2×2, 4×4, 8×8 squares
+4. For each square, consider all valid Josip outcomes:
+   - 1×1: paint black or white
+   - Larger: choose quadrant to paint white, quadrant to paint black, recurse on remaining two
+5. Store optimal result for each square and its painting
+
+Recursive Rules (simplified for hardware):
+For a square at level L (size 2^L × 2^L):
+- If L=0: try both colors, store best
+- If L>0: for each of 6 permutations (choose white quad, choose black quad from remaining 3):
+  - Compute cost = white_quadrant_cost + black_quadrant_cost + recurse(quad1, quad2)
+  - Track minimum and record choice
+
+Output Painting:
+After computation, user can read out the optimal painting. Store painting in 8×8 memory.
+
+Implementation details:
+- Use state machine: IDLE, LOAD, COMPUTE, OUTPUT
+- COMPUTE state processes levels 0 to 3 (1×1 to 8×8)
+- For each level, process all squares of that size
+- Use 4 buffers to store intermediate results for quadrants
+- Min difference ranges 0-64, use 7 bits
+
+The module must produce the minimal difference and store the optimal painting that achieves it.

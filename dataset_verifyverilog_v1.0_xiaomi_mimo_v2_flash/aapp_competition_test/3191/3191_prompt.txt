@@ -1,0 +1,92 @@
+module find_crash_line #(
+    parameter MAX_N = 256,
+    parameter N_WIDTH = 8,
+    parameter R_WIDTH = 32,
+    parameter P_WIDTH = 32,
+    parameter RESULT_WIDTH = 64
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [N_WIDTH-1:0] n,
+    input wire [R_WIDTH-1:0] r,
+    input wire [P_WIDTH-1:0] p,
+    output reg [RESULT_WIDTH-1:0] result,
+    output reg done
+);
+
+// State encoding
+localparam IDLE = 2'b00;
+localparam COMPUTE_M = 2'b01;
+localparam COMPUTE_S = 2'b10;
+localparam DONE = 2'b11;
+
+reg [1:0] state;
+reg [N_WIDTH-1:0] m;
+reg [N_WIDTH-1:0] s;
+reg [RESULT_WIDTH-1:0] best;
+reg [RESULT_WIDTH-1:0] f [1:MAX_N];
+
+// Combinational signals
+wire [N_WIDTH-1:0] k;
+wire [RESULT_WIDTH-1:0] mult;
+wire [RESULT_WIDTH-1:0] f_k;
+wire [RESULT_WIDTH-1:0] cost;
+
+assign k = (m + s - 1) / s;
+assign mult = (s - 1) * p;
+assign f_k = f[k];
+assign cost = mult + r + f_k;
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    f[1] <= 0;
+                    m <= 2;
+                    state <= COMPUTE_M;
+                end
+            end
+
+            COMPUTE_M: begin
+                if (m > n) begin
+                    result <= f[n];
+                    done <= 1;
+                    state <= DONE;
+                end else begin
+                    best <= {RESULT_WIDTH{1'b1}};
+                    s <= 2;
+                    state <= COMPUTE_S;
+                end
+            end
+
+            COMPUTE_S: begin
+                if (s > m) begin
+                    f[m] <= best;
+                    m <= m + 1;
+                    state <= COMPUTE_M;
+                end else begin
+                    if (cost < best) begin
+                        best <= cost;
+                    end
+                    s <= s + 1;
+                end
+            end
+
+            DONE: begin
+                // stay in DONE
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

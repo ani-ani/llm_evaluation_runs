@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'project_optimizer' that computes the minimum days needed to achieve required experience p and money q by optimally distributing time across multiple projects.
+
+The problem is geometric: find minimum days d such that there exist non-negative t_i with sum(t_i) = d and sum(t_i*a_i) >= p, sum(t_i*b_i) >= q. This reduces to finding intersection of convex hull of points with constraint line.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] n // number of projects (max 8)
+input [19:0] p // required experience (0 to 1,000,000)
+input [19:0] q // required money (0 to 1,000,000)
+input [19:0] a_i [0:7] // daily experience for each project
+input [19:0] b_i [0:7] // daily money for each project
+
+Outputs:
+output reg [31:0] result // minimum days in Q16.16 fixed-point format
+output reg done // high when computation complete
+
+Latency: Approximately 500 clock cycles (due to convex hull computation and search)
+
+Behavior:
+1. Sort projects by a_i (experience rate) using bubble sort
+2. Build convex hull (upper envelope) of sorted points
+3. For each edge in convex hull, compute intersection with constraint line
+4. Find minimum days among: 
+   - Using only first project: max(p/a_0, q/b_0)
+   - Using only second project: max(p/a_1, q/b_1)
+   - Combining two adjacent projects on convex hull
+
+5. Result should be in Q16.16 format (multiply by 65536)
+
+State Machine:
+- IDLE: Wait for start signal
+- SORT: Bubble sort projects by a_i
+- HULL: Build convex hull (remove dominated points)
+- CALC: Compute minimum days by checking all valid combinations
+- DONE: Set done flag
+
+All arithmetic uses 32-bit registers. Division must be implemented using iterative algorithm or lookup. The module should handle the case where n=1 separately.

@@ -1,0 +1,66 @@
+Module Specification for Expected Score Calculator (Scaled Down)
+
+---
+Interface:
+  Inputs:
+    clk         : Clock, rising edge
+    rst_n       : Active-low reset
+    start       : Start signal, pulsed high to begin processing
+    data_in     : 8-bit input data stream (bytes)
+    data_valid  : High when data_in is valid
+    data_last   : High to indicate last byte of input
+  Outputs:
+    result      : 16-bit result, Q8.8 fixed-point (8 integer, 8 fractional bits)
+    done        : High for one cycle when result is valid
+
+---
+Behavior:
+  On reset, all state is cleared.
+  When start is asserted, the module begins reading the byte stream.
+  Input format:
+    Byte 0: total time t (0..8)
+    Byte 1: number of questions n (0..8)
+    For each question i in 1..n:
+      Byte 2 + offset: length L_i (0..4)
+      Next L_i bytes: word IDs (each 0..255)
+      Next byte: answer ID (ignored)
+  After reading all bytes (data_last asserted), the module builds a trie.
+  Each trie node stores:
+    - child pointers for possible next words (0..255, limited to 16 slots)
+    - count of questions under this node
+  After trie construction, the module computes DP[t][node] for t=0..T and all nodes.
+  DP recurrence:
+    DP[0][node] = 0
+    For time τ from 1 to T:
+      For each node with k questions (k>0):
+        Option 1: Answer now.
+          score_answer = (1.0 / k) + DP[τ-1][root]
+        Option 2: Listen to next word.
+          score_wait = Σ_{w} (prob_w * DP[τ-1][child_w]), where prob_w = (count_child_w)/k
+        DP[τ][node] = max(score_answer, score_wait)
+  The DP values are stored as 16-bit fixed-point (Q8.8).
+  After DP is computed, the result = DP[T][root] (stored in result).
+  done is asserted for one cycle.
+
+---
+Implementation notes:
+  - Use a BRAM to store trie nodes (max 32 nodes). Each node entry: 16×8-bit child indices (0xFF for absent), 8-bit question count.
+  - Use another BRAM for DP table: 32 nodes × (T+1) entries, each 16-bit.
+  - State machines: (1) Input parsing, (2) Trie building, (3) DP computation.
+  - The DP computation uses fixed-point arithmetic: addition, division (by k) and multiplication (by prob_w) using shift/add.
+  - Division by k can be approximated with a lookup table for k=1..8.
+  - Multiplication by prob_w (which is count_child / k) can be done as (count_child * DP_child) / k using integer arithmetic.
+  - All operations use 16-bit precision; overflow is avoided by scaling down.
+  - The module must handle up to 8 questions, each with up to 4 words, word IDs 0..255.
+  - The total number of bytes in the stream is at most 2 + 8*(1+4+1) = 50 bytes.
+  - The maximum number of trie nodes is at most total number of word IDs = 8*4 = 32.
+
+---
+Exact port names and widths:
+  input clk, rst_n, start, data_valid, data_last;
+  input [7:0] data_in;
+  output reg [15:0] result;
+  output reg done;
+
+---
+The testbench will feed the byte stream as described, wait for done, and compare result with expected Q8.8 value.

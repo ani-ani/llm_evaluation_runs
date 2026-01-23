@@ -1,0 +1,109 @@
+module shopping_path #(
+    parameter MAX_STORES = 8,
+    parameter MAX_ITEMS = 16,
+    parameter ITEM_ID_WIDTH = 8,
+    parameter STORE_ID_WIDTH = 3,
+    parameter DP_WIDTH = 2
+)(
+    input clk,
+    input rst_n,
+    input start,
+    input [ITEM_ID_WIDTH-1:0] shopping_list [0:MAX_ITEMS-1],
+    input [3:0] list_length,
+    output reg [ITEM_ID_WIDTH-1:0] item_id_for_lut,
+    input [MAX_STORES-1:0] store_mask,
+    output reg [1:0] result,
+    output reg done
+);
+
+localparam IDLE = 3'b000, START_PROCESS = 3'b001, LOAD_ITEM = 3'b010,
+           WAIT_MASK = 3'b011, COMPUTE_DP = 3'b100, NEXT_STORE = 3'b101,
+           NEXT_ITEM = 3'b110, SUM_RESULT = 3'b111;
+
+reg [2:0] state;
+reg [3:0] item_idx;
+reg [2:0] store_idx;
+reg [1:0] dp_prev [0:MAX_STORES-1];
+reg [1:0] dp_curr [0:MAX_STORES-1];
+reg [DP_WIDTH:0] running_sum;
+reg [DP_WIDTH:0] total_count;
+
+function [1:0] saturate;
+    input [DP_WIDTH:0] val;
+    saturate = (val >= 2) ? 2 : val[1:0];
+endfunction
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        item_idx <= 0;
+        store_idx <= 0;
+        running_sum <= 0;
+        total_count <= 0;
+        item_id_for_lut <= 0;
+        for (integer i = 0; i < MAX_STORES; i = i + 1) begin
+            dp_prev[i] <= 0;
+            dp_curr[i] <= 0;
+        end
+    end else begin
+        case (state)
+            IDLE: if (start) state <= START_PROCESS;
+            START_PROCESS: begin
+                item_idx <= 0;
+                store_idx <= 0;
+                running_sum <= 0;
+                state <= LOAD_ITEM;
+            end
+            LOAD_ITEM: begin
+                item_id_for_lut <= shopping_list[item_idx];
+                state <= WAIT_MASK;
+            end
+            WAIT_MASK: begin
+                if (item_idx == 0) begin
+                    if (store_mask[store_idx]) dp_prev[store_idx] <= 1;
+                    else dp_prev[store_idx] <= 0;
+                end else state <= COMPUTE_DP;
+                store_idx <= store_idx + 1;
+                if (store_idx == MAX_STORES - 1) begin
+                    if (item_idx == 0) begin
+                        item_idx <= item_idx + 1;
+                        store_idx <= 0;
+                        state <= LOAD_ITEM;
+                    end else begin
+                        for (integer i = 0; i < MAX_STORES; i = i + 1) begin
+                            dp_prev[i] <= dp_curr[i];
+                            dp_curr[i] <= 0;
+                        end
+                        item_idx <= item_idx + 1;
+                        store_idx <= 0;
+                        if (item_idx == list_length - 1) state <= SUM_RESULT;
+                        else state <= LOAD_ITEM;
+                    end
+                end else state <= (item_idx == 0) ? LOAD_ITEM : WAIT_MASK;
+            end
+            COMPUTE_DP: begin
+                reg [DP_WIDTH:0] total_sum;
+                total_sum = running_sum + dp_prev[store_idx];
+                if (store_mask[store_idx]) dp_curr[store_idx] <= saturate(total_sum);
+                else dp_curr[store_idx] <= 0;
+                running_sum <= saturate(total_sum);
+                state <= WAIT_MASK;
+            end
+            SUM_RESULT: begin
+                total_count <= 0;
+                for (integer i = 0; i < MAX_STORES; i = i + 1)
+                    total_count <= saturate(total_count + dp_prev[i]);
+                state <= DONE;
+            end
+            DONE: begin
+                result <= (total_count == 0) ? 0 : (total_count == 1) ? 1 : 2;
+                done <= 1;
+                state <= IDLE;
+            end
+            default: state <= IDLE;
+        endcase
+    end
+end
+endmodule

@@ -1,0 +1,124 @@
+module max_density_subsequence (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] k,          // minimal length (1-8, but can be up to 16)
+    input wire [3:0] L,          // actual string length (must be between k and 16)
+    input wire [15:0] str,       // string bits: str[0] is first character, str[15] is 16th
+    output reg [4:0] start_index, // 1-based start index of best subsequence
+    output reg [4:0] length,      // length of best subsequence
+    output reg done               // asserted when computation is complete
+);
+
+// Internal registers and state machine
+reg [2:0] state;
+reg [3:0] i, j;                  // loop counters
+reg [4:0] count;                 // number of ones in current subsequence
+reg [4:0] best_start, best_len, best_ones;
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam INIT = 3'd1;
+localparam LOOP_I = 3'd2;
+localparam LOOP_J = 3'd3;
+localparam UPDATE = 3'd4;
+localparam DONE = 3'd5;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset
+        state <= IDLE;
+        done <= 0;
+        start_index <= 0;
+        length <= 0;
+        i <= 0;
+        j <= 0;
+        count <= 0;
+        best_start <= 0;
+        best_len <= 0;
+        best_ones <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= INIT;
+                end
+            end
+
+            INIT: begin
+                // Initialize variables
+                i <= 0;
+                j <= 0;
+                count <= 0;
+                best_start <= 0;
+                best_len <= 0;
+                best_ones <= 0;
+                state <= LOOP_I;
+            end
+
+            LOOP_I: begin
+                if (i >= L) begin
+                    state <= DONE;
+                end else begin
+                    j <= i;
+                    count <= 0;
+                    state <= LOOP_J;
+                end
+            end
+
+            LOOP_J: begin
+                // Read str[j] and add to count
+                count <= count + str[j];
+                // Check if we have a valid subsequence (length >= k)
+                if (j - i + 1 >= k) begin
+                    state <= UPDATE;
+                end else begin
+                    // Continue to next j
+                    j <= j + 1;
+                    if (j + 1 >= L) begin
+                        state <= LOOP_I;
+                        i <= i + 1;
+                    end else begin
+                        state <= LOOP_J;
+                    end
+                end
+            end
+
+            UPDATE: begin
+                // Current subsequence: start i, length = j-i+1, ones = count
+                // Update best if current density is higher
+                if (best_len == 0) begin
+                    // First valid subsequence
+                    best_start <= i;
+                    best_len <= j - i + 1;
+                    best_ones <= count;
+                end else if (count * best_len > best_ones * (j - i + 1)) begin
+                    // Better density found
+                    best_start <= i;
+                    best_len <= j - i + 1;
+                    best_ones <= count;
+                end
+                // Increment j and continue
+                j <= j + 1;
+                if (j + 1 >= L) begin
+                    state <= LOOP_I;
+                    i <= i + 1;
+                end else begin
+                    state <= LOOP_J;
+                end
+            end
+
+            DONE: begin
+                done <= 1;
+                start_index <= best_start + 1;  // convert to 1-based
+                length <= best_len;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

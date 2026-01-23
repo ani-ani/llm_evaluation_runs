@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'hexagon_coloring' that implements a simplified hexagonal grid coloring validation and counting algorithm for n=3.
+
+The module performs an exhaustive search over possible edge colorings of a 3-row hexagonal grid:
+- Row 1 (odd): 3 hexagons at positions (1,1), (1,2), (1,3)
+- Row 2 (even): 2 hexagons at positions (2,1), (2,2)
+- Row 3 (odd): 3 hexagons at positions (3,1), (3,2), (3,3)
+
+Each hexagon has 6 edges (top-left, top-right, left, right, bottom-left, bottom-right). We need to consider shared edges between adjacent hexagons.
+
+For n=3 grid, the edge sharing pattern is:
+- Horizontal edges: between rows (each row shares edges with rows above/below)
+- Vertical edges: within the same row (odd rows have n hexagons, even rows have n-1)
+
+Total unique edges to consider: approximately 15-18 edges for n=3 grid.
+
+Constraints:
+- a[i,j] = -1 means no constraint on hexagon (i,j)
+- a[i,j] = 0..6 means exactly that many edges must be colored for hexagon (i,j)
+- Colored edges must form valid loops (no self-intersection, no shared vertices/edges between loops)
+- This loop constraint translates to: every vertex must have 0 or 2 colored edges incident to it
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] a1_1, a1_2, a1_3 // row 1 constraints (-1 to 6, encoded as 0x80 for -1, or value 0-6)
+input [7:0] a2_1, a2_2 // row 2 constraints
+input [7:0] a3_1, a3_2, a3_3 // row 3 constraints
+
+Outputs:
+output reg [15:0] result // number of valid colorings
+output reg done // high when computation complete
+
+Specify latency: Result valid after exhaustive search completes (approximately 2^18 cycles worst case).
+
+Use state machine with states: IDLE, RESET_GRID, SEARCH_ITERATE, CHECK_CONSTRAINTS, UPDATE_COUNT, DONE.
+
+The module should:
+1. Load constraints from input signals
+2. Iterate through all possible edge colorings (2^E combinations where E is total edges)
+3. For each coloring, check:
+   - Each hexagon satisfies its constraint (number of colored edges == a[i,j] or a[i,j] == -1)
+   - Every vertex has 0 or 2 colored incident edges (ensures valid loops)
+4. Count valid configurations
+5. Output total count
+
+Edge indexing for n=3:
+We have 18 edges to index. Represent as a bit vector where each bit is a colored edge.
+For each hexagon, we need to know which 6 edges belong to it.
+
+For a compact implementation, use 32-bit edge mask and compute per-hexagon edge counts via lookup.

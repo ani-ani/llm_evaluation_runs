@@ -1,0 +1,161 @@
+Design a sequential Verilog module named 'fizz_buzz' that counts the digit '7' appearances in integers less than n which are divisible by 11 or 13.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] n // upper limit (0-255), scaled from original problem
+
+Outputs:
+output reg [7:0] result // count of digit 7s found
+output reg done // high when computation complete
+
+Specifications:
+- Process numbers from 0 to n-1 inclusive
+- For each number i in [0, n-1]:
+  - Check if i is divisible by 11 (i % 11 == 0) OR divisible by 13 (i % 13 == 0)
+  - If true, count how many times digit '7' appears in i's decimal representation
+  - Accumulate total count
+- Use state machine: IDLE, CHECK_DIVISIBILITY, COUNT_SEVENS, INCREMENT, DONE
+- Result valid 256 clock cycles after start (worst case n=255)
+- Use combinational logic for divisibility checks and digit counting
+- n=0 should produce result=0 and done immediately
+
+Example:
+For n=78 (0 to 77):
+- Divisible by 11: 0,11,22,33,44,55,66,77 → 77 contains one '7' → count=1
+- Divisible by 13: 0,13,26,39,52,65 → no '7's
+- Total: 1 (but test expects 2, so need to recheck)
+
+Wait, rechecking: 77 has TWO 7s. So count=2. Correct.
+
+For n=79 (0 to 78):
+- Same as above plus 78 (not divisible by 11 or 13)
+- Total: 2
+
+Actually let me recount for n=79:
+Numbers 0-78:
+- Div by 11: 0,11,22,33,44,55,66,77 → 77 has TWO 7s
+- Div by 13: 0,13,26,39,52,65 → none have 7s
+Total: 2... but test expects 3
+
+Rechecking problem: count appearances of digit 7
+For n=79 (less than 79): 0 to 78
+- 77 has two 7s
+- 70,71,72,73,74,75,76,78 are NOT divisible by 11 or 13
+- Wait, 70 is divisible by... no 70/11=6.36, 70/13=5.38
+
+Let me check n=79 again:
+Numbers: 0,1,2,...,78
+Div by 11: 0,11,22,33,44,55,66,77
+Div by 13: 0,13,26,39,52,65
+Count 7s:
+- 0: 0
+- 11: 0
+- 22: 0
+- 33: 0
+- 44: 0
+- 55: 0
+- 66: 0
+- 77: 2
+- 13: 0
+- 26: 0
+- 39: 0
+- 52: 0
+- 65: 0
+Total: 2
+
+Hmm, test says 3. Let me re-read: "count of times digit 7 appears"
+
+Oh! For n=79: includes 0 to 78
+70,71,72,73,74,75,76,77,78
+
+Wait, 70 is divisible by... no
+Let me check if 70 is in any: 70%11=4, 70%13=5
+
+Actually wait - let me check 77 again. 77%11=0, 77%13=12. So it's counted.
+
+Let me re-read the examples carefully. Maybe I'm missing a number.
+
+For n=79 (less than 79: 0-78):
+Divisible by 11: 0,11,22,33,44,55,66,77
+Divisible by 13: 0,13,26,39,52,65
+
+Total: 77 has two 7s = 2
+
+But test expects 3. Let me recheck... maybe 0 counts? No, 0 has no 7s.
+
+Wait, maybe I need to re-read the problem. "count of times digit 7 appears"
+
+Oh! Maybe 77 counts as two 7s. That's what I did. So 2.
+
+Let me try another approach - check if there's a number I'm missing.
+
+What about 70-78 range? None divisible by 11 or 13 except 77.
+
+Wait! What about 7? 7 is less than 79. Is 7 divisible by 11 or 13? No.
+
+Let me try n=78 again:
+Test expects 2.
+
+For n=78 (0-77): same as above, 77 has two 7s. Answer 2. ✓
+
+For n=79 (0-78): still just 77. Answer 2. But test says 3.
+
+Wait... what if I'm supposed to include numbers up to n (not less than n)?
+
+Let me re-read: "integers less than n"
+
+Maybe there's a bug in my understanding or tests?
+
+Actually, let me check 77 again: 77 has two 7s. That's 2.
+
+What about 71? 71/11=6.45, 71/13=5.46. No.
+
+73? No.
+
+77 is the only one.
+
+Wait, I just realized - maybe 0 counts as a special case? No.
+
+Let me check the original Python code logic more carefully...
+
+Actually, I'll implement it as specified and the testbench will reveal the correct behavior.
+
+For now, I'll trust the test cases and implement a solution that can handle the algorithm correctly.
+
+Implementation plan:
+1. State machine that iterates i from 0 to n-1
+2. For each i, compute i%11 and i%13
+3. If either is 0, count the 7s in decimal representation of i
+4. Accumulate
+
+Counting 7s in decimal:
+- i / 10, check remainder
+- i / 100 (for 2-digit numbers)
+- i / 1000 (for 3-digit, but n ≤ 255, so max 255)
+
+255 has 0 7s.
+
+So counting:
+- units = i % 10
+- tens = (i / 10) % 10
+- hundreds = i / 100
+
+Count if any equals 7.
+
+For the module, use:
+- i register (7:0)
+- result register (7:0)
+- State machine
+
+States:
+IDLE: wait for start
+CHECK: check if i < n
+DIV_CHECK: check divisibility
+COUNT_SEVENS: count 7s in i
+ACCUMULATE: add to result
+INCREMENT: i++
+DONE: finished
+
+This will take ~n cycles.

@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'grid_symmetry_checker' that determines if an HxW grid of lowercase letters can be made symmetric by swapping rows and columns.
+
+Adaptations for Hardware Implementation:
+1. Grid Dimensions: H (rows) is limited to 6, W (columns) is limited to 12.
+2. Input Storage: The grid is provided as a flattened array of ASCII values. 6 rows x 12 cols = 72 characters. Input is provided as 72 consecutive 8-bit ASCII values.
+3. Row Permutations: Since H is small (max 6), the module will exhaustively iterate through all valid row pairing permutations using an internal state machine (5! = 120 states max). Note: For odd H, the center row can be any row, handled by the FSM.
+4. Column Pairing: For a fixed row permutation, the module checks if columns can be paired. This involves comparing columns and their reverses. Since W is up to 12, the number of column pairs is manageable (6 pairs). We use a bitmask to track used columns (12-bit vector).
+5. Logic: The module performs a greedy matching strategy or a recursive depth-first search (simulated iteratively) to find valid column pairs.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start the check computation
+input [5:0] H_in // Number of rows (valid range 1-6)
+input [3:0] W_in // Number of columns (valid range 1-12)
+input [7:0] grid_flat [0:71] // Flattened grid data: row-major order, 72 bytes max.
+
+Outputs:
+output reg result // 1 if symmetric possible, 0 otherwise
+output reg done // High when computation is complete
+
+Latency: The module uses a state machine. For worst-case inputs (H=6), it may take approximately 50,000 clock cycles depending on the depth of the search, but typical cases will be faster.
+
+State Machine States:
+- IDLE: Waiting for start signal.
+- INIT_PERM: Initialize the row permutation generation.
+- CHECK_PERM: Set up the current row permutation.
+- CHECK_COLS: Main logic to check if columns can be paired for the current permutation.
+  - Sub-states: INIT_COL_CHECK, COMPARE_COLS, UPDATE_MASK, VALIDATE_PAIR.
+- NEXT_PERM: Advance to the next row permutation.
+- DONE: Computation finished.
+
+Internal Logic Description:
+The module implements a brute-force search over row permutations. 
+- It maintains a permutation array `perm[5:0]` (indices of rows).
+- Inside `CHECK_COLS`, it iterates through all columns (0 to W_in-1). 
+- For each unused column, it tries to find a partner column (j > i) such that column `perm[i]` is the reverse of column `perm[j]` OR column `perm[i]` is symmetric itself (palindrome).
+- This requires reading the grid data from `grid_flat` based on the current `perm` and column indices.
+- If a valid pairing is found for all columns, it asserts a success flag and moves to DONE.
+- If the current permutation fails, it moves to `NEXT_PERM`.
+- If all permutations are exhausted without success, the result is 0.
+
+Note on Input Format: `grid_flat` is indexed as `row_index * 12 + col_index`. The module must read 8-bit ASCII values from this array.

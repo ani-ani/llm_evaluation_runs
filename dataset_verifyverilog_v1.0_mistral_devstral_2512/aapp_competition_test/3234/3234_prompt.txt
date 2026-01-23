@@ -1,0 +1,127 @@
+module packing_solver (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] N,
+    output reg [15:0] result,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam INIT = 3'd1;
+localparam COMPUTE_W = 3'd2;
+localparam CHECK_RATIO = 3'd3;
+localparam UPDATE_MIN = 3'd4;
+localparam INCREMENT_H = 3'd5;
+localparam DONE = 3'd6;
+
+reg [2:0] state, next_state;
+
+// Internal registers
+reg [15:0] H;           // Current H (1 to 256)
+reg [15:0] W;           // Computed W
+reg [15:0] min_empty;   // Minimum empty squares
+reg [31:0] area;        // W * H
+reg [15:0] div_a;       // Numerator for division
+reg [15:0] div_b;       // Denominator for division
+reg [15:0] div_quotient; // Division result
+reg div_done;
+reg div_start;
+
+// Division unit (repeated subtraction)
+reg [15:0] div_rem;
+reg [7:0] div_cycles;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        H <= 0;
+        min_empty <= 16'hFFFF;
+        div_done <= 1;
+    end else begin
+        state <= next_state;
+        
+        case (state)
+            INIT: begin
+                H <= 1;
+                min_empty <= 16'hFFFF;
+            end
+            
+            COMPUTE_W: begin
+                // W = ceil(N/H) = (N + H - 1) / H
+                div_a <= N + H - 1;
+                div_b <= H;
+                div_start <= 1;
+                div_done <= 0;
+                div_quotient <= 0;
+                div_rem <= N + H - 1;
+                div_cycles <= 0;
+            end
+            
+            CHECK_RATIO: begin
+                if (!div_done) begin
+                    // Continue division (max 16 cycles)
+                    if (div_cycles < 16) begin
+                        if (div_rem >= div_b) begin
+                            div_rem <= div_rem - div_b;
+                            div_quotient <= div_quotient + 1;
+                        end
+                        div_cycles <= div_cycles + 1;
+                    end else begin
+                        // Check remainder for ceil
+                        if (div_rem > 0) div_quotient <= div_quotient + 1;
+                        div_done <= 1;
+                    end
+                end else begin
+                    W <= div_quotient;
+                    // Check ratio: H/2 <= W <= 2H
+                    // Use integer check: 2*W >= H and W <= 2*H
+                    if (({1'b0, W} * 2 >= H) && (W <= ({1'b0, H} * 2))) begin
+                        area <= W * H;
+                    end else begin
+                        area <= 32'hFFFF;  // Mark invalid
+                    end
+                end
+            end
+            
+            UPDATE_MIN: begin
+                if (area < 32'hFFFF && area >= N) begin
+                    if (area - N < min_empty) begin
+                        min_empty <= area - N;
+                    end
+                end
+            end
+            
+            INCREMENT_H: begin
+                H <= H + 1;
+            end
+            
+            DONE: begin
+                result <= min_empty;
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+// State transitions
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: if (start) next_state = INIT;
+        INIT: next_state = COMPUTE_W;
+        COMPUTE_W: next_state = CHECK_RATIO;
+        CHECK_RATIO: if (div_done) next_state = UPDATE_MIN;
+        UPDATE_MIN: next_state = INCREMENT_H;
+        INCREMENT_H: begin
+            if (H > 16'd256) next_state = DONE;  // Max iterations
+            else next_state = COMPUTE_W;
+        end
+        DONE: next_state = IDLE;
+    endcase
+end
+
+endmodule

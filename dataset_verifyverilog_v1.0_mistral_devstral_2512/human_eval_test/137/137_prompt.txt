@@ -1,0 +1,47 @@
+Design a sequential Verilog module named 'compare_one' that implements comparison of two Q8.8 fixed-point numbers (8 integer bits, 8 fractional bits) with support for decimal point representation.
+
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start pulse (high for one cycle)
+  input [15:0] a         // First number in Q8.8 format
+  input [15:0] b         // Second number in Q8.8 format
+  input a_is_string      // 1 if 'a' was originally a string (decimal point at position 8)
+  input b_is_string      // 1 if 'b' was originally a string (decimal point at position 8)
+
+Outputs:
+  output reg [15:0] result  // Larger value in Q8.8 format, or 0x8000 if equal
+  output reg done           // High when computation complete (single cycle pulse)
+
+Behavior:
+The module compares two Q8.8 fixed-point numbers and returns the larger one.
+If values are equal, it should indicate this (result = 0x8000 to represent None).
+
+Latency: 3 clock cycles after start is asserted.
+
+Q8.8 Format:
+- Bits [15:8]: Integer part (signed two's complement, range -128 to 127)
+- Bits [7:0]: Fractional part (0 to 255)
+- Value = integer + fractional/256
+- Example: 2.5 = 0x0280 (2*256 + 128 = 640)
+- Example: "5,1" = 0x051A (5*256 + 26 = 1306, approximating 5.1)
+- Example: "2,3" = 0x024D (2*256 + 77 = 589, approximating 2.3)
+- Example: "6" = 0x0600 (6*256 + 0 = 1536)
+- Example: "1" and 1 both = 0x0100 (256)
+
+State Machine:
+- IDLE: Wait for start signal
+- COMPARE: Compare a and b values (2 cycles for combinational logic)
+- DONE: Set done signal high, present result
+
+Implementation Notes:
+- Compare signed 16-bit values: a[15:0] vs b[15:0]
+- If a > b: result = a
+- If b > a: result = b
+- If a == b: result = 16'h8000 (representing None/invalid)
+- The a_is_string and b_is_string inputs are for tracking original type but don't affect comparison logic
+- Use three states in FSM: IDLE (state 0), COMPARE (state 1), DONE (state 2)
+- On IDLE->COMPARE transition, capture inputs if needed
+- On COMPARE state (2 cycles), compute comparison
+- On COMPARE->DONE transition, set result and pulse done
+- In DONE state, done=1 for one cycle, then return to IDLE

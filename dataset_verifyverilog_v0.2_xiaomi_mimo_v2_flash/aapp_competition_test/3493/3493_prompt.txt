@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'max_bipartite_matching' that finds the maximum number of disjoint perfect matchings in an 8x8 bipartite graph.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] row_idx // current row input index (0-7)
+input [2:0] col_idx // current column input index (0-7)
+input valid // valid input for adjacency matrix
+input edge_value // value of edge at (row_idx, col_idx)
+
+Outputs:
+output reg [2:0] num_matchings // maximum number of disjoint matchings found
+output reg [2:0] matching_indices [0:7] // indices for current matching output
+output reg output_valid // high when valid matching output available
+output reg done // high when all computation complete
+output reg [2:0] state_out // debug state output
+
+Specifications:
+- Supports up to 8 people (nodes on each side)
+- Adjacency matrix is 8x8 stored internally
+- Finds maximum k where k disjoint perfect matchings exist
+- Each person must be assigned to exactly one button per matching
+- Each person-button pair used at most once across all matchings
+- Output format: For each matching found, output which person (1-8) stands on each button (1-8)
+- Output sequence: person_on_button_1 person_on_button_2 ... person_on_button_8
+
+Implementation Details:
+- Use state machine: IDLE, LOAD_MATRIX, CHECK_PERFECT, FIND_MATCHING, OUTPUT_MATCHING, VERIFY_DISJOINT, DONE
+- Store adjacency matrix: reg [7:0] adj_matrix [0:7] (each row is 8-bit vector)
+- Store used edges: reg [7:0] used_edges [0:7] (track which person-button pairs used)
+- Maximum iteration count: 8 matchings possible (theoretical max)
+- Use backtracking with bounded depth for matching search
+- Each matching iteration: find if perfect matching exists, if yes, record it, mark edges as used, continue
+- Output: num_matchings = 0 if no perfect matching, else k
+
+Latency: Result valid approximately 2000-5000 clock cycles after start (depends on graph density)
+
+Behavioral Description:
+1. In IDLE state, wait for start signal
+2. In LOAD_MATRIX, collect 64 edge values (row-major order) via row_idx/col_idx/valid/edge_value inputs
+3. In CHECK_PERFECT, verify at least one perfect matching exists using augmenting path algorithm
+4. In FIND_MATCHING, implement depth-first search for augmenting paths (max 8 nodes, 8 levels deep)
+5. In OUTPUT_MATCHING, construct assignment array and output it
+6. In VERIFY_DISJOINT, check if current matching uses any already-used edges
+7. If disjoint and valid, mark edges as used, increment matching counter, return to FIND_MATCHING
+8. If no more disjoint matchings possible or k=8 reached, go to DONE
+9. Output format: For each matching (1 to k), output 8 integers where i-th integer is person assigned to button i
+10. Person/button indices are 1-based in output
+
+The module should efficiently handle the maximum flow/augmenting path algorithm within hardware constraints.

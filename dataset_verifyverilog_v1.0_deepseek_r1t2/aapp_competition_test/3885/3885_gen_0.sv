@@ -1,0 +1,1 @@
+module min_cost_ticket(\n    input wire [16:0] n,\n    output wire [15:0] result\n);\n    assign result = (n - 17'd1) >> 1;\nendmodule

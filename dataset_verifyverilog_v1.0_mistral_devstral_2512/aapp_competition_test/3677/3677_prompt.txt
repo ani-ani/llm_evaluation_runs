@@ -1,0 +1,50 @@
+MAX_CLIQUE_FINDER MODULE SPECIFICATION
+
+This module computes the size of the maximum clique in a graph of up to 8 vertices.
+The graph is represented by an adjacency matrix where a 1 indicates a disagreement (edge).
+
+Interface:
+  Inputs:
+    clk: clock, rising edge triggered
+    rst_n: active-low synchronous reset
+    start: start signal, pulse high for one cycle to begin computation
+    N: 3-bit input, number of vertices (1 to 8)
+    K: 4-bit input, the parameter K (1 to 10)
+    adj_packed: 64-bit input, packed adjacency matrix in row-major order.
+                For vertex i (0-7) and vertex j (0-7), the edge is at bit (i*8 + j).
+                Only the lower N*N bits are considered; bits for i>=N or j>=N are ignored.
+  
+  Outputs:
+    max_size: 4-bit output, the size of the maximum clique (1 to 8)
+    done: 1-bit output, asserted high for one cycle when computation is complete
+
+Behavior:
+  On reset (rst_n=0), the module clears internal state and sets done=0, max_size=0.
+  When start is pulsed high, the module begins computing the maximum clique size.
+  The module enumerates all non-empty subsets of vertices (from 1 to (1<<N)-1).
+  For each subset, it checks if it forms a clique (all pairs have an edge).
+  It keeps track of the maximum clique size found.
+  Additionally, if a clique of size K is found, the computation stops early and outputs K.
+  Once all subsets are processed (or K is found), the module asserts done for one cycle
+  and presents the maximum size on max_size.
+
+Timing:
+  - The computation may take up to 256 clock cycles (for N=8).
+  - done will be asserted exactly one cycle after the last subset is processed.
+  - The result remains stable until the next start.
+
+State Machine (suggested implementation):
+  IDLE: wait for start
+  INIT: initialize subset_mask to 1, max_size to 0, compute max_mask = (1<<N)-1
+  CHECK: check if current subset_mask is a clique (using combinational logic)
+  UPDATE: if is_clique, update max_size (and optionally check for K)
+  INCREMENT: subset_mask = subset_mask + 1; compare with max_mask
+  DONE: assert done, then return to IDLE
+
+Combinational Functions:
+  - is_clique(subset_mask, N, adj_packed): returns 1 if all pairs of vertices in subset_mask are connected.
+  - popcount(subset_mask, N): returns the number of vertices in subset_mask.
+
+Note: The module must handle variable N (1-8). The adjacency matrix is always 64-bit, but
+only the lower N*N bits are valid. The loops in the combinational functions should only
+consider indices i, j < N.

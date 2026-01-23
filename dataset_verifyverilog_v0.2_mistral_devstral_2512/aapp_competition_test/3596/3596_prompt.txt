@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'opponent_location_calculator' that computes the opponent's location based on the given mathematical formula. 
+
+**Core Simplifications:**
+1. **Taylor Approximation**: Instead of exact integrals, we approximate the integrand using a 5-term Taylor series around 0: f(t) ≈ sum(term_i * t^i) for i=0 to 4.
+2. **Integration**: The integral I = ∫_a^b f(t) dt is approximated using the Midpoint Rule with M=8 partitions. I ≈ (b-a)/M * sum(f(midpoint_j)).
+3. **Function Approximation**: We calculate coefficients for the Taylor expansion of the integrand.
+    - Γ(x) ≈ 1 - 0.577x + ... (simplified)
+    - erf(x) ≈ 2/√π * (x - x^3/3 + x^5/5 - ...)
+    - J_k(x) ≈ (x/2)^k / k! (dominant term near 0)
+4. **Polynomial Recursion**: P_0(x) = P(x) with degree r. P_n(x) = sum_{i=0}^{r+n} P_{n-1}(i) * x^i. Since the output depends on P_s differentiated D+1 times, and deg(P_s) = D, the result is a constant (0). Thus g(x) = 0.
+5. **Final Calculation**: Result = ( (0 + l)^2 / (π * e) ) + (1 / (l + 1)).
+
+**Module Interface:**
+Inputs:
+- `clk`: Clock
+- `rst_n`: Active-low reset
+- `start`: Start computation
+- `a`, `b`: 32-bit fixed-point inputs (Q16.16 format) representing bounds.
+- `c`: 32-bit fixed-point input (Q16.16).
+- `l`: 32-bit integer input (scaled to Q16.16).
+
+Outputs:
+- `result`: 64-bit fixed-point output (Q32.32) for high precision.
+- `done`: Computation complete flag.
+
+**Behavior:**
+The module should use a state machine (IDLE, CALC_INTEGRAL, CALC_FINAL, DONE). It calculates the integral using a loop for the 8 partitions. Inside the loop, it computes f(midpoint) using fixed-point arithmetic for the approximated Taylor series terms. Finally, it combines with `c`, `l`, and constants (Pi ≈ 3.244, e ≈ 2.718) to produce the final result. Since g(x) is identically 0 due to differentiation, the calculation simplifies to (l^2)/(π*e) + 1/(l+1). The result is valid 200 cycles after start.

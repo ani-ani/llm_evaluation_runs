@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'drill_min_diameter' that computes the minimum diameter drill bit needed to remove 8 flaws in a fixed-size cube.
+
+The problem is simplified as follows:
+1. Only 8 flaws are supported (N=8)
+2. Coordinates are in range [-1000.0, 1000.0]
+3. We use Q16.16 fixed-point format (16 integer, 16 fractional bits)
+4. The drill enters perpendicular to the XY plane (Z-axis)
+5. The algorithm finds the minimum enclosing circle of the XY projections of the flaws
+6. Implements a hardware-friendly approximation of Welzl's algorithm with fixed iteration count
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] flaw_x [0:7] // X coordinates of 8 flaws in Q16.16 format
+input [31:0] flaw_y [0:7] // Y coordinates of 8 flaws in Q16.16 format
+
+Outputs:
+output reg [31:0] diameter // Result in Q16.16 format
+output reg done // High when computation complete
+
+Latency: 50 clock cycles after start asserted.
+
+The module uses a state machine with states: IDLE, CALCULATE_BBOX, CALCULATE_CENTER, CHECK_SUPPORT, REFINE_RADIUS, DONE.
+
+Algorithm description:
+1. Calculate bounding box of all points (min/max X and Y)
+2. Initialize center to midpoint of bounding box
+3. Iterate fixed number of times (16 iterations):
+   a. Find the point farthest from current center
+   b. Update center to move towards this point
+   c. Update radius based on distance
+4. Result is 2 * radius (diameter)
+
+All arithmetic uses 32-bit Q16.16 fixed-point operations:
+- Addition/subtraction: normal 32-bit operations
+- Multiplication: result >> 16
+- Distance: sqrt((x2-x1)^2 + (y2-y1)^2) using approximation
+
+Use combinational logic blocks within sequential states for calculations.
+Maintain intermediate values in registers: center_x, center_y, radius, iteration_count.
+
+The module should be synthesizable and avoid floating-point operations.

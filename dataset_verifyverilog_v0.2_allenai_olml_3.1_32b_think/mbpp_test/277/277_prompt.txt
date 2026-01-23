@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'dict_filter' that filters key-value entries based on a threshold value.
+
+**Problem Adaptation**:
+- Input dictionary is limited to 4 entries (max 16 via 4-bit address)
+- Keys are encoded as 4-bit indices (0=first entry, 1=second, etc.)
+- Values are 8-bit unsigned integers
+- Threshold is an 8-bit unsigned integer
+- Output is a packed format: 4-bit valid count + 4-bit keys + 8-bit values for each valid entry
+- Maximum 4 valid outputs (fits in 60-bit output bus)
+
+**Module Interface**:
+module dict_filter (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] threshold,  // 8-bit threshold value
+    input [3:0] num_entries, // Number of entries (1-4)
+    input [3:0] key_0, key_1, key_2, key_3,  // 4-bit keys
+    input [7:0] val_0, val_1, val_2, val_3,  // 8-bit values
+    output reg [59:0] result, // Packed: {count[3:0], key3[3:0], val3[7:0], key2[3:0], val2[7:0], key1[3:0], val1[7:0], key0[3:0], val0[7:0]}
+    output reg done
+);
+
+**Behavioral Description**:
+The module uses a state machine with states: IDLE, COMPARE, DONE.
+
+1. IDLE state: Waits for start signal
+2. COMPARE state: 
+   - Iterates through all num_entries entries
+   - Compares each value with threshold
+   - If val >= threshold, stores key and value in output buffer
+   - Tracks count of valid entries
+   - Takes 5 clock cycles max (4 entries + 1 for packing)
+3. DONE state: Sets done=1, result holds packed output
+
+**Output Format** (59-bit packed):
+- Bits [59:56]: Number of valid entries (0-4)
+- Bits [55:52], [51:48]: Key for entry 0 (if exists)
+- Bits [47:40]: Value for entry 0
+- Bits [39:36], [35:32]: Key for entry 1
+- Bits [31:24]: Value for entry 1
+- Bits [23:20], [19:16]: Key for entry 2
+- Bits [15:8]: Value for entry 2
+- Bits [7:4], [3:0]: Key for entry 3
+- Bits [7:0]: Value for entry 3
+
+**State Machine**:
+- IDLE: if start, go to COMPARE
+- COMPARE: Process all entries, then go to DONE
+- DONE: Wait for reset or next start
+
+**Latency**: 6 clock cycles after start asserted (4 entry checks + 1 packing + 1 done cycle)
+
+**Implementation Notes**:
+- Use internal counter to iterate through entries
+- Use temporary registers to store valid keys/values
+- Use combinatorial comparison logic
+- Pack results at end of COMPARE state

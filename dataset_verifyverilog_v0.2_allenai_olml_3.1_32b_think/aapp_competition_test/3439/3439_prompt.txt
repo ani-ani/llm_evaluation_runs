@@ -1,0 +1,59 @@
+Design a sequential Verilog module named 'baltic_drain' that computes the total volume of water drained from a simplified Baltic Sea map.
+
+The module implements a flood-fill algorithm that drains water from a device location to neighboring cells, respecting gravity (water flows only to lower or equal elevations).
+
+**Specifications:**
+- Grid size: 8x8 fixed (H=8, W=8)
+- Altitude range: -15 to 15 (4-bit signed, using 2's complement)
+- Water level at each cell: initialized to max(altitude, 0)
+- Draining: starting from device location, water drains from any cell to any of its 8 neighbors if neighbor has lower water level
+- The drained volume is the sum of water level changes at all cells that can be reached
+
+**Inputs:**
+- input clk: clock signal
+- input rst_n: active-low reset
+- input start: start computation
+- input [5:0] device_row: device row index (0-7)
+- input [5:0] device_col: device col index (0-7)
+- input [3:0] altitude_map [8][8]: 2D array of altitude values (4-bit signed, 2's complement)
+
+**Outputs:**
+- output reg [15:0] total_drained: total volume of water drained (16-bit unsigned)
+- output reg done: high when computation complete
+
+**Behavior:**
+1. On start, initialize water levels: water[i][j] = altitude[i][j] if altitude[i][j] < 0, else 0
+2. Initialize total_drained = 0
+3. From device location, perform flood-fill:
+   - For current cell, if its water level > 0, drain it completely (set water level to 0)
+   - Add drained amount to total_drained
+   - For each of 8 neighbors (N, NE, E, SE, S, SW, W, NW):
+     - If neighbor's water level > current cell's new water level (0) AND neighbor altitude < 0:
+       - Recursively drain neighbor
+4. Use state machine with states: IDLE, INITIALIZE, PROCESSING, DONE
+5. Latency: Result valid ~512 clock cycles after start asserted (8x8 grid, one cell per cycle worst case)
+6. Use a simple queue or iterative approach to process cells (no true recursion, use stack/queue in hardware)
+
+**Implementation Notes:**
+- Store altitude and water levels in registers
+- Use 8x8 memory for water levels (each 4 bits)
+- Track processed cells to avoid re-draining
+- The flood-fill can be implemented as a state machine that iteratively drains cells until no more cells need draining
+- For neighbor checking, use a queue-based approach: push neighbors of drained cells onto a queue, process until queue is empty
+
+**Fixed-Point/Arithmetic:**
+- All values are integers (4-bit altitudes, 16-bit accumulated volume)
+- No floating-point needed
+
+**Example:**
+For sample input:
+Altitude grid:
+-5  2 -5
+-1 -2 -1
+ 5  4 -5
+Device at (1,1) [0-indexed: (0,0) or (1,1)? Input says 2 2 = row 2 col 2 = index (1,1)]
+- Water initially: 5 0 5, 1 2 1, 0 0 5
+- Device at (1,1) has altitude -2, water level 2
+- Draining from (1,1) to neighbors... total drained = 10
+
+The module must handle the queue-based flood fill algorithm within the 8x8 grid constraint.

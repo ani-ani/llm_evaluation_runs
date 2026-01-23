@@ -1,0 +1,490 @@
+Design a sequential Verilog module named 'rarity_solver' that generates a string satisfying constraints N (length), K (distinct chars), and P (max palindrome length).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] N // Target length (1-16)
+input [7:0] K // Distinct characters (1-4)
+input [7:0] P // Max palindrome length (1-16)
+
+Outputs:
+output reg [7:0] result_char // ASCII character of the generated string
+output reg valid // High when result_char is valid
+output reg done // High when computation complete
+output reg is_possible // High if possible, low if impossible
+
+Behavior:
+The module must handle the complexity of string generation using a state machine. Since N is small, we can generate the entire string into an internal buffer (register array of 16x8 bits) and then stream it out.
+
+State Machine:
+1. IDLE: Wait for start. Initialize counters.
+2. CHECK_FEASIBILITY: Verify logic constraints:
+   - If K == 1 and P != 1: Impossible (only 'aaaa...' palindromes of length N).
+   - If K >= 2 and P == 1: Impossible (min palindrome length is at least 2 if K>=2 in a random enough string? Actually we can force length 1, but wait, with K>=2, we can make 'ababab' which has 'a' and 'b' as palindromes of length 1, but we need MAX length 1. This is possible only if N=1 or if we strictly alternate. Let's simplify: We will implement a specific construction logic: If P==1, we must strictly avoid any palindrome > 1. This is possible if N <= K. If N > K, we must repeat chars, creating palindromes. Actually, K distinct chars with P=1 is IMPOSSIBLE if N > 1 because 'aa' is a palindrome. So:
+   - If P==1 and N > 1: Impossible.
+   - If P==N and K==1: Impossible (unless N=1, but K distinct chars must be 1, 'a' is palindrome of length 1, but N=1 so P=1, wait. If P=N, we need a full string palindrome. If K=1, 'aaa...' is palindrome of length N, so it works. If K>1 and P=N, we need the whole string to be a palindrome. This is possible as long as K >= 1. Example: 'abcba' (N=5, K=3, P=5). So K=1 and P=N is possible ('aaaa').
+   - Let's refine feasibility: 
+     1. If P == 1 and N > 1: Impossible (can't have only length 1 palindromes with N>1 using finite chars).
+     2. If K > N: Impossible (can't have more distinct chars than length).
+     3. If P == N: Construction is simple (palindrome).
+     4. If P < N: Construction possible if K >= 2 (we can insert separators). If K == 1, only 'aaaa' allowed, so P must equal N. So if K == 1 and P < N: Impossible.
+
+3. GENERATE:
+   - If Impossible: Set is_possible=0, done=1.
+   - If P == N: Generate a palindrome of length N using K distinct chars. 
+     Strategy: First char 'a', second 'b', etc. Mirror the second half. Example N=5, K=3: 'abcba'. N=6, K=3: 'abccba'. Fill distinct chars from 'a' upwards. Limit to K distinct chars.
+   - If P == 1: Must be N=1 (handled above). Generate single char.
+   - If P < N (and valid): We need max palindrome length P. We can construct: 
+     Prefix: A palindrome of length P using K distinct chars. 
+     Suffix: A sequence of alternating characters that does not extend the palindrome and adds distinct characters if needed.
+     We must ensure the suffix doesn't create new palindromes > P. 
+     Strategy: 
+       Build a core palindrome of length P. Let's say 'a...a' (if K=1, this forces P=N, so here K>=2). 
+       Use distinct characters 'a', 'b' for the core palindrome such that it ends with 'b' and starts with 'a'.
+       Actually, easiest for P < N: 
+       1. Generate a palindrome of length P. 
+          If P is odd: center is char C. Left side distinct chars A... 
+          To maximize distinct usage: Use 'a', 'b', ... 
+       2. To prevent extending it: 
+          If the palindrome ends with 'X', the character before it (and symmetric after) might be 'Y'. 
+          If we append characters, we must break symmetry.
+       3. Let's use a robust construction:
+          The string will be: S = (Prefix of length P, valid palindrome) + (Suffix of length N-P).
+          We need to choose Suffix such that no substring of length > P is a palindrome.
+          We can use a repeating pattern like 'abab...' or 'abc...' in the suffix, but we must check boundaries.
+          Boundary condition: 
+            Last char of Prefix + First char of Suffix.
+          Example: Prefix is 'abcba' (P=5). 
+            Suffix starts with 'a'. 
+            'a' (last of prefix) + 'a' (start of suffix) -> 'aa' is palindrome. Length 2. 
+            If P > 2, this is fine (we only care about max > P). 
+            But if P=1, we handled it.
+            So we need to avoid extending the palindrome past length P.
+          Construction Strategy:
+            Let's construct a palindrome of length P where the character at the boundary (index P-1) is 'a'.
+            We can fill the palindrome as: 
+              Indices 0...P-1.
+              Odd indices: 'b', 'c'... 
+              Even indices: 'a'.
+              If P is odd: ... a b a. Ends with 'a'.
+              If P is even: ... a b b a. Ends with 'a'.
+            So the palindrome can end with 'a'.
+            Now, for the suffix (N-P chars), we must avoid 'a' as the first character? 
+            If suffix starts with 'b', then we have ... a + b. 
+            'a' is at index P-1. 'b' is at index P.
+            Does this form a palindrome of length > P? 
+            It forms a palindrome centered at the boundary only if the pattern mirrors. 
+            Since we break the symmetry immediately, the longest palindrome remains P.
+            However, the suffix itself might contain palindromes.
+            We can generate the suffix as a sequence of increasing characters (cyclic) that does not repeat adjacent characters and avoids forming palindromes.
+            With small K (e.g., K=2), 'abab...' has palindromes 'aba' (len 3). 
+            We need max length P. If P=2, we cannot have 'aba' (len 3). 
+            If K >= 3, we can easily avoid internal palindromes in suffix by using a cycling pattern like 'abcabc...' which has no palindromes > 1.
+            If K = 2, we are restricted. 'abab...' has 'aba' (len 3). 'abba' has 'bb' (len 2) and 'abba' (len 4).
+            So if K=2, we must be careful. 
+            Let's assume K >= 3 for P < N constructions to be safe, or handle K=2 separately.
+            
+            Revised Plan for GENERATE state:
+            We will generate into a buffer `string_buffer [0:15][7:0]`.
+            
+            Case 1: P == N.
+              Generate palindrome using chars 'a' .. chr(ord('a')+K-1).
+              E.g., for N=5, K=2: 'aabaa' (max length 5, distinct 2). 
+              Or 'ababa' (distinct 2, palindrome length 5). 
+              'ababa' is better for distinct usage.
+              Logic: For i from 0 to N-1:
+                if i <= (N-1)/2: char = 'a' + (i % K)
+                else: char = buffer[N-1-i]
+              
+            Case 2: P < N.
+              If K == 1: Impossible (handled in CHECK).
+              We need to generate string of length N with max palindrome P.
+              Subcase 2a: P == 1. 
+                Impossible unless N=1. (Already handled).
+              Subcase 2b: P > 1.
+                We construct Prefix of length P (palindrome) and Suffix of length N-P.
+                We need Suffix to have no palindromes > 1 (if P=2) or > P (if P > 2).
+                Actually, we just need NO palindrome > P. 
+                If P >= 3, we can afford some small palindromes in suffix as long as they are <= P.
+                But if P=2, we need max palindrome 2. Suffix must not have 'aba' (len 3). 
+                With K=2, 'abab' has 'aba' (len 3). So if K=2 and P=2, Suffix must be 'ab' or 'ba' repeated? No, 'ab' repeated is 'abab', palindrome 'aba'. 
+                If K=3, 'abcabc' works (max palindrome 1).
+                
+                Let's refine Suffix generation:
+                We want to use characters from the set such that no palindrome > P is formed.
+                If P is large (e.g. P=10), we just need to ensure suffix doesn't extend prefix or form palindrome > 10.
+                Since suffix length N-P is small (<= 16), we can just append alternating chars 'x', 'y'... 
+                If we append 'x', 'y', 'x', 'y'...
+                'xyx' is length 3. If P >= 3, this is OK. 
+                If P = 2, 'xyx' is BAD.
+                So if P = 2, we must avoid 'xyx'. 
+                We can just do 'xx...' if N-P allows? No, 'xx' is length 2. 'xxx' is length 3 (bad).
+                So if P=2, we can only have length 1 or 2 palindromes. 
+                'xy' has 'x' and 'y' (len 1), 'xy' (len 2). No length 3. 
+                'xy' repeated: 'xyxy'. Palindromes: 'x', 'y', 'xy' (len 2), 'yx' (len 2), 'xyx' (len 3) -> BAD.
+                So we cannot repeat 'xy' more than once if we want to avoid length 3.
+                Wait, if N-P is large, we must use more than 2 chars.
+                If K >= 3, we can cycle 'a', 'b', 'c' in suffix. 'abcabc...' has no palindrome > 1 (except single chars). 
+                So if P >= 2, 'abcabc' is valid (max palindrome 1, which is < P if P > 1).
+                If P = 2, max palindrome 1 is < 2, so OK. 
+                So the strategy for Suffix (when P < N) is:
+                  Use a set of at least 2 characters (if K >= 2). 
+                  If K >= 3: Cycle 'a', 'b', 'c' (or a subset) in the suffix. This yields max palindrome 1. 
+                  If K == 2: 
+                    We have only 'a', 'b'. 
+                    If P >= 3: We can cycle 'a', 'b'. 'aba' (len 3) appears. If P >= 3, len 3 is <= P, so OK. 
+                    If P == 2: 'aba' (len 3) > P. We CANNOT have 'aba'.
+                    So if K=2 and P=2, we cannot have a cycling suffix of length > 2. 
+                    But wait, we need the WHOLE string max palindrome = 2. 
+                    If prefix is a palindrome of length 2, e.g. 'aa', and suffix is 'b', 'b'... 
+                    Suffix 'bb' -> 'bb' len 2 (OK). 
+                    Suffix 'b' -> 'b' len 1 (OK).
+                    Suffix 'ba' -> 'ba' len 1, 'ab' len 1 (OK).
+                    But 'b' 'a' 'b' -> 'bab' len 3 (BAD).
+                    So with K=2, P=2, we can only append up to 2 characters if they are 'b' (repeat) or 'ba' (one pair).
+                    If N-P > 2, it's impossible with K=2, P=2?
+                    Let's check: N=5, K=2, P=2. 
+                    Prefix 'aa' (len 2).
+                    Need 3 suffix chars. 
+                    'b', 'b', 'b' -> 'bbb' len 3 (BAD).
+                    'b', 'a', 'b' -> 'bab' len 3 (BAD).
+                    'b', 'a', 'a' -> 'baa' -> 'aa' at end (len 2 OK), but 'a' 'b' 'a' is not present. 
+                    Wait, suffix starts at index 2. 
+                    Index 0,1 = 'a','a'. Index 2,3,4 = 'b','a','a'.
+                    String: a a b a a.
+                    Palindromes: 'aa' (0-1), 'aba' (2-4) len 3 -> BAD.
+                    'a', 'a', 'b', 'b', 'a' -> 'aabba' -> 'bb' len 2, 'aabba' len 5 -> palindrome? 'a..a' ? No. 
+                    'aabba' -> 'a', 'a', 'bb', 'a'. 
+                    Substrings: 'aab', 'abb', 'bba'. 
+                    'aab' -> no. 'abb' -> no. 'bba' -> no.
+                    'ab' -> no. 
+                    Wait, 'aabba'. 
+                    'a' (0), 'a' (1), 'b' (2), 'b' (3), 'a' (4).
+                    Palindromes: 'aa' (0,1), 'bb' (2,3).
+                    'bab' (1,2,3) -> 'b' 'a' 'b' -> 'bab' len 3? No, indices 1,2,3 are 'a','b','b' -> 'abb' -> no.
+                    Indices 2,3,4 -> 'b','b','a' -> 'bba' -> no.
+                    Indices 0..4 -> 'aabba' -> no.
+                    So 'aabba' works for K=2, N=5, P=2.
+                    How to generate this systematically?
+                    Prefix: 'aa' (palindrome P=2).
+                    Suffix: 'bba'.
+                    We can generalize: 
+                    If K=2, P=2: 
+                      We can use a construction: 
+                      'a...a' (P times?) No, P=2.
+                      Let's try to fill suffix with 'b's first, then 'a's to avoid 'aba'.
+                      If we have N-P suffix chars.
+                      If we put all 'b's: 'bbb...b'. If length >= 3, we get 'bbb' len 3. BAD.
+                      So we can only have at most 2 'b's consecutively? No, 2 'b's is 'bb' len 2. 3 'b's is 'bbb' len 3.
+                      So max 2 'b's.
+                      If we need more, we switch to 'a'.
+                      'a' 'a' 'b' 'b' 'a' -> works as seen.
+                      'a' 'a' 'b' 'b' 'a' 'a' -> 'aabbaa'. 
+                      Suffix 'bbaa'. 
+                      'aabbaa' -> 'aa', 'bb', 'aa'. 
+                      'abba' (1..4) len 4? 'a' 'b' 'b' 'a' -> palindrome len 4. BAD if P=2.
+                      So we cannot have 'abba' pattern.
+                      We must avoid 'a' 'b' 'b' 'a'.
+                      So if we have 'b' 'b' followed by 'a', we need to break it.
+                      If we have 'b' 'a' 'a', it's fine.
+                      So pattern: 'b' 'b' 'a' 'a' 'b' 'b' ... 
+                      This yields 'bb' (len 2), 'aa' (len 2). 
+                      Check boundaries: 'b' 'a' -> 'ba' (len 1). 'a' 'b' -> 'ab' (len 1). 
+                      Check 'b' 'b' 'a' -> 'bba' (len 3? No). 
+                      'a' 'b' 'b' -> 'abb' (len 3? No). 
+                      Wait, 'a' 'b' 'b' is 'abb', not palindrome.
+                      'b' 'b' 'a' is 'bba', not palindrome.
+                      'b' 'a' 'a' is 'baa', not palindrome.
+                      'a' 'a' 'b' is 'aab', not palindrome.
+                      So 'bb', 'aa', 'bb', 'aa' works.
+                      But we must check prefix connection.
+                      Prefix ends with 'a' (if we make prefix 'aa').
+                      If suffix starts with 'b', then we have 'a' 'b'.
+                      If suffix is 'bbaa', we have 'a' 'b', 'b', 'a', 'a'.
+                      'a' 'b' 'b' -> 'abb' no.
+                      'b' 'b' 'a' -> 'bba' no.
+                      'b' 'a' 'a' -> 'baa' no.
+                      'a' 'b' 'b' 'a' -> 'abba' -> BAD (len 4).
+                      Wait, in 'aabbaa', the substring 'abba' exists at indices 1..4. 
+                      So 'aabbaa' is BAD.
+                      
+                      Okay, let's stick to the ABC cycling for K>=3.
+                      For K=2, we need a specific check.
+                      Maybe for K=2, we can just use the palindrome construction (P=N) if P < N is required? No, we need P < N.
+                      Can we make a string with K=2, P=2 that is not 'aa...a' or 'abba'?
+                      'abab' -> 'aba' len 3 (BAD).
+                      'aabb' -> 'aa', 'bb'. No len 3. 'aab' -> no. 'abb' -> no. 'aabb' works for P=2, K=2, N=4.
+                      'aabba' -> 'aa', 'bb'. No len 3/4/5. 'aabba' works for N=5.
+                      'aabbaa' -> 'aa', 'bb', 'aa', 'abba' (len 4) -> BAD.
+                      'aabbab' -> 'aa', 'bb', 'ab'... 'bab' at end? 'a' 'b' 'a' is 'aba'? No, ends with 'b'.
+                      'aabbab': indices 0..5 = a a b b a b.
+                      Palindromes: 'aa' (0,1), 'bb' (2,3).
+                      'aba' (3,4,5)? 3=b,4=a,5=b -> 'bab' -> palindrome len 3. BAD.
+                      
+                      It seems with K=2, P=2, we cannot go very long. 
+                      Maybe if we make the prefix 'ab' (len 2 palindrome? No, 'ab' is not palindrome).
+                      Prefix must be palindrome. 'aa' or 'bb'.
+                      If we use 'aa' as prefix.
+                      We need suffix S of length N-P.
+                      S cannot contain 'aba'.
+                      S cannot contain 'bab'.
+                      S cannot contain 'aa' (wait, 'aa' is len 2, P=2, it's OK).
+                      S cannot contain 'bb' (len 2, OK).
+                      But S cannot contain 'abba'.
+                      
+                      Let's rethink. 
+                      If K=2 and P < N, can we output IMPOSSIBLE? 
+                      Sample Input 2: 9 8 1 -> IMPOSSIBLE. (Because P=1, N>1). 
+                      But K=2, P=2, N=4 -> 'aabb' works. So it is possible.
+                      
+                      Let's try to simplify the HDL logic for K=2.
+                      We can treat K=2 as a special case.
+                      If K=2 and P < N: 
+                        We try to construct 'aa...a' (P times) + 'bb...b' (N-P times).
+                        Check max palindrome:
+                        Prefix 'aa' -> len 2.
+                        Suffix 'bb' -> len 2.
+                        Boundary 'a' 'b' -> 'ab' len 1.
+                        If N-P >= 3: 'bbb' -> len 3 > P=2. BAD.
+                        So if P=2, we can only have at most 2 'b's in suffix.
+                        If N-P <= 2: 'aabb' works.
+                        If N-P > 2: Impossible? 
+                        Wait, we can mix.
+                        'aa' + 'bb' + 'aa' -> 'aabbaa' -> 'abba' len 4. BAD.
+                        'aa' + 'bb' + 'b' -> 'aabbb' -> 'bbb' len 3. BAD.
+                        'aa' + 'b' + 'b' -> 'aabb' -> OK.
+                        'aa' + 'b' -> 'aab' -> OK.
+                        
+                        What about 'ab' 'ba'? 'abba' -> 'bb' len 2, 'abba' len 4.
+                        'ab' 'ab' -> 'abab' -> 'aba' len 3.
+                        
+                        It looks like for K=2, P=2, N must be <= 4.
+                        If P=3, K=2, N=5?
+                        'aa...a' (P=3) -> 'aaa'. 
+                        Suffix 'bb' -> 'aaabb' -> 'aaa' (len 3), 'bb' (len 2). 
+                        'aab' -> 'aa' (len 2), 'aab' not palindrome. 
+                        'abb' -> 'bb' (len 2), 'abb' not palindrome.
+                        'aabbb' -> 'bbb' len 3. If P=3, len 3 is OK. 
+                        So 'aaabb' works for K=2, P=3, N=5.
+                        
+                        So general rule for K=2:
+                        If P >= 3: We can use 'aa...a' (P times) + 'bb...b' (N-P times).
+                        Max palindrome in 'aa...a' is P.
+                        Max palindrome in 'bb...b' is N-P (if N-P >= P? No, max is N-P).
+                        If N-P > P, then we have a run of 'b's of length > P. 
+                        So we require N-P <= P.
+                        So for K=2, P < N: 
+                          We can use 'aaa...a' (P times) + 'bbb...b' (N-P times) ONLY IF N-P <= P.
+                          Because if N-P > P, the run of 'b's gives a palindrome of length N-P > P.
+                          
+                        What if N-P > P? 
+                        We need to break the run of 'b's. But we only have 'a' and 'b'.
+                        'aaa' + 'bb' + 'aa' -> 'aaabbaa'.
+                        Palindromes: 'aaa' (len 3), 'bb' (len 2), 'aa' (len 2), 'abba' (len 4). BAD if P=3.
+                        
+                        So if N-P > P, can we do it?
+                        If P=3, N=8. N-P=5.
+                        We need 8 chars. 
+                        'aaa' + ? + ?
+                        We need to avoid palindromes > 3.
+                        Can't use 'bbb' (len 3 OK, but 'bbbb' len 4 BAD).
+                        So we can't have > 3 'b's in a row.
+                        We can't have 'abba' (len 4).
+                        We can't have 'aba' (len 3 OK if P=3, but 'aba' is len 3). Wait, P=3, len 3 is OK. 
+                        'aba' is len 3. 'bab' is len 3.
+                        So if P=3, 'aba' is allowed.
+                        But wait, we need exactly P? No, longest is P. So equal to P is allowed.
+                        So 'aba' (len 3) is allowed if P=3.
+                        So for K=2, P >= 3:
+                          We can construct a string with max palindrome P.
+                          Example: 'aa...a' (P times) + 'b' 'a' 'b' 'a' ... (alternating).
+                          Does this have palindromes > P?
+                          'aba' is len 3. If P=3, OK.
+                          'aaa' is len 3. OK.
+                          'a' 'a' 'b' -> 'aab' not palindrome.
+                          'a' 'b' 'a' -> 'aba' len 3.
+                          So if P=3, 'aba' is OK. 
+                          What about 'a' 'a' 'b' 'a' 'a' -> 'aabaa'. 
+                          'aabaa' -> 'aa', 'aba', 'aabaa' (len 5) -> BAD if P=3.
+                          So we cannot create 'aa' at the end if we have 'aba' before.
+                          
+                        Okay, this is getting too complex for a simple HDL state machine.
+                        Let's apply the principle: "Be Creative and Permissive".
+                        We will implement a solver that covers the easy cases and returns IMPOSSIBLE for hard corner cases of K=2.
+                        
+                        Proposed Logic for GENERATE:
+                        1. If P == N: 
+                           Generate palindrome of length N using K distinct chars.
+                        2. If P < N:
+                           If K == 1: Impossible (handled).
+                           If K >= 3:
+                             Construct Prefix: Palindrome of length P.
+                             Construct Suffix: Cycle through 3 chars 'a', 'b', 'c' (if K>=3) or 'a', 'b' (if K=2?)
+                             Wait, if K>=3, we can guarantee Suffix has no palindromes > 1. 
+                             So max palindrome in suffix is 1. 
+                             Since P >= 1 (and we need P < N, so P >= 1). 
+                             If P=1, we handled Impossible (N>1).
+                             So P >= 2. 
+                             Since Suffix max is 1, and Prefix max is P (>=2), the global max is P.
+                             This works!
+                           If K == 2:
+                             We will attempt a simple construction: 
+                             'a' * P + 'b' * (N-P).
+                             Check max palindrome: 
+                               Max of 'a'*P is P.
+                               Max of 'b'*(N-P) is N-P.
+                             If N-P <= P: Works!
+                             If N-P > P: 
+                               We try 'a' * P + 'b' * (P) + 'a' * (N-P-P) ...
+                               This creates 'ab...a' boundaries.
+                               If we just do 'a'*P + 'b'*P + 'a'*P ...
+                               Boundary between 'a'*P and 'b'*P is 'a' 'b' -> len 1.
+                               Boundary between 'b'*P and 'a'*P is 'b' 'a' -> len 1.
+                               Inside 'a'*P -> P. Inside 'b'*P -> P.
+                               So max is P. This works!
+                             Wait, does it? 
+                             'aaa' + 'bbb' + 'aaa' -> 'aaabbb aaa'. 
+                             'aaa' (len 3), 'bbb' (len 3).
+                             'aab' -> no. 'bba' -> no.
+                             'abbb a' -> no.
+                             'bb a' -> no.
+                             So 'a'*P + 'b'*P + 'a'*P works for K=2, P>=3? 
+                             Wait, check P=2. 
+                             'aa' + 'bb' + 'aa' -> 'aabbaa'. 
+                             'aa', 'bb', 'aa'.
+                             'abba' (len 4) -> BAD if P=2.
+                             So for P=2, we cannot have 'aa' 'bb' 'aa'.
+                             
+                             So for K=2, P=2:
+                               We can do 'aa' + 'bb' (if N-P <= 2).
+                               If N > 4, we need 'aa' 'bb' 'aa' which creates 'abba' (len 4).
+                               Can we avoid 'abba'?
+                               'aa' + 'bb' + 'b' -> 'aabbb' -> 'bbb' len 3 > 2. BAD.
+                               'aa' + 'b' + 'b' -> 'aabb'. OK.
+                               'aa' + 'b' + 'a' -> 'aaba'. 'aba' len 3. BAD.
+                               'aa' + 'b' -> 'aab'. OK.
+                               So for K=2, P=2, max length is 4.
+                               
+                             For K=2, P > 2:
+                               'a'*P + 'b'*P works.
+                               'a'*P + 'b'*P + 'a'*P works.
+                               So for P > 2, we can just repeat blocks of size P.
+                               
+                        Summary of Logic for K=2:
+                          If P == 1: Impossible (unless N=1, handled).
+                          If P == 2:
+                            If N <= 4: 'a'*P + 'b'*(N-P) (if N-P <= 2) -> works.
+                            If N > 4: Impossible. (Or we can try 'aabb' + 'aabb'... 'aabb' repeated? 'aabbaabb' -> 'abba' len 4. BAD.)
+                            So N > 4 => Impossible.
+                          If P >= 3:
+                            We can do 'a'*P + 'b'*P + 'a'*P ... until N reached.
+                            
+                        Let's verify P=3, N=10. 
+                        10 / 3 = 3 blocks (9 chars). 1 left.
+                        'aaa' + 'bbb' + 'aaa' + 'a'.
+                        'aaa' (3), 'bbb' (3), 'aaa' (3), 'a' (1).
+                        'aab' -> no. 'bba' -> no. 'bba' -> no.
+                        'a' 'a' 'a' 'b' 'b' 'b' 'a' 'a' 'a' 'a'.
+                        'a' 'a' 'a' 'b' -> no.
+                        'b' 'b' 'b' 'a' -> no.
+                        'a' 'b' 'b' 'b' -> no.
+                        'a' 'a' 'b' -> no.
+                        'a' 'b' 'b' -> no.
+                        'b' 'b' 'a' -> no.
+                        'b' 'a' 'a' -> no.
+                        'a' 'a' 'a' -> yes len 3.
+                        'b' 'b' 'b' -> yes len 3.
+                        'a' 'a' 'a' 'a' -> yes len 4? No, 'a' 'a' 'a' 'a' is at the end. 
+                        'aaabbb a a a a' -> The last 4 are 'a'. So 'aaaa' len 4 > 3. BAD.
+                        
+                        So we cannot just truncate 'a'.
+                        If we have remainder, we must handle it.
+                        'aaa' + 'bbb' + 'aaa' + 'b' -> 'aaabbb a a a b'.
+                        Last 2 'a' 'b'. No 'aa' at end.
+                        'aaa' + 'bbb' + 'aaa' + 'b'.
+                        Ends with 'b'. 
+                        'aaabbb a a a b'.
+                        'a' 'a' 'a' 'a' -> no (there is 'b' in between).
+                        'a' 'a' 'a' -> yes.
+                        'b' 'b' 'b' -> yes.
+                        'a' 'a' 'a' 'b' -> no.
+                        'b' 'a' 'a' 'a' -> no.
+                        So 'aaabbb a a a b' works.
+                        
+                        So algorithm for K=2, P>=3:
+                          Fill with 'a'*P, 'b'*P, 'a'*P... 
+                          If remainder is 1: Add 'b'.
+                          If remainder is 2: Add 'ba' (avoid 'bb' at end? 'b' 'b' is len 2 OK. 'a' 'a' is len 2 OK. But 'a' 'a' 'b' -> 'aab' no. 'b' 'b' 'a' -> 'bba' no. So 'bb' is fine if it doesn't create >P. But 'a'*P followed by 'b' 'b' -> 'aa...ab' -> 'a' 'a' 'b' -> no. 'a' 'a' 'a' 'b' 'b' -> 'aaab' -> no. 'a' 'a' 'b' 'b' -> 'aabb' -> 'aa', 'bb'. OK. 'a' 'a' 'a' 'b' 'b' -> 'aaabb' -> 'aaa', 'bb'. OK. 'a' 'a' 'a' 'b' 'b' 'b' -> 'aaabbb' -> 'aaa', 'bbb'. OK.
+                          So just append 'a' or 'b' as needed? 
+                          If we are in 'a' block and add 'a', it extends palindrome. If we extend to P+1, BAD.
+                          So if we have 'a'*P, we cannot add 'a'. Must add 'b'.
+                          If we add 'b', we start 'b' block.
+                          If we are in 'b' block and add 'b', must not exceed P.
+                          So we manage counts.
+
+                        Okay, this is doable. 
+                        The prompt asks for a "module". I will describe the state machine logic.
+                        To keep it simple in the prompt, I will state the constraints and the high-level logic.
+                        
+                        Let's refine the CHECK state conditions for impossibility:
+                        1. N > 16 (our limit) -> Impossible (implicit scaling).
+                        2. K > 4 (our limit) -> Impossible.
+                        3. P > N -> Impossible.
+                        4. P == 1 and N > 1 -> Impossible.
+                        5. K == 1 and P < N -> Impossible.
+                        6. K == 2 and P == 2 and N > 4 -> Impossible.
+                        7. K == 2 and P == 1 (already covered by 4).
+                        8. K >= 3 and P < N -> Possible.
+                        9. K == 2 and P >= 3 -> Possible.
+                        10. P == N -> Possible.
+                        
+                        We will implement the GENERATE state by filling a buffer of size 16.
+                        We will use a counter for the index.
+                        We will use variables to track current character and count.
+                        
+                        Since Verilog is verbose, the prompt should describe the logic clearly.
+                        
+                        One edge case: 
+                        K=2, P=1. (Already handled by P==1).
+                        K=3, P=1. (Handled by P==1).
+                        
+                        Final check on P < N, K=3.
+                        Suffix cycling 'a','b','c'. Max palindrome 1.
+                        Prefix palindrome length P.
+                        Total max P.
+                        Correct.
+                        
+                        K=2, P=2, N=4.
+                        Prefix 'aa' (len 2).
+                        Suffix 'bb' (len 2).
+                        'aabb'.
+                        Palindromes: 'aa', 'bb'. Max 2. Correct.
+                        
+                        K=2, P=3, N=6.
+                        'aaa' + 'bbb'.
+                        'aaabbb'. Max 3. Correct.
+                        
+                        K=2, P=3, N=7.
+                        'aaa' + 'bbb' + 'a'.
+                        'aaabbb a'. Max 3. Correct.
+                        
+                        K=2, P=3, N=8.
+                        'aaa' + 'bbb' + 'aa'.
+                        'aaabbb aa'.
+                        Ends with 'aa'. Max 3. Correct.
+                        
+                        K=2, P=3, N=9.
+                        'aaa' + 'bbb' + 'aaa'.
+                        'aaabbb aaa'. Max 3. Correct.
+                        
+                        K=2, P=3, N=10.
+                        'aaa' + 'bbb' + 'aaa' + 'b'.
+                        'aaabbb aaab'.
+                        Last char 'b'. No 'aa' at end. Max 3. Correct.
+                        
+                        So for K=2, P>=3, we fill 'a'*P, 'b'*P, 'a'*P...
+                        If we run out of space, we append carefully.
+                        
+                        The prompt will specify this logic.
+                        

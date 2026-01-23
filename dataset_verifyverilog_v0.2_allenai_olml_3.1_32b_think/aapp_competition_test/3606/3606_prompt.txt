@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'frog_jumps' that simulates Barica the frog jumping between plants.
+
+Problem: Barica starts at the first plant. For each of K jump directions, she attempts to jump in that direction to the FIRST (nearest) plant. After jumping, the plant she left sinks (is removed).
+
+Directions:
+- A: (x+P, y+P) for P > 0 (NE direction)
+- B: (x+P, y-P) for P > 0 (SE direction)
+- C: (x-P, y+P) for P > 0 (NW direction)
+- D: (x-P, y-P) for P > 0 (SW direction)
+
+Constraints (scaled down):
+- N = 8 plants maximum
+- K = 16 jumps maximum
+- Coordinates: 0 to 255 (8-bit values)
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] num_plants // Number of plants (1-8)
+input [3:0] num_jumps // Number of jumps (0-16)
+input [7:0] init_x, init_y // Initial position (plant 0)
+input [7:0] plant_x [0:7], plant_y [0:7] // Arrays of 8 plant coordinates
+input [7:0] jump_dir // 8-bit encoding of jump directions (2 bits per jump, A=00, B=01, C=10, D=11)
+
+Outputs:
+output reg [7:0] final_x, final_y // Final coordinates
+output reg done // High when computation complete
+output reg valid // High when output is valid
+
+Latency: Maximum 8*16 = 128 clock cycles.
+
+Behavior:
+1. Reset: Initialize all plants as active, set current position to init_x, init_y.
+2. For each jump direction:
+   a. Find the NEAREST active plant in the current direction (minimum P > 0)
+   b. If found: move to that plant and mark the source plant as inactive
+   c. If not found: stay at current position
+3. After all jumps, output final position.
+
+Implementation hints:
+- Use state machine: IDLE, READ_DIR, SEARCH_PLANTS, UPDATE_POS, DONE
+- Maintain a register to track which plants are active (8-bit mask)
+- Maintain current position (x, y)
+- For each jump, iterate through all plants to find valid candidates, track minimum P
+- Use parallel comparators where possible for P calculation
+- P = max(|dx|, |dy|) where dx = target_x - current_x, dy = target_y - current_y
+- For a direction to be valid: dx and dy must have correct signs and |dx| = |dy| = P > 0

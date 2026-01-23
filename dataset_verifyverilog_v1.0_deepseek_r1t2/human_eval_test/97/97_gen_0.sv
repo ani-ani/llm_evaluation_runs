@@ -1,0 +1,1 @@
+module unit_digit_multiply(\n    input signed [15:0] a,\n    input signed [15:0] b,\n    output [7:0] result\n);\n    wire [16:0] abs_a = (a < 0) ? {1'b0, (-a)} : {1'b0, a};\n    wire [16:0] abs_b = (b < 0) ? {1'b0, (-b)} : {1'b0, b};\n    wire [7:0] unit_a = abs_a % 8'd10;\n    wire [7:0] unit_b = abs_b % 8'd10;\n    assign result = unit_a * unit_b;\nendmodule

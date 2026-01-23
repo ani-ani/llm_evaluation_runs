@@ -1,0 +1,59 @@
+Design a sequential Verilog module named `ranger_strength_op` that implements the bitwise XOR strength optimization algorithm for Jon Snow's rangers.
+
+**Problem Adaptation:**
+- Input array size: Fixed at N=8 rangers.
+- Values: 10-bit integers (0-1023), representing the original strengths (0-1000).
+- k (iterations): The module supports up to 100 iterations. Since the state space is finite, the sequence of states eventually cycles. The module must detect cycles to handle large k efficiently.
+- Operation: 
+  1. Sort the array in ascending order.
+  2. Apply XOR with `x` to elements at even indices (0, 2, 4, 6), leaving odd indices unchanged.
+  3. Repeat.
+
+**Module Interface:**
+Inputs:
+- `clk`: Clock signal.
+- `rst_n`: Active-low reset.
+- `start`: High to start the operation. Ignored if already processing.
+- `x`: [9:0] Input, Jon's favourite number (0-1023).
+- `data_in`: [7:0][9:0] Input, Array of 8 strengths.
+
+Outputs:
+- `max_out`: [9:0] Maximum strength after k operations.
+- `min_out`: [9:0] Minimum strength after k operations.
+- `done`: High when computation is complete.
+
+**Internal Logic & State Machine:**
+The module should implement a state machine with states: IDLE, SORTING, XORING, CHECK_CYCLE, UPDATE_K, and FINISHED.
+
+1. **IDLE**: Wait for `start`. When `start` is high, load `data_in` into internal registers, initialize `remaining_k = k`, and transition to SORTING.
+
+2. **SORTING**: Implement a Bubble Sort logic. It should take 28 clock cycles (approx, or 1 pass per cycle to simplify) to sort the 8 elements. To keep logic simple, perform one full bubble sort pass per state entry or use a counter. Let's assume we sort fully in one go.
+   - Use a counter to perform sorting passes. For 8 elements, 7 passes are sufficient. 
+   - Transition to XORING when sorted.
+
+3. **XORING**: Perform the XOR operation. 
+   - Parallel logic: `array[0] <= array[0] ^ x`, `array[2] <= array[2] ^ x`, `array[4] <= array[4] ^ x`, `array[6] <= array[6] ^ x`. 
+   - Odd indices remain unchanged.
+   - Transition to CHECK_CYCLE.
+
+4. **CHECK_CYCLE**: Compare the current array state with previous states (or simply check if `remaining_k` is 0). 
+   - However, since `k` can be large (up to 100,000), we must detect cycles to skip iterations. 
+   - *Simplification for Verilog*: Since N=8 and values are small, the total number of distinct states is bounded. A practical hardware approach here is to limit the physical iterations to a small number (e.g., 16 iterations) and assume k is small for the test cases, or implement a loop that decrements `k`. 
+   - *Optimization*: To support large k, we can store the current state and check if it repeats. If it repeats, we know we are in a cycle. However, implementing full history storage is complex. 
+   - *Design Decision*: We will iterate `min(k, MAX_ITER)` times where `MAX_ITER` is small (e.g., 16 or 32), sufficient to reach a stable cycle for these small arrays. The state machine will loop `MAX_ITER` times or until `k` is decremented to 0.
+
+5. **UPDATE_K**: Decrement `remaining_k`. If `remaining_k > 0` and `MAX_ITER` not reached, go to SORTING. Else go to FINISHED.
+
+6. **FINISHED**: Calculate `max_out` and `min_out` from the current array. Assert `done`. Wait for reset or new start.
+
+**Timing:**
+- Sorting takes ~30 cycles.
+- XOR takes 1 cycle.
+- State checks take 1 cycle.
+- Total per iteration ~32 cycles.
+- With MAX_ITER=16, max latency ~512 cycles.
+
+**Output:**
+- `max_out` and `min_out` are valid when `done` is high.
+
+**Note:** Ensure signals are sized correctly. 8 elements * 10 bits = 80 bits for the array vector.

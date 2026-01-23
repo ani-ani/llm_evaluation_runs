@@ -1,0 +1,73 @@
+module painting2x2 (
+    input clk, rst_n, start,
+    input [3:0] target,   // Flattened: [0]=(0,0), [1]=(0,1), [2]=(1,0), [3]=(1,1)
+    output reg [3:0] painted,
+    output reg [2:0] min_diff,
+    output reg done
+);
+    // States for the FSM
+    localparam IDLE = 0, COMPUTE = 1, FINISH = 2;
+    reg [1:0] state;
+    
+    // Iteration variables
+    reg [1:0] white_idx, black_idx;
+    reg [2:0] min_cost;
+    reg [1:0] best_white, best_black;
+    reg [2:0] current_cost;
+    reg computation_done;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            computation_done <= 0;
+            min_cost <= 4; // Initialize to worst-case cost
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= COMPUTE;
+                        white_idx <= 0;
+                        black_idx <= 0;
+                        min_cost <= 4;
+                    end
+                end
+                
+                COMPUTE: begin
+                    if (white_idx < 3) begin // Try all 12 combinations
+                        if (black_idx < 3) begin
+                            if (white_idx != black_idx) begin
+                                // Calculate cost for this assignment
+                                current_cost = (target[white_idx] ? 1 : 0) + (target[black_idx] ? 0 : 1);
+                                if (current_cost < min_cost) begin
+                                    min_cost <= current_cost;
+                                    best_white <= white_idx;
+                                    best_black <= black_idx;
+                                end
+                            end
+                            // Next black index
+                            if (black_idx == 3) begin
+                                black_idx <= 0;
+                                white_idx <= white_idx + 1;
+                            end else begin
+                                black_idx <= black_idx + 1;
+                            end
+                        end
+                    end else begin
+                        state <= FINISH;
+                    end
+                end
+                
+                FINISH: begin
+                    // Reconstruct painted image
+                    painted <= target; // Start with target
+                    painted[best_white] <= 0; // Force white quadrant to 0
+                    painted[best_black] <= 1; // Force black quadrant to 1
+                    min_diff <= min_cost;
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule

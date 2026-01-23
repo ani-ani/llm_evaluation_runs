@@ -1,0 +1,142 @@
+module TreePlanner (
+    input clk,
+    input rst_n,
+    input start,
+    input [13:0] L,       // Road length (0-10000)
+    input [4:0] W,        // Road width (0-20)
+    input [13:0] pos [0:7], // Sorted positions (max 8 trees)
+    output reg [31:0] result, // Q16.16 fixed-point result
+    output reg done
+);
+
+// Parameters
+parameter MAX_N = 8;
+parameter K = MAX_N / 2; // Number of pairs
+
+// State machine
+localparam IDLE = 3'b000,
+           COMPUTE_DP = 3'b001,
+           FINALIZE = 3'b010,
+           DONE_STATE = 3'b011;
+reg [2:0] state;
+
+// DP state tracking
+reg [3:0] i, j; // i = left assigned, j = right assigned
+reg [31:0] dp [0:4][0:4]; // DP table [0..4][0..4]
+
+// Computation registers
+reg [31:0] current_pos;
+reg [31:0] left_target;
+reg [31:0] right_target;
+reg [31:0] dist_left;
+reg [31:0] dist_right;
+reg [31:0] candidate1, candidate2;
+
+// Fixed-point constants
+wire [31:0] W_fp; // W in Q16.16
+assign W_fp = {W, 16'b0}; // Scale by 2^16
+
+// DP Initialization
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        i <= 0;
+        j <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Initialize DP table
+                    for (int idx = 0; idx <= K; idx = idx + 1) begin
+                        for (int jdx = 0; jdx <= K; jdx = jdx + 1) begin
+                            dp[idx][jdx] <= 32'h7FFFFFFF; // Initialize to max
+                        end
+                    end
+                    dp[0][0] <= 0;
+                    i <= 0;
+                    j <= 0;
+                    state <= COMPUTE_DP;
+                end
+            end
+            
+            COMPUTE_DP: begin
+                if (i <= K && j <= K) begin
+                    // Current tree index = i+j-1
+                    if (i+j < MAX_N) begin
+                        current_pos <= {18'b0, pos[i+j]}; // Convert to Q16.16
+                        left_target <= (K > 1) ? ((i * L) / (K-1)) << 16 : 0;
+                        right_target <= (K > 1) ? ((j * L) / (K-1)) << 16 : 0;
+                        
+                        // Calculate distances
+                        if (i > 0) begin
+                            // Manhattan distance to left target
+                            if (current_pos >= left_target)
+                                dist_left <= (current_pos - left_target);
+                            else
+                                dist_left <= (left_target - current_pos);
+                        end
+                        
+                        if (j > 0) begin
+                            // Manhattan distance to right target + vertical
+                            if (current_pos >= right_target)
+                                dist_right <= (current_pos - right_target) + W_fp;
+                            else
+                                dist_right <= (right_target - current_pos) + W_fp;
+                        end
+                        
+                        state <= FINALIZE;
+                    end else begin
+                        state <= DONE_STATE;
+                    end
+                end else begin
+                    // Move to next state
+                    if (i < K) begin
+                        i <= i + 1;
+                        j <= j;
+                    end else if (j < K) begin
+                        i <= 0;
+                        j <= j + 1;
+                    end else begin
+                        state <= DONE_STATE;
+                    end
+                end
+            end
+            
+            FINALIZE: begin
+                // Update DP table
+                if (i > 0) begin
+                    candidate1 = dp[i-1][j] + dist_left;
+                    if (candidate1 < dp[i][j])
+                        dp[i][j] <= candidate1;
+                end
+                if (j > 0) begin
+                    candidate2 = dp[i][j-1] + dist_right;
+                    if (candidate2 < dp[i][j])
+                        dp[i][j] <= candidate2;
+                end
+                
+                // Next state
+                state <= COMPUTE_DP;
+                
+                // Increment counters if needed
+                if (i < K) begin
+                    i <= i + 1;
+                end else begin
+                    i <= 0;
+                    j <= j + 1;
+                end
+            end
+            
+            DONE_STATE: begin
+                result <= dp[K][K];
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

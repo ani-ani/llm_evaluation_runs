@@ -1,0 +1,214 @@
+module pokenom_painter (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] M,          // 1..8
+    input wire [3:0] N,          // 1..8
+    input wire [3:0] c_0, c_1, c_2, c_3, c_4, c_5, c_6, c_7,
+    output reg done,
+    output reg [31:0] X,         // exponent of 100003 (always 0 for scaled inputs)
+    output reg [31:0] Y_m        // Y mod 100003
+);
+
+parameter MOD = 100003;
+
+// Internal registers and state machine
+reg [5:0] state;
+reg [3:0] i, j, k;
+reg [7:0] S, T, T_minus_2;
+reg [31:0] fact, H_blue, H_red, numerator, denominator, inv_denom;
+reg [3:0] c_reg [0:7];
+reg [3:0] B_cols, R_cols;
+reg [3:0] red_col_heights [0:7];
+
+// State definitions
+localparam IDLE = 0;
+localparam READ_C = 1;
+localparam COMPUTE_T = 2;
+localparam SETUP_FACT = 3;
+localparam COMPUTE_FACT = 4;
+localparam SETUP_BLUE = 5;
+localparam COMPUTE_BLUE = 6;
+localparam SETUP_RED = 7;
+localparam COMPUTE_RED = 8;
+localparam COMPUTE_NUMERATOR = 9;
+localparam COMPUTE_DENOMINATOR = 10;
+localparam COMPUTE_INV = 11;
+localparam COMPUTE_RESULT = 12;
+localparam DONE = 13;
+
+// Algorithm:
+// 1. On start, read c_i into c_reg and compute sum S.
+// 2. Compute T = M*N, T_minus_2 = T-2.
+// 3. Compute fact = (T_minus_2)! mod MOD.
+// 4. Compute blue hook product H_blue by iterating over blue cells.
+// 5. Compute red hook product H_red by iterating over red cells (reversed columns).
+// 6. numerator = fact * S % MOD * (T-S) % MOD.
+// 7. denominator = H_blue * H_red % MOD.
+// 8. inv_denom = modular inverse of denominator (using extended Euclid or Fermat).
+// 9. Y_m = numerator * inv_denom % MOD; X = 0.
+// 10. Assert done.
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        X <= 0;
+        Y_m <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    state <= READ_C;
+                    i <= 0;
+                    S <= 0;
+                end
+            end
+
+            READ_C: begin
+                if (i < N) begin
+                    // Read c_i from the individual ports
+                    case (i)
+                        0: c_reg[i] <= c_0;
+                        1: c_reg[i] <= c_1;
+                        2: c_reg[i] <= c_2;
+                        3: c_reg[i] <= c_3;
+                        4: c_reg[i] <= c_4;
+                        5: c_reg[i] <= c_5;
+                        6: c_reg[i] <= c_6;
+                        7: c_reg[i] <= c_7;
+                    endcase
+                    S <= S + c_reg[i];
+                    i <= i + 1;
+                end else begin
+                    state <= COMPUTE_T;
+                end
+            end
+
+            COMPUTE_T: begin
+                T <= M * N;
+                T_minus_2 <= M * N - 2;
+                state <= SETUP_FACT;
+                fact <= 1;
+                i <= 1;
+            end
+
+            SETUP_FACT: begin
+                if (i <= T_minus_2) begin
+                    fact <= (fact * i) % MOD;
+                    i <= i + 1;
+                end else begin
+                    state <= SETUP_BLUE;
+                end
+            end
+
+            SETUP_BLUE: begin
+                // Determine number of blue columns (c_i > 0)
+                B_cols <= 0;
+                for (integer idx = 0; idx < N; idx = idx + 1)
+                    if (c_reg[idx] > 0) B_cols <= idx + 1;
+                H_blue <= 1;
+                i <= 0;
+                j <= 0;
+                state <= COMPUTE_BLUE;
+            end
+
+            COMPUTE_BLUE: begin
+                if (i < B_cols) begin
+                    if (j < c_reg[i]) begin
+                        // count columns to the right with height > j
+                        integer count_right = 0;
+                        for (integer col = i+1; col < B_cols; col = col + 1)
+                            if (c_reg[col] > j) count_right = count_right + 1;
+                        H_blue <= (H_blue * (j + count_right + 1)) % MOD;
+                        j <= j + 1;
+                    end else begin
+                        j <= 0;
+                        i <= i + 1;
+                    end
+                end else begin
+                    state <= SETUP_RED;
+                end
+            end
+
+            SETUP_RED: begin
+                // Compute reversed red column heights: red_col_heights[k] = M - c_reg[N-1-k]
+                for (integer idx = 0; idx < N; idx = idx + 1) begin
+                    red_col_heights[idx] <= M - c_reg[N-1-idx];
+                end
+                // Determine R_cols (non‑zero heights)
+                R_cols <= 0;
+                for (integer idx = 0; idx < N; idx = idx + 1)
+                    if (red_col_heights[idx] > 0) R_cols <= idx + 1;
+                H_red <= 1;
+                i <= 0;
+                j <= 0;
+                state <= COMPUTE_RED;
+            end
+
+            COMPUTE_RED: begin
+                if (i < R_cols) begin
+                    if (j < red_col_heights[i]) begin
+                        integer count_right = 0;
+                        for (integer col = i+1; col < R_cols; col = col + 1)
+                            if (red_col_heights[col] > j) count_right = count_right + 1;
+                        H_red <= (H_red * (j + count_right + 1)) % MOD;
+                        j <= j + 1;
+                    end else begin
+                        j <= 0;
+                        i <= i + 1;
+                    end
+                end else begin
+                    state <= COMPUTE_NUMERATOR;
+                end
+            end
+
+            COMPUTE_NUMERATOR: begin
+                numerator <= (((fact * S) % MOD) * (T - S)) % MOD;
+                state <= COMPUTE_DENOMINATOR;
+            end
+
+            COMPUTE_DENOMINATOR: begin
+                denominator <= (H_blue * H_red) % MOD;
+                state <= COMPUTE_INV;
+                // Initialize extended Euclidean algorithm variables
+                a <= denominator;
+                b <= MOD;
+                x0 <= 1; x1 <= 0;
+            end
+
+            COMPUTE_INV: begin
+                // Extended Euclidean algorithm to compute inverse of denominator mod MOD
+                if (b != 0) begin
+                    integer quotient = a / b;
+                    integer remainder = a % b;
+                    integer new_x1 = x0 - quotient * x1;
+                    a <= b;
+                    b <= remainder;
+                    x0 <= x1;
+                    x1 <= new_x1;
+                end else begin
+                    // Inverse is x0 mod MOD (handle negative)
+                    inv_denom <= (x0 < 0) ? x0 + MOD : x0 % MOD;
+                    state <= COMPUTE_RESULT;
+                end
+            end
+
+            COMPUTE_RESULT: begin
+                Y_m <= (numerator * inv_denom) % MOD;
+                X <= 0;  // No factor of MOD for scaled inputs
+                done <= 1;
+                state <= DONE;
+            end
+
+            DONE: begin
+                done <= 0;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

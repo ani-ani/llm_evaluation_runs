@@ -1,0 +1,83 @@
+Design a sequential Verilog module named 'tree_control' that computes how many vertices each node controls in a rooted tree.
+
+Problem Definition:
+- Tree with root at vertex 1
+- Each vertex i has a control value a_i
+- Each edge has a weight
+- Vertex v controls vertex u if u is in v's subtree AND dist(v,u) <= a_u
+- Output: count of controlled vertices for each node
+
+Module Interface:
+module tree_control(
+    input clk,
+    input rst_n,
+    input start,
+    // Tree structure: fixed 8 nodes, indexed 0-7 (root is 0)
+    // Children encoded as bitmasks: child_mask[i] has bit j set if j is child of i
+    input [7:0] child_mask_0,
+    input [7:0] child_mask_1,
+    input [7:0] child_mask_2,
+    input [7:0] child_mask_3,
+    input [7:0] child_mask_4,
+    input [7:0] child_mask_5,
+    input [7:0] child_mask_6,
+    input [7:0] child_mask_7,
+    // Edge weights (16-bit, weights up to 65535)
+    input [15:0] edge_weight_01, input [15:0] edge_weight_02, input [15:0] edge_weight_03,
+    input [15:0] edge_weight_04, input [15:0] edge_weight_05, input [15:0] edge_weight_06,
+    input [15:0] edge_weight_07,
+    input [15:0] edge_weight_12, input [15:0] edge_weight_13, input [15:0] edge_weight_14,
+    input [15:0] edge_weight_15, input [15:0] edge_weight_16, input [15:0] edge_weight_17,
+    input [15:0] edge_weight_23, input [15:0] edge_weight_24, input [15:0] edge_weight_25,
+    input [15:0] edge_weight_26, input [15:0] edge_weight_27,
+    input [15:0] edge_weight_34, input [15:0] edge_weight_35, input [15:0] edge_weight_36,
+    input [15:0] edge_weight_37,
+    input [15:0] edge_weight_45, input [15:0] edge_weight_46, input [15:0] edge_weight_47,
+    input [15:0] edge_weight_56, input [15:0] edge_weight_57,
+    input [15:0] edge_weight_67,
+    // Control values a_i (16-bit)
+    input [15:0] a_0, input [15:0] a_1, input [15:0] a_2, input [15:0] a_3,
+    input [15:0] a_4, input [15:0] a_5, input [15:0] a_6, input [15:0] a_7,
+    output reg [2:0] result_index,  // Which node's result is being output (0-7)
+    output reg [3:0] result_value,  // Number of vertices controlled by node result_index
+    output reg done                 // High when all 8 results are computed
+);
+
+Specification:
+- The module uses an iterative state machine to compute results for all 8 nodes
+- Use a stack-based DFS approach with bounded depth (max 8 levels)
+- Track cumulative distance from each ancestor to each descendant
+- For each node v, check all descendants u: if dist(v,u) <= a_u, increment control count for v
+- Store results in internal array, output sequentially
+
+State Machine:
+- IDLE: Wait for start signal
+- SETUP: Initialize traversal state
+- VISIT: Process current node and its children
+- CHECK: Evaluate control condition for current ancestor-descendant pair
+- UPDATE: Store results and prepare next computation
+- OUTPUT: Stream out 8 results (one per clock cycle)
+- DONE: All computations complete
+
+Latency: Result valid approximately 200 clock cycles after start (accounts for 8 nodes × 25 cycles overhead)
+
+Implementation Details:
+- Use 3-level nested loop structure bounded by 8 nodes
+- Distances computed on-the-fly during traversal
+- Control check: compare cumulative_distance vs a[u]
+- Store intermediate distances in registers
+- Output results sequentially from index 0 to 7
+
+Data Path:
+- distance_register[7:0][15:0]: stores dist(root,current) for each node
+- control_count[7:0][3:0]: stores result for each node
+- current_node: tracks which node is being processed
+- ancestor_node: tracks which ancestor is being checked
+- traversal_stack: tracks path from root
+
+Output Format:
+- When in OUTPUT state, result_index cycles 0→7
+- result_value contains control count for that index
+- done is high after all 8 outputs are complete
+
+All arithmetic uses 16-bit unsigned integers (no overflow expected for scaled problem)

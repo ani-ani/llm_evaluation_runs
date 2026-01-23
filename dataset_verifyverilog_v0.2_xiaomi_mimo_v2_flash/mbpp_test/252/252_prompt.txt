@@ -1,0 +1,94 @@
+Design a sequential Verilog module named 'complex_to_polar' that converts a complex number (real, imaginary) to polar coordinates (magnitude, angle) using fixed-point arithmetic.
+
+The module uses Q16.16 fixed-point format (16 integer bits, 16 fractional bits). Input values represent numbers multiplied by 65536 (2^16).
+
+Example: 3.5 = 0x00038000 (3.5 * 65536 = 229376)
+Example: -2.0 = 0xFFFE0000 (-2 * 65536 = -131072)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input signed [31:0] real_in // Q16.16 fixed-point real part
+input signed [31:0] imag_in // Q16.16 fixed-point imaginary part
+
+Outputs:
+output reg [31:0] magnitude // Q16.16 fixed-point magnitude (always positive)
+output reg [31:0] angle // Q16.16 fixed-point angle in radians (-π to +π)
+output reg done // high when computation complete
+
+Latency: Result valid 40 clock cycles after start asserted.
+
+The module should compute:
+magnitude = sqrt(real² + imag²)
+angle = atan2(imag, real) // range -π to +π
+
+Implementation requirements:
+1. Use integer arithmetic for computation
+2. For magnitude: compute real² + imag², then take square root using Newton-Raphson approximation (max 20 iterations)
+3. For angle: use CORDIC algorithm or sign-based logic for quadrant detection
+4. Handle special cases: real=0, imag=0, real=0 AND imag=0
+5. Use Q16.16 format for all intermediate calculations
+6. State machine with states: IDLE, SQR_REAL, SQR_IMAG, SUM_SQRS, SQRT_ITER, ATAN, DONE
+7. Magnitude output should be normalized to Q16.16 format
+8. Angle output should be in Q16.16 format representing radians (-3.14159 to +3.14159)
+
+Test with inputs scaled to Q16.16 format:
+- Real: 1.0 → 0x00010000, Imag: 0.0 → 0x00000000 (polar: magnitude 1.0, angle 0.0)
+- Real: 4.0 → 0x00040000, Imag: 0.0 → 0x00000000 (polar: magnitude 4.0, angle 0.0)
+- Real: 5.0 → 0x00050000, Imag: 0.0 → 0x00000000 (polar: magnitude 5.0, angle 0.0)
+
+The magnitude should be computed as the Euclidean distance.
+For angle, compute atan2(imag, real) where atan2 handles all quadrants:
+- Quadrant I (real>0, imag>0): angle = atan(imag/real)
+- Quadrant II (real<0, imag>0): angle = atan(imag/real) + π
+- Quadrant III (real<0, imag<0): angle = atan(imag/real) - π
+- Quadrant IV (real>0, imag<0): angle = atan(imag/real)
+
+For the sqrt calculation, use this approximation:
+y = x/2 (initial guess)
+repeat 20 times: y = (y + x/y) / 2
+
+All internal calculations should maintain Q16.16 precision. Use 64-bit accumulators for multiplication results.
+
+The module should be purely combinational logic for the computation within each state, with sequential state progression.
+
+For angle computation, approximate atan2 using a series expansion or lookup for small angles, but handle quadrant detection properly.
+
+Since we're working with Q16.16 fixed-point, the angle output will be scaled by 65536. For example, π radians would be represented as 205887 (3.14159 * 65536 ≈ 205887).
+
+The sqrt function for fixed-point: to compute sqrt(x) where x is Q16.16, we can use the Newton-Raphson method:
+- Input x is Q16.16, but we treat it as 64-bit for intermediate (shift left 32 bits to get Q48.16)
+- Initial guess: y = x/2 (in Q16.16)
+- Iterate: y = (y + x/y) / 2
+- After iterations, shift result appropriately
+
+Let me reconsider the implementation details for better hardware efficiency:
+
+1. Real² and Imag²: Each is 32-bit × 32-bit = 64-bit product, we need to extract Q16.16 format (bits [47:16] of 64-bit product)
+2. Sum: Add the two 64-bit results (but only use 48 bits to avoid overflow)
+3. Sqrt: Approximate using bit-by-bit or Newton method on Q32.32 format
+4. Angle: Use simplified atan2 approximation
+
+For simplicity in hardware:
+- Magnitude: compute using iterative sqrt on sum of squares
+- Angle: use a simplified lookup or calculation
+
+Actually, let me make this even more concrete for hardware implementation:
+
+State machine:
+- IDLE: wait for start
+- SQR: compute real² and imag² in parallel
+- SUM: add squares
+- SQRT: iterative sqrt (20 cycles)
+- ATAN: compute angle using sign-based logic
+- DONE: output results
+
+For angle, we can use this simplified approach:
+- If imag == 0: angle = 0 if real >= 0, else angle = π (or -π)
+- If real == 0: angle = π/2 if imag > 0, else -π/2
+- Otherwise: use approximation or limit to quadrant I for real > 0
+
+Given the test cases all have imag=0, the angle will always be 0 or π. For real > 0: angle = 0. For real < 0: angle = π.
+
+Let's implement a complete solution that handles general cases but works correctly for the test cases.

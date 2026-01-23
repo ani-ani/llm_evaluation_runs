@@ -1,0 +1,169 @@
+module wiring_counter (
+    input wire clk,          // Clock signal
+    input wire rst_n,        // Active-low reset
+    input wire start,        // Start pulse (1 cycle)
+    input wire [3:0] n,      // Number of switches/lights (1-4)
+    input wire [3:0] m,      // Number of photos (0-4)
+    input wire [31:0] switch_config, // Packed: photo0[3:0], photo1[7:4], ... photo7[31:28]
+    input wire [31:0] light_config,  // Packed similarly
+    output reg [31:0] result, // Result modulo 1000003
+    output reg done          // Asserted high when computation complete
+);
+
+// Internal state machine states
+localparam IDLE = 3'b000;
+localparam INIT = 3'b001;
+localparam CHECK = 3'b010;
+localparam NEXT = 3'b011;
+localparam UPDATE = 3'b100;
+localparam DONE = 3'b101;
+
+reg [2:0] state;
+
+// Permutation array (n ≤ 4)
+reg [1:0] perm [0:3];
+
+// Counter registers
+reg [31:0] count;
+reg [31:0] perm_counter;    // 0 to n!-1
+reg [3:0] photo_idx;
+reg [3:0] switch_idx;
+
+// Constants
+localparam MOD = 24'd1000003;
+
+// Helper: Get bit from packed config
+function get_bit;
+    input [31:0] config;
+    input [3:0] photo;
+    input [3:0] sw;
+    begin
+        get_bit = config[photo * 4 + sw];
+    end
+endfunction
+
+// Helper: Compute factorial
+function [31:0] factorial;
+    input [3:0] val;
+    begin
+        case (val)
+            0, 1: factorial = 1;
+            2: factorial = 2;
+            3: factorial = 6;
+            4: factorial = 24;
+            default: factorial = 1;
+        endcase
+    end
+endfunction
+
+// Helper: Generate permutation from counter
+// Uses factorial number system to generate k-th permutation
+reg [1:0] avail [0:3];
+reg [31:0] temp_counter;
+reg [3:0] temp_n;
+integer i_gen, idx_gen;
+
+always @(*) begin
+    temp_counter = perm_counter;
+    temp_n = n;
+    // Initialize available numbers
+    for (i_gen = 0; i_gen < 4; i_gen = i_gen + 1) begin
+        avail[i_gen] = i_gen;
+    end
+    // Generate permutation
+    for (i_gen = 0; i_gen < 4; i_gen = i_gen + 1) begin
+        if (i_gen < n) begin
+            idx_gen = temp_counter % (4 - i_gen);
+            temp_counter = temp_counter / (4 - i_gen);
+            perm[i_gen] = avail[idx_gen];
+            // Remove used number
+            for (int j = idx_gen; j < 3 - i_gen; j = j + 1) begin
+                avail[j] = avail[j + 1];
+            end
+        end else begin
+            perm[i_gen] = 0;
+        end
+    end
+end
+
+// State transitions
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 32'd0;
+        done <= 1'b0;
+        count <= 32'd0;
+        perm_counter <= 32'd0;
+        photo_idx <= 4'd0;
+        switch_idx <= 4'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    state <= INIT;
+                    count <= 32'd0;
+                    perm_counter <= 32'd0;
+                end
+            end
+
+            INIT: begin
+                // Generate first permutation (counter=0)
+                // The always_comb above will update perm
+                photo_idx <= 4'd0;
+                switch_idx <= 4'd0;
+                state <= CHECK;
+            end
+
+            CHECK: begin
+                if (m == 0) begin
+                    // No photos, all permutations valid
+                    state <= UPDATE;
+                end else if (photo_idx >= m) begin
+                    // All photos passed
+                    state <= UPDATE;
+                end else if (switch_idx >= n) begin
+                    // All switches checked for current photo
+                    photo_idx <= photo_idx + 1;
+                    switch_idx <= 4'd0;
+                end else begin
+                    // Check current switch
+                    if (get_bit(switch_config, photo_idx, switch_idx) != 
+                        get_bit(light_config, photo_idx, perm[switch_idx])) begin
+                        // Mismatch, invalid permutation
+                        state <= NEXT;
+                    end else begin
+                        // Match, continue
+                        switch_idx <= switch_idx + 1;
+                    end
+                end
+            end
+
+            UPDATE: begin
+                count <= count + 1;
+                state <= NEXT;
+            end
+
+            NEXT: begin
+                perm_counter <= perm_counter + 1;
+                if (perm_counter + 1 >= factorial(n)) begin
+                    // All permutations processed
+                    result <= count % MOD;
+                    state <= DONE;
+                end else begin
+                    // Generate next permutation and reset indices
+                    photo_idx <= 4'd0;
+                    switch_idx <= 4'd0;
+                    state <= CHECK;
+                end
+            end
+
+            DONE: begin
+                done <= 1'b1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

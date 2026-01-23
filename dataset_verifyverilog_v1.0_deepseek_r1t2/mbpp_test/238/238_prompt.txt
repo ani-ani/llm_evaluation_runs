@@ -1,0 +1,51 @@
+module substring_counter(
+    input [7:0] str_len,  // Length of string (0-8)
+    output reg [15:0] result  // Number of substrings
+);
+
+// Combinational logic to calculate n*(n+1)/2
+always @(*) begin
+    result = str_len * (str_len + 1) >> 1;
+end
+
+endmodule
+
+// Alternative sequential version with string input:
+module substring_counter_seq(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] char_in,  // Current character (ASCII)
+    input valid,          // Valid character flag
+    output reg [15:0] result,
+    output reg done
+);
+
+reg [3:0] count;  // Count of valid characters (max 8)
+reg computing;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        count <= 4'd0;
+        result <= 16'd0;
+        done <= 1'b0;
+        computing <= 1'b0;
+    end else begin
+        if (start && !computing) begin
+            computing <= 1'b1;
+            count <= 4'd0;
+            done <= 1'b0;
+        end else if (computing && valid && count < 4'd8) begin
+            count <= count + 1'b1;
+        end else if (computing && (!valid || count >= 4'd8)) begin
+            // Computation complete: n*(n+1)/2
+            result <= count * (count + 1'b1) >> 1;
+            done <= 1'b1;
+            computing <= 1'b0;
+        end else begin
+            done <= 1'b0;
+        end
+    end
+end
+
+endmodule

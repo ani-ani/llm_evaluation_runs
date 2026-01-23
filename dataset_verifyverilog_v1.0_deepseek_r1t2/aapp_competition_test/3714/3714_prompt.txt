@@ -1,0 +1,179 @@
+module arpa_land (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] n,           // Number of people (1-8)
+    input wire [2:0] crush_0,     // Crush array (0-indexed)
+    input wire [2:0] crush_1,
+    input wire [2:0] crush_2,
+    input wire [2:0] crush_3,
+    input wire [2:0] crush_4,
+    input wire [2:0] crush_5,
+    input wire [2:0] crush_6,
+    input wire [2:0] crush_7,
+    output reg [9:0] result,      // LCM result or -1 (10'h3FF)
+    output reg done               // Computation finished
+);
+
+// State definitions
+localparam S_IDLE = 4'd0;
+localparam S_INIT = 4'd1;
+localparam S_CHECK = 4'd2;
+localparam S_TRAVERSE = 4'd3;
+localparam S_ADJUST = 4'd4;
+localparam S_NEXT = 4'd5;
+localparam S_COMPUTE = 4'd6;
+localparam S_DONE = 4'd7;
+localparam S_ERROR = 4'd8;
+
+// Registers
+reg [3:0] state, next_state;
+reg [2:0] n_reg;
+reg [2:0] crush_reg [0:7];
+reg visited [0:7];
+reg [2:0] i;                  // Node counter
+reg [2:0] current;            // Current node in traversal
+reg [2:0] start_node;         // Start node of current cycle
+reg [3:0] count;              // Cycle length counter
+reg [1:0] max2;               // Max exponent of 2 in adjusted lengths
+reg max3, max5, max7;         // Flags for primes
+reg error;
+
+// Combinational next_state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        S_IDLE: if (start) next_state = S_INIT;
+        S_INIT: next_state = S_CHECK;
+        S_CHECK: begin
+            if (i < n_reg) begin
+                if (!visited[i]) next_state = S_TRAVERSE;
+                else next_state = S_NEXT;
+            end else begin
+                if (error) next_state = S_ERROR;
+                else next_state = S_COMPUTE;
+            end
+        end
+        S_TRAVERSE: begin
+            if (visited[current]) begin
+                if (current == start_node) next_state = S_ADJUST;
+                else next_state = S_ERROR;
+            end else begin
+                next_state = S_TRAVERSE;
+            end
+        end
+        S_ADJUST: next_state = S_NEXT;
+        S_NEXT: next_state = S_CHECK;
+        S_COMPUTE: next_state = S_DONE;
+        S_DONE: next_state = S_DONE;
+        S_ERROR: next_state = S_DONE;
+        default: next_state = S_IDLE;
+    endcase
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= S_IDLE;
+        done <= 0;
+        result <= 0;
+        n_reg <= 0;
+        for (integer idx = 0; idx < 8; idx = idx + 1) begin
+            crush_reg[idx] <= 0;
+            visited[idx] <= 0;
+        end
+        i <= 0;
+        current <= 0;
+        start_node <= 0;
+        count <= 0;
+        max2 <= 0;
+        max3 <= 0;
+        max5 <= 0;
+        max7 <= 0;
+        error <= 0;
+    end else begin
+        state <= next_state;
+        case (state)
+            S_IDLE: if (start) begin
+                // Latch inputs
+                n_reg <= (n > 3'd0 && n <= 3'd8) ? n : 3'd8;
+                crush_reg[0] <= crush_0;
+                crush_reg[1] <= crush_1;
+                crush_reg[2] <= crush_2;
+                crush_reg[3] <= crush_3;
+                crush_reg[4] <= crush_4;
+                crush_reg[5] <= crush_5;
+                crush_reg[6] <= crush_6;
+                crush_reg[7] <= crush_7;
+                // Reset outputs
+                done <= 0;
+                result <= 0;
+                error <= 0;
+            end
+            S_INIT: begin
+                // Initialize visited and factors
+                for (integer idx = 0; idx < 8; idx = idx + 1) begin
+                    visited[idx] <= (idx < n_reg) ? 0 : 1; // Mark out-of-range as visited
+                end
+                i <= 0;
+                max2 <= 0;
+                max3 <= 0;
+                max5 <= 0;
+                max7 <= 0;
+            end
+            S_CHECK: begin
+                if (i < n_reg && visited[i]) begin
+                    i <= i + 1;
+                end
+            end
+            S_TRAVERSE: begin
+                if (!visited[current]) begin
+                    visited[current] <= 1;
+                    current <= crush_reg[current];
+                    count <= count + 1;
+                end
+            end
+            S_ADJUST: begin
+                // Adjust cycle length
+                if (count % 2 == 0) begin
+                    count <= count >> 1; // Divide by 2
+                end
+                // Update factors based on adjusted count
+                case (count)
+                    1: begin end // Do nothing
+                    2: if (max2 < 1) max2 <= 1;
+                    3: max3 <= 1;
+                    4: if (max2 < 2) max2 <= 2;
+                    5: max5 <= 1;
+                    7: max7 <= 1;
+                    default: error <= 1; // Should not happen
+                endcase
+                // Reset count and advance i
+                count <= 0;
+                i <= i + 1;
+            end
+            S_NEXT: begin
+                if (i < n_reg && !visited[i]) begin
+                    current <= i;
+                    start_node <= i;
+                    count <= 0;
+                end
+            end
+            S_COMPUTE: begin
+                // Compute LCM = (2^max2) * (3 if max3) * (5 if max5) * (7 if max7)
+                result <= (1 << max2) * (max3 ? 3 : 1) * (max5 ? 5 : 1) * (max7 ? 7 : 1);
+            end
+            S_DONE: begin
+                done <= 1;
+                if (state == S_ERROR) begin
+                    result <= 10'h3FF; // -1 in two's complement
+                end
+            end
+            S_ERROR: begin
+                error <= 1;
+            end
+        endcase
+    end
+end
+
+endmodule

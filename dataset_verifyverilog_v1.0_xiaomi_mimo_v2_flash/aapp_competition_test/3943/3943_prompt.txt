@@ -1,0 +1,58 @@
+Verilog Module Specification:
+
+Module Name: CardArrangementOptimizer
+
+Parameters:
+  MAX_A = 4   // Maximum number of 'o' cards
+  MAX_B = 4   // Maximum number of 'x' cards
+
+Inputs:
+  clk         : Clock (rising edge)
+  rst_n       : Active-low reset
+  start       : Start computation (pulse high for one cycle)
+  a           : Number of 'o' cards, range 0 to MAX_A (3-bit unsigned)
+  b           : Number of 'x' cards, range 0 to MAX_B (3-bit unsigned)
+
+Outputs:
+  done        : Computation complete (high for one cycle when result valid)
+  score       : Maximum score, signed 8-bit (2's complement)
+  arrangement : 8-bit vector, each bit represents a card (1='o', 0='x')
+                Bits [0] to [length-1] contain the arrangement
+  length      : 4-bit unsigned, number of cards (a+b)
+
+Behavior:
+The module computes the maximum possible score and corresponding arrangement.
+
+Algorithm:
+1. If a == 0: score = -b*b, arrangement = b zeros, length = b.
+2. Else if b == 0: score = a*a, arrangement = a ones, length = a.
+3. Else:
+   For p = 1 to a (number of 'o' blocks):
+     - sum_o_sq = (a - p + 1)^2 + p - 1
+     - gaps = p + 1
+     - q = b / gaps (integer division)
+     - r = b % gaps
+     - sum_x_sq = r*(q+1)^2 + (gaps - r)*q^2
+     - score_candidate = sum_o_sq - sum_x_sq
+   Find p that maximizes score_candidate.
+   Let best_p, best_q, best_r be the parameters that give the maximum score.
+   Compute arrangement:
+     - large_o = a - best_p + 1
+     - small_o = 1
+     - gap_sizes[i] = (i < best_r) ? best_q+1 : best_q for i=0..best_p
+     - Build string by concatenating:
+         gap_sizes[0] 'x's, then large_o 'o's,
+         then for i=1 to best_p-1: gap_sizes[i] 'x's followed by small_o 'o',
+         finally gap_sizes[best_p] 'x's.
+     - length = a + b
+
+Timing:
+- start initiates computation.
+- Module takes at most 16 clock cycles to complete.
+- done asserted for one cycle when finished.
+- On reset (rst_n=0), all outputs are 0, done=0.
+
+Implementation Notes:
+- Use sequential logic (state machine) to iterate over p values.
+- Use combinational logic for arithmetic calculations.
+- arrangement output stable after done is asserted.

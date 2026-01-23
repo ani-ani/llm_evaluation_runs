@@ -1,0 +1,154 @@
+module candidate_simulation #(
+    parameter N = 8,
+    parameter VALUE_WIDTH = 8,
+    parameter MAX_MINUTES = 16,
+    parameter MINUTE_WIDTH = 5, // enough for MAX_MINUTES-1
+    parameter LEN_WIDTH = 4     // enough for N
+)(
+    input clk,
+    input rst_n,
+    input start,
+    input [LEN_WIDTH-1:0] len,
+    input [VALUE_WIDTH-1:0] val0, val1, val2, val3, val4, val5, val6, val7,
+    output reg done,
+    output reg [MINUTE_WIDTH-1:0] M,
+    output reg [VALUE_WIDTH-1:0] final0, final1, final2, final3, final4, final5, final6, final7,
+    output reg [LEN_WIDTH-1:0] final_len
+);
+
+// State definitions
+localparam [1:0] IDLE = 2'd0;
+localparam [1:0] COMPUTE = 2'd1;
+localparam [1:0] REMOVE = 2'd2;
+localparam [1:0] DONE = 2'd3;
+
+// Registers for current state and next state
+reg [1:0] state;
+
+// Current values and length
+reg [VALUE_WIDTH-1:0] current_values [0:N-1];
+reg [LEN_WIDTH-1:0] current_len_reg;
+reg [MINUTE_WIDTH-1:0] minute_count;
+
+// Combinational leaving mask
+reg [N-1:0] leaving_mask;
+
+// Integer for loops
+integer i;
+
+// Combinational block to compute leaving_mask
+always @(*) begin
+    for (i = 0; i < N; i = i + 1) begin
+        if (i < current_len_reg) begin
+            leaving_mask[i] = 1'b0;
+            // Check left neighbor
+            if (i > 0) begin
+                if (current_values[i-1] > current_values[i])
+                    leaving_mask[i] = 1'b1;
+            end
+            // Check right neighbor
+            if (i < current_len_reg - 1) begin
+                if (current_values[i+1] > current_values[i])
+                    leaving_mask[i] = 1'b1;
+            end
+        end else begin
+            leaving_mask[i] = 1'b0;
+        end
+    end
+end
+
+// State transition and register update
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 1'b0;
+        M <= 0;
+        current_len_reg <= 0;
+        minute_count <= 0;
+        // Reset final outputs
+        final0 <= 0; final1 <= 0; final2 <= 0; final3 <= 0;
+        final4 <= 0; final5 <= 0; final6 <= 0; final7 <= 0;
+        final_len <= 0;
+        // Reset current_values
+        for (i = 0; i < N; i = i + 1) begin
+            current_values[i] <= 0;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    // Initialize current_values from inputs
+                    current_values[0] <= val0;
+                    current_values[1] <= val1;
+                    current_values[2] <= val2;
+                    current_values[3] <= val3;
+                    current_values[4] <= val4;
+                    current_values[5] <= val5;
+                    current_values[6] <= val6;
+                    current_values[7] <= val7;
+                    current_len_reg <= len;
+                    minute_count <= 0;
+                    done <= 1'b0;
+                    state <= COMPUTE;
+                end
+            end
+
+            COMPUTE: begin
+                // Check if leaving_mask is zero
+                if (leaving_mask == 0) begin
+                    // No one leaves, go to DONE
+                    state <= DONE;
+                    // Set outputs
+                    M <= minute_count;
+                    // Copy current_values to final outputs
+                    final0 <= current_values[0];
+                    final1 <= current_values[1];
+                    final2 <= current_values[2];
+                    final3 <= current_values[3];
+                    final4 <= current_values[4];
+                    final5 <= current_values[5];
+                    final6 <= current_values[6];
+                    final7 <= current_values[7];
+                    final_len <= current_len_reg;
+                    done <= 1'b1;
+                end else begin
+                    // Some leave, go to REMOVE
+                    state <= REMOVE;
+                end
+            end
+
+            REMOVE: begin
+                // Update minute_count
+                minute_count <= minute_count + 1'b1;
+                // Update current_values and current_len_reg
+                reg [LEN_WIDTH-1:0] new_len;
+                reg [VALUE_WIDTH-1:0] new_values [0:N-1];
+                
+                new_len = 0;
+                for (i = 0; i < N; i = i + 1) begin
+                    if (i < current_len_reg) begin
+                        if (leaving_mask[i] == 1'b0) begin
+                            new_values[new_len] = current_values[i];
+                            new_len = new_len + 1'b1;
+                        end
+                    end
+                end
+                
+                for (i = 0; i < N; i = i + 1) begin
+                    current_values[i] <= new_values[i];
+                end
+                current_len_reg <= new_len;
+                // Go back to COMPUTE for next minute
+                state <= COMPUTE;
+            end
+
+            DONE: begin
+                // Stay in DONE, done is already set
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

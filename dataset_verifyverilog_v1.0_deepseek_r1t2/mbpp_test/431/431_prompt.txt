@@ -1,0 +1,132 @@
+/*
+Task: Implement hardware to check if two lists have at least one common element.
+
+Adaptation: Use 8-element arrays with 8-bit elements. Scale down from 5-element test cases.
+Algorithm: Compare all pairs (list1[i] vs list2[j]) in parallel, OR reduce all comparison results.
+
+Interface Specification:
+
+Inputs:
+  - clk         : Clock signal (rising edge triggered)
+  - rst_n       : Active-low synchronous reset
+  - start       : Start pulse (assert for 1 cycle to begin comparison)
+  - list1[0:7]  : 8-element input array, each element 8 bits (MSB: list1[7], LSB: list1[0])
+  - list2[0:7]  : 8-element input array, each element 8 bits (MSB: list2[7], LSB: list2[0])
+  - len1        : 3-bit value (0-7) indicating number of valid elements in list1 (0=1 element, 7=8 elements)
+  - len2        : 3-bit value (0-7) indicating number of valid elements in list2
+
+Outputs:
+  - has_common  : 1-bit result (1=true, 0=false)
+  - done        : Asserted high for 1 cycle when comparison is complete
+
+Timing:
+  - Assert start for 1 clock cycle to initiate comparison
+  - done will go high approximately 2 clock cycles after start
+  - Sample has_common on the same cycle done is high
+  - Start should not be asserted again until done goes high
+
+Reset behavior:
+  - On rst_n=0: done=0, has_common=0, all internal state cleared
+  - Minimum 2 clock cycles of reset required before start
+
+Implementation Requirements:
+  - Use a state machine with IDLE, COMPARE, DONE states
+  - Compare all valid elements: for i in 0..len1, for j in 0..len2, if list1[i]==list2[j] then result=1
+  - Use combinational comparison logic for each (i,j) pair, then OR reduce
+  - Only compare within valid length ranges
+  - Optimization: Can break early if match found, but simple 2-cycle approach is acceptable
+  - Maximum: 8x8 = 64 parallel comparators, each 8-bit wide
+  - Result should be registered on cycle after comparison
+
+Example:
+  list1 = [0x01, 0x02, 0x03, 0x04, 0x05, 0x00, 0x00, 0x00]  (len1=4, meaning indices 0-4)
+  list2 = [0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x00, 0x00]  (len2=4)
+  Expected: has_common=1 (element 0x05 is in both)
+
+  list1 = [0x01, 0x02, 0x03, 0x04, 0x05, 0x00, 0x00, 0x00]  (len1=4)
+  list2 = [0x06, 0x07, 0x08, 0x09, 0x00, 0x00, 0x00, 0x00]  (len2=3)
+  Expected: has_common=0
+*/
+
+module common_element_check (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] list1 [0:7],
+    input wire [7:0] list2 [0:7],
+    input wire [2:0] len1,
+    input wire [2:0] len2,
+    output reg has_common,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam COMPARE = 2'b01;
+    localparam DONE = 2'b10;
+    
+    reg [1:0] state, next_state;
+    reg result_reg, next_result;
+    
+    // Combinational comparison logic
+    wire [63:0] pair_matches;  // 8x8 grid of comparison results
+    wire all_matches_or;
+    
+    genvar i, j;
+    generate
+        for (i = 0; i < 8; i = i + 1) begin : compare_rows
+            for (j = 0; j < 8; j = j + 1) begin : compare_cols
+                // Only compare if within valid ranges
+                assign pair_matches[i*8 + j] = (i <= len1) && (j <= len2) && 
+                                                (list1[i] == list2[j]);
+            end
+        end
+    endgenerate
+    
+    // OR reduce all comparison results
+    assign all_matches_or = |pair_matches;
+    
+    // State register
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            has_common <= 1'b0;
+            done <= 1'b0;
+        end else begin
+            state <= next_state;
+            has_common <= next_result;
+            done <= (next_state == DONE);
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        next_result = has_common;
+        
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    next_state = COMPARE;
+                    next_result = 1'b0;
+                end
+            end
+            
+            COMPARE: begin
+                next_result = all_matches_or;
+                next_state = DONE;
+            end
+            
+            DONE: begin
+                next_state = IDLE;
+                next_result = 1'b0;
+            end
+            
+            default: begin
+                next_state = IDLE;
+                next_result = 1'b0;
+            end
+        endcase
+    end
+
+endmodule

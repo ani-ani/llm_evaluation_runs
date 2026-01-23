@@ -1,0 +1,47 @@
+Design a sequential Verilog module named 'contest_scheduler' that computes the optimal contest schedule to minimize surprise penalty.
+
+The problem involves scheduling a contest on Fridays in October for multiple years, avoiding forbidden dates and the Friday before Canadian Thanksgiving. The penalty is the square of the difference between consecutive years' dates.
+
+Simplified for HDL:
+- Support Z=1 to 2 years (scaled from original max 100)
+- Years supported: 2019, 2020 (orig max 2118)
+- Fixed-width inputs: 5-bit year (1-2), 5-bit date (1-31)
+- Maximum 5 forbidden dates per year
+- Days are represented as October day numbers (1-31)
+- Compute DP table for min penalty
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] year_count // number of years (1-2)
+input [4:0] forbidden_count // total forbidden dates
+input [4:0] forbidden_year [0:4] // year index (1 or 2) for each forbidden date
+input [4:0] forbidden_day [0:4] // day in October (1-31) for each forbidden date
+
+Outputs:
+output reg [15:0] min_penalty // minimum total surprise penalty
+output reg [4:0] result_year [0:1] // chosen year for each year
+output reg [4:0] result_day [0:1] // chosen day for each year  
+output reg done // high when computation complete
+
+Specification:
+1. Precompute valid Fridays for each year:
+   - Calculate Canadian Thanksgiving (2nd Monday in October)
+   - Find all Fridays in October excluding Thanksgiving-1
+   - Exclude forbidden dates
+
+2. Use DP with state machine:
+   - States: IDLE, CALC_THANKSGIVING, FIND_FRIDAYS, BUILD_DP, EXTRACT_RESULT, DONE
+   - DP[i][d] = min penalty to reach year i with date d
+   - Transition: DP[i][d] = min over previous dates d' of (DP[i-1][d'] + (d-d')^2)
+
+3. For years 2019, 2020:
+   - 2019: Jan 1 is Tuesday, check leap year
+   - 2020: Leap year (divisible by 4)
+
+4. Output format: Year (2019/2020), day (1-31)
+
+5. Latency: Up to 500 clock cycles after start
+
+Use combinational logic for date calculations and sequential logic for DP iterations. Store valid dates as 5-bit values. Use 16-bit penalty accumulator. Ensure unique schedule extraction.

@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'thieves_loot' that computes minimum loot to leave behind.
+
+Parameters:
+- K = 4 (number of denominations)
+- MAX_SUM = 240 (maximum possible total value)
+- WIDTH = 8 (bit width for coin counts)
+- VALUE_WIDTH = 9 (bit width for sums, 0-240 fits in 9 bits)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [WIDTH-1:0] x0, x1, x2, x3 // coin counts for denominations 1,2,4,8
+
+Outputs:
+output reg [VALUE_WIDTH-1:0] result // minimum value to leave behind
+output reg done // high when computation complete
+
+Latency: Result valid approximately 2000 clock cycles after start (depends on DP completion)
+
+Behavior:
+1. State machine with states: IDLE, COMPUTE_TOTAL, INIT_DP, UPDATE_DP, FIND_MAX, DONE
+2. Compute total value = x0*1 + x1*2 + x2*4 + x3*8
+3. Use DP to find all achievable sums: dp[sum] = 1 if sum can be formed
+4. Find largest even sum S <= total where dp[S] = 1
+5. Result = total - S
+6. Use bit-vector for DP (241 bits) updated sequentially
+
+Special cases:
+- If total is odd, minimum leave is typically 1 if x0 > 0, but DP handles generally
+- DP update: for each coin type, iterate count times, update sums from high to low
+- Final scan: find highest even index with dp bit set
+
+Implementation details:
+- Use 9-bit counters for sums and indices
+- Use state variables to track current coin type and update progress
+- dp_bits stored as 8 registers of 32 bits each (256 bits total)
+- Result will be at most 240, fits in 9 bits
+
+The module should be synthesizable and handle the three test cases correctly.

@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'count_polygons' that counts the number of connected subsets of cells in an R×C grid (where 1 ≤ R, C ≤ 4). The problem corresponds to counting 'polygons' formed by chocolates in a box.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] R // Number of rows (1-4)
+input [2:0] C // Number of columns (1-4)
+
+Outputs:
+output reg [15:0] result // The number of polygons
+output reg done // High when computation is complete
+
+Specification:
+The module should implement a brute-force algorithm to count connected subsets.
+Since the maximum grid size is 4x4 (16 cells), the total number of subsets is 2^16 = 65536.
+
+Algorithm to implement:
+1. Iterate through all masks from 1 to (1 << (R*C)) - 1.
+2. For each mask, check if the set of cells represented by the mask is connected (4-connectivity).
+   - To check connectivity, start with the first set bit.
+   - Repeatedly add neighbors of the current set (up to 16 iterations is sufficient for 16 nodes).
+   - If the final set equals the mask, the subset is connected.
+3. Increment a counter for every connected subset.
+
+State Machine:
+- IDLE: Wait for start signal.
+- INIT: Initialize variables (mask=1, count=0).
+- ITERATE: Check if mask is within valid range (< 2^(R*C)).
+- CHECK: Run connectivity check on current mask.
+- NEXT_MASK: Increment mask.
+- DONE: Set done flag.
+
+Connectivity Check details:
+Use a temporary register `visited` to store the connected component found so far.
+1. If `visited` is 0, find the first set bit in `current_mask` and set it in `visited`.
+2. Loop 16 times (unrolled or sequenced):
+   - Calculate neighbors (up, down, left, right) of all bits in `visited`.
+   - Filter neighbors to include only those within the grid bounds (R, C) and present in `current_mask`.
+   - Update `visited` with the new neighbors.
+3. After the loop, if `visited` == `current_mask`, it is connected. Increment `result`.
+
+Note on Grid Bounds:
+- For a cell at row `r`, col `c` (0-indexed):
+  - Up: r > 0, bit index = (r-1)*C + c
+  - Down: r < R-1, bit index = (r+1)*C + c
+  - Left: c > 0, bit index = r*C + (c-1)
+  - Right: c < C-1, bit index = r*C + (c+1)
+
+The module should complete the computation within a reasonable number of clock cycles (e.g., < 1,000,000 cycles, which is fine for simulation).
+Ensure the design is purely synthesizable.

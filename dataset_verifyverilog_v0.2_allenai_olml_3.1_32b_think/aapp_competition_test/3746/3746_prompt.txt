@@ -1,0 +1,62 @@
+Design a sequential Verilog module named 'hanoi_min_cost' that computes the minimum cost to solve a weighted Tower of Hanoi puzzle.
+
+The puzzle has 3 rods (0, 1, 2) and n disks. Moving disk i from rod to rod costs t[i][j] defined by a 3x3 cost matrix. The goal is moving all disks from rod 0 to rod 2.
+
+Key insight: This is a dynamic programming problem. For n disks, there are only 2 strategies:
+1. Move top n-1 disks to auxiliary rod, move largest disk to target, move n-1 disks to target
+2. Move top n-1 disks directly to target (using target as auxiliary), move largest disk to auxiliary, move n-1 disks back to target, move largest disk to target, move n-1 disks to target
+
+Simplification: We will iterate disk by disk (1 to n), updating a 3x3 cost table for each disk size. The table dp[k][i][j] stores min cost to move k disks from rod i to rod j.
+
+Module Specification:
+- The module processes one disk update per clock cycle
+- Input: 3x3 cost matrix (fixed) and max disk count n
+- Output: final cost for moving n disks from rod 0 to rod 2
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation (loads matrix and n)
+input [2:0] matrix_in [2:0] // cost matrix input, one row per cycle
+input [5:0] n // number of disks (max 40)
+input [2:0] rod_index // current row being loaded for matrix
+input load_matrix // signal to load matrix row
+
+Outputs:
+output reg [63:0] result // final minimum cost (64-bit for large n)
+output reg done // high when computation complete
+
+Latency: Approximately (n * 3 * 3) + overhead clock cycles after start asserted.
+
+Internal Operation:
+1. Matrix Load State: Accept 3x3 cost matrix values over 3 cycles
+2. Processing State: For disks 1 to n:
+   - Compute dp[i][j] for all i,j in {0,1,2}
+   - dp_new[i][j] = min(
+       dp_old[i][k] + cost[i][k] + dp_old[k][j],
+       dp_old[i][j] + cost[i][k] + dp_old[k][j] + cost[k][j] + dp_old[j][i] + cost[i][j] + dp_old[i][j]
+     )
+   - Actually, the two strategies for moving k disks from i to j:
+     Strategy 1: Move k-1 from i to other, move largest i->j, move k-1 from other to j
+     Strategy 2: Move k-1 from i to j, move largest i->other, move k-1 from j to i, move largest other->j, move k-1 from i to j
+   - Better formula (from Python code):
+     dp[k][frm][to] = min(
+       dp[k-1][frm][other] + matrix[frm][to] + dp[k-1][other][to],
+       dp[k-1][frm][to] + matrix[frm][other] + dp[k-1][to][frm] + matrix[other][to] + dp[k-1][frm][to]
+     )
+   - Where other = 3 - frm - to
+
+3. Done State: Output result = dp[n][0][2]
+
+State Machine: IDLE -> LOAD_MATRIX -> PROCESSING -> DONE
+
+Use 3x3 array of 64-bit registers for dp table (current and next).
+Iterate through disks 1 to n.
+Iterate through all pairs (frm, to) for each disk.
+
+For hardware efficiency:
+- Pre-compute 'other' rod
+- Use combinational logic to compute both strategies
+- Take min and store back
+
+Note: Values can be large (up to 10^9 for n=40), so use 64-bit arithmetic.

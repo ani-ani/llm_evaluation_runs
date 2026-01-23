@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'count_substrings' that counts the number of substrings where the sum of digits equals the substring length.
+
+Problem Insight:
+For a substring from index i to j (inclusive), sum(digits) = length => sum(digits) = j - i + 1.
+Rearranging: sum(digits) - j = -i + 1 => sum(digits) - j + i = 1.
+If we define prefix_sum[k] as sum of digits from index 0 to k, then:
+sum(i..j) = prefix_sum[j] - prefix_sum[i-1] (where prefix_sum[-1] = 0)
+Condition: prefix_sum[j] - prefix_sum[i-1] = j - i + 1
+=> prefix_sum[j] - j = prefix_sum[i-1] - (i-1)
+
+Define val[k] = prefix_sum[k] - k. We need to count pairs (i-1, j) where val[i-1] == val[j] and i-1 < j.
+Since all digits are 0-9, val[k] changes by at most +8 per step. Over 16 chars, val ranges from -16 to +128.
+For hardware simplicity, we'll use a lookup table for values in range [-16, 16] which covers most cases.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [127:0] s // 16-character string as ASCII bytes (only '0'-'9' used)
+input [4:0] len // Actual length of string (1-16)
+
+Outputs:
+output reg [7:0] result // Count of valid substrings (max 120 for 16 chars)
+output reg done // High when computation complete
+
+Latency: Result valid 20 clock cycles after start asserted.
+
+Behavior:
+1. State Machine: IDLE, READ_LEN, PROCESSING, DONE
+2. Use a counter to process each character
+3. Maintain running prefix_sum
+4. Calculate val = prefix_sum - index
+5. Use lookup table (ROM) to store count of previous occurrences of each val
+6. Lookup table indexed by val+16 (to handle negative indices)
+7. Query the table for current val, add to result, then increment that entry
+8. After processing all chars, transition to DONE
+
+Note: Lookup table must be cleared at reset. Since val can range beyond -16 to 16, limit the problem to digits 0 and 1 only, ensuring val stays in range [-16, 16].
+
+Revised Constraint: The input string will only contain characters '0' and '1' to ensure the val index stays within [-16, 16] range.
+
+States:
+- IDLE: Wait for start. When start=1, initialize and go to READ_LEN
+- PROCESSING: Process each character. At each step: calculate val, lookup count, add to result, increment count.
+- DONE: Set done=1, wait for reset
+
+Implementation:
+- Use a 5-bit index for lookup table (33 entries for -16 to +16)
+- Table entries need to count up to 16 (4 bits)
+- Result needs to count up to 120 (8 bits)
+- Operation per cycle: Read table[processed_val], add to result, write back incremented value.
+- Since this is 2 operations (read-modify-write), assume we can do this in one cycle or add a WAIT state.
+
+Let's use a WAIT state to handle the table update properly. 2 states per character.
+
+Total cycles: 1 (IDLE->PROCESSING) + N * 2 (PROCESSING + WAIT) + 1 (DONE) = up to 35 cycles.
+
+Actually, let's simplify: Use a combinational lookup and state machine to control sequence.

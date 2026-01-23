@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'ad_remover' that detects and removes advertisements from a web page.
+
+The module processes a fixed-size 32x32 character grid. Images are rectangles bordered by '+' characters (minimum 3x3). Banned characters are any ASCII characters except: alphanumeric, '?', '!', ',', '.', and space. For each banned character, the smallest containing image is flagged as an ad. All ad pixels (including borders) are replaced with spaces.
+
+Module interface:
+Inputs:
+- input clk: clock signal
+- input rst_n: active-low reset
+- input start: start processing
+- input [7:0] char_in [31:0][31:0]: input grid (32x32 ASCII characters)
+
+Outputs:
+- output reg [7:0] char_out [31:0][31:0]: output grid with ads removed
+- output reg done: high when processing complete
+
+Internal implementation:
+1. State machine: IDLE, PARSE_IMAGES, CHECK_BANNED, MARK_ADS, REMOVE_ADS, DONE
+2. Parse images: scan grid for '+' corners, validate rectangles (3x3 min), store up to 16 images with coordinates
+3. Build containment: for each image, determine parent (smallest containing image)
+4. Check banned: for each position, if character is banned, mark parent image as ad
+5. Remove: replace all pixels of marked images with space (0x20)
+6. Output: pass through non-ad pixels, spaces for ad regions
+
+Specified latency: 10000 clock cycles after start (to handle worst-case 32x32 scanning)
+
+Assumptions:
+- Valid input: all '+' belong to exactly one image border
+- Borders don't touch (not even at corners)
+- Images can contain other images
+- Output should maintain original grid dimensions
+
+Implementation details:
+- Use 8-bit ASCII characters
+- Image structure: [top, left, bottom, right, is_ad, parent_id]
+- Containment check: img_a contains img_b if a.top < b.top, a.left < b.left, a.bottom > b.bottom, a.right > b.right
+- Banned check: if char not in allowed set, flag parent as ad
+- Allowed set: 0-9, a-z, A-Z, '?', '!', ',', '.', ' '
+
+The module should work for all valid inputs up to 32x32.

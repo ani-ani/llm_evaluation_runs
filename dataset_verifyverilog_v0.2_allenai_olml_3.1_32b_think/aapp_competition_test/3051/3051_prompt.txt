@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'fog_catcher' that counts missed fogs. The module processes a fixed set of fog events and maintains a list of net rectangles to cover them.
+
+Scaling constraints:
+- Max 16 total fog events
+- X-coordinates: signed 8-bit (range -128 to 127)
+- Heights: 8-bit (0-255)
+- Days: 16-bit (0-65535)
+- Max net rectangles stored: 16
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High for 1 cycle to start processing
+input [4:0] fog_count // Number of valid fog events (1-16)
+input [15:0] fog_day [0:15] // Day of each fog event
+input [7:0] fog_l [0:15] // Left x-coordinate
+input [7:0] fog_r [0:15] // Right x-coordinate
+input [7:0] fog_h [0:15] // Height
+
+Outputs:
+output reg [7:0] missed_count // Total number of missed fogs
+output reg done // High when computation is complete
+
+Behavior:
+The module should implement a state machine with states: IDLE, LOAD_FOG, CHECK_CONTAINMENT, ADD_NET, UPDATE_COUNTER, DONE.
+
+1. In IDLE, wait for 'start' signal.
+2. Load fog events and sort them by day (simulated by processing them in input order, assuming sorted input for simplicity in hardware).
+3. For each fog event:
+   - Check if the fog rectangle (l, r, h) is fully contained within the union of stored net rectangles.
+   - If NOT contained, increment 'missed_count' and add a new net rectangle covering the fog (l, r, 0, h).
+   - The 'CHECK_CONTAINMENT' state should iterate through existing net rectangles to check for full containment.
+   - If adding a new net, merge overlapping rectangles if possible to keep the net list compact (optional simplification: just append if no merge).
+4. After processing all fogs, transition to DONE.
+5. 'done' goes high in DONE state and stays high until reset.
+
+Latency: Result valid approximately 200-300 clock cycles after start (depends on loop counts).
+
+Simplification Notes:
+- Assume input fogs are already sorted by day.
+- Net rectangles are stored as [l, r, h] (lower bound y=0 is implicit).
+- Containment check: Fog [L, R, H] is contained if there exists a set of nets such that every x in [L, R] is covered by a net with height >= H.
+- For simplicity in this small scale, we will check containment by verifying if the fog rectangle is strictly inside any single existing net rectangle, OR if it is split across multiple nets (simplification: require single-net containment or strictly add new net). Given the 'minimum total area' requirement in prompt, we treat 'missed' as 'not fully covered by current nets'. If missed, we add a net exactly covering the fog dimensions.
+
+Test cases:
+- Input 1: 2 fogs. Missed 1? No, sample says 3 total missed. We process events.
+- We need to handle the 'day' logic. Nets persist across days. Since we process events sorted by day, we can simulate the timeline.
+
+Specific Logic for Hardware:
+1. FSM: IDLE -> PROCESS (loop through fogs) -> DONE.
+2. PROCESS state has sub-states:
+   - FETCH_FOG: Read fog data from ROM/RAM (inputs).
+   - CHECK: Check coverage against net list.
+   - ADD: If missed, add to net list.
+   - NEXT: Move to next fog.
+3. Net storage: Array of 16 entries, [7:0] net_l, net_r, net_h.
+4. Coverage Logic:
+   - For a fog (L, R, H):
+   - Iterate through stored nets (0 to current_net_count-1).
+   - Check if [L, R] ⊆ [net_l, net_r] AND H <= net_h.
+   - If found, covered. Else, missed.
+   - If missed: Add new net (L, R, H). Increment missed_count.
+   - Note: The problem says 'add rectangular net patches of minimum total area'. A strict hardware interpretation of merging is complex. We will use the 'add if not contained' logic which serves as a proxy for the dynamic programming aspect.

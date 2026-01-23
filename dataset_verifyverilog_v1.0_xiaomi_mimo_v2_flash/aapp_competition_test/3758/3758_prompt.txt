@@ -1,0 +1,178 @@
+module packman_time (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [127:0] field,  // 16 characters, each 8 bits
+    output reg [15:0] result,
+    output reg done
+);
+
+    // Parameters
+    parameter MAX_N = 16;
+    parameter MAX_STARS = 16;
+    parameter MAX_PACKMEN = 16;
+
+    // State definitions
+    localparam IDLE = 0;
+    localparam PARSE = 1;
+    localparam BINARY_SEARCH_INIT = 2;
+    localparam BINARY_SEARCH_LOOP = 3;
+    localparam CHECK = 4;
+    localparam BINARY_SEARCH_UPDATE = 5;
+    localparam DONE = 6;
+
+    // Registers for state
+    reg [3:0] state;
+
+    // Parse state registers
+    reg [3:0] parse_index;
+    reg [3:0] star_count;
+    reg [3:0] packmen_count;
+    reg [3:0] stars [0:15];
+    reg [3:0] packmen [0:15];
+
+    // Binary search registers
+    reg [5:0] low, high, mid;
+    reg [5:0] current_T;
+
+    // DP state registers
+    reg [3:0] dp_i, dp_j, dp_l;
+    reg [0:0] dp [0:16][0:16]; // dp[i][j] for i=0..16, j=0..16
+
+    // Intermediate computation for condition
+    reg [5:0] option1, option2, min_option;
+    reg condition;
+
+    // Helper signals
+    reg [7:0] char;
+    integer i, j, l;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            parse_index <= 0;
+            star_count <= 0;
+            packmen_count <= 0;
+            low <= 0;
+            high <= 0;
+            mid <= 0;
+            current_T <= 0;
+            dp_i <= 0;
+            dp_j <= 0;
+            dp_l <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= PARSE;
+                        parse_index <= 0;
+                        star_count <= 0;
+                        packmen_count <= 0;
+                    end
+                end
+
+                PARSE: begin
+                    if (parse_index < MAX_N) begin
+                        char = field[parse_index*8 +: 8];
+                        if (char == 8'h2A) begin  // ASCII for '*'
+                            stars[star_count] <= parse_index;
+                            star_count <= star_count + 1;
+                        end else if (char == 8'h50) begin  // ASCII for 'P'
+                            packmen[packmen_count] <= parse_index;
+                            packmen_count <= packmen_count + 1;
+                        end
+                        parse_index <= parse_index + 1;
+                    end else begin
+                        state <= BINARY_SEARCH_INIT;
+                    end
+                end
+
+                BINARY_SEARCH_INIT: begin
+                    low <= 0;
+                    high <= 2 * MAX_N; // 32
+                    state <= BINARY_SEARCH_LOOP;
+                end
+
+                BINARY_SEARCH_LOOP: begin
+                    if (low + 1 < high) begin
+                        mid <= (low + high) >> 1;
+                        current_T <= (low + high) >> 1;
+                        state <= CHECK;
+                        dp_i <= 0;
+                        dp_j <= 0;
+                        dp_l <= 0;
+                        // Initialize dp table to 0
+                        for (i = 0; i <= 16; i = i + 1) begin
+                            for (j = 0; j <= 16; j = j + 1) begin
+                                dp[i][j] <= 0;
+                            end
+                        end
+                        dp[0][0] <= 1;
+                    end else begin
+                        state <= DONE;
+                        result <= high;
+                    end
+                end
+
+                CHECK: begin
+                    // If we have finished the DP, check result
+                    if (dp_i > packmen_count) begin
+                        if (dp[packmen_count][star_count]) begin
+                            state <= BINARY_SEARCH_UPDATE;
+                        end else begin
+                            state <= BINARY_SEARCH_UPDATE;
+                        end
+                    end else begin
+                        if (dp_i == 0) begin
+                            dp_i <= 1;
+                            dp_j <= 0;
+                            dp_l <= 0;
+                        end else begin
+                            if (dp_l <= dp_j) begin
+                                if (dp[dp_i-1][dp_l]) begin
+                                    if (dp_l == dp_j) begin
+                                        dp[dp_i][dp_j] <= 1;
+                                    end else begin
+                                        option1 = 2*(packmen[dp_i-1] - stars[dp_l]) + (stars[dp_j-1] - packmen[dp_i-1]);
+                                        option2 = 2*(stars[dp_j-1] - packmen[dp_i-1]) + (packmen[dp_i-1] - stars[dp_l]);
+                                        min_option = (option1 < option2) ? option1 : option2;
+                                        condition = (min_option <= current_T);
+                                        if (condition) begin
+                                            dp[dp_i][dp_j] <= 1;
+                                        end
+                                    end
+                                end
+                                dp_l <= dp_l + 1;
+                            end else begin
+                                dp_j <= dp_j + 1;
+                                dp_l <= 0;
+                                if (dp_j == star_count) begin
+                                    dp_i <= dp_i + 1;
+                                    dp_j <= 0;
+                                end
+                            end
+                        end
+                    end
+                end
+
+                BINARY_SEARCH_UPDATE: begin
+                    if (dp[packmen_count][star_count]) begin
+                        high <= mid;
+                    end else begin
+                        low <= mid;
+                    end
+                    state <= BINARY_SEARCH_LOOP;
+                end
+
+                DONE: begin
+                    done <= 1;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

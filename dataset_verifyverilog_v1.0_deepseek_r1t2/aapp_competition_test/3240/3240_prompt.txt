@@ -1,0 +1,62 @@
+Binary Town election – Verilog module specification.
+
+You must design a module that computes the optimal ballot count for yourself to maximize Yraglac's expected seats.
+
+Interface:
+
+module binary_town_election (
+    input  wire        clk,      // Clock, rising edge
+    input  wire        rst_n,    // Active‑low reset
+    input  wire        start,    // Pulse high for one cycle to start computation
+    input  wire [3:0]  k,        // Number of positions (1..8)
+    input  wire [3:0]  v,        // Total voters (2..10) – yourself included
+    // Probabilities and ballot counts for voters 1..v‑1 (max 9 voters)
+    input  wire [7:0]  p0, p1, p2, p3, p4, p5, p6, p7, p8,
+    input  wire [7:0]  b0, b1, b2, b3, b4, b5, b6, b7, b8,
+    output reg  [7:0]  best_b,   // Optimal ballots for yourself (0..255)
+    output reg         done      // Asserted high for one cycle when result is ready
+);
+
+Notes:
+- Probabilities p_i are given as integers in [0,256] representing p_i = (value / 256).
+- Ballot counts b_i are in [0,255] (since k ≤ 8).
+- The number of valid voters is (v-1). The first (v-1) of the p0..p8 and b0..b8 are used; others are ignored.
+- The module must operate correctly for any 1 ≤ k ≤ 8 and 2 ≤ v ≤ 10.
+- Reset (rst_n = 0) must clear all internal state and set done = 0.
+- After start is pulsed, the module computes and asserts done when the answer is available.
+- The answer is unique and guaranteed to be within 0..255.
+
+Algorithm (high‑level):
+1. Initialize an array prob[0:255] of 128‑bit integers to zero.
+2. Let num_other = v-1.
+3. Iterate over all subsets of the num_other voters (subset index from 0 to (1<<num_other)-1):
+   a. Compute total_b = sum of b_i for voters in the subset.
+   b. Compute prob_total = 1 << 8 (i.e., 256) for each voter? Actually compute product:
+      Start with prob_total = 128'h1 (or 128'h100 for scaling). Better: We'll use fixed‑point scaling by 256 per voter.
+      For each voter i:
+        if i in subset: multiply prob_total by p_i
+        else: multiply prob_total by (256 - p_i)
+   c. Let idx = total_b % (1 << k).
+   d. prob[idx] += prob_total.
+4. After subsets, we have distribution prob[0..255].
+5. For each candidate b_v from 0 to (1<<k)-1:
+   a. expected = 0
+   b. For each residue r in 0..255:
+        total = (r + b_v) % (1 << k)
+        pop = number of 1 bits in total (popcount)
+        expected += prob[r] * pop
+   c. Keep track of the candidate with the largest expected (if tie, choose smaller).
+6. Output best_b.
+
+Implementation details:
+- Use a state machine with states: IDLE, INIT, SUBSET_LOOP, COMPUTE_SUBSET, ADD_PROB, PREPARE_BV_LOOP, BV_LOOP, COMPUTE_EXPECTED, UPDATE_MAX, DONE.
+- Use 128‑bit registers for prob_total, expected, max_expected, and the prob array.
+- Use a 9‑bit subset counter (since max 9 voters) to iterate over subsets.
+- Use a 8‑bit b_v counter.
+- Use a 8‑bit r counter for the inner loop.
+- Compute popcount via a combinational function or lookup table (8‑bit).
+- Multiplication of 8‑bit numbers (p_i, 256-p_i) to 128‑bit must be done with enough width.
+- The total number of cycles will be roughly (2^(v-1) * (v-1) + 256*256) ≈ 500k cycles worst case, acceptable.
+- The module must be synthesizable; use for‑loops in always blocks (synthesizable for fixed bounds).
+
+Exact port names and widths must match the testbench.

@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'settle_bills' that computes the minimum number of transactions to settle debts among up to 8 people.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_people // number of people (1-8)
+input [2:0] num_receipts // number of receipts (0-8, scaled down)
+input [2:0] payer // person who paid
+input [2:0] beneficiary // person who benefited
+input [15:0] amount // amount paid
+input receipt_valid // pulse to indicate receipt data is valid
+
+Outputs:
+output reg [7:0] num_transactions // result: minimum number of transactions
+output reg done // high when computation complete
+output reg error // high if invalid input detected
+
+Behavior:
+- Accepts up to num_receipts receipts sequentially
+- Each receipt: person 'payer' paid 'amount' for person 'beneficiary'
+- After all receipts, compute net balance for each person
+- Net balance = total paid for others - total paid by others for them
+- Positive balance means they are owed money
+- Negative balance means they owe money
+- Find minimum transactions to settle all debts using greedy approach:
+  * Repeatedly find person with positive balance and person with negative balance
+  * Transfer min(|positive|, |negative|) from negative to positive
+  * Count as 1 transaction
+  * Repeat until all balances zero
+- Result is number of transactions used
+
+States:
+IDLE: Wait for start signal
+RECEIPT_INPUT: Accept receipt data (pulse receipt_valid for each)
+CALC_BALANCES: Compute net balance for each person
+SETTLE: Execute settlement transactions
+DONE: Assert done signal
+
+Latency: Result valid approximately 200 clock cycles after start (depends on num_receipts and complexity).
+Use parameter MAX_PEOPLE = 8 for array sizes.
+Balances stored as 16-bit signed integers in two's complement.

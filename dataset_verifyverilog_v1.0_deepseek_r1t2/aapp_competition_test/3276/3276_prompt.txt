@@ -1,0 +1,182 @@
+module art_reproduction (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [1:0] grid [0:7][0:7],  // 2-bit per cell: 00=W, 01=R, 02=G, 03=B
+    output reg done,
+    output reg result  // 1=YES, 0=NO
+);
+
+// Parameters
+parameter MAX_ITER = 64;
+parameter GRID_SIZE = 8;
+parameter COLOR_W = 2'b00;
+parameter COLOR_R = 2'b01;
+parameter COLOR_G = 2'b10;
+parameter COLOR_B = 2'b11;
+
+// Internal state
+reg [1:0] board [0:7][0:7];  // Current board state
+reg [5:0] iter_count;         // Iteration counter (0-63)
+reg [2:0] scan_x, scan_y;     // 3x3 block top-left position
+reg scanning;                 // Scanning state flag
+reg found_block;              // Found monochromatic block
+reg [1:0] block_color;        // Color of found block
+reg all_white;                // Check if board is all white
+
+// State machine states
+localparam S_IDLE = 3'b000;
+localparam S_SCAN = 3'b001;
+localparam S_REMOVE = 3'b010;
+localparam S_CHECK = 3'b011;
+localparam S_DONE = 3'b100;
+reg [2:0] state;
+
+integer i, j;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset state
+        done <= 1'b0;
+        result <= 1'b0;
+        state <= S_IDLE;
+        iter_count <= 6'b0;
+        scan_x <= 3'b0;
+        scan_y <= 3'b0;
+        scanning <= 1'b0;
+        found_block <= 1'b0;
+        all_white <= 1'b1;
+        // Clear board
+        for (i = 0; i < 8; i = i + 1) begin
+            for (j = 0; j < 8; j = j + 1) begin
+                board[i][j] <= COLOR_W;
+            end
+        end
+    end else begin
+        case (state)
+            S_IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    // Copy input grid to internal buffer
+                    for (i = 0; i < 8; i = i + 1) begin
+                        for (j = 0; j < 8; j = j + 1) begin
+                            board[i][j] <= grid[i][j];
+                        end
+                    end
+                    iter_count <= 6'b0;
+                    state <= S_SCAN;
+                    scan_x <= 3'b0;
+                    scan_y <= 3'b0;
+                    found_block <= 1'b0;
+                end
+            end
+            
+            S_SCAN: begin
+                // Scan for monochromatic 3x3 block
+                if (scan_x <= 5 && scan_y <= 5) begin
+                    // Check current 3x3 block
+                    block_color <= board[scan_x][scan_y];
+                    if (board[scan_x][scan_y] != COLOR_W &&
+                        board[scan_x][scan_y] == board[scan_x][scan_y+1] &&
+                        board[scan_x][scan_y] == board[scan_x][scan_y+2] &&
+                        board[scan_x][scan_y] == board[scan_x+1][scan_y] &&
+                        board[scan_x][scan_y] == board[scan_x+1][scan_y+1] &&
+                        board[scan_x][scan_y] == board[scan_x+1][scan_y+2] &&
+                        board[scan_x][scan_y] == board[scan_x+2][scan_y] &&
+                        board[scan_x][scan_y] == board[scan_x+2][scan_y+1] &&
+                        board[scan_x][scan_y] == board[scan_x+2][scan_y+2]) begin
+                        found_block <= 1'b1;
+                        state <= S_REMOVE;
+                    end else begin
+                        // Move to next position
+                        if (scan_x == 5) begin
+                            scan_x <= 3'b0;
+                            if (scan_y == 5) begin
+                                // Finished scanning all positions
+                                scan_y <= 3'b0;
+                                state <= S_CHECK;
+                            end else begin
+                                scan_y <= scan_y + 1;
+                            end
+                        end else begin
+                            scan_x <= scan_x + 1;
+                        end
+                    end
+                end else begin
+                    // Should not reach here
+                    state <= S_CHECK;
+                end
+            end
+            
+            S_REMOVE: begin
+                // Remove the monochromatic block by setting to white
+                board[scan_x][scan_y] <= COLOR_W;
+                board[scan_x][scan_y+1] <= COLOR_W;
+                board[scan_x][scan_y+2] <= COLOR_W;
+                board[scan_x+1][scan_y] <= COLOR_W;
+                board[scan_x+1][scan_y+1] <= COLOR_W;
+                board[scan_x+1][scan_y+2] <= COLOR_W;
+                board[scan_x+2][scan_y] <= COLOR_W;
+                board[scan_x+2][scan_y+1] <= COLOR_W;
+                board[scan_x+2][scan_y+2] <= COLOR_W;
+                
+                found_block <= 1'b0;
+                iter_count <= iter_count + 1;
+                
+                // Move to next scan position
+                if (scan_x == 5) begin
+                    scan_x <= 3'b0;
+                    if (scan_y == 5) begin
+                        scan_y <= 3'b0;
+                        state <= S_CHECK;
+                    end else begin
+                        scan_y <= scan_y + 1;
+                        state <= S_SCAN;
+                    end
+                end else begin
+                    scan_x <= scan_x + 1;
+                    state <= S_SCAN;
+                end
+            end
+            
+            S_CHECK: begin
+                // Check if all cells are white
+                all_white <= 1'b1;
+                for (i = 0; i < 8; i = i + 1) begin
+                    for (j = 0; j < 8; j = j + 1) begin
+                        if (board[i][j] != COLOR_W) begin
+                            all_white <= 1'b0;
+                        end
+                    end
+                end
+                
+                // Check if we should continue or finish
+                if (all_white) begin
+                    result <= 1'b1;
+                    state <= S_DONE;
+                end else if (iter_count >= MAX_ITER) begin
+                    result <= 1'b0;
+                    state <= S_DONE;
+                end else begin
+                    // Continue scanning from beginning
+                    scan_x <= 3'b0;
+                    scan_y <= 3'b0;
+                    state <= S_SCAN;
+                end
+            end
+            
+            S_DONE: begin
+                done <= 1'b1;
+                if (!start) begin
+                    state <= S_IDLE;
+                end
+            end
+            
+            default: begin
+                state <= S_IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

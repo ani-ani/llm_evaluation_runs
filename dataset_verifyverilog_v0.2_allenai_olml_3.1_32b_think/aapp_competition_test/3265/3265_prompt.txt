@@ -1,0 +1,80 @@
+Design a sequential Verilog module named 'vacation_planner' that finds the smallest day T (L ≤ T ≤ L+9) where the probability of being at destination node N is exactly 95%.
+
+Problem Adaptation:
+- N limited to maximum 8 nodes (A-town=0, B-ville=7)
+- L limited to max 256 days
+- Transitions use Q16.16 fixed-point probabilities (0.95 = 0x0F333333)
+- State vector tracks probability of being at each node
+- 95% probability represented as 0xF33333 in Q16.16 (62259.2)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] N // number of nodes (2-8)
+input [7:0] L // start day
+input [7:0] adj_matrix_0_0, adj_matrix_0_1, ... adj_matrix_7_7 // flattened adjacency matrix (8x8, only first N*N used)
+// Each entry is connection count (0-255)
+
+Outputs:
+output reg [7:0] result // found T value (0-255) or 255 if no solution
+output reg done // high when computation complete
+
+Specification:
+1. Convert adjacency matrix to transition probability matrix in Q16.16
+   For row i: prob[i->j] = count[i->j] / sum(row i)
+   Store as 32-bit Q16.16 values (shift left 16 bits)
+
+2. Initialize state vector: state[0] = 1.0 (0x00010000), others = 0
+
+3. For each day d from 1 to L+9:
+   - Update state vector: new_state[j] = sum_i(state[i] * trans[i][j])
+   - After each update, check if state[N-1] == 0xF33333 (exact 95%)
+   - If found and d ≥ L, output d and stop
+
+4. Latency: Result valid within 2000 clock cycles after start
+   Use state machine with states: IDLE, PRECOMPUTE, SIMULATE, CHECK, DONE
+
+5. Fixed-point multiplication: Use 32-bit product, keep upper 32 bits
+   Q16.16 × Q16.16 = Q32.32, result >> 16 = Q16.16
+
+6. 95% exact value in Q16.16: 0.95 × 65536 = 62259.2 ≈ 62259 (0xF3333)
+   But need exact check. Use 0xF33333 for 0.95 (0.95 × 2^20 = 996147.2)
+   Let's use 0x0F333333 for Q16.16: 0.95 × 65536 = 62259.2 (use 62259 = 0xF333)
+
+Wait, let's be precise: 0.95 in Q16.16 is 0.95 × 2^16 = 62259.2
+Nearest integer: 62259 = 0xF333
+Or use Q20.12: 0.95 × 4096 = 3891 = 0xF33
+Better: Use Q12.12 for internal (0.95 = 3891/4096)
+
+Let's use Q12.12 format for probabilities (12 fractional bits):
+0.95 = 0.95 × 4096 = 3891.2 → 3891 = 0xF33
+
+Revised spec:
+- State vector: 8 × 16-bit values (Q8.8 format for compactness)
+- 0.95 in Q8.8 = 0.95 × 256 = 243 = 0xF3
+- Transitions: Q8.8 × Q8.8 = Q16.16, keep upper 8 bits (rounding)
+- Max iterations: 265 days
+
+Actually, simpler: Use 32-bit integer arithmetic with scaling factor.
+Define SCALE = 10000 for exact decimal matching
+0.95 = 9500
+State values are integers representing probability × 10000
+Transitions: count × SCALE / total_outgoing
+
+Final Module Spec:
+- Use 32-bit arithmetic for probabilities (0 to 10000 representing 0 to 1.0)
+- 95% target = 9500
+- Transition probabilities computed as (connection_count * 10000) / sum_row
+- State vector: 8 × 32-bit integers
+- Updates: new_state[j] = sum_i (state[i] * trans_prob[i][j]) / 10000
+- Search T from L to L+9
+
+Control Flow:
+IDLE → wait for start
+PRECOMPUTE → calculate transition matrix (divide connections by sum)
+SIMULATE (repeated for each day) → update state vector, increment counter
+CHECK → compare state[N-1] with 9500
+DONE → output result
+
+Optimization: Precompute transition matrix once, then simulate.

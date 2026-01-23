@@ -1,0 +1,132 @@
+module spanning_tree_checker (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [6:0] edge [0:31],
+    input wire [2:0] k,
+    output reg result,
+    output reg done
+);
+    parameter N = 8;
+    parameter M = 32;
+    localparam IDLE = 0;
+    localparam LOAD = 1;
+    localparam RESET_PARENT = 2;
+    localparam PROCESS = 3;
+    localparam NEXT_PASS = 4;
+    localparam CHECK = 5;
+    localparam DONE = 6;
+    reg [2:0] min_blue, max_blue;
+    reg [2:0] current_blue;
+    reg phase;
+    reg [4:0] edge_idx;
+    reg weight_group;
+    reg [2:0] parent [0:N-1];
+    reg [3:0] state;
+    reg [0:M-1] color_reg;
+    reg [2:0] src_reg [0:M-1];
+    reg [2:0] dst_reg [0:M-1];
+    wire current_color;
+    wire [2:0] current_src;
+    wire [2:0] current_dst;
+    assign current_color = color_reg[edge_idx];
+    assign current_src = src_reg[edge_idx];
+    assign current_dst = dst_reg[edge_idx];
+    wire match;
+    wire increment_flag;
+    wire should_union;
+    assign match = (phase == 0) ? (current_color == weight_group) : (current_color == ~weight_group);
+    assign increment_flag = (phase == 0 && weight_group == 1) || (phase == 1 && weight_group == 0);
+    function [2:0] find;
+        input [2:0] node;
+        begin
+            find = node;
+            if (parent[find] != find) find = parent[find];
+            if (parent[find] != find) find = parent[find];
+            if (parent[find] != find) find = parent[find];
+            if (parent[find] != find) find = parent[find];
+            if (parent[find] != find) find = parent[find];
+            if (parent[find] != find) find = parent[find];
+            if (parent[find] != find) find = parent[find];
+        end
+    endfunction
+    wire [2:0] find_src;
+    wire [2:0] find_dst;
+    assign find_src = find(current_src);
+    assign find_dst = find(current_dst);
+    assign should_union = match && (find_src != find_dst);
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) state <= LOAD;
+                end
+                LOAD: begin
+                    integer i;
+                    for (i = 0; i < M; i = i + 1) begin
+                        color_reg[i] <= edge[i][6];
+                        src_reg[i] <= edge[i][5:3];
+                        dst_reg[i] <= edge[i][2:0];
+                    end
+                    min_blue <= 0;
+                    max_blue <= 0;
+                    phase <= 0;
+                    state <= RESET_PARENT;
+                end
+                RESET_PARENT: begin
+                    integer i;
+                    for (i = 0; i < N; i = i + 1) begin
+                        parent[i] <= i;
+                    end
+                    current_blue <= 0;
+                    edge_idx <= 0;
+                    weight_group <= 0;
+                    state <= PROCESS;
+                end
+                PROCESS: begin
+                    if (should_union) begin
+                        parent[find_src] <= find_dst;
+                        if (increment_flag) current_blue <= current_blue + 1;
+                    end
+                    if (edge_idx == M - 1) begin
+                        state <= NEXT_PASS;
+                        edge_idx <= 0;
+                    end else begin
+                        edge_idx <= edge_idx + 1;
+                    end
+                end
+                NEXT_PASS: begin
+                    if (weight_group == 0) begin
+                        weight_group <= 1;
+                        state <= PROCESS;
+                    end else begin
+                        if (phase == 0) begin
+                            min_blue <= current_blue;
+                            phase <= 1;
+                            state <= RESET_PARENT;
+                        end else begin
+                            max_blue <= current_blue;
+                            state <= CHECK;
+                        end
+                    end
+                end
+                CHECK: begin
+                    if (k >= min_blue && k <= max_blue) result <= 1;
+                    else result <= 0;
+                    done <= 1;
+                    state <= DONE;
+                end
+                DONE: begin
+                    done <= 0;
+                    state <= IDLE;
+                end
+                default: state <= IDLE;
+            endcase
+        end
+    end
+endmodule

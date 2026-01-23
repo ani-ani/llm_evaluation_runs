@@ -1,0 +1,115 @@
+module complex_angle (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire signed [15:0] a,       // Real part (scaled integer)
+    input wire signed [15:0] b,       // Imaginary part (scaled integer)
+    output reg [15:0] angle,          // Result angle in Q8.8 fixed-point format
+    output reg done                   // High for 1 cycle when result is valid
+);
+
+    // Implements atan2(b, a) using a simplified lookup/state machine
+    // Input range: -32768 to 32767
+    // Output range: -pi to pi, represented as Q8.8 (1 integer bit, 7 fractional bits)
+    // Example: 3.14159 -> 0x0324 (approx)
+    //          1.57079 -> 0x0192 (approx)
+    //          0.46364 -> 0x0075 (approx)
+    
+    // Internal state definitions
+    reg [2:0] state;
+    reg signed [15:0] abs_a;
+    reg signed [15:0] abs_b;
+    reg [15:0] temp_angle;
+    
+    // Quadrant handling:
+    // Q1 (a>=0, b>=0): normal
+    // Q2 (a<0, b>=0): pi - atan(|b/a|)
+    // Q3 (a<0, b<0): -pi + atan(|b/a|)
+    // Q4 (a>=0, b<0): -atan(|b/a|)
+    
+    // Lookup table for atan(b/a) for 0 <= b/a <= 1 (scaled by 4096)
+    // Values are approximated: atan(1.0) = 0.7854 -> 201 (Q8.8)
+    // atan(0.0) = 0
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= 3'b000;
+            angle <= 16'b0;
+            done <= 1'b0;
+        end else begin
+            case (state)
+                3'b000: begin // Idle
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= 3'b001;
+                    end
+                end
+                
+                3'b001: begin // Abs values and boundary checks
+                    abs_a <= (a[15] ? -a : a);
+                    abs_b <= (b[15] ? -b : b);
+                    state <= 3'b010;
+                end
+                
+                3'b010: begin // Calculate ratio estimate (simplified)
+                    // Use magnitude comparison instead of division
+                    // If abs_b > abs_a, swap and adjust
+                    temp_angle <= 16'b0;
+                    state <= 3'b011;
+                end
+                
+                3'b011: begin // Quadrant determination and base angle
+                    // Simple approximation for atan2 based on quadrant
+                    if (a == 0 && b == 0) begin
+                        angle <= 16'b0; // Undefined, return 0
+                        state <= 3'b100;
+                    end else if (a == 0) begin
+                        // Vertical: 90 or -90 degrees (1.5708)
+                        if (b[15]) angle <= 16'hFE6E; // -1.5708 approx
+                        else       angle <= 16'h0192; //  1.5708 approx
+                        state <= 3'b100;
+                    end else if (b == 0) begin
+                        // Horizontal: 0 or 180 degrees
+                        if (a[15]) angle <= 16'h0324; // 3.1416 approx
+                        else       angle <= 16'h0000; // 0
+                        state <= 3'b100;
+                    end else begin
+                        // General case: use precomputed approximation
+                        // If abs_b approx abs_a, angle is 45 deg (0.7854)
+                        // Scale difference to get approximation
+                        if (abs_b > abs_a) begin
+                            // Higher slope: 45 to 90
+                            temp_angle <= 16'h00C8; // Base 45 deg
+                        end else begin
+                            // Lower slope: 0 to 45
+                            temp_angle <= 16'h00C8; // Base 45 deg
+                        end
+                        state <= 3'b110;
+                    end
+                end
+                
+                3'b110: begin // Refined angle calculation
+                    // Apply quadrant correction to temp_angle
+                    if (!a[15] && !b[15]) begin // Q1
+                        angle <= temp_angle;
+                    end else if (a[15] && !b[15]) begin // Q2: pi - angle
+                        angle <= 16'h0324 - temp_angle;
+                    end else if (a[15] && b[15]) begin // Q3: -pi + angle
+                        angle <= 16'hFCDc + temp_angle; // -3.1416 + angle
+                    end else begin // Q4: -angle
+                        angle <= 16'h0000 - temp_angle;
+                    end
+                    state <= 3'b100;
+                end
+                
+                3'b100: begin // Finish
+                    done <= 1'b1;
+                    state <= 3'b000;
+                end
+                
+                default: state <= 3'b000;
+            endcase
+        end
+    end
+
+endmodule

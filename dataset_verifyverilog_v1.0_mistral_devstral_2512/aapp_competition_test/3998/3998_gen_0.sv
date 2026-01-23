@@ -1,0 +1,202 @@
+module rating_equalizer (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] ratings_0, ratings_1, ratings_2, ratings_3,
+    input [3:0] ratings_4, ratings_5, ratings_6, ratings_7,
+    input [3:0] n,  // Number of friends (2-8)
+    output reg [3:0] final_rating,
+    output reg [13:0] match_count,  // Up to 10,000 matches
+    output reg [7:0] match_0, match_1, match_2, match_3,
+    output reg [7:0] match_4, match_5, match_6, match_7,
+    output reg match_valid,
+    output reg done
+);
+
+    // State definitions
+    localparam [2:0] IDLE = 3'b000;
+    localparam [2:0] COMPUTE_MAX = 3'b001;
+    localparam [2:0] FORM_PARTY = 3'b010;
+    localparam [2:0] UPDATE_RATINGS = 3'b011;
+    localparam [2:0] OUTPUT_MATCH = 3'b100;
+    localparam [2:0] CHECK_EQUAL = 3'b101;
+    localparam [2:0] FINISHED = 3'b110;
+
+    // Internal registers
+    reg [2:0] state;
+    reg [3:0] current_ratings [0:7];
+    reg [13:0] match_counter;
+    reg [2:0] selected_friends [0:4];
+    reg [2:0] selected_count;
+    reg [3:0] max_rating;
+    reg [2:0] max_count;
+    reg [3:0] step_counter;
+    reg [2:0] match_index;
+
+    // Helper: Find maximum rating and count
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            max_rating <= 4'b0;
+            max_count <= 3'b0;
+        end else if (state == COMPUTE_MAX) begin
+            max_rating <= 4'b0;
+            max_count <= 3'b0;
+            for (integer i = 0; i < 8; i = i + 1) begin
+                if (i < n) begin
+                    if (current_ratings[i] > max_rating) begin
+                        max_rating <= current_ratings[i];
+                        max_count <= 3'b1;
+                    end else if (current_ratings[i] == max_rating) begin
+                        max_count <= max_count + 1;
+                    end
+                end
+            end
+        end
+    end
+
+    // Main state machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            final_rating <= 4'b0;
+            match_count <= 14'b0;
+            match_valid <= 1'b0;
+            done <= 1'b0;
+            match_counter <= 14'b0;
+            step_counter <= 4'b0;
+            for (integer i = 0; i < 8; i = i + 1) begin
+                current_ratings[i] <= 4'b0;
+                if (i < 5) selected_friends[i] <= 3'b0;
+            end
+            match_0 <= 8'b0; match_1 <= 8'b0; match_2 <= 8'b0; match_3 <= 8'b0;
+            match_4 <= 8'b0; match_5 <= 8'b0; match_6 <= 8'b0; match_7 <= 8'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        // Initialize ratings
+                        current_ratings[0] <= ratings_0;
+                        current_ratings[1] <= ratings_1;
+                        current_ratings[2] <= ratings_2;
+                        current_ratings[3] <= ratings_3;
+                        current_ratings[4] <= ratings_4;
+                        current_ratings[5] <= ratings_5;
+                        current_ratings[6] <= ratings_6;
+                        current_ratings[7] <= ratings_7;
+                        match_counter <= 14'b0;
+                        step_counter <= 4'b0;
+                        state <= COMPUTE_MAX;
+                        done <= 1'b0;
+                        match_valid <= 1'b0;
+                    end
+                end
+
+                COMPUTE_MAX: begin
+                    // Maximum computed in separate always block
+                    state <= FORM_PARTY;
+                end
+
+                FORM_PARTY: begin
+                    // Form party based on max count
+                    selected_count <= 3'b0;
+                    if (max_count >= 2 && max_count <= 5) begin
+                        // Take all friends with max rating
+                        for (integer i = 0; i < 8; i = i + 1) begin
+                            if (i < n && current_ratings[i] == max_rating && selected_count < 5) begin
+                                selected_friends[selected_count] <= i;
+                                selected_count <= selected_count + 1;
+                            end
+                        end
+                    end else begin
+                        // Take two highest rated friends
+                        reg [2:0] first_max, second_max;
+                        first_max = 3'b0; second_max = 3'b0;
+                        // Find first maximum
+                        for (integer i = 1; i < 8; i = i + 1) begin
+                            if (i < n && current_ratings[i] > current_ratings[first_max]) begin
+                                first_max = i;
+                            end
+                        end
+                        // Find second maximum (different from first)
+                        for (integer i = 0; i < 8; i = i + 1) begin
+                            if (i < n && i != first_max) begin
+                                if (second_max == first_max || current_ratings[i] > current_ratings[second_max]) begin
+                                    second_max = i;
+                                end
+                            end
+                        end
+                        selected_friends[0] <= first_max;
+                        selected_friends[1] <= second_max;
+                        selected_count <= 3'b10;
+                    end
+                    state <= UPDATE_RATINGS;
+                end
+
+                UPDATE_RATINGS: begin
+                    // Update ratings for selected friends
+                    for (integer i = 0; i < 5; i = i + 1) begin
+                        if (i < selected_count) begin
+                            reg [2:0] friend_idx;
+                            friend_idx = selected_friends[i];
+                            if (current_ratings[friend_idx] > 0) begin
+                                current_ratings[friend_idx] <= current_ratings[friend_idx] - 1;
+                            end
+                        end
+                    end
+                    state <= OUTPUT_MATCH;
+                end
+
+                OUTPUT_MATCH: begin
+                    // Output the current match
+                    match_valid <= 1'b1;
+                    match_0 <= (selected_count > 0 && selected_friends[0] == 0) ? 8'b1 : 8'b0;
+                    match_1 <= (selected_count > 0 && selected_friends[0] == 1) ? 8'b1 : 8'b0;
+                    match_2 <= (selected_count > 0 && selected_friends[0] == 2) ? 8'b1 : 8'b0;
+                    match_3 <= (selected_count > 0 && selected_friends[0] == 3) ? 8'b1 : 8'b0;
+                    match_4 <= (selected_count > 1 && selected_friends[1] == 4) ? 8'b1 : 8'b0;
+                    match_5 <= (selected_count > 1 && selected_friends[1] == 5) ? 8'b1 : 8'b0;
+                    match_6 <= (selected_count > 1 && selected_friends[1] == 6) ? 8'b1 : 8'b0;
+                    match_7 <= (selected_count > 1 && selected_friends[1] == 7) ? 8'b1 : 8'b0;
+                    // Handle more than 2 friends (simplified)
+                    if (selected_count > 2) begin
+                        match_0 <= match_0 | ((selected_count > 2 && selected_friends[2] == 0) ? 8'b1 : 8'b0);
+                        match_1 <= match_1 | ((selected_count > 2 && selected_friends[2] == 1) ? 8'b1 : 8'b0);
+                        match_2 <= match_2 | ((selected_count > 2 && selected_friends[2] == 2) ? 8'b1 : 8'b0);
+                        match_3 <= match_3 | ((selected_count > 2 && selected_friends[2] == 3) ? 8'b1 : 8'b0);
+                    end
+                    match_counter <= match_counter + 1;
+                    state <= CHECK_EQUAL;
+                end
+
+                CHECK_EQUAL: begin
+                    match_valid <= 1'b0;
+                    // Check if all ratings equal
+                    reg all_equal;
+                    all_equal = 1'b1;
+                    for (integer i = 1; i < 8; i = i + 1) begin
+                        if (i < n && current_ratings[i] != current_ratings[0]) begin
+                            all_equal = 1'b0;
+                        end
+                    end
+                    if (all_equal || step_counter >= 15) begin
+                        final_rating <= current_ratings[0];
+                        match_count <= match_counter;
+                        state <= FINISHED;
+                    end else begin
+                        step_counter <= step_counter + 1;
+                        state <= COMPUTE_MAX;
+                    end
+                end
+
+                FINISHED: begin
+                    done <= 1'b1;
+                    if (!start) begin
+                        state <= IDLE;
+                    end
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+endmodule

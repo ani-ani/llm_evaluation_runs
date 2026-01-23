@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'sort_numeric_strings' that implements a bubble sort algorithm for an array of signed 8-bit integers.
+
+The module accepts an array of numbers and sorts them in ascending order.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation (loads input array)
+input [7:0] nums [0:15] // 16-element array of signed 8-bit integers
+
+Outputs:
+output reg [7:0] sorted_nums [0:15] // Sorted output array
+output reg done // High when sorting is complete
+
+Latency: Result valid 260 clock cycles (worst case) after start is asserted.
+
+Behavioral Description:
+The module uses a state machine with states: IDLE, LOAD, PROCESSING, DONE.
+
+1. IDLE: Waits for start signal. When start goes high, transitions to LOAD.
+
+2. LOAD: Captures the input 'nums' array into an internal buffer. Transitions to PROCESSING.
+
+3. PROCESSING: Performs bubble sort on the internal buffer.
+   - Uses nested loops (inner loop counter i, outer loop counter j).
+   - In each cycle, it compares buffer[j] and buffer[j+1].
+   - If buffer[j] > buffer[j+1], swap them.
+   - The state machine iterates through the array, making one swap per clock cycle (pipelined comparison and swap).
+   - The outer loop runs N-1 times (15 times for 16 elements), inner loop runs N-1-j times.
+   - Total cycles approx: 16*15/2 = 120 cycles for comparisons + state overhead. Let's allow 260 cycles for safety and setup.
+
+4. DONE: Copies the sorted internal buffer to 'sorted_nums' output and asserts 'done'. Waits for reset or start.
+
+Signed Arithmetic:
+Input integers can be negative (e.g., -500 is represented as the smallest 8-bit value, which might be -128 or clamp to range). For this problem, we assume input values fit in 8 bits, e.g., -128 to 127. If the Python test cases contain values outside this range, the hardware behavior should be defined as clamping or truncating, but ideally we limit inputs to fit. Since Python tests use values like -500, we must clamp. However, typically HDL benchmarks use values within range. Let's assume inputs are provided as 8-bit values where -500 might be represented as -128 (minimum) or 68 (if we treat it as unsigned math). 
+
+*Simplification adjustment for hardware:* To strictly match the Python behavior of comparing numbers, we will treat inputs as signed 8-bit integers. Values outside -128..127 will be truncated (e.g., -500 -> -128, 200 -> 200). The testbench will provide values that fit or demonstrate truncation if necessary, but the sorting logic must be numeric.
+
+Implementation:
+- Internal buffer: reg [7:0] buffer [0:15];
+- Counters: integer i, j;
+- Logic:
+  - When start is high, load buffer <= nums.
+  - In PROCESSING state:
+    - Check if buffer[j] > buffer[j+1].
+    - If true, swap.
+    - Increment j. If j reaches 15-i, reset j to 0 and increment i.
+    - If i reaches 15, transition to DONE.
+- Output: In DONE state, sorted_nums <= buffer; done <= 1.
+
+Edge Cases:
+- Empty array (size 0): Handled by parameter N.
+- Reset: Clears buffer, counters, and outputs.
+
+Parameterization: The module should use a parameter N = 16 for array size.

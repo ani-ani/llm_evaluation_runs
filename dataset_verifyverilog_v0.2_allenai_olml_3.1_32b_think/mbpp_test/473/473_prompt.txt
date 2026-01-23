@@ -1,0 +1,37 @@
+Design a combinational Verilog module named 'tuple_intersection' that finds common tuples between two lists, treating tuples as unordered (order-independent).
+
+### Problem Adaptation:
+- Fixed input: Exactly 4 tuples per list
+- Tuple size: 2 elements each (16-bit total: 8 bits per element)
+- Elements: 8-bit integers (range 0-255)
+- Order-insensitivity: Tuples are sorted internally (e.g., (5,4) matches (4,5))
+- Output: Bitmask indicating which tuples from list1 match any in list2
+
+### Module Definition:
+module tuple_intersection (
+    input  [7:0] in1_0, in1_1,  // Tuple 0 of list1: elements {in1_1, in1_0}
+    input  [7:0] in1_2, in1_3,  // Tuple 1 of list1: elements {in1_3, in1_2}
+    input  [7:0] in1_4, in1_5,  // Tuple 2 of list1: elements {in1_5, in1_4}
+    input  [7:0] in1_6, in1_7,  // Tuple 3 of list1: elements {in1_7, in1_6}
+    input  [7:0] in2_0, in2_1,  // Tuple 0 of list2: elements {in2_1, in2_0}
+    input  [7:0] in2_2, in2_3,  // Tuple 1 of list2: elements {in2_3, in2_2}
+    input  [7:0] in2_4, in2_5,  // Tuple 2 of list2: elements {in2_5, in2_4}
+    input  [7:0] in2_6, in2_7,  // Tuple 3 of list2: elements {in2_7, in2_6}
+    output [3:0] match_mask     // Bit i is 1 if tuple i from list1 matches any in list2
+);
+
+### Internal Logic:
+1. **Sort Tuples**: Sort each 2-element tuple so that smaller element is in position 0 and larger in position 1. Use a simple comparator swap.
+   - Sorted Tuple `i` from list1: `{list1_min[i], list1_max[i]}`
+   - Sorted Tuple `j` from list2: `{list2_min[j], list2_max[j]}`
+
+2. **Parallel Matching**: Check all combinations of list1 tuples (4) against list2 tuples (4) in parallel. 
+   - A tuple matches if both its sorted elements equal a tuple from the other list.
+   - `match_ij = (list1_min[i] == list2_min[j]) & (list1_max[i] == list2_max[j])`
+
+3. **Result Aggregation**: For each tuple `i` in list1, if it matches ANY tuple in list2, set the output bit `match_mask[i]`.
+   - `match_mask[0] = match_00 | match_01 | match_02 | match_03`
+   - And so on for bits 1, 2, 3.
+
+### Behavioral Description:
+The module takes 16 8-bit inputs arranged as 4 tuples for List 1 and 4 tuples for List 2. It first sorts each tuple internally using a comparator-based swap, ensuring `(a,b)` becomes `(min(a,b), max(a,b))`. It then performs a fully parallel search: every tuple in List 1 is compared against every tuple in List 2 simultaneously using equality checks on the sorted elements. Finally, it reduces the comparison results with a bitwise OR operation. If a tuple from List 1 matches any tuple from List 2 (in sorted form), the corresponding bit in the 4-bit output `match_mask` is set to 1.

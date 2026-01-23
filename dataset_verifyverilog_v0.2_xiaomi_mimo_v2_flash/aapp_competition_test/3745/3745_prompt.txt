@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'graph_validator' that determines if a graph can be represented by a string of 'a', 'b', 'c' characters.
+
+Problem Adaptation: The graph has N vertices (parameter N=8 max). Each vertex is assigned a letter 'a', 'b', or 'c'. Two vertices are connected if their letters are equal or adjacent in the alphabet (a-b, b-c are adjacent; a-c are not).
+
+Module Interface:
+module graph_validator #(parameter N=8, parameter MAX_EDGES=28) (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] num_edges, // Number of edges M (up to 28)
+    input [MAX_EDGES-1:0][3:0] edge_u, // Array of edge endpoints u (vertex index 0 to N-1)
+    input [MAX_EDGES-1:0][3:0] edge_v, // Array of edge endpoints v (vertex index 0 to N-1)
+    output reg valid,
+    output reg [N-1:0][7:0] result_string // Result string as bytes (ASCII 'a', 'b', 'c')
+);
+
+Behavioral Description:
+1. The module uses a state machine with states: IDLE, BUILD_ADJ, FIND_AC, ASSIGN_LETTERS, VERIFY, DONE.
+2. In BUILD_ADJ state: Construct an adjacency matrix adj[N][N] from edge_u/edge_v inputs.
+3. In FIND_AC state: Scan for a pair of vertices (i, j) that are NOT connected (adj[i][j]==0). If no such pair exists, the graph is complete (all 'a'). If found, assign vertex i='a' and vertex j='c'.
+4. In ASSIGN_LETTERS state: For each other vertex k:
+   - If k connects to 'a' but not 'c', assign 'a'.
+   - If k connects to 'c' but not 'a', assign 'c'.
+   - If k connects to both 'a' and 'c', assign 'b'.
+   - If k connects to neither, assign impossible (return invalid).
+5. In VERIFY state: Check that the constructed assignment satisfies all original edges. For every edge (u, v):
+   - Let char_u and char_v be the assigned letters.
+   - Check if they are equal or adjacent (abs diff <= 1). If any edge violates, invalid.
+   - Also check that non-edges are NOT connected (abs diff > 1).
+6. In DONE state: Output valid flag and result string.
+
+Outputs:
+- valid: High if a valid string exists.
+- result_string: Array of N bytes containing the string (e.g., "aac...").
+
+Latency: Approximately 200-500 clock cycles depending on N and M.
+Use state machine with states: IDLE, BUILD_ADJ, FIND_AC, ASSIGN_LETTERS, VERIFY, DONE.

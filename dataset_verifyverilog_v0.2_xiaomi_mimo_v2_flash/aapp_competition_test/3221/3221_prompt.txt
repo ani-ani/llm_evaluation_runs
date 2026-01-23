@@ -1,0 +1,72 @@
+Design a sequential Verilog module named 'min_energy_cycle' that solves the simplified minimum energy cycle problem.
+
+**Problem Adaptation:**
+Given a small graph with N nodes (<= 4) and M edges (<= 6), find the minimum energy L^2 + α * K for any closed walk (cycle) that does not reuse edges. If no cycle exists, output -1.
+
+**Constraints:**
+- N <= 4, M <= 6
+- Node indices: 0 to N-1 (1-based input converted to 0-based)
+- Edge weights 'c' are large, fit in 32 bits (e.g., 1_000_000 to 1_000_000_000). We will use Q16.16 fixed-point for calculations.
+- α is small (1 to 20).
+
+**Module Definition:**
+module min_energy_cycle(
+    input clk,
+    input rst_n,
+    input start,
+    // Graph inputs (streamed or stored in internal memory/ROM)
+    // To simplify interface, we assume inputs are presented sequentially or pre-loaded.
+    // Here we define a single-cycle latch interface for simplicity in testing.
+    // Since M is small, we can pass edges via input registers.
+    input [3:0] edge_0_u, edge_0_v, // Node indices
+    input [31:0] edge_0_c,          // Edge weight
+    input [3:0] edge_1_u,
+    input [3:0] edge_1_v,
+    input [31:0] edge_1_c,
+    input [3:0] edge_2_u,
+    input [3:0] edge_2_v,
+    input [31:0] edge_2_c,
+    input [3:0] edge_3_u,
+    input [3:0] edge_3_v,
+    input [31:0] edge_3_c,
+    input [3:0] edge_4_u,
+    input [3:0] edge_4_v,
+    input [31:0] edge_4_c,
+    input [3:0] edge_5_u,
+    input [3:0] edge_5_v,
+    input [31:0] edge_5_c,
+    input [2:0] valid_edges_count, // Number of active edges (1 to 6)
+    input [4:0] alpha,             // alpha value (1 to 20)
+    input [2:0] node_count,        // N (1 to 4)
+    
+    output reg [63:0] result,      // 64-bit result (L^2 can be large)
+    output reg valid               // High when result is valid
+);
+
+// **Behavioral Description:**
+// The module should perform an exhaustive search over all possible subsets of edges.
+// Since M <= 6, there are 2^6 = 64 subsets. For each subset, check:
+// 1. Is it a cycle (connected, every node has degree 2)? 
+//    (Note: For K=2, degree is 2. For K>2, degree is 2. For K=1, self-loop, degree 2 on one node).
+//    Actually, strictly: Eulerian subgraph where every vertex has even degree.
+//    For a single simple cycle: every vertex degree is exactly 2.
+// 2. If valid, compute L = max(c_i) for edges in subset, K = number of edges.
+// 3. Compute Energy = L^2 + alpha * K.
+// 4. Minimize Energy.
+// 
+// The calculation of L^2 uses 32-bit input -> up to 64-bit result.
+// K is small, alpha is small, so alpha*K fits in 32 bits.
+// Sum fits in 64 bits.
+// 
+// Implementation: Use a sequential FSM to iterate through subsets (0 to 2^M - 1).
+// IDLE -> WAIT_START -> ITERATE_SUBSETS (calculate properties) -> UPDATE_MIN -> DONE.
+// Inside ITERATE_SUBSETS state, use a sub-cycle to check edges and build degree array.
+// 
+// Note: Inputs are assumed to be held stable until 'done' goes high.
+// Reset clears the minimum energy.
+
+// **Timing:**
+// Latency: ~ (2^M) * (M + overhead) cycles. For M=6, roughly 100-200 cycles.
+// This is acceptable for simulation.
+
+endmodule

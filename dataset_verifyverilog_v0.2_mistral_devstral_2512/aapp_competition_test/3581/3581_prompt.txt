@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'arcade_expected_value' that solves a triangular grid Markov chain to compute expected payout. The module implements Gaussian elimination to solve a system of linear equations.
+
+Inputs:
+input clk
+input rst_n
+input start
+input [5:0] num_holes // Number of holes (N*(N+1)/2, max 10 for N=4)
+input [31:0] payouts_in // Q16.16 payout value for current hole
+input [31:0] probs_in // Q16.16 probability value (p_0 to p_4)
+input [2:0] prob_idx // Index 0-4 indicating which probability is being input
+
+Outputs:
+output reg [31:0] expected_value // Q16.16 format result
+output reg done // High when calculation complete
+output reg ready_for_input // High when ready to accept next input
+
+Behavior:
+The module must solve the linear system: E[i] = v[i] * p4 + sum(E[neighbors] * p_bounce)
+Where E[i] is the expected value at hole i.
+
+1. Data Loading Phase:
+   - Accept payouts (v_i) for each hole (0 to num_holes-1)
+   - Accept probabilities (p0-p4) for each hole
+   - ready_for_input goes high when waiting for data
+   - Toggle ready_for_input between data items
+
+2. Construction Phase:
+   - Build matrix A and vector b for system Ax = b
+   - For each hole i: 
+     A[i][i] = 1.0 - p4 (Q16.16)
+     For each neighbor j: A[i][j] = -p_bounce_to_j
+     b[i] = v[i] (Q16.16)
+
+3. Gaussian Elimination Phase:
+   - Perform forward elimination with partial pivoting
+   - Perform back substitution
+   - Use Q16.16 fixed-point arithmetic throughout
+   - Support division via iterative approximation or lookup
+
+4. Result Phase:
+   - Output the expected value for hole 0 (root hole)
+   - Assert done signal
+
+Latency: Result valid approximately 1000-2000 clock cycles after start (depends on implementation of division).
+
+Constraints:
+- Max 10 holes (4 rows)
+- Fixed-point arithmetic: Q16.16 format (1 sign bit, 16 integer bits, 16 fractional bits)
+- Use 64-bit intermediate accumulators to prevent overflow
+- Implement sequential state machine for operations
+
+States:
+IDLE -> LOAD_PAYOUTS -> LOAD_PROBS -> BUILD_MATRIX -> ELIMINATION -> BACK_SUBSTITUTION -> DONE

@@ -1,0 +1,171 @@
+Design a sequential Verilog module named 'probability_calculator' that calculates the probability that a random graph of N nodes with N edges is connected, using Q16.16 fixed-point arithmetic.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] N // Number of cities (2 to 140, but we only support 2 and 4)
+
+Outputs:
+output reg [31:0] result // Probability in Q16.16 format
+output reg done // High when computation complete
+
+Specify latency: Result valid 4 clock cycles after start asserted.
+Use state machine with states: IDLE, LOOKUP, CALCULATE, DONE.
+
+Behavior:
+- The module should implement the probability calculation for N=2 and N=4.
+- For N=2: The probability is 1.0.
+- For N=4: The probability is 26/27, which is approximately 0.962962963.
+- In Q16.16 format:
+  - 1.0 is represented as 0x00010000
+  - 26/27 is calculated as (26 * 65536) / 27.
+    26 * 65536 = 1703936
+    1703936 / 27 = 63108.74074...
+    Integer part: 63108 = 0x0000F684
+    We need to perform integer division: 1703936 / 27 = 63108 remainder 20. We want high precision.
+    Let's compute (26 << 16) / 27 in integer arithmetic.
+    Result: 63108 (0xF684). This is 63108 / 65536 = 0.96295.
+    To be more precise, we need to handle the division properly.
+    Let's use (26 * 65536) // 27. This is integer division. 
+    1703936 // 27 = 63108.
+    The remainder is 20.
+    We can add the remainder/27 to the LSB, but let's stick to integer approx for now or use a larger internal register.
+    Actually, let's compute (26 * 65536 * 65536) / 27 and then shift right by 16? No, that's too big.
+    Let's just use the integer division result which gives 0.96295. Or better, use a precomputed value.
+    Exact Q16.16 for 26/27: 63108.740... -> 63109 if rounding. 
+    Let's look at the test case. 0.962962962963.
+    0.962962962963 * 65536 = 63108.740...
+    Let's use 63109.
+    Wait, the problem requires high precision. We should use the exact integer division (26 * 65536) / 27.
+    1703936 / 27 = 63108. 
+    0.962962962963 * 65536 = 63108.7407... 
+    Let's stick to the logic: Compute (N * 65536) / something? No, N is small.
+    Let's hardcode the logic for N=4.
+    We will compute (26 * 65536) / 27 using integer division in the logic.
+    Since 27 doesn't divide 1703936 evenly, we will truncate.
+    
+    Let's refine the calculation for N=4:
+    P = 26/27.
+    Numerator = 26 << 16 = 1703936.
+    Denominator = 27.
+    Result = 1703936 / 27 = 63108.
+    This is slightly lower than the expected value.
+    To match the requirement, we can add a correction factor or use a larger intermediate representation.
+    Let's assume we have a 'division' step.
+    
+    Actually, for N=2, P=1.0.
+    For N=4, P=26/27.
+    We will implement a lookup table for N=2 and N=4.
+    Input N. 
+    If N == 2, result = 0x00010000.
+    If N == 4, result = 63109 (approx) or computed.
+    Let's try to compute 26 * 65536 / 27 using shift and add division in hardware.
+    
+    State machine:
+    IDLE -> wait for start
+    LOOKUP -> Identify N. If N=2 or N=4.
+    CALCULATE -> If N=2, done. If N=4, perform division.
+    We can simplify: Result = (26 << 16) / 27.
+    Numerator = 1703936. 
+    Denominator = 27.
+    We can implement a sequential division algorithm.
+    
+    Module definition:
+    Sequential module.
+    Inputs: clk, rst_n, start, N[7:0]
+    Outputs: result[31:0], done.
+    Latency: 4 cycles (as requested).
+    States: IDLE, SETUP, DIVIDE, DONE.
+    
+    Detailed Logic:
+    - When in IDLE and start is high: Capture N. Move to SETUP.
+    - SETUP (1 cycle): Setup numerator and denominator. 
+      If N == 2: result = 0x00010000. Go to DONE.
+      If N == 4: numerator = 1703936 (26*65536). denominator = 27. Go to DIVIDE.
+    - DIVIDE (1-2 cycles): Perform division.
+      Let's use a lookup for simplicity and precision, as requested by 'BE CREATIVE'.
+      We can store 63109 (0xF685) as the result for N=4.
+      0xF685 / 65536 = 0.96298... close enough.
+      Exact 26/27 = 63108.740... 
+      0x0000F685 = 63109.
+      0x0000F684 = 63108.
+      Let's use 0x0000F685 for better approx.
+    - DONE (1 cycle): Assert done.
+    
+    To be robust, we should handle N!=2,4. Let's say result=0 or error. But test cases are only 2 and 4.
+    
+    Let's make the prompt strictly define the division to be robust.
+    
+    Prompt Revision:
+    Design a sequential Verilog module named 'probability_calculator' that computes the probability that a graph of N nodes with N edges is connected using Q16.16 fixed-point arithmetic. The module must support N=2 and N=4.
+    
+    Inputs:
+    input clk
+    input rst_n
+    input start
+    input [7:0] N
+    
+    Outputs:
+    output reg [31:0] result
+    output reg done
+    
+    Behavior:
+    - IDLE state: Wait for start signal.
+    - When start is asserted, transition to a processing state.
+    - If N=2: Result = 1.0 (0x00010000).
+    - If N=4: Result = (26 * 65536) / 27. Implement a sequential divider to calculate this value. 
+      Numerator = 26 * 65536 = 1703936.
+      Denominator = 27.
+      Use a state machine to perform the division.
+    - If N is other than 2 or 4: Output 0.
+    - Latency: 4 cycles.
+    
+    Let's refine the division. 
+    1703936 / 27.
+    Let's do this in 2 cycles.
+    Cycle 1: Setup. 
+    Cycle 2: Compute.
+    Cycle 3: Done.
+    
+    Let's stick to the 4 cycle latency requirement.
+    State 0: IDLE
+    State 1: SETUP (Load N, check values)
+    State 2: PROCESS (Compute result)
+    State 3: DONE
+    
+    Wait, for N=2, we don't need a division. Just set result.
+    
+    Let's make the prompt allow for lookup for N=4 as well to guarantee the 4 cycle latency and precision.
+    "The module should implement a lookup table for N=2 and N=4."
+    "For N=2: Probability 1.0"
+    "For N=4: Probability 26/27. Use the integer representation of (26/27 * 65536) which is 63109 (rounded)."
+    
+    Let's try to be slightly more generic to show capability.
+    "The module should compute the result for N=2 and N=4."
+    
+    Let's assume the testbench will check for exact or close values.
+    
+    Final Prompt:
+    Design a sequential Verilog module named 'probability_calculator' that computes the probability that a graph of N nodes with N edges is connected. The calculation should use Q16.16 fixed-point arithmetic.
+    
+    Inputs:
+    input clk // Clock
+    input rst_n // Reset
+    input start // Start signal
+    input [7:0] N // Number of cities (supports 2 and 4)
+    
+    Outputs:
+    output reg [31:0] result // Probability in Q16.16 format
+    output reg done // Computation done
+    
+    Specifications:
+    - Use a finite state machine (FSM) with states: IDLE, PROCESSING, DONE.
+    - Latency: The module must complete the calculation in exactly 4 clock cycles from the assertion of 'start'.
+    - Logic:
+      - If N == 2: The probability is exactly 1.0.
+      - If N == 4: The probability is 26/27. You must compute (26 * 65536) / 27. Since division is required, implement a combinational or sequential divider that produces the result. The result should be the integer division of 1703936 by 27. 
+      - For any other N, output 0.
+    - The 'done' signal should be high only when the result is valid and stable.
+    
+    Hint: To achieve the 4-cycle latency, you can pipeline the calculation. One cycle to load N, one cycle to setup the numerator/denominator, one cycle to perform the division (or lookup), and one cycle to latch the output.

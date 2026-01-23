@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'clock_path' that determines if Misha can move from a starting position t1 to a target position t2 on a clock face without crossing the hour, minute, or second hands.
+
+The clock face is discretized into 60 positions (0-59), where each position represents 5 minutes. The problem is reduced to finding a path between two indices on a circular array, avoiding blocked indices corresponding to the hands.
+
+The module uses a state machine to calculate positions and check paths.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [5:0] h // Hour input (1-12)
+input [5:0] m // Minute input (0-59)
+input [5:0] s // Second input (0-59)
+input [5:0] t1 // Start position (1-12)
+input [5:0] t2 // Target position (1-12)
+
+Outputs:
+output reg result // High if path exists (YES), Low otherwise (NO)
+output reg done // High when computation is complete
+
+Latency: The module takes approximately 4 clock cycles to process after 'start' is asserted.
+
+Behavioral Description:
+1. **Reset**: When rst_n is low, the state machine resets to IDLE, and outputs are cleared.
+2. **Position Calculation (Cycle 1)**:
+   - Convert hour 'h' (1-12) to index: `hour_idx = (h % 12) * 5`.
+   - Convert minute 'm' (0-59) to index: `min_idx = m`.
+   - Convert second 's' (0-59) to index: `sec_idx = s`.
+   - Convert t1 (1-12) to index: `start_idx = (t1 % 12) * 5`.
+   - Convert t2 (1-12) to index: `end_idx = (t2 % 12) * 5`.
+3. **Path Check (Cycle 2-3)**:
+   The module must check two directions (Clockwise and Counter-Clockwise) on the 60-element circular array.
+   - **Clockwise Check**: Iterate from `start_idx + 1` to `end_idx`. If any iteration matches `hour_idx`, `min_idx`, or `sec_idx`, the clockwise path is blocked.
+   - **Counter-Clockwise Check**: Iterate from `start_idx - 1` down to `end_idx`. If any iteration matches `hour_idx`, `min_idx`, or `sec_idx`, the counter-clockwise path is blocked.
+   - Special handling for wrap-around is required (e.g., if start_idx is 59 and end_idx is 0).
+4. **Result (Cycle 4)**:
+   - If either the clockwise path is clear OR the counter-clockwise path is clear, set `result = 1`.
+   - Otherwise, set `result = 0`.
+   - Set `done = 1`.
+
+State Machine States:
+- IDLE: Wait for start signal.
+- CALC_POS: Calculate indices for hands and positions.
+- CHECK_CW: Check clockwise direction.
+- CHECK_CCW: Check counter-clockwise direction.
+- FINISH: Latch result and assert done.

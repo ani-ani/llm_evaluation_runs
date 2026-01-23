@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'winning_strategy' that determines if Arya has a winning strategy to find x mod k given ancient numbers.
+
+The module implements the mathematical condition: LCM(gcd(k, c_1), gcd(k, c_2), ..., gcd(k, c_n)) == k
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [15:0] k // value k chosen by Pari (1 to 65535)
+input [15:0] c_in // current ancient number c_i
+input valid_c // indicates c_in is valid
+input done_c // indicates all ancient numbers have been processed
+
+Outputs:
+output reg result // high if winning strategy exists (Yes/No)
+output reg output_valid // high when result is valid
+
+Behavior:
+1. On start, initialize accumulator L = 1
+2. For each input c_i (when valid_c=1):
+   - Compute G1 = gcd(k, c_i)
+   - Compute G2 = gcd(L, G1)
+   - Update L = (L * G1) / G2
+3. After all inputs processed (done_c=1):
+   - Result = 1 if L == k, else 0
+   - Set output_valid high
+
+Implementation Details:
+- Use a state machine with states: IDLE, READ_C, CALC_GCD1, CALC_GCD2, CALC_LCM, DONE
+- GCD computation: Use Euclidean algorithm state machine (takes <= 16 cycles)
+- LCM computation: LCM(a,b) = (a*b)/GCD(a,b)
+- Internal registers: L [31:0], temp1 [31:0], temp2 [31:0], G1 [15:0], G2 [15:0]
+- Maximum iterations: 16 ancient numbers
+- Each GCD takes ~16 cycles max for 16-bit numbers
+- Total latency: ~16 * 2 * 16 + overhead = ~512 cycles worst case
+- Assume data is presented sequentially on c_in with valid_c pulses
+
+Latency: Result valid ~512 clock cycles after start asserted (worst case).
+
+Module must compute result correctly for all inputs fitting in 16 bits.

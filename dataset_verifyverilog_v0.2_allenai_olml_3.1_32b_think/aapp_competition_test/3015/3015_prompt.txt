@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'hamster_game' that solves a simplified version of the hamster pathfinding game. The graph has a maximum of 4 nodes (0-3) and directed edges with weights.
+
+Problem Adaptation:
+- Graph size: Fixed 4 nodes
+- Edges: Up to 8 edges provided via input vectors
+- Players: Left hemisphere (Maximizer) and Right hemisphere (Minimizer)
+- Turns: Alternating, Left starts first
+- Goal: Find the optimal path length from start node 's' to target node 't' given optimal play.
+- If the path is infinite (cycle where player avoids target), output a special flag.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [1:0] s // Start node (0-3)
+input [1:0] t // Target node (0-3)
+input [7:0] valid_edges // Bitmask: edge[i] is valid if valid_edges[i] == 1
+input [1:0] edge_from [0:7] // Source node for each edge
+input [1:0] edge_to [0:7]   // Destination node for each edge
+input [15:0] edge_weight [0:7] // Weight for each edge (max 10000)
+
+Outputs:
+output reg [15:0] result // The calculated path length
+output reg done // High when computation finished
+output reg infinity // High if path is infinite
+
+Behavior:
+1. Initialize DP tables for Left (Max) and Right (Min) players.
+   - DP_L[node]: Max distance from node to target assuming Left moves next.
+   - DP_R[node]: Min distance from node to target assuming Right moves next.
+2. Base case: DP_L[t] = 0, DP_R[t] = 0.
+3. Perform iterative updates (unroll for 4 iterations to cover small graph depth):
+   - Update DP_L: For each node, look at all outgoing edges. Left chooses the edge that MAXIMIZES (edge_weight + DP_R[dest]).
+   - Update DP_R: For each node, look at all outgoing edges. Right chooses the edge that MINIMIZES (edge_weight + DP_L[dest]).
+4. After updates, check for cycles: If Left can reach a cycle (not t) where DP_L doesn't decrease to 0, set infinity.
+5. Result: DP_L[s]. If infinity detected, set infinity flag.
+
+State Machine:
+- IDLE: Wait for start.
+- INIT: Set DP_L[t] = 0, DP_R[t] = 0, others to -1 (unknown).
+- UPDATE_L: Compute DP_L for all nodes based on current DP_R.
+- UPDATE_R: Compute DP_R for all nodes based on current DP_L.
+- CHECK: Detect if infinite loop exists (simple check: if DP_L[s] > some threshold or stuck).
+- DONE: Latch result.
+
+Timing: Result valid ~60 clock cycles after start.

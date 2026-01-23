@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'fruit_slicer' that computes the maximum number of unit-radius circles that can be intersected by a single straight line.
+
+The module takes up to 8 circle centers as input and uses a geometric approach:
+- Represent each circle center as (x, y) in Q16.16 fixed-point format
+- Enumerate 16 candidate line directions (angles: 0, 11.25°, 22.5°, ..., 157.5°, 168.75°)
+- For each direction, project all centers onto the perpendicular axis
+- Find the maximum number of projections that overlap within a window of width 2 (circle diameter)
+- Return the maximum count found
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_circles // number of circles (1-8)
+input [63:0] circle_x [0:7] // array of x coordinates in Q16.16 format
+input [63:0] circle_y [0:7] // array of y coordinates in Q16.16 format
+
+Outputs:
+output reg [3:0] max_slices // maximum number of circles that can be sliced
+output reg done // high when computation complete
+
+Latency: Approximately 16 * 8 = 128 clock cycles after start is asserted.
+
+Implementation details:
+- Use state machine: IDLE → COMPUTE_DIR → PROJECT → COUNT → NEXT_DIR → DONE
+- For each of 16 directions (0 to 15):
+  - Compute cos(θ) and sin(θ) as Q16.16 values from a small lookup table
+  - Project each point: proj = x*sin(θ) - y*cos(θ)  [or equivalent formula]
+  - Sort projections (use simple comparison network for 8 elements)
+  - Use sliding window: for each projection as left boundary, count how many fall within +2.0
+  - Track maximum count for this direction
+- After all directions, output the global maximum
+- The 2.0 is the circle diameter, represented as 0x00020000 in Q16.16
+
+Key geometric insight: A line with direction vector (cosθ, sinθ) can be written as:
+x*cosθ + y*sinθ = d
+A circle at (x₀, y₀) is intersected if |x₀*cosθ + y₀*sinθ - d| ≤ 1
+For fixed θ, this becomes a 1D problem on the d-axis.
+
+The module should handle:
+- Reset: return to IDLE state, clear max_slices
+- Start: begin computation from current inputs
+- Done: asserted for one cycle when result is ready
+- Partial inputs: only process num_circles circles

@@ -1,0 +1,29 @@
+Design a Verilog module that computes the number of activated pixels for pulses on an LCD grid. The module handles up to 8 vertical and 8 horizontal pulses. Each pulse has parameters: t (start time), m (pulse length), a (wire number). The activation condition for a pair (vertical, horizontal) is: (a_v - a_h - m_v < t_v - t_h) AND (t_v - t_h < a_v - a_h + m_h). Use signed 18-bit arithmetic for all calculations.
+
+INTERFACE SPECIFICATION:
+
+Inputs:
+  - clk: Clock signal (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: Start pulse (1 cycle)
+  - vertical_t[0:7]: 8x18-bit array of vertical start times
+  - vertical_m[0:7]: 8x18-bit array of vertical pulse lengths
+  - vertical_a[0:7]: 8x18-bit array of vertical wire numbers
+  - vertical_valid[0:7]: 8-bit array indicating valid vertical pulses
+  - horizontal_t[0:7]: 8x18-bit array of horizontal start times
+  - horizontal_m[0:7]: 8x18-bit array of horizontal pulse lengths
+  - horizontal_a[0:7]: 8x18-bit array of horizontal wire numbers
+  - horizontal_valid[0:7]: 8-bit array indicating valid horizontal pulses
+
+Outputs:
+  - count[5:0]: 6-bit count of activated pixels (max 64)
+  - done: Asserted high for 1 cycle when computation completes
+
+Behavior:
+  - On start=1, the module iterates through all 64 pairs (i,j) where i=0..7, j=0..7
+  - For each pair where both vertical_valid[i] and horizontal_valid[j] are 1, check the activation condition
+  - The condition uses signed arithmetic: let d = t_v[i] - t_h[j], k = a_v[i] - a_h[j]
+  - Then condition is: (d > k - m_v[i]) AND (d < k + m_h[j])
+  - Count all pairs satisfying the condition
+  - Assert done when computation finishes (after 64 cycles)
+  - Reset sets all outputs to 0

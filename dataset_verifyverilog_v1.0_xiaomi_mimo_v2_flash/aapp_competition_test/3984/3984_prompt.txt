@@ -1,0 +1,72 @@
+module game_solver (
+    input clk,
+    input rst_n,
+    input start,
+    input [127:0] packed_s,  // 16 bytes packed into 128 bits
+    input [4:0] len,          // Actual string length (1-16)
+    output reg [15:0] winner, // Winner vector: bit k=1 if Ann wins for position k
+    output reg done
+);
+
+// State machine states
+localparam IDLE = 2'b00;
+localparam COMPUTE = 2'b01;
+localparam DONE = 2'b10;
+
+reg [1:0] state;
+reg [4:0] k;           // Current position (0-15)
+reg [7:0] min_char;    // Minimum character in prefix [0, k-1]
+reg [15:0] result;     // Temporary winner result
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        k <= 0;
+        min_char <= 8'hFF;  // Initialize to maximum value
+        winner <= 16'b0;
+        done <= 0;
+        result <= 16'b0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= COMPUTE;
+                    k <= 0;
+                    min_char <= 8'hFF;
+                    result <= 16'b0;
+                end
+            end
+            
+            COMPUTE: begin
+                if (k < len) begin
+                    // Extract current character (8-bit ASCII)
+                    reg [7:0] current_char;
+                    current_char = packed_s[k*8 +: 8];
+                    
+                    // Ann wins if min_char < current_char
+                    result[k] <= (min_char < current_char);
+                    
+                    // Update minimum character seen so far
+                    min_char <= (min_char < current_char) ? min_char : current_char;
+                    
+                    k <= k + 1;
+                end else begin
+                    // Computation complete
+                    winner <= result;
+                    done <= 1;
+                    state <= DONE;
+                end
+            end
+            
+            DONE: begin
+                done <= 0;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

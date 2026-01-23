@@ -1,0 +1,59 @@
+Module: gcd_table_solver
+Parameters:
+  N = 4
+  DATA_WIDTH = 8
+  MAX_ENTRIES = 16
+  CLK_PERIOD = 10
+
+Inputs:
+  clk         : Clock signal (rising edge triggered)
+  rst_n       : Active-low synchronous reset
+  start       : Start pulse (assert for 1 cycle to begin computation)
+  data_in     : [DATA_WIDTH-1:0] input number
+  data_valid  : Input data valid
+
+Outputs:
+  result      : [DATA_WIDTH-1:0] output result element
+  result_valid : Output result valid (asserted when result is valid)
+  done        : Computation done (asserted after all results output)
+
+Internal Description:
+Implements GCD table restoration for 4x8-bit numbers using a state machine.
+
+Algorithm:
+1. Accept 16 numbers via data_in when data_valid=1, store in buffer.
+2. Sort buffer descending using bubble sort (120 cycles).
+3. Build distinct numbers array and their counts.
+4. Greedily restore array:
+   - Find largest number with count>0 (candidate)
+   - Decrement candidate count
+   - For each existing result y: compute g=gcd(candidate,y), decrement g's count by 2
+   - Append candidate to result
+5. Output result array (1 element/cycle).
+
+States:
+  S_IDLE=0, S_INPUT=1, S_SORT=2, S_BUILD_DISTINCT=3, S_FIND_CANDIDATE=4,
+  S_DECREMENT_CANDIDATE=5, S_PROCESS_RESULTS=6, S_COMPUTE_GCD=7,
+  S_FIND_GCD=8, S_DECREMENT_GCD=9, S_APPEND_RESULT=10, S_OUTPUT=11, S_DONE=12
+
+GCD Function (iterative, max 8 cycles):
+  function automatic [7:0] gcd(input [7:0] a, b);
+    begin
+      gcd = a;
+      while (b != 0) begin
+        {gcd, b} = {b, gcd % b};
+      end
+    end
+  endfunction
+
+Timing:
+- Input: 16 cycles
+- Sort: 120 cycles max
+- Build distinct: 16 cycles max
+- Main loop (4 iterations): each iteration includes candidate search (16 cycles), GCD computation (8 cycles), GCD search (16 cycles), decrement (1 cycle)
+- Output: 4 cycles
+- Total: ~1000 cycles max
+
+Reset:
+- On rst_n=0, reset all registers to 0, return to S_IDLE.
+- Minimum 2 clock cycles reset recommended.

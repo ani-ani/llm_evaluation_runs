@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'course_scheduler' that selects k courses with minimum total difficulty while respecting Level I/II prerequisites.
+
+Simplified Problem:
+- Support maximum 4 course pairs (8 courses total)
+- Each course has: difficulty (0-1023), type (0=standalone, 1=Level I, 2=Level II), and pair_id (0-3 for Level I/II courses)
+- Constraints: If Level II is selected, Level I must also be selected
+- Select exactly k courses to minimize total difficulty
+
+Inputs:
+input clk                           // Clock signal
+input rst_n                         // Active-low reset
+input start                         // Start computation
+input [2:0] k                       // Number of courses to select (1-8)
+input [3:0] valid_mask              // Bitmask of valid courses (up to 4 pairs = 8 courses)
+
+// Course data: 4 course pairs, each with Level I and Level II
+input [9:0] course_difficulty_0_i   // Difficulty of pair 0 Level I (0-1023)
+input [9:0] course_difficulty_0_ii  // Difficulty of pair 0 Level II (0-1023)
+input [9:0] course_difficulty_1_i   // Difficulty of pair 1 Level I
+input [9:0] course_difficulty_1_ii  // Difficulty of pair 1 Level II
+input [9:0] course_difficulty_2_i   // Difficulty of pair 2 Level I
+input [9:0] course_difficulty_2_ii  // Difficulty of pair 2 Level II
+input [9:0] course_difficulty_3_i   // Difficulty of pair 3 Level I
+input [9:0] course_difficulty_3_ii  // Difficulty of pair 3 Level II
+
+// For standalone courses (no levels), use pair with both levels having same difficulty
+// and set type appropriately, or use separate standalone course inputs
+
+Outputs:
+output reg [15:0] min_sum           // Minimum total difficulty
+output reg done                     // High when computation complete
+output reg error                    // High if k courses cannot be selected
+
+Specifications:
+- Use state machine with states: IDLE, COMPUTE, DONE
+- Latency: Maximum 256 clock cycles after start
+- Algorithm: Enumerate all valid combinations of course selections respecting constraints
+- For each pair: can select neither, Level I only, or both (I+II)
+- Use parallel prefix sums to calculate total count and sum for each combination
+- Output minimum sum among combinations that have exactly k courses
+- If no valid combination exists, assert error
+
+Fixed-Point Considerations:
+This is integer arithmetic only. Difficulties up to 1023 (10 bits). Sums up to 8192 (13 bits).
+
+State Machine Details:
+- IDLE: Wait for start signal
+- COMPUTE: Calculate all valid combinations and find minimum
+- DONE: Output result and wait for reset
+
+Implementation Strategy:
+- Use 16-bit registers for sum accumulation
+- Use case statements to handle 16 possible combinations (2^4 for 4 pairs)
+- For each combination, calculate: count = (I_selected?1:0) + (II_selected?1:0) for each pair
+- Only consider combinations where count == k
+- Track minimum sum across valid combinations
+- Set error if no valid combination found

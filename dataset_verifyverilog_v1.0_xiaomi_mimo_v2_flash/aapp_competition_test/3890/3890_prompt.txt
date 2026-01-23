@@ -1,0 +1,135 @@
+module house_puzzle (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [9:0] n,      // 0-1023
+    input wire [3:0] k,      // 0-8
+    output reg [29:0] result, // modulo 10^9+7
+    output reg done
+);
+    parameter MOD = 1000000007;
+    
+    // State machine states
+    localparam IDLE = 4'd0;
+    localparam LOAD_A = 4'd1;
+    localparam EXP_START = 4'd2;
+    localparam EXP_CHECK = 4'd3;
+    localparam EXP_MULT = 4'd4;
+    localparam EXP_MULT_RESULT = 4'd5;
+    localparam EXP_SQUARE = 4'd6;
+    localparam EXP_SQUARE_RESULT = 4'd7;
+    localparam MULT_RESULT = 4'd8;
+    localparam FINISHED = 4'd9;
+    
+    reg [3:0] state;
+    reg [29:0] a_result;          // k^(k-1)
+    reg [29:0] b_result;          // (n-k)^(n-k)
+    reg [29:0] exp_base, exp_exp, exp_result;
+    reg [29:0] mul_a, mul_b;
+    
+    wire [59:0] mul_product;
+    wire [29:0] mul_result;
+    
+    assign mul_product = mul_a * mul_b;
+    assign mul_result = mul_product % MOD;
+    
+    // LUT for k^(k-1) since k ≤ 8
+    wire [29:0] k_pow;
+    assign k_pow = (k == 4'd1) ? 30'd1 :
+                   (k == 4'd2) ? 30'd2 :
+                   (k == 4'd3) ? 30'd9 :
+                   (k == 4'd4) ? 30'd64 :
+                   (k == 4'd5) ? 30'd625 :
+                   (k == 4'd6) ? 30'd7776 :
+                   (k == 4'd7) ? 30'd117649 :
+                   (k == 4'd8) ? 30'd2097152 : 30'd0;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            a_result <= 0;
+            b_result <= 0;
+            exp_base <= 0;
+            exp_exp <= 0;
+            exp_result <= 0;
+            mul_a <= 0;
+            mul_b <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        if (k == 4'd0) begin
+                            result <= 30'd0;
+                            done <= 1;
+                        end else begin
+                            state <= LOAD_A;
+                        end
+                    end
+                end
+                
+                LOAD_A: begin
+                    a_result <= k_pow;
+                    state <= EXP_START;
+                end
+                
+                EXP_START: begin
+                    exp_base <= (n - k);
+                    exp_exp <= (n - k);
+                    exp_result <= 30'd1;
+                    state <= EXP_CHECK;
+                end
+                
+                EXP_CHECK: begin
+                    if (exp_exp == 0) begin
+                        b_result <= exp_result;
+                        state <= MULT_RESULT;
+                    end else if (exp_exp[0]) begin
+                        state <= EXP_MULT;
+                    end else begin
+                        state <= EXP_SQUARE;
+                    end
+                end
+                
+                EXP_MULT: begin
+                    mul_a <= exp_result;
+                    mul_b <= exp_base;
+                    state <= EXP_MULT_RESULT;
+                end
+                
+                EXP_MULT_RESULT: begin
+                    exp_result <= mul_result;
+                    state <= EXP_SQUARE;
+                end
+                
+                EXP_SQUARE: begin
+                    mul_a <= exp_base;
+                    mul_b <= exp_base;
+                    state <= EXP_SQUARE_RESULT;
+                end
+                
+                EXP_SQUARE_RESULT: begin
+                    exp_base <= mul_result;
+                    exp_exp <= exp_exp >> 1;
+                    state <= EXP_CHECK;
+                end
+                
+                MULT_RESULT: begin
+                    mul_a <= a_result;
+                    mul_b <= b_result;
+                    state <= FINISHED;
+                end
+                
+                FINISHED: begin
+                    result <= mul_result;
+                    done <= 1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+endmodule

@@ -1,0 +1,62 @@
+## Verilog Module Specification: WeightQuerySolver
+
+### Overview
+Computes the maximum number of weights that can be revealed after a single subset query using dynamic programming.
+
+### Parameters
+- N = 8: Maximum number of weights
+- MAX_VAL = 16: Maximum weight value (4-bit, but use 8-bit for simplicity)
+- DATA_WIDTH = 8: Width for values and counts
+- CLK_PERIOD = 10: Clock period in ns
+- MAX_CYCLES = 200: Timeout cycles
+
+### Interface Specification
+
+#### Inputs
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start pulse (1 cycle)
+- `arr[0:7]`: 8-element input array, each 8 bits
+
+#### Outputs
+- `result[7:0]`: Maximum revealable weights
+- `done`: Asserted when result is valid
+
+### Internal Architecture
+
+#### States
+- S_IDLE = 0: Wait for start
+- S_COUNT_FREQ = 1: Count value frequencies
+- S_INIT_DP = 2: Initialize DP table
+- S_COMPUTE_DP = 3: Fill DP table
+- S_CHECK_RESULTS = 4: Find maximum
+- S_DONE = 5: Pulse done
+
+#### Memory
+- `freq[0:15][7:0]`: Frequency counts (8-bit)
+- `dp[127:0][7:0][7:0]`: DP table [sum][count] (8-bit counts)
+- `binom[7:0][7:0]`: Precomputed binomial coefficients
+
+#### Control Flow
+1. **S_IDLE**: Wait for start=1
+2. **S_COUNT_FREQ**: Iterate through 8 weights, count frequencies
+3. **S_INIT_DP**: Set dp[0][0]=1, clear rest
+4. **S_COMPUTE_DP**: Nested loops for 8 weights:
+   - For each weight in array
+   - For sum from MAX_SUM down to weight
+   - For count from 8 down to 1
+   - dp[sum][count] += dp[sum-weight][count-1]
+5. **S_CHECK_RESULTS**: For each value v (0-15):
+   - For i from 1 to freq[v]
+   - If dp[v*i][i] == binom[freq[v]][i] or dp[total_sum-v*i][8-i] == binom[freq[v]][i]
+   - Update result = max(result, i)
+6. **S_DONE**: Pulse done=1 for 1 cycle
+
+### Timing
+- Reset: 2 cycles minimum
+- Computation: < 200 cycles
+- done: 1 cycle pulse
+
+### Reset Behavior
+- On rst_n=0: All state reset, result=0, done=0
+- Internal DP cleared

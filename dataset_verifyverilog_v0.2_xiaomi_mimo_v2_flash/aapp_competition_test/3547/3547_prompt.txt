@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'rect_area_calculator' that computes the total area of union of multiple overlapping rectangles.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [31:0] x1 // Q16.16 fixed-point format (16 integer, 16 fractional bits)
+input [31:0] y1 // Q16.16 fixed-point format
+input [31:0] x2 // Q16.16 fixed-point format
+input [31:0] y2 // Q16.16 fixed-point format
+input [1:0] rect_idx // current rectangle index (0 to 3, max 4 rectangles)
+input rect_valid // indicates valid rectangle input
+
+Outputs:
+output reg [31:0] total_area // Q16.16 fixed-point result
+output reg done // high when computation complete
+output reg [1:0] state_out // debug state output
+
+Specifications:
+- Maximum of 4 rectangles (scaled down from 5000)
+- Input coordinates are in Q16.16 format (multiply real values by 65536)
+- Example: 100.0 becomes 0x00640000 (100 * 65536 = 6553600)
+- Module stores rectangles internally in 4 registers
+- After all 4 rectangles are loaded (rect_valid=1, rect_idx 0-3), computation starts
+- Use sweep-line algorithm with 8-bit coordinate grid for area calculation
+- Computation latency: 64 clock cycles after all inputs loaded
+- State machine states: 00=IDLE, 01=LOADING, 10=COMPUTING, 11=DONE
+- Result should be in Q16.16 format
+
+Algorithm:
+1. Store rectangles in BRAM-like registers
+2. Extract unique X and Y coordinates from all corners (max 8 points)
+3. Sort coordinates (use insertion sort logic)
+4. Iterate through vertical strips between coordinates
+5. For each strip, find vertical segments covered by rectangles
+6. Sum up strip_width * vertical_coverage for total area
+7. Return result in Q16.16 format
+
+Note: For hardware feasibility, we use fixed-size storage and simplified sorting.

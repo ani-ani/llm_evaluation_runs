@@ -1,0 +1,185 @@
+module robot_reach (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] char,
+    input wire char_valid,
+    input wire [6:0] len,
+    input wire signed [31:0] a,
+    input wire signed [31:0] b,
+    output reg result,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam RECEIVE = 2'b01;
+    localparam CHECK = 2'b10;
+    localparam FINISHED = 2'b11;
+
+    // Internal registers
+    reg [1:0] state;
+    reg [6:0] count;
+    reg signed [31:0] current_x, current_y;
+    reg signed [31:0] dx, dy;
+    reg [6:0] index;
+    reg signed [31:0] x_mem [0:100];
+    reg signed [31:0] y_mem [0:100];
+
+    // Helper signals for condition checking
+    wire signed [31:0] ax = a - x_mem[index];
+    wire signed [31:0] by = b - y_mem[index];
+    wire signed [63:0] prod1 = ax * dy;
+    wire signed [63:0] prod2 = by * dx;
+    wire sign_ok_dx = (dx > 0 && ax >= 0) || (dx < 0 && ax <= 0) || (dx == 0);
+    wire sign_ok_dy = (dy > 0 && by >= 0) || (dy < 0 && by <= 0) || (dy == 0);
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            count <= 0;
+            index <= 0;
+            current_x <= 0;
+            current_y <= 0;
+            dx <= 0;
+            dy <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= RECEIVE;
+                        count <= 0;
+                        current_x <= 0;
+                        current_y <= 0;
+                        x_mem[0] <= 0;
+                        y_mem[0] <= 0;
+                        done <= 0;
+                        result <= 0;
+                    end
+                end
+
+                RECEIVE: begin
+                    if (char_valid) begin
+                        // Update current position
+                        case (char)
+                            "U", "u": current_y <= current_y + 1;
+                            "D", "d": current_y <= current_y - 1;
+                            "L", "l": current_x <= current_x - 1;
+                            "R", "r": current_x <= current_x + 1;
+                            default: ; // Ignore invalid
+                        endcase
+                        
+                        // Store new position
+                        x_mem[count + 1] <= (char == "L" || char == "l") ? current_x - 1 :
+                                          (char == "R" || char == "r") ? current_x + 1 : current_x;
+                        y_mem[count + 1] <= (char == "U" || char == "u") ? current_y + 1 :
+                                          (char == "D" || char == "d") ? current_y - 1 : current_y;
+                        
+                        count <= count + 1;
+                        
+                        if (count + 1 == len) begin
+                            dx <= (char == "L" || char == "l") ? current_x - 1 :
+                                  (char == "R" || char == "r") ? current_x + 1 : current_x;
+                            dy <= (char == "U" || char == "u") ? current_y + 1 :
+                                  (char == "D" || char == "d") ? current_y - 1 : current_y;
+                            state <= CHECK;
+                            index <= 0;
+                        end
+                    end
+                end
+
+                CHECK: begin
+                    if (index <= len) begin
+                        if (dx == 0 && dy == 0) begin
+                            if (a == x_mem[index] && b == y_mem[index]) begin
+                                result <= 1;
+                                state <= FINISHED;
+                            end else if (index == len) begin
+                                result <= 0;
+                                state <= FINISHED;
+                            end else begin
+                                index <= index + 1;
+                            end
+                        end else if (dx == 0) begin
+                            if (a == x_mem[index]) begin
+                                if (b == y_mem[index]) begin
+                                    result <= 1;
+                                    state <= FINISHED;
+                                end else if (dy != 0 && (b - y_mem[index]) % dy == 0) begin
+                                    integer k = (b - y_mem[index]) / dy;
+                                    if (k >= 0) begin
+                                        result <= 1;
+                                        state <= FINISHED;
+                                    end else if (index == len) begin
+                                        result <= 0;
+                                        state <= FINISHED;
+                                    end else begin
+                                        index <= index + 1;
+                                    end
+                                end else if (index == len) begin
+                                    result <= 0;
+                                    state <= FINISHED;
+                                end else begin
+                                    index <= index + 1;
+                                end
+                            end else if (index == len) begin
+                                result <= 0;
+                                state <= FINISHED;
+                            end else begin
+                                index <= index + 1;
+                            end
+                        end else if (dy == 0) begin
+                            if (b == y_mem[index]) begin
+                                if (a == x_mem[index]) begin
+                                    result <= 1;
+                                    state <= FINISHED;
+                                end else if (dx != 0 && (a - x_mem[index]) % dx == 0) begin
+                                    integer k = (a - x_mem[index]) / dx;
+                                    if (k >= 0) begin
+                                        result <= 1;
+                                        state <= FINISHED;
+                                    end else if (index == len) begin
+                                        result <= 0;
+                                        state <= FINISHED;
+                                    end else begin
+                                        index <= index + 1;
+                                    end
+                                end else if (index == len) begin
+                                    result <= 0;
+                                    state <= FINISHED;
+                                end else begin
+                                    index <= index + 1;
+                                end
+                            end else if (index == len) begin
+                                result <= 0;
+                                state <= FINISHED;
+                            end else begin
+                                index <= index + 1;
+                            end
+                        end else begin
+                            // Both dx and dy non-zero
+                            if (prod1 == prod2 && sign_ok_dx && sign_ok_dy) begin
+                                result <= 1;
+                                state <= FINISHED;
+                            end else if (index == len) begin
+                                result <= 0;
+                                state <= FINISHED;
+                            end else begin
+                                index <= index + 1;
+                            end
+                        end
+                    end else begin
+                        result <= 0;
+                        state <= FINISHED;
+                    end
+                end
+
+                FINISHED: begin
+                    done <= 1;
+                end
+            endcase
+        end
+    end
+endmodule

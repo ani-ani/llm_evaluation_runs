@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'periodic_sum' that computes the sum S = sum_{i=0}^{n} s_i * a^{n-i} * b^i modulo M, where M = 10^9+9.
+
+The sequence s is k-periodic (s_i = s_{i-k} for i >= k), given by the first k values (1 or -1).
+
+We adapt the problem as follows:
+1. Use 32-bit unsigned arithmetic for modular operations (scaling inputs to fit range, e.g., n <= 255, a,b <= 256).
+2. Handle the ratio (b/a)^k using Q16.16 fixed-point arithmetic (16 integer, 16 fractional bits).
+3. The modulo M = 1000000009 is approximated or used as a constant if it fits, or the problem is scaled to a smaller modulo like 1000003 for verification. Let's assume we scale the problem to use a manageable modulo and input range suitable for synthesis.
+
+Actually, given the complexity of modular inverse and large moduli, let's implement the algorithm for a smaller, 24-bit modulus 'MOD' (e.g., 16777213) and limited input sizes to ensure it fits in a reasonable FPGA area. n, a, b will be 8-bit inputs. k will be up to 4. The sequence s will be a 4-bit input representing the signs (1 bit per sign).
+
+Module Specification:
+- Inputs: clk, rst_n, start, n[7:0], a[7:0], b[7:0], k[1:0] (values 1-4), s[3:0] (4 bits, 1 per sign, 1=+1, 0=-1).
+- Outputs: result[23:0], done.
+- Latency: Approximately 200 cycles (needed for repeated modular exponentiation and multiplication).
+
+The module must perform:
+1. Calculate inv_a = modular_inverse(a).
+2. Calculate q = (b * inv_a)^k mod MOD (using fixed-point logic if necessary, but pure integer mod is better if MOD fits). Since MOD might be prime, use Fermat's little theorem for inverse: a^(MOD-2).
+3. Calculate T = (n+1)/k.
+4. Calculate P = sum_{i=0}^{k-1} s_i * (b/a)^i mod MOD. Wait, the formula from Python solutions involves a geometric series for the ratio q = (b/a)^k.
+   Correct formula logic adapted for HW:
+   Term i contribution: C_i = s_i * a^n * (b/a)^i.
+   Sum over full period: SumPeriod = sum_{i=0}^{k-1} C_i.
+   The sum over N terms is geometric series of SumPeriod terms where multiplier is q = (b/a)^k.
+   Total Sum = SumPeriod * (q^T - 1) / (q - 1) if q != 1, else SumPeriod * T.
+
+Detailed Hardware State Machine:
+- State 0: Reset.
+- State 1: Compute inv_a = a^(MOD-2) (Fast exponentiation).
+- State 2: Compute b_inv_a = b * inv_a mod MOD.
+- State 3: Compute q = (b_inv_a)^k mod MOD.
+- State 4: Compute T = (n+1) / k (integer division).
+- State 5: Compute SumPeriod. Loop i=0 to k-1:
+   - Get s_i (bit from s input).
+   - Compute power = (b_inv_a)^i.
+   - Compute term = a^n * power (accumulate to SumPeriod).
+- State 6: If q == 1, Result = SumPeriod * T.
+- State 7: Else, Compute q^T, then denom_inv = (q-1)^(-1), then Result = SumPeriod * (q^T - 1) * denom_inv.
+- State 8: Done.
+
+Since exponents n are large in original problem, we must handle modular exponentiation. In hardware, we use the square-and-multiply algorithm iteratively.
+
+Inputs/Outputs:
+input clk, rst_n, start
+input [7:0] n, a, b
+input [1:0] k
+input [3:0] s  // 4 signs
+output reg [23:0] result
+output reg done
+
+We will use a 24-bit modulus to ensure result fits.

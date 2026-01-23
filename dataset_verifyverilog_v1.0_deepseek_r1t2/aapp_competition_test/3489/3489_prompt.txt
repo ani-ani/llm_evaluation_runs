@@ -1,0 +1,55 @@
+EscapeRoutes Module Specification
+
+Module: EscapeRoutes
+
+Function:
+Given a tree (n nodes, n-1 edges) and a headquarters node h, compute the minimum number of edges to add to make the graph 2‑edge‑connected (i.e., after adding these edges, removing any single edge still leaves a path from every node to h). Output the number of edges to add and the list of edges to add.
+
+Parameters:
+- MAX_N = 8 (maximum number of nodes)
+- MAX_EDGES = 7 (maximum number of edges, = MAX_N-1)
+- MAX_ADDED = 4 (maximum number of edges to add, = ceil(MAX_N/2))
+
+Inputs:
+- clk: clock, rising edge triggered
+- rst_n: active‑low synchronous reset
+- start: start signal, pulse high for one cycle to start computation
+- n: 4‑bit unsigned, number of nodes (2 ≤ n ≤ MAX_N)
+- h: 3‑bit unsigned, headquarters node (0 ≤ h < n)
+- edge_u: array of MAX_EDGES elements, each element 3 bits, first endpoint of each edge
+- edge_v: array of MAX_EDGES elements, each element 3 bits, second endpoint of each edge
+  (Only the first n‑1 entries are valid; the rest are ignored.)
+
+Outputs:
+- m: 3‑bit unsigned, number of edges to add
+- added_u: array of MAX_ADDED elements, each 3 bits, first endpoint of each added edge
+- added_v: array of MAX_ADDED elements, each 3 bits, second endpoint of each added edge
+  (Only the first m entries are valid.)
+- done: asserted high for one cycle when computation is complete and outputs are valid.
+
+Behavior:
+1. Reset: On rst_n = 0, all internal state is cleared, outputs are zero, done = 0.
+2. Start: On the rising edge where start = 1, the module begins computation. It captures the current values of n, h, and the edge arrays.
+3. Computation: The module performs the following steps:
+   a. Build an adjacency matrix (size MAX_N × MAX_N) from the edges.
+   b. Compute the degree of each node.
+   c. Identify leaves: nodes with degree 1.
+   d. Perform a Breadth‑First Search (BFS) starting from h to order the leaves in the order they are first discovered.
+   e. Count the number of leaves L.
+   f. Compute m = (L + 1) >> 1 (integer ceiling of L/2).
+   g. Generate the added edges:
+        For i = 0 to L‑2 step 2: connect leaf[i] and leaf[i+1].
+        If L is odd: connect leaf[L‑1] and leaf[0].
+   h. Store the added edges in the added_u and added_v arrays (first m entries).
+4. Completion: After computation, the module asserts done for exactly one clock cycle. The outputs are valid during this cycle.
+
+Implementation Notes:
+- The module is a finite‑state machine (FSM) with a fixed number of states.
+- The adjacency matrix can be implemented as 64 flip‑flops (8×8) or as a 64‑bit vector.
+- The BFS queue can be implemented as a shift register of size MAX_N.
+- All operations are bounded; the module completes within at most 100 clock cycles.
+- The module must handle invalid inputs gracefully (e.g., n < 2) by outputting m=0.
+
+Timing:
+- The module must complete within a fixed number of cycles after start; the testbench will wait up to 1000 cycles.
+- The done signal is asserted exactly once, on the cycle when the result is ready.

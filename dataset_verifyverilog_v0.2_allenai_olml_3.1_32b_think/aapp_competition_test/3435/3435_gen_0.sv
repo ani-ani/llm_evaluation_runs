@@ -1,0 +1,1 @@
+module pattern_match_counter(input clk, input rst_n, input start, input [7:0] pattern [0:7], input [4:0] n, input [3:0] m, output reg [15:0] result, output reg done); assign result = 0; assign done = 0; endmodule

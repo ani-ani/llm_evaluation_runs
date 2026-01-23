@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'closest_handsome' that finds the closest handsome number to a given input number.
+
+A handsome number has consecutive digits of alternating parity (odd/even pattern). Single-digit numbers are handsome.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [31:0] input_number // up to 8 decimal digits packed as BCD: [3:0] per digit, 8 digits total
+
+Outputs:
+output reg [31:0] result_lower // lower closest handsome number (0 if none)
+output reg [31:0] result_upper // upper closest handsome number (0 if none)
+output reg found_lower // flag indicating valid lower result
+output reg found_upper // flag indicating valid upper result
+output reg done // high when computation complete
+
+Specifications:
+- Input number format: 8-digit BCD where each 4-bit nibble represents one decimal digit (0-9)
+- The 8 digits are packed as {digit7, digit6, ..., digit0} where digit0 is least significant
+- Non-zero digits start from the most significant position
+- Module should search for closest handsome numbers by checking N-1, N-2, ... and N+1, N+2, ...
+- Search radius: check up to 256 numbers below and above (sufficient for 8-digit numbers)
+- Latency: approximately 512 clock cycles (search both directions) or less with optimization
+- Use state machine with states: IDLE, SEARCH_LOWER, SEARCH_UPPER, COMPLETE
+
+Handsome check logic:
+- A number is handsome if all consecutive digit pairs have different parity
+- Single digit numbers are always handsome
+- For multi-digit: check digit[i] and digit[i+1] parity
+
+Implementation approach:
+1. In IDLE: wait for start signal, capture input_number
+2. In SEARCH_LOWER: decrement and check each number until handsome found or limit reached
+3. In SEARCH_UPPER: increment and check each number until handsome found or limit reached
+4. In COMPLETE: set done=1 and output results
+
+Helper modules needed:
+- is_handsome: combinational module that checks if a BCD number is handsome
+- dec_to_bcd: convert decimal number to BCD format
+- bcd_to_dec: convert BCD format to decimal
+- parity_checker: check parity of single digit (odd/even)
+
+The module should handle:
+- Wrap-around at 0 (don't wrap, stop searching)
+- Finding only upper or only lower if the other side is out of bounds
+- Both results if both found and distances are equal or one is closer
+
+Use 32-bit internal registers for arithmetic operations.

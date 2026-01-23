@@ -1,0 +1,59 @@
+Design a sequential Verilog module named 'color_code_finder' that finds an n-bit color code with palette P for small n.
+
+The module implements a depth-first search (DFS) with backtracking to find a Hamiltonian path in the n-dimensional hypercube where edge weights (Hamming distances) are in palette P.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] n // number of bits (1 to 4, as 2^n elements)
+input [3:0] p_count // number of elements in palette
+input [3:0][3:0] palette // palette elements (up to 4 values)
+
+Outputs:
+output reg [15:0] result_valid // high when result is ready
+output reg [3:0][3:0] next_value // next value in sequence (for testbench)
+output reg done // high when computation complete
+output reg impossible // high when no solution exists
+
+Specify latency: Result valid after up to 65536 clock cycles (worst case for n=4, 2^4=16 elements).
+
+Behavior:
+- Use a state machine with states: IDLE, INIT, DFS_START, DFS_STEP, CHECK_COMPLETE, FOUND, IMPOSSIBLE
+- Maintain visited array of size 16 (bitmask) and path array of size 16
+- For each state, compute next candidate by flipping bits in P-allowed positions
+- The 'next_value' outputs should be updated when a valid sequence is found
+- The sequence should be written to output one element per cycle when done
+- For n=4, maximum 16 elements, each element is 4 bits
+- Palette P contains Hamming distances (1-4)
+- To find next element: current XOR (1<<k) for k in 0..n-1, check if Hamming distance d is in palette
+- Hamming distance d = number of 1s in (candidate XOR current)
+- Output should be sequence of 2^n values, each in binary representation
+
+Key constraints:
+- Use iterative DFS with stack stored in registers
+- Maximum depth = n (bits to flip), but path length = 2^n
+- For n=4: 16 elements, need to explore up to 16! paths worst case, but use heuristic: check palette early
+- The module should cycle through and output the found sequence
+- result_valid: assert high when first valid sequence found
+- When done=1 and impossible=0: next_value contains valid sequence, one per clock cycle
+
+Test case examples:
+- n=3, P={1}: sequence should be Gray code
+- n=6, P={6}: impossible
+- n=4, P={2,3}: find path with Hamming distances 2 or 3
+
+For fixed-point: NOT APPLICABLE - this is combinatorial path finding.
+
+State details:
+- INIT: initialize path[0]=0, visited=1, path_idx=0
+- DFS_START: begin exploring from current path[path_idx]
+- DFS_STEP: try all n bits to flip, check if:
+  1. Not visited
+  2. Hamming distance d in palette P
+  3. If valid, add to path, mark visited, continue
+- CHECK_COMPLETE: if path has 2^n elements, go FOUND, else backtrack
+- FOUND: output sequence via next_value
+- IMPOSSIBLE: set impossible=1
+
+Note: Due to 2^n exponential complexity, this is feasible for n≤4 in reasonable time. For n>4, it's conceptual only.

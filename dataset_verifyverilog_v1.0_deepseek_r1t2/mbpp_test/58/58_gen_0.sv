@@ -1,0 +1,1 @@
+module opposite_signs(\n    input signed [7:0] x,\n    input signed [7:0] y,\n    output result\n);\n    assign result = x[7] ^ y[7];\nendmodule

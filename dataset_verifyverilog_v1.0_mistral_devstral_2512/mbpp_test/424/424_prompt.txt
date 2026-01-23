@@ -1,0 +1,135 @@
+module extract_rear (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] str_0,  // First string, 8 characters packed as 8 bytes
+    input [7:0] str_1,  // Second string, 8 characters packed as 8 bytes  
+    input [7:0] str_2,  // Third string, 8 characters packed as 8 bytes
+    input [3:0] len_0,  // Length of first string (1-8)
+    input [3:0] len_1,  // Length of second string (1-8)
+    input [3:0] len_2,  // Length of third string (1-8)
+    output reg [7:0] result_0,  // First rear character
+    output reg [7:0] result_1,  // Second rear character
+    output reg [7:0] result_2,  // Third rear character
+    output reg done
+);
+
+    // Strings are provided as packed bytes [7:0] for each position
+    // Each string input is actually 8 separate 8-bit ports
+    // Wait - let me correct the interface
+    
+    // Corrected: Use individual character ports for 3 strings of 8 chars each
+    // Total: 3 strings * 8 chars = 24 character inputs
+    // We'll use a more practical interface:
+    
+endmodule
+
+// REVISED PRACTICAL INTERFACE:
+// Input: Three 8-character strings packed as 64-bit values each
+// Output: Three 8-bit rear characters
+module extract_rear (
+    input clk,
+    input rst_n,
+    input start,
+    
+    // String 0: 8 chars packed [63:0], ASCII values
+    input [63:0] str_0,
+    input [3:0] len_0,  // Actual length (1-8)
+    
+    // String 1: 8 chars packed [63:0]
+    input [63:0] str_1,
+    input [3:0] len_1,
+    
+    // String 2: 8 chars packed [63:0]
+    input [63:0] str_2,
+    input [3:0] len_2,
+    
+    // Results
+    output reg [7:0] result_0,
+    output reg [7:0] result_1,
+    output reg [7:0] result_2,
+    output reg done
+);
+
+    // Internal state
+    reg [1:0] state;
+    reg [7:0] temp_result_0, temp_result_1, temp_result_2;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= 2'b00;
+            done <= 1'b0;
+            result_0 <= 8'b0;
+            result_1 <= 8'b0;
+            result_2 <= 8'b0;
+        end else begin
+            case (state)
+                2'b00: begin  // Idle
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= 2'b01;
+                    end
+                end
+                
+                2'b01: begin  // Extract rear characters
+                    // Extract character at position (length - 1)
+                    // Position 0: chars [7:0], Position 1: chars [15:8], etc.
+                    
+                    // String 0
+                    case (len_0)
+                        4'd1: temp_result_0 <= str_0[7:0];
+                        4'd2: temp_result_0 <= str_0[15:8];
+                        4'd3: temp_result_0 <= str_0[23:16];
+                        4'd4: temp_result_0 <= str_0[31:24];
+                        4'd5: temp_result_0 <= str_0[39:32];
+                        4'd6: temp_result_0 <= str_0[47:40];
+                        4'd7: temp_result_0 <= str_0[55:48];
+                        4'd8: temp_result_0 <= str_0[63:56];
+                        default: temp_result_0 <= 8'b0;
+                    endcase
+                    
+                    // String 1
+                    case (len_1)
+                        4'd1: temp_result_1 <= str_1[7:0];
+                        4'd2: temp_result_1 <= str_1[15:8];
+                        4'd3: temp_result_1 <= str_1[23:16];
+                        4'd4: temp_result_1 <= str_1[31:24];
+                        4'd5: temp_result_1 <= str_1[39:32];
+                        4'd6: temp_result_1 <= str_1[47:40];
+                        4'd7: temp_result_1 <= str_1[55:48];
+                        4'd8: temp_result_1 <= str_1[63:56];
+                        default: temp_result_1 <= 8'b0;
+                    endcase
+                    
+                    // String 2
+                    case (len_2)
+                        4'd1: temp_result_2 <= str_2[7:0];
+                        4'd2: temp_result_2 <= str_2[15:8];
+                        4'd3: temp_result_2 <= str_2[23:16];
+                        4'd4: temp_result_2 <= str_2[31:24];
+                        4'd5: temp_result_2 <= str_2[39:32];
+                        4'd6: temp_result_2 <= str_2[47:40];
+                        4'd7: temp_result_2 <= str_2[55:48];
+                        4'd8: temp_result_2 <= str_2[63:56];
+                        default: temp_result_2 <= 8'b0;
+                    endcase
+                    
+                    state <= 2'b10;
+                end
+                
+                2'b10: begin  // Output and done
+                    result_0 <= temp_result_0;
+                    result_1 <= temp_result_1;
+                    result_2 <= temp_result_2;
+                    done <= 1'b1;
+                    state <= 2'b00;
+                end
+                
+                default: begin
+                    state <= 2'b00;
+                    done <= 1'b0;
+                end
+            endcase
+        end
+    end
+endmodule

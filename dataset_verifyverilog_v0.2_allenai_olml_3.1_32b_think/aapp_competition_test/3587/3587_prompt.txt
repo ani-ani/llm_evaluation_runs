@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'taboo_solver' that finds the longest binary string avoiding given taboo substrings.
+
+Problem Constraints (Scaled for HDL):
+- Maximum 8 taboo strings (N <= 8)
+- Each string length <= 8 characters
+- Total sum of lengths <= 32
+- Binary strings only (0 and 1)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [2:0] n_valid // number of taboo strings (1-8)
+input [7:0] str_len [0:7] // length of each taboo string
+input [7:0] taboo_str [0:63] // flattened array of all taboo strings (max 64 chars)
+
+Outputs:
+output reg [2:0] result_len // length of longest valid string
+output reg [255:0] result_str // result string (max 256 bits, padded)
+output reg infinite // high if arbitrarily long (cycle detected)
+output reg done // high when computation complete
+
+Implementation Details:
+1. Build trie from taboo strings with max 64 nodes (sufficient for constraints)
+2. Each node has: child[2], is_terminal flag, node_id
+3. Build failure links (Aho-Corasick) - but simplified: just mark terminal nodes
+4. Use DFS/BFS with state machine to find:
+   - If cycle exists: infinite = 1
+   - Else: longest path from root, tracking lexicographically smallest
+5. Use bitmask visited[64] to detect cycles
+6. Track current_path string and best_path string
+7. Latency: approximately 1000 cycles (enough for 64 nodes DFS)
+
+State Machine:
+- IDLE: Wait for start
+- BUILD_TRIE: Parse input strings and build trie
+- FIND_CYCLES: Check for cycles using DFS
+- FIND_LONGEST: If acyclic, find longest path
+- DONE: Present results
+
+The module should implement an iterative DFS that explores all paths from root, tracking:
+- Current depth
+- Visited nodes bitmask
+- Current string being built
+- Best result found (longest, then lexicographically smallest)
+
+For cycle detection: If we can reach a node that was visited in current path, it's a cycle.
+
+Note: This is a complex sequential module. Focus on correct state transitions and proper tracking of paths.

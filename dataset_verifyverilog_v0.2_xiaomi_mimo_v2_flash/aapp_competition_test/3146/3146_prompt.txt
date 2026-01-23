@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'pharmacy_sim' that simulates the prescription filling scheduler.
+
+The module must handle a fixed maximum of 8 prescriptions (N=8) and up to 4 technicians (T=4). It uses Q16.16 fixed-point format for all time values.
+
+### Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High for one cycle to start the simulation
+
+// Input arrays (8 prescriptions)
+input [63:0] in_drop_time [7:0] // Array of 8 drop times (Q16.16)
+input [7:0] in_type [7:0]      // Array of 8 types (0=Remote, 1=In-store)
+input [31:0] in_fill_time [7:0] // Array of 8 fill durations (Q16.16)
+input [2:0] valid_count         // Number of valid prescriptions (0-8)
+
+### Outputs:
+output reg [63:0] avg_in_store_time // Result in Q16.16
+output reg [63:0] avg_remote_time   // Result in Q16.16
+output reg done                     // High when simulation complete
+
+### Behavior:
+The module must implement a discrete-event simulation engine using a state machine. It must manage an event queue and a pool of busy technicians.
+
+1.  **State Machine**: Use states IDLE, PROCESSING, and DONE.
+2.  **Sorting/Selection**: When technicians become free, the module must select the next prescription to fill according to the rules:
+    *   Prioritize In-Store (Type=1) over Remote (Type=0).
+    *   Tie-breaker 1: Lower Drop Time.
+    *   Tie-breaker 2: Shorter Fill Time.
+3.  **Time Advancement**: The simulation must advance time either to the next drop-off event or the next completion event, whichever is sooner.
+4.  **Completion Calculation**: When a prescription finishes filling, calculate its completion time (CurrentTime - DropTime) and add it to the running sum for its type.
+5.  **Fixed-Point Arithmetic**: Use Q16.16 format. Input values are provided as integers representing the real value multiplied by 65536. Outputs must also be in Q16.16 format. To calculate the average, divide the total sum by the valid_count (integer division or scaling is acceptable, but must be precise). Note: If valid_count is 0 for a type, output 0.
+
+### Specifications:
+- **Latency**: The simulation runs over multiple cycles. `done` goes high when the internal simulation loop finishes. Assume a generous latency bound (e.g., 5000 cycles) for the testbench.
+- **Mechanism**: You may implement a simple bubble sort or selection logic to pick the next valid prescription from the input arrays, rather than a complex priority queue, to keep logic manageable for the small N=8 constraint.
+- **Data Representation**: Inputs `in_drop_time` and `in_fill_time` are 32-bit integers (representing Q16.16). In the internal logic, treat them as standard integers for sorting/comparison purposes (since the ordering of fixed-point numbers matches integer ordering for positive numbers). Averages should be computed as (TotalSum / Count) where TotalSum is accumulated in Q16.16 format.
+

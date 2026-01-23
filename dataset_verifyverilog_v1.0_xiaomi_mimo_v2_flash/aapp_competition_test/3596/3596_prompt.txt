@@ -1,0 +1,22 @@
+module opponent_location(
+    input [9:0] l,        // l value (1-1000)
+    output reg [63:0] result_fixed  // Fixed-point result (Q32.32)
+);
+
+// Constants (precomputed)
+localparam [63:0] INV_PI_E_FIXED = 503000000;   // 1/(πe) * 2^32
+
+wire [63:0] l_squared = l * l;                    // l²
+wire [63:0] term1 = l_squared * INV_PI_E_FIXED;   // l²/(πe) in fixed-point
+wire [63:0] denom = l + 1;                       // Denominator for term2
+
+// Compute term2 = 1/(l+1) with rounding
+// Formula: (2^32 + denom/2) / denom
+wire [63:0] term2 = ((64'd1 << 32) + (denom >> 1)) / denom;
+
+always @(*) begin
+    // Sum both terms (fixed-point addition)
+    result_fixed = term1 + term2;
+end
+
+endmodule

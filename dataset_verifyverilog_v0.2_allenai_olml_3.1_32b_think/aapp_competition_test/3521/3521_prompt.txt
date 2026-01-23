@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'interstellar_optimizer' that computes the maximum travel distance for a spaceship based on N stars. 
+
+The problem involves summing piecewise linear functions. For each star i with parameters (T_i, s_i, a_i), the contribution is max(0, T_i - s_i * dist(a_i, a)), where dist is the minimum angular distance. This forms a 'hat' function centered at a_i with slope -s_i. The sum of such functions has a piecewise linear shape. The maximum value occurs at one of the peaks (angles a_i) or zero-crossings.
+
+The module will calculate the maximum distance by iterating through sorted angular events.
+
+**Parameters:**
+- `N`: Number of stars (set to 8)
+- `ANGLE_WIDTH`: 8 bits (representing angles 0 to 255/256 * 2π)
+- `DATA_WIDTH`: 16 bits (for T and s values)
+- `ACCUM_WIDTH`: 24 bits (accumulator for sum and derivative)
+
+**Inputs:**
+- `clk`: System clock
+- `rst_n`: Active-low reset
+- `start`: High to start calculation
+- `star_idx`: [2:0] Index of the star being configured (0 to 7)
+- `config_valid`: High to write T, s, a for current `star_idx`
+- `config_T`: [15:0] T_i value (scaled integer)
+- `config_s`: [15:0] s_i value (scaled integer)
+- `config_a`: [7:0] a_i angle (0-255)
+
+**Outputs:**
+- `result`: [23:0] Maximum distance found (integer format)
+- `done`: High when calculation is complete
+
+**Behavior:**
+1. **Configuration Phase:** The module accepts 8 stars. For each star, compute the critical points (Peak, Left Zero, Right Zero) and the derivative changes.
+   - Peak is at `a_i`. Derivative change: `+2*s_i` (slope goes from -s_i to +s_i, effectively +2s_i relative to 0, but mathematically slope changes from -s to 0 on left and 0 to -s on right? No. The derivative of T - s|x| is -s*sign(x). At peak (x=0), derivative changes from -s to +s (delta 2s). 
+   - Left Zero: `a_i - T_i/s_i`. Derivative: -s_i -> 0 (delta +s_i).
+   - Right Zero: `a_i + T_i/s_i`. Derivative: 0 -> +s_i (delta -s_i). Note: We handle the circle wrap-around.
+
+2. **Calculation Phase (State Machine):**
+   - Collect all events (24 events total for 8 stars).
+   - Sort them by angle (hardware sort or iterative min-find). Since N is small, we can do a simple bubble sort or selection sort.
+   - Initialize `current_dist = 0`, `current_slope = 0`, `max_dist = 0`.
+   - Iterate through sorted events. At each event:
+     - Advance angle to this event. `current_dist += current_slope * (angle_diff)`.
+     - Update `max_dist = max(max_dist, current_dist)`.
+     - Update `current_slope += delta_slope`.
+
+**Verilog Details:**
+- Use `reg` arrays to store event angles and delta slopes.
+- Use a state machine: IDLE, CONFIG, PREP_SORT, SORT, CALCULATE, DONE.
+- Fixed-point arithmetic: Use integers. Assume T and s are scaled. Angle steps are 1 LSB.
+- The 'distance' contribution `slope * angle_diff` needs scaling. If slope is `2*s` and angle is 1 unit, the product is `2*s`. This is consistent if we treat angles as linear units.
+
+**State Machine States:**
+- `IDLE`: Wait for start.
+- `CONFIG`: Accepts configuration data. Internally computes events and stores them in a buffer.
+- `PREP_SORT`: Prepare for sorting.
+- `SORT`: Sort the events based on angle.
+- `CALCULATE`: Sweep through sorted events, update distance and max.
+- `DONE`: Set done flag.
+
+**Latency:** Approximately 200 cycles (to allow for sorting and calculation). 
+
+**Output:** `result` holds the maximum distance found. `done` goes high in the DONE state.

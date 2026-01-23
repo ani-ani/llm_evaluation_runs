@@ -1,0 +1,90 @@
+module find_black_square (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [63:0] grid_packed,   // 8x8 grid, row-major, bit 0 = (0,0)
+    output reg [3:0] row_center,     // 1-indexed row (max 8)
+    output reg [3:0] col_center,     // 1-indexed column (max 8)
+    output reg done
+);
+
+// Parameters
+parameter N = 8;
+parameter M = 8;
+parameter TOTAL = N * M;  // 64
+
+// States
+localparam IDLE = 2'b00;
+localparam SCANNING = 2'b01;
+localparam DONE = 2'b10;
+
+// Registers
+reg [1:0] state;
+reg [5:0] idx;              // 0 to 63
+reg [2:0] min_row, max_row; // 0-7
+reg [2:0] min_col, max_col; // 0-7
+
+// Next state logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        idx <= 6'd0;
+        min_row <= 3'd7;  // Larger than max possible row (7)
+        max_row <= 3'd0;
+        min_col <= 3'd7;
+        max_col <= 3'd0;
+        row_center <= 4'd0;
+        col_center <= 4'd0;
+        done <= 1'b0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    state <= SCANNING;
+                    idx <= 6'd0;
+                    min_row <= 3'd7;
+                    max_row <= 3'd0;
+                    min_col <= 3'd7;
+                    max_col <= 3'd0;
+                end
+            end
+
+            SCANNING: begin
+                if (idx < TOTAL) begin
+                    // Extract row and column from linear index
+                    // Since M=8, row = idx[5:3], col = idx[2:0]
+                    reg [2:0] row = idx[5:3];
+                    reg [2:0] col = idx[2:0];
+                    reg cell = grid_packed[idx];
+
+                    if (cell) begin
+                        // Update min/max for rows
+                        if (row < min_row) min_row <= row;
+                        if (row > max_row) max_row <= row;
+                        // Update min/max for columns
+                        if (col < min_col) min_col <= col;
+                        if (col > max_col) max_col <= col;
+                    end
+
+                    idx <= idx + 1'b1;
+                end
+
+                // After processing the last cell, transition to DONE
+                if (idx == TOTAL - 1) begin
+                    state <= DONE;
+                end
+            end
+
+            DONE: begin
+                // Compute center (1-indexed)
+                row_center <= (min_row + max_row) / 2 + 1;
+                col_center <= (min_col + max_col) / 2 + 1;
+                done <= 1'b1;
+                state <= IDLE;  // Return to idle after one cycle
+            end
+        endcase
+    end
+end
+
+endmodule

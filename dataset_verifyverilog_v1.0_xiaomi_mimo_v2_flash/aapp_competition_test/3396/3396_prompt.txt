@@ -1,0 +1,44 @@
+GOAT ROPE MODULE SPECIFICATION
+
+Module: goat_rope
+
+Parameters:
+  - N: Number of posts (2 or 3)
+  - COORD_WIDTH: 10 (coordinates 0-1000)
+  - DATA_WIDTH: 20 (for squared distances)
+  - RESULT_WIDTH: 32 (result * 100)
+
+Interface:
+  Inputs:
+    - clk: Clock signal (rising edge triggered)
+    - rst_n: Active-low synchronous reset
+    - start: Start pulse (assert for 1 cycle to begin computation)
+    - x0, y0: Post 0 coordinates [9:0]
+    - x1, y1: Post 1 coordinates [9:0]
+    - x2, y2: Post 2 coordinates [9:0] (only used when N=3)
+  
+  Outputs:
+    - result: 32-bit integer representing total rope length * 100
+              (e.g., 50000 for 500.00, 60355 for 603.55)
+    - done: Asserted high for 1 cycle when result is valid
+
+Operation:
+  1. On start pulse, compute pairwise distances
+  2. For N=2: result = distance * 100
+  3. For N=3: result = (d01 + d12 + d02) / 2, where d is distance * 100
+  4. Assert done when computation complete
+
+Distance Calculation:
+  - Compute dx = |x_i - x_j|, dy = |y_i - y_j|
+  - Compute dist_sq = dx*dx + dy*dy
+  - Compute dist_scaled = sqrt(dist_sq * 10000)  // distance * 100
+  - Use combinational integer sqrt or pipeline stages
+
+Timing:
+  - Assert start for 1 clock cycle
+  - Computation completes within 50 cycles
+  - Sample result on same cycle done is high
+
+Reset behavior:
+  - On rst_n=0: done=0, result=0, state cleared
+  - Minimum 2 clock cycles of reset required

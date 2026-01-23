@@ -1,0 +1,49 @@
+module ping_pong (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] n,          // number of players (<=8)
+    input wire [2:0] k,          // number of originally disqualified players (<=8)
+    input wire [63:0] adj,       // adjacency matrix packed row-major: adj[i*8 + j] = 1 if i beats j
+    input wire [7:0] s_mask,     // mask of originally disqualified players: bit i = 1 if player i in S
+    output reg [7:0] result,     // size of S' (0-7) or 255 if impossible
+    output reg done
+);
+
+// The module computes the smallest set S' (disjoint from S) of size less than k
+// such that removing S' makes the tournament acyclic.
+//
+// Algorithm:
+// 1. On start, extract set S from s_mask and set T = complement (players not in S).
+// 2. Check if the subgraph induced by S is acyclic. If not, output 255 and finish.
+// 3. For t = 0 to k-1:
+//      For each subset R of T of size t:
+//          Let V' = S ∪ (T \ R).
+//          Check if subgraph induced by V' is acyclic.
+//          If acyclic, output t and finish.
+// 4. If no such subset found, output 255.
+//
+// Acyclicity check:
+// For a set of vertices V' (bitmask), compute reachability matrix using Floyd-Warshall.
+// Since |V'| <= 8, this can be done in O(|V'|^3) cycles.
+// A cycle exists if any vertex can reach itself via a path of length >= 2 (i.e., reach[i][i] == 1).
+//
+// Implementation must use a state machine to sequence the operations.
+// The enumeration of subsets can be done by iterating over all 2^|T| subsets and selecting those
+// with the correct population count. However, given |T| <= 8, we can simply iterate over all subsets
+// and filter by size. To limit time, we can break early when t is found.
+//
+// The module should be combinational-friendly but sequential due to loops.
+// Use a counter for t and a bitmask for subset.
+//
+// The output 'done' is asserted for one cycle when result is ready.
+//
+// Reset behavior:
+// - On rst_n=0: all state registers reset, done=0, result=0.
+// - After reset, wait for start pulse.
+
+// State machine states (example):
+// IDLE, CHECK_S, ENUMERATE, CHECK_SUBSET, DONE
+// Implement accordingly.
+
+endmodule

@@ -1,0 +1,46 @@
+Verilog Module Specification for Gem Island Simulation (Monte Carlo)
+
+Module Name: GemIslandSim
+
+Parameters:
+  MAX_N = 8: Maximum number of inhabitants
+  MAX_D = 16: Maximum number of nights
+  MAX_R = 8: Maximum number of top inhabitants to sum
+  DATA_WIDTH = 8: Bit width for gem counts (max count <= 1+MAX_D = 17)
+  RESULT_WIDTH = 32: Bit width for output sum
+
+Ports:
+  input clk: Clock signal, rising edge triggered
+  input rst_n: Active-low synchronous reset
+  input start: Start pulse (1 cycle) to begin one simulation trial
+  input [3:0] n: Number of inhabitants (1 to MAX_N)
+  input [7:0] d: Number of nights (1 to MAX_D)
+  input [3:0] r: Number of top inhabitants (1 to MAX_R)
+  output [31:0] result: Sum of top r gem counts after d nights (integer)
+  output done: Asserted high for 1 cycle when result is valid
+
+Behavior:
+  On reset (rst_n=0), internal state is cleared, done=0, result=0.
+  When start is asserted (start=1 for one cycle), the module starts a simulation trial:
+    1. Initialize counts: For i=0 to n-1, counts[i]=1; for i>=n, counts[i]=0.
+    2. Simulate d nights:
+       - For each night, total gems = n + (current night count) (initially n, then n+1, ..., n+d-1)
+       - Generate a random number between 1 and total_gems using a 16-bit LFSR.
+       - Find the inhabitant whose gem splits: iterate through counts, cumulative sum >= random number.
+       - Increment that inhabitant's count.
+    3. After d nights, compute the sum of the top r gem counts:
+       - Sort the counts array in descending order (use sequential max-find algorithm).
+       - Sum the first r values.
+    4. Output the sum on result and assert done for 1 cycle.
+
+Timing:
+  - The computation may take multiple cycles (up to a few hundred).
+  - done will be asserted when computation is complete.
+  - The module does not accept new start until done is asserted.
+
+Implementation Details:
+  - Use a 16-bit LFSR with polynomial 16'hD008 (taps at 16,15,13,4) for random number generation.
+  - The LFSR is seeded on reset with a non-zero value (e.g., 16'h0001).
+  - To generate random number in [1, total_gems], compute: rand = (lfsr % total_gems) + 1.
+  - Sorting can be implemented by repeatedly finding the maximum among the n elements and accumulating into sum, then setting that element to zero, repeated r times.
+  - Use a finite state machine (FSM) to control the sequence: IDLE, INIT, SPLIT, SORT, DONE.

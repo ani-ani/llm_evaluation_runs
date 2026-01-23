@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'curfew_enforcement' that computes the minimal maximum number of complaints for the 'curfew problem'.
+
+The module implements a simplified version of the algorithm:
+1. Compute prefix sums of student counts.
+2. Iterate from the start up to the midpoint of the house.
+3. For each step `i`, calculate the maximum number of students that can reach room `i` from the left (limited by distance `d`) and from the right (limited by distance `d`).
+4. The number of complaints at step `i` is `i` (ideal rooms) minus `floor(available_students / b)` (rooms we can fill).
+5. The result is the maximum complaints across all steps.
+
+Parameters:
+- `N`: Maximum number of rooms (default 64).
+- `MAX_D`: Maximum student running distance (default 32).
+- `B`: Capacity per room (default 16).
+
+Inputs:
+- `clk`: Clock signal.
+- `rst_n`: Active-low reset.
+- `start`: Start computation (loads inputs and begins).
+- `d_in`: Student running distance (unsigned 8-bit).
+- `valid_in`: High when `a_in` contains valid data.
+- `a_in`: Current room's student count (unsigned 32-bit).
+- `addr_out`: Output address for requesting room data (unsigned 6-bit).
+
+Outputs:
+- `result`: The minimal maximum complaints (unsigned 16-bit).
+- `done`: High when computation is complete.
+- `req_en`: High when requesting data (ready for next `a_in`).
+
+Behavior:
+The module operates as a state machine (IDLE, LOAD, COMPUTE, DONE).
+1. **IDLE**: Waits for `start`. Sets `req_en` high to fetch room 0.
+2. **LOAD**: Receives `a_in` values sequentially. Maintains prefix sum array and total sum. Increments `addr_out`. Stops when `N` values loaded. Transitions to COMPUTE.
+3. **COMPUTE**: Performs the main loop for `i` from 1 to `N/2`. 
+   - Calculate `left_limit = i * d`.
+   - Calculate `right_limit = N - 1 - i * d`.
+   - Get `left_students = prefix[left_limit]`.
+   - Get `right_students = total_sum - prefix[right_limit]`.
+   - `max_fill = min(left_students, right_students)`.
+   - `complaints = i - (max_fill / B)`.
+   - Update `max_complaints` if `complaints` is higher.
+   - `result` updates only when the loop finishes.
+4. **DONE**: Sets `done` high. Waits for reset or start.
+
+Constraints:
+- Use 32-bit arithmetic for sums.
+- Use 6-bit for addresses.
+- Unroll or iterate, but iteration must be bounded (max 32 cycles for the compute loop).
+- Division by B: Since B is constant (or small), use shift if power of 2, or subtraction loop.

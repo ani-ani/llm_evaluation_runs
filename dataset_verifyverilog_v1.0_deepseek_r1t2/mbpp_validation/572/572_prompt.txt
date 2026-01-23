@@ -1,0 +1,124 @@
+module find_unique_numbers (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [7:0] arr_5,
+    input wire [7:0] arr_6,
+    input wire [7:0] arr_7,
+    input wire [3:0] len,  // Number of valid elements (1-8)
+    output reg [7:0] result_0,
+    output reg [7:0] result_1,
+    output reg [7:0] result_2,
+    output reg [7:0] result_3,
+    output reg [7:0] result_4,
+    output reg [7:0] result_5,
+    output reg [7:0] result_6,
+    output reg [7:0] result_7,
+    output reg [3:0] result_len,
+    output reg done
+);
+
+    // State machine states
+    localparam IDLE = 2'b00;
+    localparam COUNT = 2'b01;
+    localparam OUTPUT = 2'b10;
+    localparam FINISH = 2'b11;
+
+    reg [1:0] state;
+    reg [3:0] idx;  // Input index
+    reg [3:0] out_idx;  // Output index
+    reg [7:0] freq_table [0:255];  // Frequency count for values 0-255
+    reg [7:0] input_reg [0:7];  // Store input values
+    reg [3:0] len_reg;  // Store input length
+
+    integer i;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            state <= IDLE;
+            done <= 0;
+            result_len <= 0;
+            idx <= 0;
+            out_idx <= 0;
+            result_0 <= 0; result_1 <= 0; result_2 <= 0; result_3 <= 0;
+            result_4 <= 0; result_5 <= 0; result_6 <= 0; result_7 <= 0;
+            // Clear frequency table
+            for (i = 0; i < 256; i = i + 1) begin
+                freq_table[i] <= 8'b0;
+            end
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    idx <= 0;
+                    out_idx <= 0;
+                    result_len <= 0;
+                    if (start) begin
+                        // Store inputs
+                        input_reg[0] <= arr_0;
+                        input_reg[1] <= arr_1;
+                        input_reg[2] <= arr_2;
+                        input_reg[3] <= arr_3;
+                        input_reg[4] <= arr_4;
+                        input_reg[5] <= arr_5;
+                        input_reg[6] <= arr_6;
+                        input_reg[7] <= arr_7;
+                        len_reg <= len;
+                        // Clear frequency table for next computation
+                        for (i = 0; i < 256; i = i + 1) begin
+                            freq_table[i] <= 8'b0;
+                        end
+                        state <= COUNT;
+                    end
+                end
+
+                COUNT: begin
+                    if (idx < len_reg) begin
+                        // Count frequency of current element
+                        freq_table[input_reg[idx]] <= freq_table[input_reg[idx]] + 1;
+                        idx <= idx + 1;
+                    end else begin
+                        idx <= 0;  // Reset for output phase
+                        state <= OUTPUT;
+                    end
+                end
+
+                OUTPUT: begin
+                    if (idx < len_reg) begin
+                        // Check if this element is unique (count == 1)
+                        if (freq_table[input_reg[idx]] == 8'd1) begin
+                            // Output this element
+                            case (out_idx)
+                                4'd0: result_0 <= input_reg[idx];
+                                4'd1: result_1 <= input_reg[idx];
+                                4'd2: result_2 <= input_reg[idx];
+                                4'd3: result_3 <= input_reg[idx];
+                                4'd4: result_4 <= input_reg[idx];
+                                4'd5: result_5 <= input_reg[idx];
+                                4'd6: result_6 <= input_reg[idx];
+                                4'd7: result_7 <= input_reg[idx];
+                            endcase
+                            out_idx <= out_idx + 1;
+                            result_len <= result_len + 1;
+                        end
+                        idx <= idx + 1;
+                    end else begin
+                        state <= FINISH;
+                    end
+                end
+
+                FINISH: begin
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule

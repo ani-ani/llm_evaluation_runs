@@ -1,0 +1,54 @@
+module solve_linear_congruence (
+    input clk,
+    input rst_n,
+    input start,
+    input signed [31:0] a,    // Coefficient of x
+    input signed [31:0] b,    // Constant term
+    input [31:0] P,           // Target remainder
+    input [31:0] M,           // Modulus
+    output reg [31:0] x,      // Solution
+    output reg done           // Computation complete
+);
+
+// This module solves: (a*x + b) % M = P
+// It finds the minimal non-negative x by iterating from 0 to M-1
+// Since M <= 1,000,000 in original problem, we scale down to M <= 256 for hardware feasibility
+
+reg [31:0] x_reg;
+reg computing;
+wire signed [63:0] product = a * x_reg;
+wire signed [63:0] sum = product + b;
+wire signed [63:0] value_signed = sum % $signed(M);
+wire [31:0] value = (value_signed < 0) ? value_signed + $signed(M) : value_signed;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        x_reg <= 0;
+        x <= 0;
+        done <= 0;
+        computing <= 0;
+    end else begin
+        if (start && !computing) begin
+            x_reg <= 0;
+            done <= 0;
+            computing <= 1;
+        end else if (computing) begin
+            if (value == P) begin
+                x <= x_reg;
+                done <= 1;
+                computing <= 0;
+            end else if (x_reg == M - 1) begin
+                // Should not occur per problem statement
+                x <= 32'hFFFFFFFF;
+                done <= 1;
+                computing <= 0;
+            end else begin
+                x_reg <= x_reg + 1;
+            end
+        end else begin
+            done <= 0;
+        end
+    end
+end
+
+endmodule

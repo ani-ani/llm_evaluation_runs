@@ -1,0 +1,89 @@
+Design a sequential Verilog module named 'KindergartenPartition' that solves a simplified kindergarten partitioning problem.
+
+**Problem Specification:**
+- We have N kids (max 8) numbered 0 to N-1
+- Each kid is currently in one of 3 classes (teachers 0, 1, 2)
+- Each kid ranks all other kids (0 to N-2 in rank order)
+- We need to find the smallest T (0 to 7) such that:
+  1. No kid keeps the same teacher
+  2. All classmates of each kid are within top T ranked kids
+
+**Simplified Input Format:**
+- N (3 bits, max 8)
+- For each kid i (0 to N-1):
+  - current_teacher (2 bits)
+  - preference list: N-1 kids ranked from best to worst
+
+**Module Interface:**
+
+Inputs:
+- clk: clock signal
+- rst_n: active-low reset
+- start: start computation
+- input_valid: indicates current input data is valid
+- current_teacher [1:0]: current teacher of current kid
+- preference_list [7:0][2:0]: preference list for current kid (8 entries, 3 bits each, only first N-1 used)
+- current_kid [2:0]: current kid ID being configured (0 to N-1)
+- N [2:0]: number of kids (3 to 8)
+
+Outputs:
+- result [2:0]: minimum T value (0 to 7)
+- done: high when computation complete
+- error: high if no valid partition found
+
+**Implementation Requirements:**
+- Use state machine with states: IDLE, CONFIG, COMPUTE_T, CHECK_PARTITION, DONE
+- In CONFIG state: load preference data for each kid sequentially
+- In COMPUTE_T: iterate T from 0 to N-1
+- In CHECK_PARTITION: check all possible 3^N assignments (N≤8, 3^8=6561 max iterations)
+- For each assignment, verify:
+  1. All kids change teacher (assignment != current_teacher)
+  2. For each kid, all classmates are in top T of their preference list
+- Use combinational logic to check validity of a partition
+- Latency: approximately 1000-10000 clock cycles (depends on N)
+
+**Preference Checking Logic:**
+- For each kid, build a mask of "allowed classmates" (top T ranks)
+- When checking a partition, for each pair of kids in same class, check if they are allowed
+- Kid i and j are classmates if assigned to same teacher
+- Check if j is in i's top T and i is in j's top T
+
+**State Machine:**
+- IDLE: wait for start, reset internal state
+- CONFIG: load data for each kid when input_valid is high, advance current_kid
+- INIT_COMPUTE: initialize T = 0
+- CHECK_PARTITION: try all assignments (depth-first or use counter for 3^N combinations)
+- VERIFY: check if current assignment is valid
+- NEXT_ASSIGNMENT: increment assignment counter
+- NEXT_T: increment T and reset assignment counter
+- DONE: output result
+
+**Fixed-size arrays:**
+- preference_ranks [8:0][7:0][2:0]: stores rank position for each (kid, other_kid)
+- current_teachers [7:0][1:0]: stores current teacher for each kid
+- proposed_assignment [7:0][1:0]: current assignment being tested
+- allowed_mask [7:0][7:0]: bit mask where bit j=1 if kid j is in top T of kid i
+
+**Test Cases:**
+- N=6 example from problem: should output T=4
+- N=3 simple case: should output T=0
+- N=4 with complete graph: output 0-2 depending on preferences
+
+**Behavioral Description:**
+1. Wait in IDLE state until start signal
+2. In CONFIG state, when input_valid is high, load preference_ranks for current_kid and store current_teacher
+3. Once all N kids configured, transition to INIT_COMPUTE
+4. Set T = 0, assignment_mask = 0 (represents 3^N assignment as base-3 counter)
+5. In CHECK_PARTITION state, decode assignment_mask into proposed_assignment for all kids
+6. In VERIFY state, check:
+   a. For each kid i: if proposed_assignment[i] == current_teachers[i], invalid
+   b. For each pair (i,j) where proposed_assignment[i] == proposed_assignment[j]:
+      - Check if j is in i's top T (using allowed_mask)
+      - Check if i is in j's top T
+      - If either fails, invalid
+7. If valid, go to DONE with result = T
+8. If invalid, go to NEXT_ASSIGNMENT (increment assignment_mask)
+9. If assignment_mask reaches 3^N, go to NEXT_T (increment T, reset assignment_mask)
+10. If T exceeds N, go to DONE with error=1
+
+**Note:** This is a highly simplified version for benchmarking. Real problem handles N up to 200 and requires sophisticated graph algorithms. This version uses brute-force search with bounded parameters for hardware implementation.

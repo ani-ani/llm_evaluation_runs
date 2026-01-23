@@ -1,0 +1,48 @@
+module bonbon_arrangement(
+    input [4:0] a, b, c,
+    output valid,
+    output wire [1:0] grid [0:3][0:3]
+);
+
+// Check if counts are permutation of (6,5,5)
+wire cond1 = (a == 5 && b == 5 && c == 6);
+wire cond2 = (a == 5 && b == 6 && c == 5);
+wire cond3 = (a == 6 && b == 5 && c == 5);
+assign valid = cond1 || cond2 || cond3;
+
+// Determine which color has count 6
+wire color0_is_A = (a == 6);
+wire color0_is_B = (b == 6);
+wire color0_is_C = (c == 6);
+
+// Color mappings
+wire [1:0] color0 = color0_is_A ? 2'b00 : (color0_is_B ? 2'b01 : 2'b10);
+wire [1:0] color1 = color0_is_A ? 2'b01 : (color0_is_B ? 2'b00 : 2'b00);
+wire [1:0] color2 = color0_is_A ? 2'b10 : (color0_is_B ? 2'b10 : 2'b01);
+
+// Generate grid using generate blocks
+genvar i, j;
+generate
+    for (i = 0; i < 4; i = i + 1) begin: row
+        for (j = 0; j < 4; j = j + 1) begin: col
+            wire [2:0] sum;
+            wire [1:0] r;
+            wire [1:0] grid_val;
+            
+            assign sum = i + j;
+            
+            // Calculate remainder for cycle position
+            assign r = (sum < 3) ? sum[1:0] :
+                       (sum < 6) ? (sum - 3) : (sum - 6);
+            
+            // Determine color based on position
+            assign grid_val = (r == 2'b00) ? color0 :
+                              (r == 2'b01) ? color1 : color2;
+            
+            // Assign to grid only if valid
+            assign grid[i][j] = valid ? grid_val : 2'b00;
+        end
+    end
+endgenerate
+
+endmodule

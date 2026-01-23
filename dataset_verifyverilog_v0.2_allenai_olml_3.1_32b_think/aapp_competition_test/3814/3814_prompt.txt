@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'ramen_combinatorics' that implements a simplified version of the ramen topping problem. The module computes the number of valid bowl sets modulo M using inclusion-exclusion with Stirling numbers of the second kind.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] n // number of toppings (0-16)
+input [31:0] m // prime modulus
+
+Outputs:
+output reg [31:0] result // final answer modulo M
+output reg done // high when computation complete
+
+Parameters:
+- Max N = 16 (fixed-size arrays)
+- Use 32-bit arithmetic for modular operations
+- State machine with states: IDLE, PRECOMPUTE, CALCULATE_STIRLING, COMPUTE_SUM, DONE
+- Latency: approximately 1000 clock cycles for N=16
+
+Behavioral Description:
+1. IDLE: Wait for start signal
+2. PRECOMPUTE: Compute factorials and inverse factorials up to N
+3. CALCULATE_STIRLING: Compute Stirling numbers of the second kind S[n][k] using DP
+4. COMPUTE_SUM: Calculate inclusion-exclusion sum:
+   For k = 0 to N:
+     term = C(N,k) * S[k][1..k] * 2^(2^(N-k)) * (-1)^k
+5. DONE: Output result
+
+Key Formula (simplified for N≤16):
+result = Σ_{k=0}^{N} (-1)^k * C(N,k) * (Σ_{i=1}^{k} S[k][i] * 2^i) * 2^(2^(N-k)) mod M
+
+Where:
+- C(N,k) = binomial coefficient
+- S[k][i] = Stirling number of the second kind
+- 2^(N-k) computed mod (M-1) for exponentiation by Fermat's little theorem
+- 2^(2^(N-k)) computed using modular exponentiation
+
+All intermediate values must be kept modulo M to prevent overflow.
+
+State Machine:
+- IDLE: Reset all registers, wait for start
+- PRECOMPUTE: Loop i=0..N to compute fact[i], inv_fact[i]
+- CALCULATE_STIRLING: DP for S[n][k] using recurrence S[n][k] = k*S[n-1][k] + S[n-1][k-1]
+- COMPUTE_SUM: Main loop over k=0..N, accumulate result with sign flip
+- DONE: Set done=1, wait for reset
+
+Implementation Notes:
+- Use parameterizable array sizes
+- Use combinational blocks for arithmetic operations
+- Use sequential logic for loops and state transitions
+- All operations are modulo M, with special handling for exponentiation
+- Need to compute 2^(N-k) mod (M-1) for exponentiation

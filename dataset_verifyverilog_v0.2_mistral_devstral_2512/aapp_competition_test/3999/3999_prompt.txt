@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'cube_constructor' that determines if a valid 2x2 cube can be constructed from 4 tiles.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] tile0_tl, tile0_tr, tile0_br, tile0_bl // Tile 0 corners (top-left, top-right, bottom-right, bottom-left)
+input [7:0] tile1_tl, tile1_tr, tile1_br, tile1_bl // Tile 1 corners
+input [7:0] tile2_tl, tile2_tr, tile2_br, tile2_bl // Tile 2 corners
+input [7:0] tile3_tl, tile3_tr, tile3_br, tile3_bl // Tile 3 corners
+
+Outputs:
+output reg [31:0] result // Number of valid cube configurations
+output reg done // high when computation complete
+
+Latency: 32 clock cycles after start asserted.
+
+The module should implement a state machine with states: IDLE, PROCESSING, DONE.
+
+For each tile, corners are specified in order: top-left (0), top-right (1), bottom-right (2), bottom-left (3).
+A tile can be rotated 90° clockwise (4 positions).
+
+A valid cube requires:
+1. Each vertex (corner) of the 2x2 cube must have matching colors from adjacent tiles
+2. The 4 corners of the constructed 2x2 square must all match
+
+The algorithm:
+1. In IDLE state, wait for start signal
+2. In PROCESSING state:
+   - Enumerate all 4! * 4^4 = 24 * 256 = 6144 possible assignments of 4 tiles to 4 positions with rotations
+   - For each assignment, check the 4 corner vertices:
+     * Top-left vertex: must match tile0 bottom-right and tile1 bottom-left and tile2 top-right
+     * Top-right vertex: must match tile0 bottom-right and tile1 bottom-right and tile3 top-left
+     * Bottom-right vertex: must match tile2 bottom-right and tile3 bottom-left and tile1 bottom-right
+     * Bottom-left vertex: must match tile0 bottom-left and tile2 bottom-left and tile3 top-right
+   - Actually, for a 2x2 layout with tiles at positions (0,1,2,3) = (top-left, top-right, bottom-left, bottom-right):
+     * Top-left corner of cube: tile0 TL corner (which must match tile0's own edges at vertex)
+     * Top-right corner: tile0 TR must match tile1 TL
+     * Bottom-right corner: tile1 BR must match tile3 TR
+     * Bottom-left corner: tile2 BL must match tile3 TL
+     * Internal vertex (where 4 tiles meet): tile0 BR = tile1 BL = tile2 TR = tile3 TL
+
+Actually, let's implement the simplified 2x2 cube verification:
+- Fix tile0 at position 0 (top-left)
+- Try all rotations of tile0
+- Try all other tiles at positions 1,2,3
+- For each configuration, check the 4 corner vertices and 1 internal vertex
+- Count valid configurations where all vertex colors match
+
+The module cycles through configurations in PROCESSING state and accumulates result.
+
+Edge case: If no valid cube exists, result = 0.

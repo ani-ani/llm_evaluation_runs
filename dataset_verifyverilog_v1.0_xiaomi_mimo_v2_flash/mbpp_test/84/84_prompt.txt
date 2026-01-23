@@ -1,0 +1,280 @@
+module newman_conway_seq(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [4:0] n,  // Input n (1-16)
+    output reg [7:0] result,
+    output reg done
+);
+
+    // Newman-Conway Sequence: P(1)=P(2)=1, P(n)=P(P(n-1)) + P(n-P(n-1))
+    // We implement using dynamic programming with internal memory
+    // Maximum n = 16 (fits in 5 bits)
+    
+    reg [4:0] i;  // Iterator
+    reg [4:0] j;  // Inner loop iterator  
+    reg [7:0] p [15:0];  // Lookup table (index 0 = P(1))
+    reg computing;
+    reg [1:0] state;
+    
+    // State encoding
+    localparam IDLE = 2'b00;
+    localparam COMPUTE = 2'b01;
+    localparam DONE_STATE = 2'b10;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            computing <= 0;
+            i <= 0;
+            // Clear the array
+            p[0] <= 8'd0;
+            p[1] <= 8'd1;
+            p[2] <= 8'd1;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start && n >= 1) begin
+                        if (n == 1 || n == 2) begin
+                            result <= 8'd1;
+                            done <= 1;
+                            state <= DONE_STATE;
+                        end else begin
+                            // Initialize for computation
+                            i <= 3;
+                            p[1] <= 8'd1;
+                            p[2] <= 8'd1;
+                            computing <= 1;
+                            state <= COMPUTE;
+                        end
+                    end
+                end
+                
+                COMPUTE: begin
+                    if (i <= n) begin
+                        // Compute P(i) = P(P(i-1)) + P(i-P(i-1))
+                        // P(i-1) is at index i-2 in array (since p[0] is P(1))
+                        // But wait: we need to be careful about indexing
+                        
+                        // Let's use: p[k] stores P(k+1)
+                        // So p[i-2] = P(i-1)
+                        // P(i-1) = p[i-2] which gives value V
+                        // P(V) = p[V-1] (since V is the actual sequence value)
+                        // P(i - P(i-1)) = p[i - 1 - p[i-2]]
+                        
+                        // Actually, let's re-index: p[idx] where idx = sequence number - 1
+                        // P(n) is stored at p[n-1]
+                        // So: P(i) = P(P(i-1)) + P(i-P(i-1))
+                        // P(i-1) = p[i-2]
+                        // Let val1 = p[i-2] (which is P(i-1))
+                        // P(P(i-1)) = P(val1) = p[val1-1]
+                        // P(i-P(i-1)) = P(i - val1) = p[i - val1 - 1]
+                        
+                        reg [7:0] val1;
+                        val1 = p[i-2];
+                        
+                        if (val1 >= 1 && val1 < i && (i - val1 - 1) < 16) begin
+                            p[i-1] <= p[val1-1] + p[i - val1 - 1];
+                            i <= i + 1;
+                        end else begin
+                            // Error case - should not happen
+                            state <= DONE_STATE;
+                            done <= 1;
+                        end
+                        
+                        if (i == n) begin
+                            result <= p[n-1];
+                            done <= 1;
+                            state <= DONE_STATE;
+                        end
+                    end else begin
+                        // Done computing
+                        result <= p[n-1];
+                        done <= 1;
+                        state <= DONE_STATE;
+                    end
+                end
+                
+                DONE_STATE: begin
+                    done <= 0;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule
+
+// Note: The above combinational logic inside always block needs cleanup
+// Corrected version with proper sequential logic:
+
+module newman_conway_seq(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [4:0] n,
+    output reg [7:0] result,
+    output reg done
+);
+
+    reg [4:0] i;
+    reg [7:0] p [15:0];  // p[k] = P(k+1)
+    reg [1:0] state;
+    
+    localparam IDLE = 2'b00;
+    localparam COMPUTE = 2'b01;
+    localparam DONE_STATE = 2'b10;
+    
+    // Temporary computation registers
+    reg [7:0] val1;
+    reg [7:0] term1;
+    reg [7:0] term2;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            i <= 0;
+            p[0] <= 8'd1;
+            p[1] <= 8'd1;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        if (n == 1 || n == 2) begin
+                            result <= 8'd1;
+                            done <= 1;
+                            state <= DONE_STATE;
+                        end else begin
+                            i <= 3;
+                            state <= COMPUTE;
+                        end
+                    end
+                end
+                
+                COMPUTE: begin
+                    if (i <= n) begin
+                        val1 <= p[i-2];  // P(i-1)
+                        // Need two more cycles for memory reads
+                        // This module needs restructuring
+                        state <= COMPUTE;  // Stay in compute
+                    end else begin
+                        result <= p[n-1];
+                        done <= 1;
+                        state <= DONE_STATE;
+                    end
+                end
+                
+                DONE_STATE: begin
+                    done <= 0;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule
+
+// FINAL CORRECTED VERSION WITH MULTIPLE CYCLES PER COMPUTATION:
+
+module newman_conway_seq(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [4:0] n,
+    output reg [7:0] result,
+    output reg done
+);
+
+    reg [4:0] i;  // Current index being computed
+    reg [7:0] p [15:0];  // Lookup table, p[k] = P(k+1)
+    reg [1:0] state;
+    reg [2:0] substate;  // For multi-cycle computation
+    
+    // States
+    localparam IDLE = 2'b00;
+    localparam COMPUTE = 2'b01;
+    localparam DONE_STATE = 2'b10;
+    
+    // Substates for computing P(i) = P(P(i-1)) + P(i-P(i-1))
+    localparam READ1 = 3'b001;  // Read P(i-1)
+    localparam READ2 = 3'b010;  // Read P(P(i-1)) and P(i-P(i-1))
+    localparam WRITE = 3'b011;  // Write sum
+    
+    reg [7:0] val_i_minus_1;
+    reg [7:0] p_of_val;
+    reg [7:0] p_of_diff;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            substate <= READ1;
+            done <= 0;
+            result <= 0;
+            i <= 0;
+            // Initialize base cases
+            p[0] <= 8'd1;  // P(1)
+            p[1] <= 8'd1;  // P(2)
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start && n >= 1) begin
+                        if (n == 1 || n == 2) begin
+                            result <= 8'd1;
+                            done <= 1;
+                            state <= DONE_STATE;
+                        end else begin
+                            i <= 3;
+                            substate <= READ1;
+                            state <= COMPUTE;
+                        end
+                    end
+                end
+                
+                COMPUTE: begin
+                    case (substate)
+                        READ1: begin
+                            // Read P(i-1)
+                            val_i_minus_1 <= p[i-2];  // p[i-2] = P(i-1)
+                            substate <= READ2;
+                        end
+                        
+                        READ2: begin
+                            // Read P(P(i-1)) and P(i-P(i-1))
+                            p_of_val <= p[val_i_minus_1 - 1];  // P(P(i-1))
+                            p_of_diff <= p[i - val_i_minus_1 - 1];  // P(i-P(i-1))
+                            substate <= WRITE;
+                        end
+                        
+                        WRITE: begin
+                            // Compute and store P(i)
+                            p[i-1] <= p_of_val + p_of_diff;
+                            
+                            if (i == n) begin
+                                result <= p_of_val + p_of_diff;
+                                done <= 1;
+                                state <= DONE_STATE;
+                            end else begin
+                                i <= i + 1;
+                                substate <= READ1;
+                            end
+                        end
+                    endcase
+                end
+                
+                DONE_STATE: begin
+                    done <= 0;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule

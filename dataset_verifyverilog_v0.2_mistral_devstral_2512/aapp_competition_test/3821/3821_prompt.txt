@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'optimal_probability' that computes the optimal probability of getting exactly one problem from a subset of friends.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] n // number of friends (max 8)
+input [7:0] p_in // current friend probability in Q8.8 format (1.0 = 8'hFF)
+
+Outputs:
+output reg [31:0] result // probability in Q16.16 format
+output reg done // high when computation complete
+
+Behavior:
+The module implements the following algorithm:
+1. Receive probabilities one by one (or pre-stored, here stream input)
+2. Sort probabilities (assumed sorted descending externally or handled internally if multiple cycles)
+3. Maintain two values: 'prod' (product of (1-p) for all previous) and 'sum' (cumulative probability)
+4. Update rule: new_sum = sum * (1-p) + prod * p; new_prod = prod * (1-p)
+5. Track max probability encountered.
+
+Since streaming sorting is complex, assume inputs are provided in descending order or implement a simplified selector for 8 inputs.
+
+Simplified approach for 8 inputs:
+- Input sequence is clocked in 8 cycles.
+- Accumulate the best probability using the update rule.
+- Result is the maximum probability found during processing.
+
+State Machine: IDLE, INPUT, PROCESS, DONE.
+Latency: 10 clock cycles after start (8 to load, 2 to finalize).
+
+Note: Use Q8.8 for inputs (0-255 represents 0.0-1.0) and Q16.16 for internal calculations.
+Example: 0.1 is 8'd25 (approx), 0.8 is 8'd204.

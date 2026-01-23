@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'tree_marking' that solves the maximum node marking problem for trees.
+
+Problem: Find maximum nodes that can be marked such that marked nodes are at least distance D apart.
+
+Adaptation: For N ≤ 15 nodes, use brute-force subset enumeration. Tree edges are given where node i (1..N-1) has parent x_i.
+
+Module Specification:
+module tree_marking (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] N,           // Number of nodes (1-15)
+    input [3:0] D,           // Minimum distance (1-15)
+    input [14:0] edges,      // Packed edge info: edge[i] = parent of node i+1, stored as 15*4-bit values
+    output reg [3:0] result, // Maximum number of marked nodes
+    output reg done          // Computation complete
+);
+
+Architecture:
+- Use state machine: IDLE, INIT, ENUMERATE, VALIDATE, UPDATE_MAX, DONE
+- Store current subset as 15-bit mask in reg [14:0] current_mask
+- Use a computation state machine for distance calculation
+- For distance between two nodes, use BFS-like traversal or compute LCA
+- Since N is small (≤15), we can precompute all-pairs distances or compute on-the-fly
+
+Distance Computation:
+- Maintain parent array from edges input
+- For nodes a,b: compute distance by climbing up to root and finding LCA
+- Distance = depth[a] + depth[b] - 2*depth[LCA]
+- Can precompute depths during initialization
+
+Algorithm:
+1. From edges input, build parent array and compute depth of each node
+2. Enumerate all subsets 0 to 2^N - 1
+3. For each subset:
+   - Check if any two marked nodes have distance < D
+   - If valid, count marked bits and update maximum
+4. Output maximum count
+
+Latency: Approximately 2^(N+1) * (N^2) cycles, for N=15 this is acceptable
+
+State Machine States:
+- IDLE: Wait for start signal
+- INIT: Build parent array and compute depths from edges
+- ENUMERATE: Generate next subset mask
+- VALIDATE: Check distance constraint for current subset
+- UPDATE_MAX: Update result if subset is valid
+- DONE: Set done signal high
+
+For validation state:
+- Use nested loops to check all pairs of marked nodes
+- For each pair (i,j) both in subset, compute distance and compare with D
+- Distance computation can use a sub-state machine or combinational logic
+
+Note: edges input is packed as 15 groups of 4 bits each, representing parent of node 1 through 14 (node 0 is root). Since N can be less than 15, unused entries are ignored.
+
+Output timing: result available 2 clock cycles after done goes high, done remains high for 1 cycle.

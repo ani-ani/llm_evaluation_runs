@@ -1,0 +1,71 @@
+module traveling_salesman (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Number of cities (1-8) and number of edges (0-8)
+    input wire [3:0] n,
+    input wire [3:0] m,
+    
+    // Edge inputs: 8 edges, each with source (a) and destination (b)
+    // Cities are numbered 1..n. Unused edges should have valid_edges[i]=0.
+    input wire [3:0] edges_a [0:7],
+    input wire [3:0] edges_b [0:7],
+    input wire [7:0] valid_edges,
+    
+    // Outputs
+    output reg [7:0] flights,   // Minimum number of flights
+    output reg [7:0] airports,  // Bitmask of cities (1-8) whose airport can be visited
+    output reg done
+);
+
+// ============================================================================
+// Algorithm Overview
+// ============================================================================
+// 1. Parse inputs: build edge list from valid_edges and the pairs (edges_a, edges_b).
+// 2. Compute maximum bipartite matching size M_max between left set (cities as sources)
+//    and right set (cities as destinations). This is done by enumerating all subsets
+//    of valid edges (up to 2^m subsets) and checking if each subset forms a valid
+//    matching (no shared vertices). For each subset, compute its size (number of edges)
+//    and keep track of the maximum.
+// 3. Minimum flights = n - M_max - 1. (If n=0, flights=0; but n>=1.)
+// 4. For each city i from 1 to n:
+//    a. Compute M_i: maximum matching size when all edges with source = i are ignored.
+//       (Same enumeration method, but skip edges where edges_a == i.)
+//    b. If M_i == M_max, then city i can be a start of some path in some minimum
+//       path cover (i.e., it can be unmatched on the left).
+//    c. Compute M'_i: maximum matching size when all edges with destination = i are ignored.
+//    d. If M'_i == M_max, then city i can be an end of some path (unmatched on the right).
+//    e. If either condition holds, set bit (i-1) in the airports output.
+// 5. After computing all, assert done.
+//
+// Implementation details:
+// - The module uses a state machine with states: IDLE, READ_EDGES, COMPUTE_MAX,
+//   COMPUTE_L_UNMATCH, COMPUTE_R_UNMATCH, OUTPUT, DONE.
+// - A 9-bit counter (since 2^8=256) is used to iterate over subsets.
+// - For each subset, we check validity by iterating over edges (0 to 7) and maintaining
+//   bitmasks of used left and right vertices (8 bits each). If a conflict occurs,
+//   the subset is invalid.
+// - The maximum matching computation is repeated multiple times (for original graph,
+//   and for each vertex removal). To save cycles, we compute the original M_max first,
+//   then for each city we recompute matching size with the city removed, comparing to M_max.
+// - The module assumes that n and m are provided at the start and remain constant
+//   during computation.
+// - The module operates on positive clock edges and is reset active-low.
+// - The start signal initiates the computation. The done signal goes high for one
+//   cycle when results are ready.
+//
+// Timing: The computation may take many cycles (up to (2^m) * (m) * (2n) ), but for
+// m<=8 and n<=8, it's acceptable for simulation. For real hardware, a more efficient
+// algorithm could be used, but this specification prioritizes clarity for benchmarking.
+//
+// Note: Cities are numbered 1..n. In the airports bitmask, bit 0 corresponds to city 1,
+// bit 1 to city 2, etc.
+//
+// ============================================================================
+
+// TODO: Implement the state machine and logic as described.
+// The exact implementation details are left to the designer, but the above
+// algorithm must be followed to produce correct results for the scaled problem.
+
+endmodule

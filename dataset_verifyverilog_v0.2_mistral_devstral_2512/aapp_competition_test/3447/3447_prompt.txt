@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'sms_typing_optimizer' that computes minimum keypresses to type a target word using a dictionary of allowed words with T9-style digit mapping.
+
+**Simplified Problem Specification:**
+- Dictionary: Max 8 words, each max 8 characters
+- Target word: Max 16 characters
+- Digit mapping: 2=ABC, 3=DEF, 4=GHI, 5=JKL, 6=MNO, 7=PQRS, 8=TUV, 9=WXYZ, 1=space, 0=symbols
+- Algorithm: Dynamic programming - for each position in target, find min cost to reach it using dictionary words
+- Cost calculation: digits to type word + Up/Down presses (rank-based) + 'R' to start new word
+
+**Module Interface:**
+module sms_typing_optimizer(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] dict_size,           // Number of words in dictionary (max 8)
+    input [7:0] dict_words [0:7][0:7], // Dictionary words as ASCII bytes (8 words x 8 chars)
+    input [7:0] dict_lens [0:7],     // Lengths of each dictionary word
+    input [7:0] target [0:15],       // Target word as ASCII bytes (16 chars)
+    input [7:0] target_len,          // Target word length
+    output reg [31:0] min_presses,   // Minimum number of keypresses
+    output reg done,                 // Computation complete
+    output reg [255:0] debug_path    // Encoded solution path for verification
+);
+
+**Behavior:**
+1. On start signal, compute digit mapping for each dictionary word and target word
+2. Use DP: dp[i] = minimum presses to type first i chars of target
+3. For each position i, try all dictionary words w that match target substring starting at i
+4. Cost to add word w: len(w) (digit presses) + rank_cost(w) (U/D presses) + 1 (R press, except if concatenating to previous word)
+5. rank_cost(w) = min(rank[w], num_words - rank[w]) for Up vs Down
+6. Initialize dp[0] = 0, compute dp[1..target_len]
+7. Return dp[target_len]
+
+**Digit Mapping Function:**
+Implement combinational logic: char_to_digits[7:0] for each ASCII char 'a'-'z'
+
+**State Machine:**
+- IDLE: wait for start
+- PREPROCESS: convert all chars to digit sequences
+- DP_COMPUTE: run DP algorithm (bounded by 16 positions)
+- DONE: output result
+
+**Latency:** 50-100 cycles after start
+
+**Fixed-Point/Constraint Notes:**
+- Use 32-bit counters for presses (can exceed 2^32)
+- Maximum 16 DP states, 8 dictionary words
+- Rank cost calculation: compare rank vs (dict_size - rank)
+- Substring matching: compare up to 8 characters per position
+
+**Key Press Formula:**
+Total = (word_length) + (min(up_presses, down_presses)) + (R if not first word)
+where up_presses = rank-1, down_presses = dict_size-rank (wrap-around)
+
+Output result in min_presses (32-bit) and optional debug_path encoding.

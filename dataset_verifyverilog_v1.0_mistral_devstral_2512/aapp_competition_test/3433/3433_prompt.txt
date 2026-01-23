@@ -1,0 +1,178 @@
+module maze_escape (
+    input clk,
+    input rst_n,
+    input start,
+    input [127:0] grid_data,  // 8x8 grid, 2 bits per cell: 00=wall, 01=passable, 10=Joe, 11=Fire
+    output reg [5:0] result,   // 0-63 for exit time, 6'b111111 for IMPOSSIBLE
+    output reg done
+);
+
+// Internal state machine states
+localparam IDLE = 0;
+localparam FIRE_BFS_INIT = 1;
+localparam FIRE_BFS_PROCESS = 2;
+localparam FIRE_BFS_CHECK = 3;
+localparam JOE_BFS_INIT = 4;
+localparam JOE_BFS_PROCESS = 5;
+localparam JOE_BFS_CHECK = 6;
+localparam DONE = 7;
+
+reg [2:0] state;
+
+// Grid storage (8x8, 2 bits per cell)
+reg [1:0] grid [0:7][0:7];
+// Fire arrival times (0-63, 127=inf)
+reg [6:0] fire_time [0:7][0:7];
+// Joe visited flags
+reg visited [0:7][0:7];
+
+// Fire queue: {row[2:0], col[2:0]}
+reg [5:0] fire_queue [0:63];
+reg [5:0] fire_q_wr, fire_q_rd;
+wire fire_q_empty = (fire_q_wr == fire_q_rd);
+wire fire_q_full = (fire_q_wr == fire_q_rd + 1);
+
+// Joe queue: {row[2:0], col[2:0], time[5:0]}
+reg [11:0] joe_queue [0:63];
+reg [5:0] joe_q_wr, joe_q_rd;
+wire joe_q_empty = (joe_q_wr == joe_q_rd);
+wire joe_q_full = (joe_q_wr == joe_q_rd + 1);
+
+// Current processing registers
+reg [2:0] cur_r, cur_c;
+reg [6:0] cur_time;
+reg [1:0] dir;  // 0:up, 1:down, 2:left, 3:right
+
+// Neighbor calculation
+wire [2:0] nr = (dir == 0) ? cur_r - 1 : (dir == 1) ? cur_r + 1 : cur_r;
+wire [2:0] nc = (dir == 2) ? cur_c - 1 : (dir == 3) ? cur_c + 1 : cur_c;
+wire in_bounds = (nr < 8) && (nc < 8);
+wire [1:0] cell = grid[nr][nc];
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        fire_q_wr <= 0; fire_q_rd <= 0;
+        joe_q_wr <= 0; joe_q_rd <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    // Load grid from input
+                    for (integer i=0; i<8; i=i+1) begin
+                        for (integer j=0; j<8; j=j+1) begin
+                            grid[i][j] <= grid_data[(i*16) + (j*2) +: 2];
+                        end
+                    end
+                    state <= FIRE_BFS_INIT;
+                end
+            end
+
+            FIRE_BFS_INIT: begin
+                // Reset fire times
+                for (integer i=0; i<8; i=i+1)
+                    for (integer j=0; j<8; j=j+1)
+                        fire_time[i][j] <= 7'b1111111;
+                // Enqueue all fire cells
+                for (integer i=0; i<8; i=i+1) begin
+                    for (integer j=0; j<8; j=j+1) begin
+                        if (grid[i][j] == 2'b11 && !fire_q_full) begin
+                            fire_queue[fire_q_wr] <= {i[2:0], j[2:0]};
+                            fire_q_wr <= fire_q_wr + 1;
+                            fire_time[i][j] <= 0;
+                        end
+                    end
+                end
+                state <= FIRE_BFS_PROCESS;
+            end
+
+            FIRE_BFS_PROCESS: begin
+                if (!fire_q_empty) begin
+                    {cur_r, cur_c} <= fire_queue[fire_q_rd];
+                    fire_q_rd <= fire_q_rd + 1;
+                    cur_time <= fire_time[cur_r][cur_c];
+                    dir <= 0;
+                    state <= FIRE_BFS_CHECK;
+                end else begin
+                    state <= JOE_BFS_INIT;
+                end
+            end
+
+            FIRE_BFS_CHECK: begin
+                if (in_bounds && cell != 2'b00 && fire_time[nr][nc] == 7'b1111111) begin
+                    fire_time[nr][nc] <= cur_time + 1;
+                    if (!fire_q_full) begin
+                        fire_queue[fire_q_wr] <= {nr, nc};
+                        fire_q_wr <= fire_q_wr + 1;
+                    end
+                end
+                if (dir < 3) begin
+                    dir <= dir + 1;
+                end else begin
+                    state <= FIRE_BFS_PROCESS;
+                end
+            end
+
+            JOE_BFS_INIT: begin
+                // Reset visited
+                for (integer i=0; i<8; i=i+1)
+                    for (integer j=0; j<8; j=j+1)
+                        visited[i][j] <= 0;
+                // Find and enqueue Joe
+                for (integer i=0; i<8; i=i+1) begin
+                    for (integer j=0; j<8; j=j+1) begin
+                        if (grid[i][j] == 2'b10 && !joe_q_full) begin
+                            joe_queue[joe_q_wr] <= {i[2:0], j[2:0], 6'b000000};
+                            joe_q_wr <= joe_q_wr + 1;
+                            visited[i][j] <= 1;
+                        end
+                    end
+                end
+                state <= JOE_BFS_PROCESS;
+            end
+
+            JOE_BFS_PROCESS: begin
+                if (!joe_q_empty) begin
+                    {cur_r, cur_c, cur_time[5:0]} <= joe_queue[joe_q_rd];
+                    joe_q_rd <= joe_q_rd + 1;
+                    dir <= 0;
+                    state <= JOE_BFS_CHECK;
+                end else begin
+                    result <= 6'b111111;
+                    done <= 1;
+                    state <= DONE;
+                end
+            end
+
+            JOE_BFS_CHECK: begin
+                // Check boundary exit
+                if (cur_r == 0 || cur_r == 7 || cur_c == 0 || cur_c == 7) begin
+                    result <= cur_time[5:0];
+                    done <= 1;
+                    state <= DONE;
+                end else if (dir < 3) begin
+                    // Check neighbor for movement
+                    if (in_bounds && cell != 2'b00 && !visited[nr][nc] && (fire_time[nr][nc] > cur_time + 1)) begin
+                        if (!joe_q_full) begin
+                            joe_queue[joe_q_wr] <= {nr, nc, cur_time[5:0] + 1};
+                            joe_q_wr <= joe_q_wr + 1;
+                            visited[nr][nc] <= 1;
+                        end
+                    end
+                    dir <= dir + 1;
+                end else begin
+                    state <= JOE_BFS_PROCESS;
+                end
+            end
+
+            DONE: begin
+                // Wait for reset
+            end
+        endcase
+    end
+end
+
+endmodule

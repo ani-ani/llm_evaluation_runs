@@ -1,0 +1,41 @@
+Design a Verilog module that computes the set of nodes that lie on all shortest paths from source s to target t in a directed weighted graph.
+
+**Constraints:**
+- Maximum number of nodes N = 8
+- Maximum number of edges M = 16
+- Node IDs: 3 bits (0 to 7)
+- Edge weights: 16 bits (positive)
+- All shortest paths are guaranteed to exist.
+
+**Interface:**
+- Standard synchronous logic with active-low reset
+- Inputs: 
+  - clk, rst_n
+  - start: pulse to begin computation
+  - s, t: 3-bit source and target nodes
+  - num_edges: 5-bit number of valid edges (1 to 16)
+  - u[0:15]: 3-bit array of edge source nodes
+  - v[0:15]: 3-bit array of edge destination nodes  
+  - w[0:15]: 16-bit array of edge weights
+- Outputs:
+  - mask: 8-bit bitmask where bit i=1 means node i is on all shortest paths
+  - done: 1-bit pulse asserted for one cycle when computation is complete
+
+**Algorithm:**
+1. Use Bellman-Ford to compute forward distances (dist_s) and number of shortest paths (num_paths_s) from s to all nodes.
+2. Use Bellman-Ford on the reversed graph to compute backward distances (dist_t) and path counts (num_paths_t) from each node to t.
+3. For each node u (0 to 7):
+   - If dist_s[u] + dist_t[u] == dist_s[t] and num_paths_s[u] * num_paths_t[u] == num_paths_s[t], then node u lies on all shortest paths.
+4. Output the 8-bit mask.
+
+**Implementation Details:**
+- Implement as a state machine with states: IDLE, INIT_FORWARD, RELAX_FORWARD, INIT_BACKWARD, RELAX_BACKWARD, CHECK_NODES, DONE.
+- Use 32-bit internal registers for distances (to handle sums up to 8*65535) and 32-bit for path counts.
+- In RELAX_FORWARD/BACKWARD states, process one edge per clock cycle.
+- Use INF = 32'hFFFF_FFFF to represent unreachable nodes.
+- The Bellman-Ford iterations should run for N-1 (7) iterations.
+
+**Synthesizable Verilog:**
+- Use non-blocking assignments for sequential logic.
+- Avoid loops with variable bounds; instead use explicit state counters.
+- Ensure all registers are reset properly.

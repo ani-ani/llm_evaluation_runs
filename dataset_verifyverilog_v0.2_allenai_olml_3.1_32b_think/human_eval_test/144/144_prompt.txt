@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'fraction_simplifier' that determines if the product of two fractions is an integer.
+
+The module receives two fraction strings in the format "numerator/denominator" via a 16-byte fixed-width array for each fraction. It parses the strings, extracts the integer values, multiplies the numerators and denominators, and calculates the GCD of the numerator product and denominator product. If the GCD equals the denominator product, the result is an integer (True); otherwise, it is not (False).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation strobe
+input [127:0] frac1_str // 16-byte array representing first fraction string (ASCII)
+input [127:0] frac2_str // 16-byte array representing second fraction string (ASCII)
+
+Outputs:
+output reg result // 1 if x*n is an integer, 0 otherwise
+output reg done // High when computation is complete
+
+Internal Parameters/Variables:
+- ASCII value for '/' is 8'h2F
+- ASCII for digits '0'-'9' are 8'h30-8'h39
+- Numbers are small enough for 32-bit storage (max 10 digits)
+- The product of two 32-bit numbers fits in 64 bits, but we only need to check divisibility
+- Use a standard Euclidean algorithm for GCD
+
+Behavioral Description:
+1. **IDLE State**: Wait for `start` signal. When received, transition to PARSING.
+2. **PARSING State**: Iterate through the byte arrays (indices 0-15) for both strings. Convert ASCII digits to integers by subtracting 8'h30. Accumulate numbers until a slash (8'h2F) is found. Store parsed values in registers (num1, den1, num2, den2).
+3. **MULTIPLY State**: Calculate `num_prod = num1 * num2` and `den_prod = den1 * den2`.
+4. **GCD State**: Calculate GCD of `num_prod` and `den_prod` using a state machine or loop (Euclidean algorithm: while b != 0: (a, b) = (b, a % b)).
+5. **CHECK State**: Compare `gcd_result` with `den_prod`. If equal, set `result` to 1, else 0.
+6. **DONE State**: Assert `done` signal and return to IDLE.
+
+Latency: The result is valid approximately 100-200 clock cycles after `start` is asserted (parsing + multiplication + GCD iterations). Use a state machine with states: IDLE, PARSE_NUM1, PARSE_DEN1, PARSE_NUM2, PARSE_DEN2, MULTIPLY, GCD_LOOP, CHECK, DONE.

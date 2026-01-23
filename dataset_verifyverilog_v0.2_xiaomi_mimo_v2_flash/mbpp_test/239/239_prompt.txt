@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'sequence_counter' that computes the number of sequences of length n where each element is >= 2*previous element and <= m.
+
+The module uses dynamic programming with parameters M=16 (max m) and N=4 (max n).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] m // upper bound (1-16)
+input [2:0] n // sequence length (1-4)
+
+Outputs:
+output reg [15:0] result // final count
+output reg done // high when computation complete
+
+Latency: Result valid 120 clock cycles after start asserted (M*N iterations + overhead).
+
+Implementation Details:
+- Uses DP approach: T[i][j] = T[i-1][j] + T[i//2][j-1]
+- Base cases: T[i][1] = i, T[i][j] = 0 if i<j or i==0 or j==0
+- State Machine: IDLE -> INIT -> COMPUTE_ROW -> COMPUTE_COL -> UPDATE -> DONE
+- Internal storage: T[16:0][4:0] using block RAM or registers
+- Iteration counters: row_i (0 to m), col_j (1 to n)
+- When computing T[i][j]: need T[i-1][j] and T[i//2][j-1]
+- i//2 can be computed by shifting right by 1 bit
+- At each state, accumulate values and update T[row_i][col_j]
+- After computing all i for j=1, move to j=2, etc.
+- When col_j > n or row_i > m, transition to DONE
+- Result = T[m][n]
+
+For fixed-size implementation:
+- m valid range: 1-16
+- n valid range: 1-4
+- Result can be up to ~16^4 = 65536, so 16-bit result is sufficient
+- All indices use 5-bit registers (0-31 range)
+- Intermediate values fit in 16 bits
+
+Execution flow:
+1. IDLE: Wait for start signal
+2. INIT: Reset counters and clear T matrix
+3. For each column j from 1 to n:
+   - For each row i from 1 to m:
+     - COMPUTE_COL: Load T[i-1][j]
+     - UPDATE: Compute T[i//2][j-1] (if j>1) and add
+     - STORE: Write T[i][j]
+4. DONE: Set result = T[m][n], assert done
+
+The module should handle all test cases:
+- m=10, n=4 → result=4
+- m=5, n=2 → result=6
+- m=16, n=3 → result=84

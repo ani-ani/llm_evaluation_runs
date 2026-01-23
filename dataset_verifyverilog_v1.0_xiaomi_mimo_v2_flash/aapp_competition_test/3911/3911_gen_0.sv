@@ -1,0 +1,27 @@
+module slime_combiner (
+    input wire [16:0] n,
+    output reg [7:0] values [0:16],
+    output reg [4:0] count
+);
+
+integer i;
+reg [4:0] idx;
+
+always @(*) begin
+    // Initialize all values to 0
+    for (i = 0; i < 17; i = i + 1) begin
+        values[i] = 8'd0;
+    end
+    
+    idx = 5'd0;
+    // Process bits from high to low
+    for (i = 16; i >= 0; i = i - 1) begin
+        if (n[i]) begin
+            values[idx] = i + 1;
+            idx = idx + 1;
+        end
+    end
+    count = idx;
+end
+
+endmodule

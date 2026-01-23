@@ -1,0 +1,40 @@
+## Module Specification: chaos_calculator
+
+### Description
+Computes maximum chaos during train robbery scenario. Processes destruction in reverse order (adding coaches) to efficiently track train segments and their chaos values.
+
+### Interface
+
+#### Inputs
+- `clk`: Clock signal, rising edge triggered
+- `rst_n`: Active-low synchronous reset (minimum 2 cycles)
+- `start`: Start pulse, assert for 1 cycle to begin computation
+- `n` [3:0]: Number of active coaches (3-8)
+- `p0` to `p7` [7:0]: Passenger counts for coaches 0-7
+- `d0` to `d7` [3:0]: Destruction order, 1-based coach indices (e.g., 1=coach0, 2=coach1)
+
+#### Outputs
+- `max_chaos` [15:0]: Maximum chaos value observed during process
+- `done`: Asserted high for 1 cycle when computation completes
+
+### Behavior
+1. On reset: clears internal state
+2. On start: begins reverse processing
+3. For each of n steps:
+   - Activates next coach (in reverse destruction order)
+   - Computes connected segments among active coaches
+   - Calculates chaos per segment: ((sum + 9) / 10) * 10
+   - Updates maximum chaos: max_chaos = max(max_chaos, total_chaos * num_segments)
+4. After n steps: outputs result and done signal
+
+### Timing
+- Reset to idle: 2 cycles
+- Computation: n + 2 cycles total
+- Done pulse: 1 cycle
+- Total latency for n=8: 12 cycles
+
+### Implementation Notes
+- Uses combinational logic for segment detection (8 coach limit)
+- Handles division by 10 via integer arithmetic
+- All internal calculations use 16-bit width
+- Must register outputs before driving to avoid timing loops

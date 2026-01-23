@@ -1,0 +1,167 @@
+module secure_door (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] N,        // number of rooms (1..8)
+    input [3:0] M,        // number of doors (0..16)
+    input [127:0] edges,  // packed edges: 16 edges, each 8 bits: {u[3:0], v[3:0]}, outside is 8
+    output reg [3:0] result,
+    output reg done
+);
+
+    // State definitions
+    localparam S_IDLE = 0;
+    localparam S_INIT = 1;
+    localparam S_FOR_EDGE = 2;
+    localparam S_BFS_INIT = 3;
+    localparam S_BFS_LOOP = 4;
+    localparam S_BFS_EDGE_LOOP = 5;
+    localparam S_BFS_UPDATE = 6;
+    localparam S_COUNT = 7;
+    localparam S_UPDATE_MAX = 8;
+    localparam S_NEXT_EDGE = 9;
+    localparam S_DONE = 10;
+
+    // Registers
+    reg [4:0] state;
+    reg [3:0] edge_idx;      // current edge being processed
+    reg [8:0] visited_reg;   // visited nodes (bit i for node i, node 8 is outside)
+    reg [3:0] max_protected; // maximum protected rooms found
+    reg [3:0] count_curr;    // count for current edge
+    reg [3:0] i;             // counter for room iteration
+    reg [3:0] j;             // counter for edge iteration
+    reg [3:0] iteration_count; // BFS iteration counter
+    reg changed;             // flag for BFS progress
+    reg [8:0] visited_temp;  // temporary visited for BFS iteration
+    reg changed_temp;        // temporary changed for BFS iteration
+
+    // Combinational helpers for edge extraction
+    wire [7:0] current_edge = edges[edge_idx*8 +: 8];
+    wire [3:0] current_u = current_edge[7:4];
+    wire [3:0] current_v = current_edge[3:0];
+
+    wire [7:0] edge_j = edges[j*8 +: 8];
+    wire [3:0] u_j = edge_j[7:4];
+    wire [3:0] v_j = edge_j[3:0];
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= S_IDLE;
+            done <= 0;
+            result <= 0;
+            edge_idx <= 0;
+            visited_reg <= 0;
+            max_protected <= 0;
+            count_curr <= 0;
+            i <= 0;
+            j <= 0;
+            iteration_count <= 0;
+            changed <= 0;
+            visited_temp <= 0;
+            changed_temp <= 0;
+        end else begin
+            case (state)
+                S_IDLE: begin
+                    if (start) state <= S_INIT;
+                end
+
+                S_INIT: begin
+                    max_protected <= 0;
+                    edge_idx <= 0;
+                    visited_reg <= 0;
+                    state <= S_FOR_EDGE;
+                end
+
+                S_FOR_EDGE: begin
+                    if (edge_idx >= M) begin
+                        state <= S_DONE;
+                    end else begin
+                        state <= S_BFS_INIT;
+                    end
+                end
+
+                S_BFS_INIT: begin
+                    visited_reg <= 9'b0_0000_1000; // Set outside (node 8) as visited
+                    iteration_count <= 0;
+                    state <= S_BFS_LOOP;
+                end
+
+                S_BFS_LOOP: begin
+                    visited_temp <= visited_reg;
+                    changed_temp <= 0;
+                    j <= 0;
+                    state <= S_BFS_EDGE_LOOP;
+                end
+
+                S_BFS_EDGE_LOOP: begin
+                    if (j < M) begin
+                        if (j != edge_idx) begin
+                            // Check if edge connects visited to unvisited
+                            if (visited_reg[u_j] && !visited_reg[v_j]) begin
+                                visited_temp[v_j] <= 1;
+                                changed_temp <= 1;
+                            end
+                            if (visited_reg[v_j] && !visited_reg[u_j]) begin
+                                visited_temp[u_j] <= 1;
+                                changed_temp <= 1;
+                            end
+                        end
+                        j <= j + 1;
+                        if (j + 1 < M) begin
+                            state <= S_BFS_EDGE_LOOP;
+                        end else begin
+                            state <= S_BFS_UPDATE;
+                        end
+                    end else begin
+                        state <= S_BFS_UPDATE;
+                    end
+                end
+
+                S_BFS_UPDATE: begin
+                    visited_reg <= visited_temp;
+                    changed <= changed_temp;
+                    iteration_count <= iteration_count + 1;
+                    if (changed_temp && (iteration_count < 8)) begin
+                        state <= S_BFS_LOOP;
+                    end else begin
+                        state <= S_COUNT;
+                        count_curr <= 0;
+                        i <= 0;
+                    end
+                end
+
+                S_COUNT: begin
+                    if (i < N) begin
+                        if (!visited_reg[i]) begin
+                            count_curr <= count_curr + 1;
+                        end
+                        i <= i + 1;
+                        state <= S_COUNT;
+                    end else begin
+                        state <= S_UPDATE_MAX;
+                    end
+                end
+
+                S_UPDATE_MAX: begin
+                    if (count_curr > max_protected) begin
+                        max_protected <= count_curr;
+                    end
+                    state <= S_NEXT_EDGE;
+                end
+
+                S_NEXT_EDGE: begin
+                    edge_idx <= edge_idx + 1;
+                    state <= S_FOR_EDGE;
+                end
+
+                S_DONE: begin
+                    done <= 1;
+                    result <= max_protected;
+                end
+
+                default: state <= S_IDLE;
+            endcase
+        end
+    end
+
+endmodule

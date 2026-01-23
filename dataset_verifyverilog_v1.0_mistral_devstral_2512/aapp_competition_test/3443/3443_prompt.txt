@@ -1,0 +1,134 @@
+module symmetry_solver (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] n,           // Number of points (1-4)
+    input wire [15:0] points [3:0], // Array of 4 points, each 16-bit (x[7:0], y[7:0])
+    output wire [3:0] result,     // Minimum additions needed (0-15)
+    output wire done              // Computation complete (1 cycle)
+);
+
+// Module computes minimum additions needed to make points symmetric about a point
+// Only point symmetry is implemented (line symmetry omitted due to complexity)
+// Algorithm:
+// 1. Generate all possible symmetry centers from pairwise midpoints
+// 2. For each center, count points that already have their reflection
+// 3. Result = total_points - max_symmetric_pairs
+
+// Internal state and registers
+reg [3:0] max_symmetric;
+reg [3:0] current_result;
+reg computing;
+reg [1:0] state;
+
+// State machine states
+localparam IDLE = 2'd0;
+localparam COMPUTE = 2'd1;
+localparam DONE = 2'd2;
+
+// Point storage
+reg [15:0] stored_points [3:0];
+reg [2:0] stored_n;
+
+// Loop counters
+reg [1:0] i, j, k;
+reg [1:0] center_idx;
+
+// Midpoint computation (averages of x and y)
+wire [7:0] mid_x;
+wire [7:0] mid_y;
+assign mid_x = (stored_points[i][7:0] + stored_points[j][7:0]) >> 1;
+assign mid_y = (stored_points[i][15:8] + stored_points[j][15:8]) >> 1;
+
+// Reflection check: point k is reflection of point i through center (cx,cy)
+wire [7:0] refl_x;
+wire [7:0] refl_y;
+wire refl_match;
+assign refl_x = (cx << 1) - stored_points[k][7:0];
+assign refl_y = (cy << 1) - stored_points[k][15:8];
+assign refl_match = (refl_x == stored_points[k][7:0]) && (refl_y == stored_points[k][15:8]);
+
+// Center storage (from current i,j pair)
+reg [7:0] cx;
+reg [7:0] cy;
+reg [3:0] symmetric_count;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        computing <= 0;
+        max_symmetric <= 0;
+        current_result <= 4'd15; // Max additions (worst case)
+        done <= 0;
+        i <= 0;
+        j <= 0;
+        k <= 0;
+        center_idx <= 0;
+        symmetric_count <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start && n > 0) begin
+                    // Store input points
+                    stored_n <= n;
+                    stored_points[0] <= points[0];
+                    stored_points[1] <= points[1];
+                    stored_points[2] <= points[2];
+                    stored_points[3] <= points[3];
+                    // Initialize
+                    max_symmetric <= 0;
+                    current_result <= 4'd15;
+                    i <= 0;
+                    j <= 1;
+                    state <= COMPUTE;
+                    computing <= 1;
+                end
+            end
+            
+            COMPUTE: begin
+                // Generate candidate center from points[i] and points[j]
+                cx <= mid_x;
+                cy <= mid_y;
+                symmetric_count <= 0;
+                k <= 0;
+                
+                // Check all points for this center
+                if (k < stored_n) begin
+                    // Check if point k has reflection or is self-symmetric
+                    if (refl_match || (k == i) || (k == j)) begin
+                        symmetric_count <= symmetric_count + 1;
+                    end
+                    k <= k + 1;
+                end else begin
+                    // Completed checking this center
+                    if (symmetric_count > max_symmetric) begin
+                        max_symmetric <= symmetric_count;
+                    end
+                    
+                    // Move to next pair
+                    if (j < stored_n - 1) begin
+                        j <= j + 1;
+                    end else if (i < stored_n - 2) begin
+                        i <= i + 1;
+                        j <= i + 2;
+                    end else begin
+                        // All pairs processed
+                        current_result <= stored_n - max_symmetric;
+                        state <= DONE;
+                    end
+                end
+            end
+            
+            DONE: begin
+                done <= 1;
+                state <= IDLE;
+                computing <= 0;
+            end
+        endcase
+    end
+end
+
+assign result = current_result;
+
+endmodule

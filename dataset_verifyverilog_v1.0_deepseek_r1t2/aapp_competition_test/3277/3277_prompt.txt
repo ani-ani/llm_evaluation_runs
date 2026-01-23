@@ -1,0 +1,51 @@
+Module name: smooth_array
+
+Interface:
+  Inputs:
+    clk         : 1-bit, clock, rising edge active
+    rst_n       : 1-bit, active low synchronous reset
+    start       : 1-bit, start signal, pulse high for one cycle to initiate computation
+    N           : 4-bit, number of elements in array (1 to 16)
+    K           : 4-bit, period length (1 to N)
+    S           : 5-bit, target sum (0 to 16)
+    A0..A15     : 8-bit each, array elements. Only the first N elements are used; others are ignored.
+  Outputs:
+    result      : 5-bit, minimum number of changes (0 to 16)
+    done        : 1-bit, asserted high for one cycle when result is valid
+
+Description:
+  The module computes the minimum number of changes required to make the array K_S-smooth.
+  On reset (rst_n=0), internal state is cleared and done=0, result=0.
+  When start is asserted (high for one cycle), the module captures the current values of N, K, S, and A0..A15 and begins computation.
+  The computation involves two main steps:
+  
+  1. Frequency counting:
+     For each residue r = 0..K-1, count how many times each value v (0..S) appears among the array elements with index i such that i mod K = r and i < N.
+     This step requires iterating over the N elements.
+  
+  2. Dynamic programming (DP):
+     Let freq[r][v] be the frequency count for residue r and value v.
+     We want to choose values x_r (0 <= x_r <= S) such that sum_{r=0}^{K-1} x_r = S, and maximize profit = sum_{r} freq[r][x_r].
+     This is solved by DP: let dp[s] be the maximum profit achievable with some residues and sum s.
+     Initialize dp[0] = 0, dp[s] = -1 for s>0 (indicating impossible).
+     For each residue r from 0 to K-1:
+        new_dp[s] = max over v in [0, S] and s' = s - v >= 0 of dp[s'] + freq[r][v] (if dp[s'] != -1).
+     After processing all residues, profit = dp[S].
+     The minimum changes = N - profit.
+  
+  The module should complete within a bounded number of cycles. Since K <= 16, S <= 16, the DP requires at most (K * (S+1) * (S+1)) operations, which is acceptable.
+  
+  Timing:
+    - After start is asserted, the module will take a fixed number of cycles (e.g., N + K*S*S cycles) to complete.
+    - done is asserted for one cycle when the result is ready.
+    - The result remains valid until the next start or reset.
+  
+  Implementation details:
+    - The module should include a state machine with states: IDLE, LOAD, COUNT_FREQ, DP_INIT, DP_ITER, DONE.
+    - Internal storage:
+        * Array registers: 16 x 8 bits to store the captured array.
+        * Frequency counters: K x (S+1) x 8 bits (since counts <= ceil(N/K) <= 16, 8 bits is sufficient).
+        * DP arrays: two arrays of size (S+1) x 5 bits (for dp and new_dp), each entry can be -1 to N, so 5 bits (signed) is enough, but we can use 8 bits for simplicity.
+    - All counters and indices should be sized appropriately (e.g., 4 bits for i, 4 bits for r, 5 bits for v).
+  
+  The module must be synthesizable and follow standard synchronous design practices.

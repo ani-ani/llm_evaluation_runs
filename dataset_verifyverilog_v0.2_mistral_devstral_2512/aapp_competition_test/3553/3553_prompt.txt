@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'shortest_subarray_solver' that solves the shortest contiguous subarray problem with updates. The module processes an array of N integers (values 1 to K) and handles two types of queries: update an element, or query the shortest subarray containing all numbers 1 to K.
+
+Adaptations for hardware:
+- N = 16 (fixed array size)
+- K = 4 (number of distinct values to cover)
+- Values are 1 to 4 (represented as 2-bit unsigned integers)
+- The module processes queries sequentially over a simple streaming interface
+- Array is stored in internal block RAM (inferred as register file)
+
+Interface:
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing a query
+input query_type // 0: update, 1: query
+input [4:0] pos // Position to update (0 to 15)
+input [1:0] new_value // New value for update (1 to 4)
+
+Outputs:
+output reg result_valid // High when query result is ready
+output reg [5:0] shortest_length // Shortest subarray length (6 bits for up to 64, -1 encoded as 63)
+output reg processing_done // High when current query is complete
+
+Behavior:
+The module maintains an internal array of 16 elements, each 2 bits wide.
+On reset, initialize array to all 1s.
+
+For UPDATE query (query_type=0):
+- Change array[pos] to new_value
+- Set processing_done high after 1 cycle
+- result_valid stays low
+
+For QUERY query (query_type=1):
+- Perform a scan to find the shortest contiguous subarray containing all values 1,2,3,4
+- Use a state machine with states: IDLE, SCANNING, UPDATING_BEST, DONE
+- Algorithm: 
+  * Use a sliding window approach (two pointers)
+  * Maintain counts of each value in current window
+  * Track minimum window length that contains all K values
+  * This can be done by checking all possible start positions and extending end positions
+  * For small N=16, we can use nested loops: for each start position i, scan forward to find minimal end j
+  * Limit: max 256 iterations (16*16) per query
+- After scanning, set shortest_length to the found length (or 63 if not found)
+- Set result_valid high and processing_done high
+- Latency: up to 256 clock cycles from start assertion
+
+Use state machine states: IDLE, INIT_SCAN, OUTER_LOOP, INNER_LOOP, UPDATE_BEST, DONE
+
+All arithmetic is unsigned integer. The shortest_length output should be 6 bits wide to encode lengths 0-63 and special value 63 for -1 (not found).
+
+The module must be purely sequential (clocked logic) with no combinational loops.

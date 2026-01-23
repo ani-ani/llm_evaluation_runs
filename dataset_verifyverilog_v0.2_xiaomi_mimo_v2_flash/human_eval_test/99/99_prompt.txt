@@ -1,0 +1,65 @@
+Design a sequential Verilog module named 'closest_integer' that implements a string-to-integer conversion with specific rounding rules.
+
+The module takes a fixed-width string representation of a number and outputs the closest integer. If the number is equidistant from two integers, it rounds away from zero (e.g., 14.5 -> 15, -14.5 -> -15).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation strobe
+input [7:0][7:0] str_data // 8-character string input (ASCII), indexed [7:0] for char 0 to 7
+
+Outputs:
+output reg [15:0] result // Integer result (16-bit signed)
+output reg done // High when computation complete
+
+Latency: Result valid 30 clock cycles after start asserted.
+
+Implementation Details:
+1. String Format: Input is an ASCII string of max 8 chars representing an integer or decimal (e.g., "10", "-14.5", "15.3").
+2. Parsing: Extract sign, integer part, and fractional part (if present).
+3. Fixed-Point: Internally use Q16.16 format for processing (value * 65536).
+4. Rounding Logic:
+   - If fractional part >= 0.5: round up (ceil)
+   - If fractional part < 0.5: round down (floor)
+   - For negative numbers: round away from zero means -14.5 -> -15 (floor)
+   - However, the problem states "round away from zero", which for -14.5 means -15 is closer to -14.5 than -14 is? No, -14.5 is exactly halfway between -14 and -15. "Away from zero" means -15.
+   - Logic: Calculate remainder. If remainder >= 0.5, round up (add 1). If negative and remainder > 0.5, round down (subtract 1). For exactly 0.5, round away from zero (add 1 to positive, subtract 1 from negative).
+5. State Machine: IDLE, PARSE_SIGN, PARSE_INT, PARSE_FRAC, CALCULATE, ROUND, DONE.
+
+Example Conversions:
+"10" -> 10
+"14.5" -> 15 (0.5 >= 0.5, so +1)
+"-15.5" -> -16 (0.5 >= 0.5, so -1)
+"15.3" -> 15 (0.3 < 0.5, so no change)
+
+The module must handle the ASCII parsing in hardware. Assume characters arrive in the array.
+
+States:
+- IDLE: Wait for start. Reset state.
+- PARSE_SIGN: Check str_data[7] or first non-zero index for '-'. Set sign flag.
+- PARSE_INT: Read digits until '.' or end. Accumulate integer value.
+- PARSE_FRAC: Read fractional digits. Accumulate fractional value (scaled to 1/10, 1/100).
+- CALCULATE: Combine integer and fractional parts into Q16.16.
+- ROUND: Apply rounding rules based on fractional bit [15] (0.5 point in Q16.16). If fractional >= 0.5, adjust integer.
+- DONE: Assert done.
+
+Note: Since input is string, we must parse ASCII. Assume '0' is 0x30.
+Processing 8 chars takes approx 8 cycles.
+Calculation takes 2-4 cycles.
+Total latency ~15-20 cycles. Specify 30 for margin.
+
+Keep FSM simple. Handle string termination by checking for null or non-digit (like '.')
+
+Verilog Code Structure:
+module closest_integer(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0][7:0] str_data,
+    output reg [15:0] result,
+    output reg done
+);
+    // State encoding
+    // Internal registers for parsing
+    // Logic for state transitions
+endmodule

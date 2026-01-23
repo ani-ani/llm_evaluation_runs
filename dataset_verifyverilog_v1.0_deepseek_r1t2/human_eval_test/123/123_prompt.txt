@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'odd_collatz' that implements a scaled version of the Collatz sequence generation and odd number sorting.
+
+The module operates as follows:
+1. Accept a 16-bit input `n` (positive integer).
+2. Generate the Collatz sequence:
+   - If `n` is even: `n = n / 2`
+   - If `n` is odd: `n = 3 * n + 1`
+3. Collect odd numbers encountered into a buffer.
+4. Stop when `n` reaches 1 or when 16 iterations are performed (safety limit).
+5. Sort the collected odd numbers in ascending order.
+6. Output the sorted numbers sequentially.
+
+**Interface Specification:**
+
+Inputs:
+  input clk             // Clock signal
+  input rst_n           // Active-low reset
+  input start           // Start computation (pulse high for 1 cycle)
+  input [15:0] n        // Input integer (1 to 65535)
+
+Outputs:
+  output reg [15:0] result  // The sorted odd numbers output sequentially
+  output reg done           // High for 1 cycle when the last valid result is output
+
+**Behavior:**
+- **Reset:** When `rst_n` is low, the module returns to an `IDLE` state.
+- **Start:** When `start` is high, `n` is latched and the process begins.
+- **Processing:** The module processes one iteration per clock cycle.
+  - It maintains an internal buffer of odd numbers (max 8 elements, 16 bits each).
+  - If the buffer fills up, subsequent odd numbers are ignored.
+- **Sorting:** Once the sequence terminates (n==1) or iteration limit is reached, it sorts the buffer.
+  - Use a Bubble Sort algorithm (iterative state machine) for simplicity.
+- **Output:** After sorting, `result` presents the numbers one by one.
+  - `done` is asserted for 1 cycle after the last number is output.
+  - Total latency is roughly 16 (sequence) + 64 (sorting) + 8 (output) cycles.
+
+**Implementation Constraints:**
+- Maximum 8 odd numbers can be stored.
+- Use a state machine with states: IDLE, SEQ_RUN, SEQ_CHECK, SORT_LOOP, OUTPUT, DONE.
+- Output undefined values (X) if the buffer is empty or fewer than 8 numbers are found. Ensure `done` correctly marks the end.

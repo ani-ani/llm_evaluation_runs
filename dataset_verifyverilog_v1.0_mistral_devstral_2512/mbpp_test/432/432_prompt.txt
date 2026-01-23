@@ -1,0 +1,61 @@
+module trapezium_median (
+    input  wire        clk,        // Clock signal
+    input  wire        rst_n,      // Active-low reset
+    input  wire        start,      // Start computation
+    input  wire [15:0] base1,      // First base (Q16.16 fixed-point)
+    input  wire [15:0] base2,      // Second base (Q16.16 fixed-point)
+    input  wire [15:0] height,     // Height (Q16.16 fixed-point, unused)
+    output reg  [15:0] median,     // Result (Q16.16 fixed-point)
+    output reg         done        // Computation complete
+);
+
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam ADD  = 2'b01;
+    localparam DIV2 = 2'b10;
+    
+    reg [1:0] state, next_state;
+    reg [16:0] sum;  // 17-bit to hold sum of two 16-bit values
+    
+    // State register
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            median <= 16'b0;
+            done <= 1'b0;
+            sum <= 17'b0;
+        end else begin
+            state <= next_state;
+            
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        sum <= {1'b0, base1} + {1'b0, base2};
+                    end
+                end
+                
+                ADD: begin
+                    // Sum is already computed in IDLE
+                    // Fall through to DIV2
+                    median <= sum[16:1];  // Divide by 2 (shift right)
+                end
+                
+                DIV2: begin
+                    done <= 1'b1;
+                end
+            endcase
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: if (start) next_state = ADD;
+            ADD:  next_state = DIV2;
+            DIV2: next_state = IDLE;
+        endcase
+    end
+
+endmodule

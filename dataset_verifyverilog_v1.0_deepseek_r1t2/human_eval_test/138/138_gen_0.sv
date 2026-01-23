@@ -1,0 +1,1 @@
+module sum_even_check(\n    input [7:0] n,\n    output reg result\n);\n    always @(*) begin\n        result = (!n[0]) && (n >= 8'd8) && (n != 8'd10);\n    end\nendmodule

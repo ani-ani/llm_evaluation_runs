@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'grade_rounding' that implements a simplified grade rounding algorithm similar to the Efim and Strange's Grade problem.
+
+The module handles a fixed-point number represented as a string of digits with a decimal point. The goal is to apply rounding operations based on the available 'seconds' (t).
+
+**Module Type**: Sequential (FSM-based)
+**Clock Domain**: Standard synchronous logic
+
+**Inputs**:
+input clk // System clock
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] t // Number of rounding operations allowed (0-255)
+input [15:0] input_number_packed // Packed ASCII digits of the number (e.g., "10.245")
+
+**Outputs**:
+output reg [127:0] result_number // Output string buffer (padded with nulls)
+output reg [7:0] result_length // Length of the valid result string
+output reg done // High when computation complete
+
+**Functionality**:
+The input is a fixed-point number with up to 16 characters (e.g., "10.245"). The module must find the first fractional digit that is >= '5' (i.e., 53 in ASCII). If found, it should perform rounding operations moving from right to left, propagating carries. 
+
+**Algorithm**:
+1. Parse the input string to find the decimal point and the first digit >= '5' in the fractional part.
+2. If no such digit exists (or no fractional part), output the original number.
+3. If a digit >= '5' is found:
+   - Move a 'cursor' leftwards.
+   - Decrement 't' (available seconds) for each move.
+   - If the digit under the cursor is '4' or '5', it triggers a carry or stops.
+   - Carry propagation: If a digit becomes '10', it becomes '0' and a carry propagates to the left.
+   - If the carry propagates past the most significant digit, a new '1' is added.
+   - All digits to the right of the cursor are removed (truncation).
+4. Stop when 't' reaches 0 or rounding is complete.
+
+**Latency**: Result valid 100 clock cycles after start asserted (to allow for string scanning and carry propagation).
+
+**State Machine States**:
+- IDLE: Wait for start signal. Reset internal pointers.
+- FIND_TRIGGER: Scan fractional part for first digit >= '5'.
+- ROUNDING: Decrement 't', move cursor left, check for carry conditions.
+- CARRY_PROP: Handle carry propagation (changing '9' to '0' and moving left).
+- FORMAT: Clean up trailing decimal points or zeros.
+- DONE: Assert done signal.
+
+**Data Representation**:
+- Input `input_number_packed`: Assumed to be ASCII characters. For testing, we will pass raw ASCII values.
+- Output `result_number`: ASCII string of the result, left-aligned.
+
+**Example**:
+- Input: "10.245", t=1 -> Output: "10.25"
+- Input: "10.245", t=2 -> Output: "10.3"
+- Input: "9.2", t=100 -> Output: "9.2"
+- Input: "9.9", t=1 -> Output: "10"
+
+The module should handle the logic where '9' becomes '0' with a carry, and where the decimal point is crossed (e.g., 9.9 -> 10).

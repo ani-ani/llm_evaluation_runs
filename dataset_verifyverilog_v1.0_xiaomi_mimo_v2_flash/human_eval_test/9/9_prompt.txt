@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'rolling_max' that computes rolling maximum for a sequence of integers.
+
+The module processes inputs in a streaming fashion:
+- Accepts one number per clock cycle when 'valid_in' is high
+- Outputs the rolling maximum for that position when 'valid_out' is high
+- Uses a done signal to indicate completion after processing N elements
+
+Interface Specification:
+  Inputs:
+    - clk: clock signal (active rising edge)
+    - rst_n: active-low reset
+    - start: asserted for 1 cycle to initialize the module before first input
+    - valid_in: high when 'data_in' contains valid input
+    - data_in: 16-bit signed integer input (range: -32768 to 32767)
+    - data_in_valid: high when data_in is valid (toggles high for each new input)
+    - data_in_done: high on the last input (to terminate and produce final outputs)
+
+  Outputs:
+    - result: 16-bit signed integer, the rolling maximum at each position
+    - valid_out: high for 1 cycle when result contains valid output
+    - done: high for 1 cycle after all processing is complete
+
+Behavior:
+1. On reset, go to IDLE state, reset internal maximum
+2. Wait for start signal
+3. When valid_in and data_in_valid are both high:
+   - Compare data_in with current maximum
+   - Update maximum (max = max(current_max, data_in))
+   - Output the updated maximum
+   - Set valid_out high for 1 cycle
+4. When data_in_done is high on the last input:
+   - Set done high for 1 cycle after output is generated
+   - Return to IDLE state
+
+Implementation Details:
+- Use signed 16-bit arithmetic for comparisons
+- Internal state machine: IDLE, WAIT_FOR_START, PROCESSING, DONE
+- Track current maximum in a register
+- When processing first input (no previous maximum), the first output is the first input itself
+- Maximum output must maintain the highest value seen so far
+- After 'done' is asserted, module waits in IDLE until next start
+
+Example sequence: [3, 2, 3, 100, 3]
+Cycle 0: start=1, wait for first input
+Cycle 1: valid_in=1, data_in=3 -> output=3 (max=3)
+Cycle 2: valid_in=1, data_in=2 -> output=3 (max=3)
+Cycle 3: valid_in=1, data_in=3 -> output=3 (max=3)
+Cycle 4: valid_in=1, data_in=100 -> output=100 (max=100)
+Cycle 5: valid_in=1, data_in=3 -> output=100 (max=100), data_in_done=1 -> done=1
+
+Latency: Result is available 1-2 clock cycles after each valid input is presented. After the last input with data_in_done=1, done is asserted 1 cycle later.
+
+Must be compatible with Icarus Verilog. Use non-blocking assignments for sequential logic.

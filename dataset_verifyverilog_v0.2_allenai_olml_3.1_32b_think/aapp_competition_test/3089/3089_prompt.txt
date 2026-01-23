@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'taxi_expected_distance' that calculates the expected Manhattan distance between two random points uniformly distributed inside a convex polygon.
+
+The mathematical approach:
+1. Expected distance = E[|x1-x2|] + E[|y1-y2|]
+2. For a convex polygon, E[|x1-x2|] = (2/Area²) * integral over polygon of (x * area of sub-polygon to right of x)
+3. We compute this using the formula: E[|X1-X2|] = (4/Area²) * sum over vertices of contributions
+4. Each vertex contribution involves computing area of polygon clipped at x-coordinate
+
+Simplified algorithm for hardware:
+- Parse n vertices (we'll use n ≤ 8 for hardware)
+- Compute polygon area using cross product sum
+- For each unique x-coordinate from vertices, compute contribution to expected value
+- Use signed area calculation with fixed-point arithmetic
+- Accumulate results using Q16.16 format
+
+Q16.16 Fixed-Point Format:
+- 16 integer bits, 16 fractional bits
+- Values represented as integer * 65536
+- Example: 3.5 = 0x00038000
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [5:0] n // number of vertices (max 8)
+input [31:0] x_coords [0:7] // x-coordinates in Q16.16
+input [31:0] y_coords [0:7] // y-coordinates in Q16.16
+
+Outputs:
+output reg [31:0] expected_distance // result in Q16.16 format
+output reg done // high when computation complete
+
+Latency: Result valid approximately 500 clock cycles after start asserted.
+
+States:
+- IDLE: Wait for start signal
+- COMPUTE_AREA: Calculate polygon area using shoelace formula
+- COMPUTE_X_EXPECTED: Calculate E[|x1-x2|] contribution
+- COMPUTE_Y_EXPECTED: Calculate E[|y1-y2|] contribution
+- FINALIZE: Compute final result = (E_X + E_Y) / area²
+- DONE: Set done signal
+
+The module should use state machine to:
+1. Compute signed area = 0.5 * sum(x[i]*y[i+1] - x[i+1]*y[i])
+2. Compute expected X distance using area integrals
+3. Compute expected Y distance similarly
+4. Final result = (2/area) * (E_X_contrib + E_Y_contrib)
+
+Use 32-bit registers for intermediate calculations. All arithmetic should handle overflow carefully. Output in Q16.16 format.

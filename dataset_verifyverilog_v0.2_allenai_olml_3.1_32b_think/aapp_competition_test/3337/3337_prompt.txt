@@ -1,0 +1,77 @@
+Design a sequential Verilog module named 'stack_game' that implements a simplified version of the stack operations game.
+
+MODULE SPECIFICATION:
+- Max steps (stacks): N = 16
+- Max stack depth: 16 elements
+- Max element value: 255 (8-bit)
+- Input commands: 3-bit op_code, 4-bit v, 4-bit w, 8-bit data
+- Operations: type 1 (push 'a'), type 2 (pop 'b'), type 3 (count intersection 'c')
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start processing next command
+input [2:0] op_code // 000: none/idle, 001: push (a), 010: pop (b), 011: intersect (c)
+input [3:0] v // source stack index for copy/reference
+input [3:0] w // second stack index for intersection
+input [7:0] data_in // data to push (only for op 001)
+
+Outputs:
+output reg [7:0] result // output value: for pop (type 2) it's the popped value, for intersect (type 3) it's the count of common elements
+output reg result_valid // high when result is valid
+output reg [3:0] debug_stack_count // number of valid stacks stored
+
+Latency: 
+- Push/Pop: 1 cycle after start
+- Intersection: 16 cycles after start (to scan all elements)
+
+Internal Structure:
+- Stack Storage: reg [7:0] stacks [0:15][0:15] // 16 stacks, each up to 16 elements deep
+- Stack Depth Trackers: reg [3:0] depths [0:15] // current depth of each stack
+- Valid Stack Mask: reg [15:0] valid_stacks // bit mask of initialized stacks
+
+Behavioral Description:
+The module maintains an array of stacks. For each operation:
+
+1. Reset: Initialize all stacks as empty, valid_stacks = 0.
+
+2. Type 'a' (push, op_code=001):
+   - Copy stack 'v' to stack 'i' (current step index)
+   - Push 'data_in' onto the new stack
+   - Store result (should be 0 or don't care)
+   - Latency: 1 cycle
+
+3. Type 'b' (pop, op_code=010):
+   - Copy stack 'v' to stack 'i'
+   - Pop top element from the new stack
+   - Output the popped element on 'result'
+   - Latency: 1 cycle
+
+4. Type 'c' (intersection, op_code=011):
+   - Copy stack 'v' to stack 'i'
+   - Count how many elements from stack 'i' exist in stack 'w'
+   - Output the count on 'result'
+   - Latency: 16 cycles (counting cycle-by-cycle)
+   - Note: Stack 'i' is the new stack (copy of 'v'), we compare with 'w'
+
+State Machine States:
+- IDLE: Wait for start signal
+- PROCESSING: Execute current operation
+- POP_DONE: Pop operation complete
+- INTERSECT_ACCUM: Intersection counting in progress
+- DONE: Operation complete
+
+Implementation Constraints:
+- Use sequential logic for stack storage updates
+- Use combinational logic for element comparison during intersection
+- The 'current step index' (i) must be tracked internally (starts from 1 after reset)
+- For intersection, implement a parallel comparator array that checks if elements from stack 'i' exist in stack 'w'
+- Use a 16-cycle counter for intersection operation
+- Output result should be registered
+- result_valid goes high when computation is complete
+
+Special Cases:
+- Push to empty stack (v=0 initially): creates new stack with 1 element
+- Pop from stack with 1 element: becomes empty
+- Intersection with empty stack: result = 0
+- Element values can repeat in a stack (standard stack behavior)

@@ -1,0 +1,1 @@
+module packet_distribution (\n    input [29:0] n,\n    output [4:0] ans\n);\n    reg [4:0] result;\n    integer i;\n    always @(*) begin\n        result = 5'd0;\n        for (i = 30; i >= 1; i = i - 1) begin\n            if (((30'd1 << i) - 30'd1) >= n) begin\n                result = i[4:0];\n            end\n        end\n    end\n    assign ans = result;\nendmodule

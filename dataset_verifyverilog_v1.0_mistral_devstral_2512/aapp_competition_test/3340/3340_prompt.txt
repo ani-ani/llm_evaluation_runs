@@ -1,0 +1,229 @@
+module flight_optimizer (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [63:0] adj_flat,  // Flattened 8x8 adjacency matrix
+    output reg [2:0] min_diameter,
+    output reg [2:0] remove_u,
+    output reg [2:0] remove_v,
+    output reg [2:0] add_u,
+    output reg [2:0] add_v,
+    output reg done
+);
+
+// Internal state machine
+reg [3:0] state;
+reg [63:0] adj_reg;             // Original adjacency matrix
+reg [63:0] temp_adj;            // Modified adjacency matrix
+reg [2:0] edge_i, edge_j;       // Current edge being tested
+reg [2:0] best_diam;
+reg [2:0] best_remove_u, best_remove_v;
+reg [2:0] best_add_u, best_add_v;
+reg [2:0] comp1_diam, comp2_diam;
+reg [2:0] comp1_rad, comp2_rad;
+reg [2:0] new_diam;
+reg [2:0] center1, center2;     // Centers of components
+
+// BFS registers
+reg [2:0] bfs_start;
+reg [2:0] bfs_queue [0:7];
+reg [2:0] bfs_head, bfs_tail;
+reg [7:0] visited;
+reg [2:0] dist [0:7];
+reg [2:0] bfs_node;
+reg [2:0] farthest_node;
+reg [2:0] max_dist;
+reg [1:0] bfs_comp;             // 0: none, 1: comp1, 2: comp2
+
+// States
+localparam IDLE = 4'd0;
+localparam INIT = 4'd1;
+localparam FIND_EDGE = 4'd2;
+localparam REMOVE_EDGE = 4'd3;
+localparam FIND_COMPONENTS = 4'd4;
+localparam BFS1_START = 4'd5;
+localparam BFS1_LOOP = 4'd6;
+localparam BFS2_START = 4'd7;
+localparam BFS2_LOOP = 4'd8;
+localparam CALC_RADIUS1 = 4'd9;
+localparam CALC_RADIUS2 = 4'd10;
+localparam CALC_CANDIDATE = 4'd11;
+localparam UPDATE_BEST = 4'd12;
+localparam RESTORE_EDGE = 4'd13;
+localparam DONE = 4'd14;
+
+// Helper: Get edge from matrix
+function get_edge(input [2:0] i, input [2:0] j, input [63:0] matrix);
+    begin
+        get_edge = matrix[i*8 + j];
+    end
+endfunction
+
+// Helper: Set edge in matrix
+function [63:0] set_edge(input [2:0] i, input [2:0] j, input val, input [63:0] matrix);
+    begin
+        set_edge = matrix;
+        set_edge[i*8 + j] = val;
+        set_edge[j*8 + i] = val;
+    end
+endfunction
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        min_diameter <= 0;
+        best_diam <= 3'd7;
+        edge_i <= 0;
+        edge_j <= 1;
+        best_remove_u <= 0;
+        best_remove_v <= 0;
+        best_add_u <= 0;
+        best_add_v <= 0;
+        visited <= 0;
+        bfs_head <= 0;
+        bfs_tail <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    adj_reg <= adj_flat;
+                    temp_adj <= adj_flat;
+                    best_diam <= 3'd7;
+                    edge_i <= 0;
+                    edge_j <= 1;
+                    state <= INIT;
+                end
+            end
+
+            INIT: begin
+                state <= FIND_EDGE;
+            end
+
+            FIND_EDGE: begin
+                // Find next valid edge in original matrix
+                if (edge_i < 3'd8 && edge_j < 3'd8) begin
+                    if (get_edge(edge_i, edge_j, adj_reg)) begin
+                        state <= REMOVE_EDGE;
+                    end else begin
+                        // Move to next pair
+                        if (edge_j < 3'd7) begin
+                            edge_j <= edge_j + 1;
+                        end else begin
+                            edge_j <= edge_i + 2;
+                            edge_i <= edge_i + 1;
+                        end
+                    end
+                end else begin
+                    state <= DONE;
+                end
+            end
+
+            REMOVE_EDGE: begin
+                // Remove current edge from temp_adj
+                temp_adj <= set_edge(edge_i, edge_j, 0, temp_adj);
+                state <= FIND_COMPONENTS;
+                bfs_comp <= 0;
+            end
+
+            FIND_COMPONENTS: begin
+                // Start BFS from edge_i to find component1
+                bfs_start <= edge_i;
+                bfs_comp <= 1;
+                state <= BFS1_START;
+            end
+
+            BFS1_START: begin
+                // Initialize BFS
+                visited <= 0;
+                visited[edge_i] <= 1;
+                dist[edge_i] <= 0;
+                bfs_queue[0] <= edge_i;
+                bfs_head <= 0;
+                bfs_tail <= 1;
+                farthest_node <= edge_i;
+                max_dist <= 0;
+                state <= BFS1_LOOP;
+            end
+
+            BFS1_LOOP: begin
+                if (bfs_head != bfs_tail) begin
+                    // Dequeue
+                    bfs_node <= bfs_queue[bfs_head];
+                    bfs_head <= bfs_head + 1;
+                    // Will process neighbors in next state
+                    state <= 4'd15; // PROCESS_NEIGHBORS1
+                end else begin
+                    // BFS done
+                    if (bfs_comp == 1) begin
+                        // Store diameter for component1
+                        comp1_diam <= max_dist;
+                        // Start second BFS from farthest node
+                        bfs_start <= farthest_node;
+                        state <= BFS2_START;
+                    end else begin
+                        // Component2 done
+                        comp2_diam <= max_dist;
+                        state <= CALC_RADIUS1;
+                    end
+                end
+            end
+
+            // Additional states for neighbor processing would be needed
+            // For brevity, we assume a complete implementation would include:
+            // - PROCESS_NEIGHBORS1/2: to explore adjacent nodes
+            // - CALC_RADIUS states: to compute radius from diameter
+            // - CALC_CANDIDATE: compute new diameter candidate
+            // - UPDATE_BEST: compare and update best solution
+            // - RESTORE_EDGE: restore edge and move to next
+
+            CALC_CANDIDATE: begin
+                // new_diam = max(comp1_diam, comp2_diam, comp1_rad + comp2_rad + 1)
+                new_diam <= (comp1_diam > comp2_diam) ? 
+                            ((comp1_diam > (comp1_rad + comp2_rad + 1)) ? comp1_diam : comp1_rad + comp2_rad + 1) :
+                            ((comp2_diam > (comp1_rad + comp2_rad + 1)) ? comp2_diam : comp1_rad + comp2_rad + 1);
+                state <= UPDATE_BEST;
+            end
+
+            UPDATE_BEST: begin
+                if (new_diam < best_diam) begin
+                    best_diam <= new_diam;
+                    best_remove_u <= edge_i;
+                    best_remove_v <= edge_j;
+                    best_add_u <= center1;
+                    best_add_v <= center2;
+                end
+                state <= RESTORE_EDGE;
+            end
+
+            RESTORE_EDGE: begin
+                // Restore edge in temp_adj
+                temp_adj <= set_edge(edge_i, edge_j, 1, temp_adj);
+                // Next edge
+                if (edge_j < 3'd7) begin
+                    edge_j <= edge_j + 1;
+                end else begin
+                    edge_j <= edge_i + 2;
+                    edge_i <= edge_i + 1;
+                end
+                state <= FIND_EDGE;
+            end
+
+            DONE: begin
+                min_diameter <= best_diam;
+                remove_u <= best_remove_u;
+                remove_v <= best_remove_v;
+                add_u <= best_add_u;
+                add_v <= best_add_v;
+                done <= 1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,62 @@
+Design a combinational Verilog module named 'casino_profit_calculator' that calculates the maximum expected profit from a gambling strategy with refund. 
+
+The core mathematical insight is:
+1. For p < 0.5 and x = 0: Max expected profit is 0 (stop immediately)
+2. For p < 0.5 and x > 0: The optimal strategy involves betting once or stopping. Expected profit can be calculated using the Kelly Criterion approach.
+3. With refund x%, the effective win probability becomes more favorable.
+
+For a single bet with refund:
+- Cost: 1 dollar
+- Win payout: 2 dollars (profit 1)
+- Loss payout: 1 dollar (loss 1), but refund x% of loss
+- Net loss on lose: 1 - x/100
+- Expected value: p*1 + (1-p)*(-(1-x/100)) = p - (1-p)*(1-x/100)
+
+The optimal strategy is determined by this expected value.
+
+Module Specification:
+Inputs:
+input [15:0] x_in        // Refund percentage in Q8.8 format (x * 256)
+input [15:0] p_in        // Winning probability in Q8.8 format (p * 256)
+
+Outputs:
+output [31:0] profit     // Maximum expected profit in Q16.16 format
+
+The module should:
+1. Convert x and p from Q8.8 to usable values
+2. Calculate expected profit for single bet: EV = p - (1-p)*(1-x/100)
+3. If EV > 0: expected profit per bet is EV, and optimal N is theoretically infinite, but for bounded reality, output EV
+4. If EV <= 0: output 0
+5. Use fixed-point arithmetic throughout
+
+Implementation details:
+- All calculations in Q16.16 for precision
+- Multiply and divide operations must handle fixed-point scaling
+- Output profit represents maximum expected profit (in dollars)
+
+Note: Since p < 50 and x < 100, we need to handle the case where EV may be positive due to refund.
+For x=50, p=49.85: EV = 0.4985 - 0.5015*(0.5) = 0.4985 - 0.25075 = 0.24775 > 0
+With infinite betting, profit would be infinite, but constrained analysis suggests optimal stopping at certain point.
+
+Simplified approach: 
+- Calculate expected value of single bet: EV = p*1 + (1-p)*(-(1-x/100))
+- If EV > 0: The expected profit scales with bets. For simplicity, we output the per-bet EV multiplied by a scaling factor if needed.
+- For the benchmark, output EV * 100 (or just EV) as max expected profit.
+
+Actually, with optimal strategy analysis: Maximum expected profit is achieved by betting N times where N follows optimal stopping theory. For small p and x, the optimal N is small.
+
+Simpler implementation: Use the formula derived from binomial probabilities with optimal stopping.
+
+Given the constraints, implement:
+1. Calculate EV = p - (1-p)*(1-x/100)
+2. If EV <= 0: profit = 0
+3. If EV > 0: This requires optimal stopping calculation
+
+For benchmark purposes and hardware feasibility, compute:
+- expected_profit = max(0, EV * optimal_factor)
+- Where optimal_factor is pre-computed based on analysis
+
+Actually, let's implement the exact formula from optimal analysis:
+For N bets, expected profit with optimal stopping can be computed, but for small N, we can try N=1,2,3,4 and find maximum.
+
+Final approach: Combinational calculation of EV for bets 1-10, take maximum.

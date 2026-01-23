@@ -1,0 +1,158 @@
+module mps_system (
+    input clk,
+    input rst_n,
+    input start,
+    input [1:0] num_beacons,
+    // Beacon 0
+    input signed [7:0] beacon0_x,
+    input signed [7:0] beacon0_y,
+    input [13:0] beacon0_d,
+    // Beacon 1
+    input signed [7:0] beacon1_x,
+    input signed [7:0] beacon1_y,
+    input [13:0] beacon1_d,
+    // Beacon 2
+    input signed [7:0] beacon2_x,
+    input signed [7:0] beacon2_y,
+    input [13:0] beacon2_d,
+    // Beacon 3
+    input signed [7:0] beacon3_x,
+    input signed [7:0] beacon3_y,
+    input [13:0] beacon3_d,
+    output reg [3:0] result_x,
+    output reg [3:0] result_y,
+    output reg done,
+    output reg impossible,
+    output reg uncertain
+);
+
+// Parameters
+parameter GRID_MIN = 0;
+parameter GRID_MAX = 7;
+parameter MAX_BEACONS = 4;
+parameter CLK_TIMEOUT = 1000;
+
+// Internal signals
+reg [3:0] candidate_x, candidate_y;
+reg [2:0] beacon_idx;
+reg [2:0] solution_count;
+reg [3:0] first_x, first_y;
+reg searching;
+
+// Beacon storage
+wire signed [7:0] beacon_x [0:3];
+wire signed [7:0] beacon_y [0:3];
+wire [13:0] beacon_d [0:3];
+
+assign beacon_x[0] = beacon0_x;
+assign beacon_y[0] = beacon0_y;
+assign beacon_d[0] = beacon0_d;
+assign beacon_x[1] = beacon1_x;
+assign beacon_y[1] = beacon1_y;
+assign beacon_d[1] = beacon1_d;
+assign beacon_x[2] = beacon2_x;
+assign beacon_y[2] = beacon2_y;
+assign beacon_d[2] = beacon2_d;
+assign beacon_x[3] = beacon3_x;
+assign beacon_y[3] = beacon3_y;
+assign beacon_d[3] = beacon3_d;
+
+// Manhattan distance calculation
+wire signed [8:0] dx = candidate_x - beacon_x[beacon_idx];
+wire signed [8:0] dy = candidate_y - beacon_y[beacon_idx];
+wire signed [8:0] abs_dx = dx[8] ? -dx : dx;
+wire signed [8:0] abs_dy = dy[8] ? -dy : dy;
+wire [13:0] calc_dist = abs_dx + abs_dy;
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        result_x <= 0;
+        result_y <= 0;
+        done <= 0;
+        impossible <= 0;
+        uncertain <= 0;
+        candidate_x <= GRID_MIN;
+        candidate_y <= GRID_MIN;
+        beacon_idx <= 0;
+        solution_count <= 0;
+        first_x <= 0;
+        first_y <= 0;
+        searching <= 0;
+    end else begin
+        if (start && !searching) begin
+            // Initialize search
+            candidate_x <= GRID_MIN;
+            candidate_y <= GRID_MIN;
+            beacon_idx <= 0;
+            solution_count <= 0;
+            first_x <= 0;
+            first_y <= 0;
+            searching <= 1;
+            done <= 0;
+            impossible <= 0;
+            uncertain <= 0;
+        end else if (searching) begin
+            if (beacon_idx < num_beacons) begin
+                // Check current beacon for current candidate
+                if (calc_dist == beacon_d[beacon_idx]) begin
+                    // Beacon matches, check next beacon
+                    beacon_idx <= beacon_idx + 1;
+                end else begin
+                    // This candidate doesn't match, move to next candidate
+                    beacon_idx <= 0;
+                    if (candidate_x == GRID_MAX) begin
+                        candidate_x <= GRID_MIN;
+                        if (candidate_y == GRID_MAX) begin
+                            // Finished all candidates
+                            searching <= 0;
+                            done <= 1;
+                            if (solution_count == 0) begin
+                                impossible <= 1;
+                            end else if (solution_count > 1) begin
+                                uncertain <= 1;
+                            end else begin
+                                result_x <= first_x;
+                                result_y <= first_y;
+                            end
+                        end else begin
+                            candidate_y <= candidate_y + 1;
+                        end
+                    end else begin
+                        candidate_x <= candidate_x + 1;
+                    end
+                end
+            end else begin
+                // All beacons matched for this candidate
+                solution_count <= solution_count + 1;
+                if (solution_count == 0) begin
+                    first_x <= candidate_x;
+                    first_y <= candidate_y;
+                end
+                beacon_idx <= 0;
+                // Move to next candidate
+                if (candidate_x == GRID_MAX) begin
+                    candidate_x <= GRID_MIN;
+                    if (candidate_y == GRID_MAX) begin
+                        // Finished all candidates
+                        searching <= 0;
+                        done <= 1;
+                        if (solution_count == 0) begin
+                            // Shouldn't happen (solution_count becomes 1 before this)
+                            impossible <= 1;
+                        end else if (solution_count >= 1) begin
+                            // solution_count was incremented, so >=2 solutions
+                            uncertain <= 1;
+                        end
+                    end else begin
+                        candidate_y <= candidate_y + 1;
+                    end
+                end else begin
+                    candidate_x <= candidate_x + 1;
+                end
+            end
+        end
+    end
+end
+
+endmodule

@@ -1,0 +1,95 @@
+module catalan_number (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,  // Input n (0-8)
+    output reg [15:0] result,
+    output reg done
+);
+
+    // State machine for iterative DP computation
+    reg [3:0] i, j;
+    reg [3:0] current_n;
+    reg [15:0] catalan[0:8];  // Lookup table for DP
+    reg computing;
+    reg [1:0] state;
+    
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam COMPUTE = 2'b01;
+    localparam FINISH = 2'b10;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset: initialize catalan[0] and catalan[1]
+            catalan[0] <= 16'd1;
+            catalan[1] <= 16'd1;
+            done <= 1'b0;
+            result <= 16'd0;
+            state <= IDLE;
+            computing <= 1'b0;
+            current_n <= 4'd0;
+            i <= 4'd0;
+            j <= 4'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        if (n <= 4'd1) begin
+                            result <= 16'd1;
+                            done <= 1'b1;
+                            state <= IDLE;
+                        end else if (n > 4'd8) begin
+                            // Clamp to max
+                            result <= 16'd1430;  // C(8)
+                            done <= 1'b1;
+                            state <= IDLE;
+                        end else begin
+                            current_n <= 4'd2;
+                            i <= 4'd2;
+                            j <= 4'd0;
+                            state <= COMPUTE;
+                            computing <= 1'b1;
+                        end
+                    end
+                end
+                
+                COMPUTE: begin
+                    // catalan[n] = sum(catalan[i] * catalan[n-i-1])
+                    // We're computing catalan[current_n]
+                    if (i > 4'd0) begin
+                        // Compute sum: catalan[j] * catalan[i-1-j]
+                        // Use multiplier in next cycle
+                        catalan[current_n] <= catalan[current_n] + 
+                                              (catalan[j] * catalan[i-1-j]);
+                        j <= j + 4'd1;
+                        if (j == i - 4'd1) begin
+                            j <= 4'd0;
+                            i <= i + 4'd1;  // Move to next n
+                            catalan[i] <= catalan[i];  // Register result
+                            if (i == current_n) begin
+                                // Done computing this n
+                                if (current_n == n) begin
+                                    result <= catalan[current_n];
+                                    done <= 1'b1;
+                                    state <= FINISH;
+                                end else begin
+                                    current_n <= current_n + 4'd1;
+                                    catalan[current_n] <= 16'd0;  // Reset for next sum
+                                    i <= current_n + 4'd1;
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                FINISH: begin
+                    done <= 1'b0;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule

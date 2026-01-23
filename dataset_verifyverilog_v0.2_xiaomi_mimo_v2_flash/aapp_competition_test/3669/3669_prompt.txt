@@ -1,0 +1,49 @@
+Design a combinational Verilog module named 'coordinate_game_solver' that determines the winner of a game played on points in a 2D grid.
+
+The game rules are:
+- Players take turns selecting a point (x, y) from a given set.
+- Mirko (Player 1) selects any point first.
+- Subsequent players must select a point that shares either the X coordinate or the Y coordinate with the previous point.
+- A point cannot be selected twice.
+- The player unable to move loses.
+
+This is equivalent to a game on a bipartite graph where X nodes and Y nodes are connected by edges (points). Players alternate selecting nodes; a move consists of traversing an edge to an adjacent node that hasn't been visited yet.
+
+The module should determine if Mirko has a winning strategy assuming optimal play.
+
+Since HDL requires fixed sizes, we will limit the coordinate range. Inputs will represent a maximum of 16 distinct X values (0-15) and 16 distinct Y values (0-15). The total number of points is limited to 32.
+
+Inputs:
+input clk // Clock for potential sequential logic
+input rst_n // Active low reset
+input start // Start computation
+input [31:0] points_x, // Packed array of X coordinates. bits [3:0] = point 0, [7:4] = point 1, etc. Only lower 4 bits of each byte are used.
+input [31:0] points_y, // Packed array of Y coordinates. bits [3:0] = point 0, [7:4] = point 1, etc.
+input [4:0] num_points // Actual number of points (up to 16)
+
+Outputs:
+output reg mirko_wins // 1 if Mirko has a winning strategy, 0 otherwise
+output reg done // Computation complete signal
+
+Behavior:
+The module should construct an adjacency structure internally for the bipartite graph (X nodes 0-15, Y nodes 0-15). It then needs to determine the game theoretic value (Win/Loss) for the starting state. 
+
+Since fully searching the state space (2^32) is too large, we use the property of bipartite graph games: 
+1. The game ends when the current player is at a node with no unvisited edges.
+2. We can model this as a state machine tracking the current node and visited status, but that is complex.
+3. Instead, we can calculate the 'matching' properties or use a simplified iterative solver for small graphs.
+
+For this specific problem, we will implement a Breadth-First Search (BFS) or Depth-First Search (DFS) traversal from the starting positions to compute the Grundy number or simply the win/loss state. Given the small constraint (N <= 16 nodes per side), we can use a recursive search unrolled or a state machine.
+
+We will use a sequential approach:
+- State machine: IDLE -> CHECK_MOVES -> EVALUATE -> DONE.
+- Check moves: Identify all valid starting nodes (any X or Y present in inputs).
+- Evaluate: Recursively or iteratively check if there exists a move leading to a state where the opponent loses. We will limit recursion depth to 16.
+
+Output:
+- mirko_wins = 1 if a winning strategy exists for the first player.
+
+Constraints:
+- Clock domain: synchronous logic.
+- Latency: Expected to take several clock cycles to traverse the game tree.
+- Reset: Active low.

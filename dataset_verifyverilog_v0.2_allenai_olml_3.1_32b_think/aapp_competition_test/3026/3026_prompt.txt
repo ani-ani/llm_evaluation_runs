@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'critical_elements' that finds all critical elements in a small permutation sequence.
+
+Problem Adaptation: For a sequence of up to 8 distinct integers (1-8), determine which elements are critical - meaning their removal causes the LIS length to decrease.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] n // actual length of sequence (2 to 8)
+input [7:0] seq [0:7] // sequence array, max 8 elements, values 1-8
+
+Outputs:
+output reg [7:0] critical_mask // bitmask where bit i=1 if element at position i is critical
+output reg done // high when computation complete
+output reg error // high if n < 2
+
+Specification:
+- Use sequential logic with state machine: IDLE, CHECK_L0, CHECK_L1, CHECK_L2, CHECK_L3, CHECK_L4, CHECK_L5, CHECK_L6, CHECK_L7, DONE
+- Latency: approximately 10 clock cycles (one per element check plus initial LIS computation)
+- Algorithm:
+  1. Compute original LIS length L0 using DP for small N (unrolled)
+  2. For each position i (0 to n-1), compute LIS length Li of sequence without element i
+  3. If Li < L0, element at position i is critical (set bit i in critical_mask)
+- For LIS computation on small sequences: use bit-parallel DP or simple nested loops (max 8 elements → 8x8 checks)
+- If n < 2 or n > 8, set error=1 and done=1
+- All values are integers 1-8, no floating point needed
+- Result is a bitmask (not sorted values), caller can extract indices
+
+State Machine Details:
+- IDLE: Wait for start=1, initialize counters, compute original LIS
+- CHECK_L0 to CHECK_L7: For each i in 0..n-1, compute LIS length of modified sequence
+- DONE: Assert done=1, present final critical_mask
+
+Note: This is a simplified hardware-friendly approach. For n≤8, we can compute LIS by checking all possible subsequences (2^n = 256 max) or using DP with state compression.

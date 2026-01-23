@@ -1,0 +1,204 @@
+Create a Verilog module that implements cake cutting verification.
+
+module cake_divider #(
+    parameter N = 8,
+    parameter M = 4
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire signed [15:0] x_candles [0:N-1],
+    input wire signed [15:0] y_candles [0:N-1],
+    input wire signed [31:0] a_lines [0:M-1],
+    input wire signed [31:0] b_lines [0:M-1],
+    input wire signed [31:0] c_lines [0:M-1],
+    input wire [7:0] n,
+    input wire [7:0] m,
+    input wire signed [15:0] r,
+    output reg done,
+    output reg result
+);
+
+// State definitions
+localparam IDLE = 0;
+localparam INIT_PAIR = 1;
+localparam COMPUTE_DET = 2;
+localparam CHECK_DET = 3;
+localparam COMPUTE_DXDY = 4;
+localparam SQUARE = 5;
+localparam COMPARE = 6;
+localparam NEXT_PAIR = 7;
+localparam CHECK_F = 8;
+localparam COMPARE_F = 9;
+localparam INIT_SIG = 10;
+localparam COMPUTE_SIG = 11;
+localparam NEXT_CANDLE = 12;
+localparam CHECK_DUP = 13;
+localparam DONE = 14;
+
+reg [4:0] state;
+reg [3:0] i, j;
+reg [3:0] k;
+reg [3:0] l;
+reg signed [63:0] det;
+reg signed [63:0] dx, dy;
+reg signed [63:0] lhs, rhs;
+reg [3:0] I;
+reg [7:0] F;
+reg [M-1:0] signatures [0:N-1];
+reg [M-1:0] current_sig;
+reg duplicate_found;
+
+wire duplicate_found_wire;
+assign duplicate_found_wire = 0;
+
+always @(*) begin
+    duplicate_found_wire = 0;
+    for (integer idx_i = 0; idx_i < N; idx_i = idx_i + 1) begin
+        for (integer idx_j = idx_i+1; idx_j < N; idx_j = idx_j + 1) begin
+            if (idx_i < n && idx_j < n && signatures[idx_i] == signatures[idx_j]) begin
+                duplicate_found_wire = 1;
+            end
+        end
+    end
+end
+
+wire signed [63:0] val_current;
+assign val_current = $signed(a_lines[l]) * $signed(x_candles[k]) + $signed(b_lines[l]) * $signed(y_candles[k]) + $signed(c_lines[l]);
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        I <= 0;
+        F <= 0;
+        i <= 0;
+        j <= 0;
+        k <= 0;
+        l <= 0;
+        duplicate_found <= 0;
+        for (integer idx = 0; idx < N; idx = idx + 1) begin
+            signatures[idx] <= 0;
+        end
+        current_sig <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= INIT_PAIR;
+                    I <= 0;
+                    i <= 0;
+                    j <= 1;
+                end
+            end
+            INIT_PAIR: begin
+                a_i <= a_lines[i];
+                b_i <= b_lines[i];
+                c_i <= c_lines[i];
+                a_j <= a_lines[j];
+                b_j <= b_lines[j];
+                c_j <= c_lines[j];
+                state <= COMPUTE_DET;
+            end
+            COMPUTE_DET: begin
+                det <= a_i * b_j - a_j * b_i;
+                state <= CHECK_DET;
+            end
+            CHECK_DET: begin
+                if (det == 0) begin
+                    state <= NEXT_PAIR;
+                end else begin
+                    state <= COMPUTE_DXDY;
+                end
+            end
+            COMPUTE_DXDY: begin
+                dx <= b_i * c_j - b_j * c_i;
+                dy <= c_i * a_j - c_j * a_i;
+                state <= SQUARE;
+            end
+            SQUARE: begin
+                lhs <= dx * dx + dy * dy;
+                rhs <= (r * r) * (det * det);
+                state <= COMPARE;
+            end
+            COMPARE: begin
+                if (lhs < rhs) begin
+                    I <= I + 1;
+                end
+                state <= NEXT_PAIR;
+            end
+            NEXT_PAIR: begin
+                if (j < M - 1) begin
+                    j <= j + 1;
+                    state <= INIT_PAIR;
+                end else begin
+                    j <= i + 2;
+                    if (i < M - 2) begin
+                        i <= i + 1;
+                        state <= INIT_PAIR;
+                    end else begin
+                        state <= CHECK_F;
+                    end
+                end
+            end
+            CHECK_F: begin
+                F <= 1 + m + I;
+                state <= COMPARE_F;
+            end
+            COMPARE_F: begin
+                if (F != n) begin
+                    result <= 0;
+                    state <= DONE;
+                end else begin
+                    k <= 0;
+                    state <= INIT_SIG;
+                end
+            end
+            INIT_SIG: begin
+                current_sig <= 0;
+                l <= 0;
+                state <= COMPUTE_SIG;
+            end
+            COMPUTE_SIG: begin
+                if (val_current > 0) begin
+                    current_sig[l] <= 1;
+                end else begin
+                    current_sig[l] <= 0;
+                end
+                if (l < m - 1) begin
+                    l <= l + 1;
+                    state <= COMPUTE_SIG;
+                end else begin
+                    state <= NEXT_CANDLE;
+                end
+            end
+            NEXT_CANDLE: begin
+                signatures[k] <= current_sig;
+                k <= k + 1;
+                if (k < n - 1) begin
+                    state <= INIT_SIG;
+                end else begin
+                    state <= CHECK_DUP;
+                end
+            end
+            CHECK_DUP: begin
+                duplicate_found <= duplicate_found_wire;
+                state <= DONE;
+            end
+            DONE: begin
+                done <= 1;
+                if (duplicate_found) begin
+                    result <= 0;
+                end else begin
+                    result <= 1;
+                end
+                state <= IDLE;
+            end
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

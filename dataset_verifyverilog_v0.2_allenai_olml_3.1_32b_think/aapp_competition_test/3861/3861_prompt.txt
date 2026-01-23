@@ -1,0 +1,83 @@
+Design a sequential Verilog module named 'max_non_square' that finds the largest integer in an array that is not a perfect square.
+
+The module processes a stream of input numbers. Since full range handling is hardware-intensive, we will use 32-bit arithmetic but implement a simplified square checking logic suitable for numbers up to 16 bits (65535) to demonstrate the concept, or handle the streaming nature.
+
+Actually, to make it implementable and interesting, let's define the problem for 16-bit signed integers (range -32768 to 32767) which fits within standard Verilog logic while keeping the algorithmic challenge.
+
+Wait, looking at the inputs, they reach 10^6. Let's stick to the 'Stream Processor' idea which is the most hardware-friendly interpretation of the problem (Array -> Stream).
+
+Module Name: max_non_square
+Function: Accepts an array of N integers (provided one by one) and outputs the largest one that is not a perfect square.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active low reset
+input start // High to indicate start of new array processing (reset internal max)
+input valid_in // High when data_in is valid
+input signed [31:0] data_in // Current integer from array (signed)
+input [9:0] count_in // Total number of elements in array (max 1024)
+
+Outputs:
+output reg signed [31:0] max_out // Current maximum non-square found
+output reg done // High when all elements processed
+
+Internal Logic:
+1.  Use a state machine: IDLE, PROCESSING, DONE.
+2.  In PROCESSING, consume valid inputs cycle by cycle.
+3.  Square Check Logic: Since calculating integer sqrt in hardware is complex for 32-bit, we will implement a simplified check for the demonstration. Specifically, we will approximate the square root by checking if 'data_in' is within a small range of a precomputed set of squares, OR use a small iterative solver.
+    *   Constraint: To make this synthesizable and reasonable, we will assume the inputs are 16-bit scaled integers (Q16.0) or we treat the problem as a 'Large Number' simulation where we perform binary search for the sqrt.
+    *   Simplification: We will perform a binary search for the square root in the range [0, 2048] to check if data_in is a perfect square. This covers numbers up to ~4 million.
+
+Behavioral Description:
+- When start is high, reset max_out to -32'h7FFFFFFF (minimum signed) and done to 0.
+- When valid_in is high and state is PROCESSING:
+    - Check if data_in is a perfect square.
+        - Negative numbers are never perfect squares.
+        - Non-negative: Perform binary search (unrolled or iterative) to find integer sqrt.
+    - If NOT a perfect square, update max_out = max(max_out, data_in).
+    - Decrement count_in.
+- When count_in reaches 0, assert done.
+
+Detailed Square Check (Binary Search):
+Since dynamic loops are tricky, we can describe it as a parameterizable iterative block or a fixed-depth unrolled logic. Let's describe a sequential iterative sqrt check inside the main FSM to save space.
+
+Actually, to provide a robust module, let's define it as a coprocessor that performs the check.
+
+Simplified Logic for Verilog:
+Negative numbers -> Not Square.
+Positive numbers -> Check if floor(sqrt(x))^2 == x.
+
+Since we cannot use floating point, we implement an integer square root using a small loop (max 16 iterations for 32-bit numbers). This allows us to process one number per 'N' cycles or pipe the sqrt logic.
+
+Let's make the module process ONE number per clock (if ready) and output the max.
+
+Inputs:
+clk, rst_n, start (process new batch), valid_in, data_in [31:0]
+Outputs:
+result [31:0], valid_out, done
+
+Logic:
+1. FSM: IDLE, CHECK_SQ, UPDATE_MAX, FINISHED.
+2. SQRT Engine: A small state machine inside or adjacent to main FSM to compute sqrt(data_in).
+
+Spec:
+Module: max_non_square
+Ports:
+- input clk, rst_n
+- input [31:0] data_in
+- input valid_in // Indicates data_in is ready
+- output reg [31:0] result // The max non-square
+- output reg result_valid // Result is valid
+
+Behavior:
+- Resets max to -Infinity (0x80000000).
+- Waits for valid_in.
+- When valid_in arrives:
+    - If data_in < 0: Not a square. Update max.
+    - If data_in >= 0: Calculate sqrt(data_in).
+        - We use an iterative method: start guess, refine.
+        - Once sqrt is computed, compare sq*sq to data_in.
+        - If not equal, update max.
+- Output updated max.
+
+This design avoids storing the whole array, making it hardware efficient (streaming architecture).

@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'string_validator' that checks if a string satisfies the problem constraints: string must consist of 'a's followed by 'b's followed by 'c's, with at least one 'a' and 'b', and the count of 'c's must equal either the count of 'a's or the count of 'b's.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start validation
+input [7:0] char_in // 8-bit ASCII character input
+input [2:0] idx // index for char_in (0 to 7)
+
+Outputs:
+output reg result // 1 if valid, 0 if invalid
+output reg done // high when validation complete
+
+Latency: Result valid 12 clock cycles after start asserted (8 cycles to process string, 4 cycles for verification).
+
+Behavioral Description:
+1. State Machine:
+   - IDLE: Wait for start signal
+   - READ: Load characters into buffer (8 cycles)
+   - VALIDATE: Check order and counts (4 cycles)
+   - DONE: Output result
+
+2. Order Check:
+   - Characters must be in non-decreasing order: 'a' ≤ 'b' ≤ 'c'
+   - No 'b' before 'a', no 'c' before 'b'
+
+3. Count Requirements:
+   - At least one 'a' and one 'b'
+   - count('c') == count('a') OR count('c') == count('b')
+
+4. Implementation Details:
+   - Max string length: 8 characters
+   - Use 4-bit saturating counters for 'a', 'b', 'c' (max 15)
+   - Order violation detection during READ
+   - Result is combinational logic based on counters
+
+5. Internal Registers:
+   - count_a[3:0], count_b[3:0], count_c[3:0]
+   - prev_char[7:0] for order checking
+   - cycle_counter[3:0] for timing
+   - state[1:0]: 00=IDLE, 01=READ, 10=VALIDATE, 11=DONE
+
+6. String Termination:
+   - Null byte (0x00) or any invalid character terminates input
+   - Processing stops immediately on invalid sequence
+
+Example:
+Input "aabc" (8 chars: 'a','a','b','c',0,0,0,0)
+Expected: result=1, done=1 after 12 cycles

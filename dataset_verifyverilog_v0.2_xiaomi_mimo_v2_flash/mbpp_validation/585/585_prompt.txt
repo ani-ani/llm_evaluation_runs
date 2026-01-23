@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'top_items_finder' that implements a simplified version of finding the n most expensive items from a dataset.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] n // number of top items to find (1-3)
+input [7:0][63:0] items // 8 items, each 64 bits: [31:0] name_id (ASCII encoded), [63:32] price in Q16.16 format
+
+Outputs:
+output reg [2:0] done_items // number of items processed in result
+output reg [7:0][63:0] result // top n items sorted by price descending
+output reg done // high when computation complete
+
+Specification:
+The module finds the top n most expensive items from 8 input items and returns them sorted in descending order of price.
+
+Data Format:
+- Each item is 64 bits: {name_id[31:0], price[31:0]}
+- Price is in Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+- name_id is a 4-character ASCII encoding (for testing, use simple numeric ID in lower bits)
+
+Algorithm:
+1. On start pulse, read all 8 items
+2. Use a sorting network to sort all 8 items by price (descending)
+3. Extract top n items from sorted result
+4. Output sorted results and set done signal
+
+State Machine:
+- IDLE: Wait for start signal
+- LOAD: Capture all 8 input items (1 cycle)
+- SORT: Perform sorting network operations (6 cycles for 8-item bitonic sort)
+- OUTPUT: Format and output top n items (1 cycle)
+- DONE: Assert done signal
+
+Latency: 9 clock cycles from start to done.
+
+Sorting Network Implementation:
+Use a bitonic sorting network for 8 items with compare-and-swap units. Each compare-swap compares prices and orders higher price first. Unroll the network fully in hardware.
+
+Example:
+If n=2, items with prices [101.1, 555.22, 45.09, 22.75, ...]
+After sorting: [555.22, 101.1, 45.09, 22.75, ...]
+Result: first 2 items (555.22, 101.1) with their name IDs
+
+Fixed-Point Conversion:
+- 101.1 = 101.1 * 65536 = 6625792 = 0x00651800
+- 555.22 = 555.22 * 65536 = 36390103 = 0x022B5B37
+- 45.09 = 45.09 * 65536 = 2954857 = 0x002D1649
+- 22.75 = 22.75 * 65536 = 1490969 = 0x0016BF39

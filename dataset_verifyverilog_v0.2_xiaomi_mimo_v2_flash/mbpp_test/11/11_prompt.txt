@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'remove_occurrences' that removes the first and last occurrence of a target character from a fixed 8-character string.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] target_char // character to remove (ASCII)
+input [63:0] input_str // 8-character string, stored as 8 bytes in little-endian: char[0] at bits[7:0], char[1] at bits[15:8], ..., char[7] at bits[63:56]
+
+Outputs:
+output reg [63:0] result_str // output string (8 bytes, padded with 0x00 for removed chars)
+output reg done // high when computation complete
+
+Specify latency: Result valid 18 clock cycles after start asserted.
+
+Behavior:
+1. On start assertion, reset internal state machines and begin scanning
+2. First pass: Scan from index 0 to 7 to find first occurrence of target_char
+3. When found, record its position and shift remaining characters left to fill the gap
+4. Second pass: Scan from index 0 to new_length-1 (after first removal) to find last occurrence
+5. When found, shift remaining characters left to fill the gap
+6. Pad removed positions with 0x00 (null bytes)
+7. Set done=1 when complete
+
+Use state machine with states: IDLE, FIND_FIRST, REMOVE_FIRST, FIND_LAST, REMOVE_LAST, DONE.
+
+Edge cases:
+- No occurrence: return original string
+- Single occurrence: remove it once
+- Multiple occurrences: remove first and last only
+- First and last are same position (only one occurrence): remove it once
+
+Example:
+Input: "hello" (0x6f6c6c6568000000), target='l' (0x6c)
+Output: "heo"   (0x6f656f0000000000, padded with zeros)
+
+Input: "abcda" (0x6164636261000000), target='a' (0x61)
+Output: "bcd"   (0x6463620000000000, padded with zeros)
+
+Input: "PHP" (0x5048500000000000), target='P' (0x50)
+Output: "H"     (0x4800000000000000, padded with zeros)

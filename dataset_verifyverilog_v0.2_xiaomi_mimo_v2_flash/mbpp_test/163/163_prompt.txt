@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'polygon_area' that calculates the area of a regular polygon using Q16.16 fixed-point arithmetic.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] s // number of sides (3-12)
+input [31:0] l // side length in Q16.16 format
+
+Outputs:
+output reg [31:0] result // area in Q16.16 format
+output reg done // high when computation complete
+
+The module should compute: area = s * l² / (4 * tan(π/s))
+
+Constraints:
+- s (number of sides) is 3-12
+- l (side length) is in Q16.16 fixed-point format
+- Use lookup table for tan(π/s) values
+- Division should be implemented as iterative subtraction
+- l² multiplication should use fixed-point multiplication
+- Latency: Maximum 100 clock cycles
+- Use state machine with states: IDLE, CALC_TAN, CALC_LSQ, CALC_DIV, DONE
+
+Pre-computed tan(π/s) lookup table (Q16.16 format):
+- s=3: tan(π/3) = 1.7320508 ≈ 0x1BB67
+- s=4: tan(π/4) = 1.0000000 ≈ 0x10000
+- s=5: tan(π/5) = 0.7265425 ≈ 0xB9EF
+- s=6: tan(π/6) = 0.5773503 ≈ 0x93D7
+- s=7: tan(π/7) = 0.4815746 ≈ 0x7B63
+- s=8: tan(π/8) = 0.4142136 ≈ 0x6A28
+- s=9: tan(π/9) = 0.3639702 ≈ 0x5CC4
+- s=10: tan(π/10) = 0.3249197 ≈ 0x5337
+- s=11: tan(π/11) = 0.2936265 ≈ 0x4B5E
+- s=12: tan(π/12) = 0.2679492 ≈ 0x449D
+
+For multiplication of two Q16.16 numbers, result is (a * b) >> 16.
+For division a / b, use iterative algorithm: count how many times b fits into a.
+
+State Machine Description:
+- IDLE: Wait for start signal. When start goes high, load s and l, move to CALC_LSQ.
+- CALC_LSQ: Calculate l² (Q16.16 * Q16.16 gives Q32.32, shift right 16 to get Q16.16). Store intermediate. Move to CALC_TAN.
+- CALC_TAN: Read tan(π/s) from lookup table based on s. Move to CALC_DIV.
+- CALC_DIV: Calculate denominator = 4 * tan(π/s). Then divide (s * l²) by denominator using iterative subtraction. Move to DONE.
+- DONE: Assert done signal. Wait for start to go low, then return to IDLE.

@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'parse_music' that parses a fixed-width ASCII string representing musical notes and outputs their corresponding beat durations.
+
+**Interface Specification:**
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start pulse (high for one cycle)
+  input [7:0] char_in    // Current character input (8-bit ASCII)
+  input [3:0] char_idx   // Current character index (0-15)
+  input valid_char       // High when char_in and char_idx are valid
+  input last_char        // High when this is the last character
+
+Outputs:
+  output reg [3:0] beats_out  // Output beat value (1, 2, or 4)
+  output reg beats_valid      // High when beats_out contains valid data
+  output reg done             // High when parsing is complete
+
+**Behavioral Description:**
+The module processes an ASCII string character-by-character. The string has a fixed maximum length of 16 characters. The parser identifies three token types:
+- 'o' (ASCII 0x6F) followed by space (0x20) or end: 4 beats (whole note)
+- 'o' (0x6F) followed by '|' (0x7C): 2 beats (half note) 
+- '.' (0x2E) followed by '|' (0x7C): 1 beat (quarter note)
+
+Tokens are separated by spaces (0x20). The parser should be stateful and process characters sequentially.
+
+**State Machine:**
+- IDLE: Wait for start signal
+- PARSE: Process characters one by one
+- OUTPUT: Emit beat value for completed token
+- DONE: Set done signal high
+
+**Implementation Notes:**
+- Characters arrive via char_in/char_idx interface (testbench will drive them)
+- When valid_char is high, sample the character and advance parser state
+- When a complete token is identified, assert beats_valid for one cycle with beats_out
+- Token boundaries: spaces separate tokens; end of input terminates parsing
+- After processing all characters, assert done
+- Reset clears all states and outputs
+
+**Timing:**
+- After start, processing begins on next cycle
+- Each character takes 1-2 cycles to process depending on context
+- beats_valid pulses high when a token is complete
+- done goes high when all characters processed
+
+**Special Cases:**
+- Empty input: start and immediately done (no beats_out)
+- Whitespace: ignore leading/trailing/consecutive spaces
+- Invalid sequences: ignore (e.g., 'oo', 'x|')
+
+Ensure the design is synthesizable and compatible with Icarus Verilog.

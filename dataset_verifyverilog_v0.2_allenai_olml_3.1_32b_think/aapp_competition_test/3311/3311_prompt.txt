@@ -1,0 +1,66 @@
+Design a sequential Verilog module named 'exponial_mod' that computes exponial(n) mod m for bounded inputs.
+
+PROBLEM ADAPTATION:
+- Original: exponial(n) = n^((n-1)^((n-2)^...^1)) mod m where n,m up to 10^9
+- Scaled: n and m are 16-bit values (0-65535), depth limited to max 6 tower levels
+- Algorithm: Compute exponial(n) mod m using recursive descent with bounded iteration
+- Key insight: Use Euler's theorem / repeated exponentiation with modulus reduction
+
+INTERFACE:
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [15:0] n // input n (1-16, adapted from 1-10^9)
+input [15:0] m // modulus m (1-65535, adapted from 1-10^9)
+
+Outputs:
+output reg [15:0] result // exponial(n) mod m
+output reg done // high when computation complete
+
+LATENCY: Maximum 256 clock cycles (depends on n)
+
+BEHAVIOR:
+The module implements exponial(n) = n^exponial(n-1) mod m with base case exponial(1)=1.
+
+States:
+- IDLE: Wait for start signal
+- CALC_BASE: Handle base cases (n=1 returns 1)
+- RECURSE: Compute exponial(n-1) recursively
+- POWER: Compute n^exponial(n-1) mod m using modular exponentiation
+- DONE: Set done=1 and result
+
+Implementation details:
+1. Use a stack-based or iterative approach since recursion unrolls in hardware
+2. For n=1: result = 1 mod m
+3. For n>1: compute exponial(n-1) first, then compute n^result mod m
+4. Modular exponentiation uses repeated squaring
+5. All arithmetic is 16-bit unsigned
+
+Register storage:
+- current_n: tracks current n value in computation
+- current_m: stores modulus
+- exp_result: stores intermediate exponial(n-1) result  
+- power_base: base for modular exponentiation
+- power_exp: exponent for modular exponentiation
+- power_result: result of modular exponentiation
+- counter: iteration counter for exponentiation
+- depth: recursion depth counter (max 6)
+
+State machine:
+IDLE -> start=1 -> CALC_BASE
+CALC_BASE -> n==1 -> DONE
+CALC_BASE -> n>1 -> RECURSE
+RECURSE -> compute exponial(n-1) -> POWER
+POWER -> compute modular exponentiation -> DONE
+
+The POWER state computes base^exp mod m using repeated square-and-multiply:
+- Initialize: result=1, base=power_base, exp=power_exp
+- Loop while exp>0:
+  - If exp[0]: result = (result * base) % m
+  - base = (base * base) % m  
+  - exp = exp >> 1
+
+Final result stored in output register, done signal asserted.
+
+NOTE: This is a simplified version for hardware implementation. Exact computation of very large exponials is impossible, so we bound n ≤ 16 and use 16-bit arithmetic.

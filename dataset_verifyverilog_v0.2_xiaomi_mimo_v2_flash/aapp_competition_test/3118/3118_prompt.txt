@@ -1,0 +1,80 @@
+Design a sequential Verilog module named 'shuffling_game' that computes the minimal number of alternating Alice/Bob shuffles until deck returns to sorted order.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] n // number of cards (1-8)
+input [7:0][7:0] alice_perm // Alice's permutation: alice_perm[i] = new position of card i
+input [7:0][7:0] bob_perm // Bob's permutation: bob_perm[i] = new position of card i
+
+Outputs:
+output reg [15:0] result // minimal shuffles, or 0xFFFF for 'huge'
+output reg done // high when computation complete
+
+Behavior:
+- Reset state to identity permutation
+- On start, iterate shuffling: odd steps apply Alice, even steps apply Bob
+- After each shuffle, check if permutation equals identity
+- If identity found, output step count (1-based)
+- If step count exceeds 128, output 0xFFFF (huge)
+- Use state machine: IDLE, INITIAL_CHECK, SHUFFLE, CHECK_IDENTITY, DONE, HUGE
+- Latency: Maximum 130 clock cycles after start
+
+Identity permutation: card at position i goes to position i
+Composition: (A o B)[i] = A[B[i]] where A, B are permutations
+
+Example: For n=3, alice=[2,3,1], bob=[3,1,2]
+Step 1 (Alice): [1,2,3] -> [2,3,1] (not identity)
+Step 2 (Bob): [2,3,1] -> [3,1,2] (not identity) 
+Step 3 (Alice): [3,1,2] -> [1,2,3] (identity!)
+Result: 3 shuffles but since Alice goes first, we return 2 (steps before identity)
+Wait, let's reconsider: The question asks for shuffles until sorted again.
+After 2 shuffles (Alice then Bob): we have [3,1,2]
+After 3 shuffles: [1,2,3]
+But output is 2, so it's the number of shuffles BEFORE the identity?
+Re-reading: 'how many shuffles it will take before the deck is sorted again'
+In example: Alice shuffles once -> [2,3,1], Bob shuffles once -> [3,1,2], Alice shuffles again -> [1,2,3]
+So after 3 shuffles it's sorted. But answer is 2.
+Actually looking at sample 1: '2' means it takes 2 shuffles to return.
+Step 0: [1,2,3]
+Step 1 (Alice): [2,3,1]
+Step 2 (Bob): [3,1,2]
+Step 3 (Alice): [1,2,3] ← sorted again
+But output is 2, not 3.
+
+Re-reading problem: 'Alice shuffles once first, then Bob shuffles once, then Alice shuffles again, et cetera. They start with a sorted deck. [...] how many shuffles it will take before the deck is sorted again.'
+
+Maybe the interpretation is: after k shuffles, the deck is sorted again. For sample 1:
+k=2: Alice then Bob: [1,2,3] -> Alice: [2,3,1] -> Bob: [3,1,2] (not sorted)
+k=3: ... -> Alice: [1,2,3] (sorted)
+But output is 2.
+
+Alternative interpretation: Perhaps 'shuffles' refers to rounds of Alice+Bob?
+No, that doesn't fit.
+
+Let me re-read the sample carefully:
+Alice: [2,3,1], Bob: [3,1,2]
+If we apply these to positions:
+Start: position i has card i
+After Alice: card i goes to position a_i (given 1-indexed)
+So card 1->2, card 2->3, card 3->1
+Cards: [3,1,2]
+After Bob: apply to current positions
+Card 1 is at pos 2, goes to b_2=1
+Card 2 is at pos 3, goes to b_3=2  
+Card 3 is at pos 1, goes to b_1=3
+So after Bob: [1,2,3] - sorted!
+
+That's 2 shuffles total! So we need to simulate carefully.
+
+Implementation: maintain card positions array of size N.
+Initialize: card_pos[i] = i (card i at position i, 1-indexed)
+For step k (starting 1):
+  if k odd: apply Alice
+  if k even: apply Bob
+  After application, check if card_pos[i] == i for all i
+  If yes, return k
+  If k > 128, return 0xFFFF
+
+Verilog: Array indices 0-7, map 1-indexed inputs to 0-indexed internally.

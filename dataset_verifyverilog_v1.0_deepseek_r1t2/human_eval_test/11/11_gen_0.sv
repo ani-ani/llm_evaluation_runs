@@ -1,0 +1,1 @@
+module string_xor(\n    input [15:0] a,\n    input [15:0] b,\n    output [15:0] result\n);\n    assign result = a ^ b;\nendmodule

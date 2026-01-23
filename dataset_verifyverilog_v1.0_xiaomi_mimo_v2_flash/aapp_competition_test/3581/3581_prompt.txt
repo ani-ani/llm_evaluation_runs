@@ -1,0 +1,49 @@
+Module: arcade_expected
+
+Description: Computes expected payout for a triangular arcade game with N=4 rows (10 holes) using fixed-point arithmetic and Gaussian elimination.
+
+Interface Specification:
+  Inputs:
+    - clk         : Clock signal (rising edge triggered)
+    - rst_n       : Active-low synchronous reset
+    - start       : Start pulse (assert for 1 cycle to begin computation)
+    - v[0:9]      : 10 payouts, each 16-bit signed (Q8.8 format)
+    - p0[0:9]     : 10 probabilities for top-left neighbor, each 16-bit unsigned (Q0.16 format)
+    - p1[0:9]     : 10 probabilities for top-right neighbor, each 16-bit unsigned (Q0.16 format)
+    - p2[0:9]     : 10 probabilities for bottom-left neighbor, each 16-bit unsigned (Q0.16 format)
+    - p3[0:9]     : 10 probabilities for bottom-right neighbor, each 16-bit unsigned (Q0.16 format)
+    - p4[0:9]     : 10 probabilities for falling into hole, each 16-bit unsigned (Q0.16 format)
+  
+  Outputs:
+    - result      : 32-bit signed expected value (Q16.16 format) for hole 0 (top hole)
+    - done        : Asserted high for 1 cycle when computation completes
+
+  Timing:
+    - Assert start for 1 clock cycle
+    - Computation takes approximately 500-1000 clock cycles
+    - done goes high when result is ready
+    - Sample result on the same cycle done is high
+
+  Reset behavior:
+    - On rst_n=0: done=0, result=0, all internal state cleared
+    - Minimum 2 clock cycles of reset required
+
+  Implementation Details:
+    - Uses Gaussian elimination to solve the system of linear equations:
+      E[i] = v[i]*p4[i] + E[TL]*p0[i] + E[TR]*p1[i] + E[BL]*p2[i] + E[BR]*p3[i]
+    - Represents probabilities and expected values in Q16.16 fixed-point format
+    - Matrix size: 10x11 (10 equations + 1 RHS column)
+    - Uses partial pivoting for numerical stability
+    - Implements fixed-point multiplication and division
+
+  Neighbor mapping for N=4:
+    Hole 0 (row 0, col 0): TL=None, TR=None, BL=1, BR=2
+    Hole 1 (row 1, col 0): TL=0, TR=None, BL=3, BR=4
+    Hole 2 (row 1, col 1): TL=0, TR=None, BL=4, BR=5
+    Hole 3 (row 2, col 0): TL=1, TR=4, BL=6, BR=7
+    Hole 4 (row 2, col 1): TL=2, TR=5, BL=7, BR=8
+    Hole 5 (row 2, col 2): TL=None, TR=None, BL=8, BR=9
+    Hole 6 (row 3, col 0): TL=3, TR=7, BL=None, BR=None
+    Hole 7 (row 3, col 1): TL=4, TR=8, BL=None, BR=None
+    Hole 8 (row 3, col 2): TL=5, TR=9, BL=None, BR=None
+    Hole 9 (row 3, col 3): TL=None, TR=None, BL=None, BR=None

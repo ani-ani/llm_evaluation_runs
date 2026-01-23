@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'rescale_to_unit' that implements linear rescaling to normalize a list of numbers to [0, 1] range.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] data_in // input data value (Q16.16 fixed-point format)
+input data_valid // indicates data_in is valid
+input data_last // indicates last input value
+
+Outputs:
+output reg [15:0] result // rescaled output value (Q16.16 format)
+output reg result_valid // output valid signal
+output reg done // high when entire computation complete
+
+Parameters:
+MAX_N = 8 // maximum number of elements in input array
+
+The module should:
+1. Accept up to MAX_N input values sequentially when data_valid is high
+2. Track minimum and maximum values during input collection
+3. When data_last is asserted, compute rescaling for all collected values
+4. Output rescaled values sequentially: (x - min) / (max - min)
+5. Use Q16.16 fixed-point format throughout (16 integer bits, 16 fractional bits)
+
+Algorithm:
+- State machine: IDLE, COLLECT, COMPUTE, OUTPUT, DONE
+- Store inputs in a buffer (8 x 16-bit registers)
+- Use combinational division (max - min > 0)
+- Latency: approximately 16 + N clock cycles after start
+
+Edge cases:
+- If max == min (all values equal): output 0 for all
+- Division by zero handled by outputting 0
+
+Example: [1.0, 2.0, 3.0, 4.0, 5.0] -> [0.0, 0.25, 0.5, 0.75, 1.0]
+In Q16.16: [65536, 131072, 196608, 262144, 327680] -> [0, 16384, 32768, 49152, 65536]

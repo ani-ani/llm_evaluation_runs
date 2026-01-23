@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'boredom_counter' that counts sentences starting with 'I' in a fixed-width string.
+
+**Problem Adaptation**:
+- Input string limited to 16 characters (fixed-width byte array)
+- Sentences delimited by '.', '?', or '!'
+- Count sentences that start with 'I' (ASCII 0x49)
+- String is processed character-by-character with a state machine
+
+**Inputs**:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing signal
+input [7:0] char_data // Current character from string
+input [3:0] char_index // Index of current character (0-15)
+input char_valid // High when char_data is valid
+
+**Outputs**:
+output reg [3:0] boredom_count // Count of sentences starting with 'I'
+output reg done // High when all 16 characters processed
+output reg error // High if invalid input
+
+**Specifications**:
+- Process characters sequentially (index 0 to 15)
+- State machine states: IDLE, WAITING_SENTENCE_START, IN_SENTENCE, CHECKING_START, DONE
+- Delimiters: '.' (0x2E), '?' (0x3F), '!' (0x21)
+- Sentence start is: character after a delimiter OR character at index 0
+- 'I' check: must be uppercase ASCII 'I' (0x49)
+- After delimiter, next non-space character determines sentence start
+- Skip spaces (0x20) when looking for sentence start
+- Latency: 18 clock cycles after start (2 for reset + 16 for characters)
+
+**Behavior**:
+1. On start, reset counter and state
+2. Each clock cycle, process one character based on char_index
+3. Track if we're at sentence start position
+4. When at sentence start and char is 'I', increment boredom_count
+5. Set done after processing index 15
+6. Reset to IDLE on rst_n
+
+**State Descriptions**:
+- IDLE: Wait for start signal
+- WAITING_SENTENCE_START: Looking for first non-space char after delimiter or at start
+- IN_SENTENCE: Processing sentence, ignore 'I' in middle
+- CHECKING_START: Just saw potential start char, check if it's 'I'
+- DONE: All processing complete
+
+**Edge Cases**:
+- Empty positions (after string end): treat as delimiters
+- Multiple delimiters in a row: skip to next non-space
+- 'I' in middle of sentence: don't count
+- Sentence starts with 'I' followed by spaces: count it
+
+**Implementation Notes**:
+- Use char_index to determine when to process
+- Character valid signal ensures synchronization
+- The module assumes input is fed one character per cycle with matching index
+- Output boredom_count holds result until next start
+
+Example:
+- "I love It !" (11 chars, padded to 16 with spaces or nulls)
+- Index 0: 'I' at start → count=1
+- "Is the sky blue?" (15 chars)
+- Index 0: 'I' but next char is 's' (not space/delimiter), so it's part of "Is", not sentence start → count=0

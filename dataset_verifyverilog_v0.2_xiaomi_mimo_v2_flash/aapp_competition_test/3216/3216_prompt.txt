@@ -1,0 +1,73 @@
+Design a sequential Verilog module named 'repeating_decimal_converter' that converts a repeating decimal to a reduced fraction.
+
+**Problem Analysis:**
+For a repeating decimal like 0.142857 with 6 repeating digits:
+- Let x = 0.142857142857...
+- Multiply by 10^6: 1000000x = 142857.142857142857...
+- Subtract original: 999999x = 142857
+- Result: x = 142857/999999 = 1/7 (reduced)
+
+For decimals with non-repeating part like 1.6 with 1 repeating digit:
+- x = 1.666666...
+- Multiply by 10: 10x = 16.666666...
+- Multiply by 100: 100x = 166.666666...
+- Subtract: 90x = 150
+- Result: x = 150/90 = 5/3
+
+**Module Specification:**
+Design a sequential module that:
+1. Accepts decimal string (max 8 digits total) and repeating count
+2. Computes numerator and denominator
+3. Reduces fraction using GCD
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] decimal_int_part // integer part (0-999)
+input [31:0] decimal_frac_part // fractional part as integer (0-99999999)
+input [3:0] frac_digits // number of fractional digits (1-8)
+input [3:0] repeat_count // number of repeating digits (1-8)
+
+Outputs:
+output reg [63:0] numerator // result numerator
+output reg [63:0] denominator // result denominator
+output reg done // high when computation complete
+output reg error // high on error (invalid input)
+
+**Latency:** Maximum 200 clock cycles (allows for GCD computation with 64-bit numbers)
+
+**State Machine States:**
+- IDLE: Wait for start signal
+- PARSE: Parse decimal and separate repeating part
+- COMPUTE_SCALED: Calculate scaled numerator and denominator
+- CALCULATE_GCD: Compute GCD using Euclidean algorithm
+- REDUCE: Divide numerator and denominator by GCD
+- DONE: Set done flag
+
+**Internal Registers:**
+- reg [63:0] num, den // for GCD computation
+- reg [63:0] temp_gcd // temporary for GCD steps
+- reg [3:0] state // FSM state
+- reg [7:0] counter // loop counter for GCD
+
+**Behavioral Description:**
+1. Parse input: Separate integer part (I) and fractional part (F) with length L and repeating part (R) with length K
+2. Let A = first (L-K) non-repeating fractional digits, B = repeating part
+3. Numerator = I * (10^(L) - 10^(L-K)) + A * (10^K - 1) + B
+4. Denominator = (10^L - 10^(L-K)) * (10^K - 1)
+5. Compute GCD of numerator and denominator
+6. Divide both by GCD
+7. Output reduced fraction
+
+**Implementation Details:**
+- Use 64-bit arithmetic to handle intermediate values
+- GCD algorithm: while (b != 0) { temp = b; b = a % b; a = temp; }
+- Handle decimal scale: treat fractional part as integer with implicit decimal
+- For example: "0.142857" with 6 repeating: decimal_int_part=0, decimal_frac_part=142857, frac_digits=6, repeat_count=6
+- For "1.6" with 1 repeating: decimal_int_part=1, decimal_frac_part=6, frac_digits=1, repeat_count=1
+
+**Edge Cases:**
+- All digits repeat (repeat_count = frac_digits)
+- Fractional part has leading zeros
+- Result fits in 64-bit integers

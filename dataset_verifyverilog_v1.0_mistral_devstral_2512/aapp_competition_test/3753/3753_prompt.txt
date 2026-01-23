@@ -1,0 +1,170 @@
+module treasure_island #(
+    parameter MAX_N = 8,
+    parameter MAX_M = 8
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,
+    input wire [3:0] m,
+    input wire [MAX_N*MAX_M-1:0] grid_flat,
+    output reg [1:0] result,
+    output reg done
+);
+
+localparam IDLE = 3'd0;
+localparam LOAD = 3'd1;
+localparam FORWARD = 3'd2;
+localparam BACKWARD = 3'd3;
+localparam COUNT = 3'd4;
+localparam CHECK = 3'd5;
+localparam DONE = 3'd6;
+
+reg [MAX_M-1:0] grid [0:MAX_N-1];
+reg [MAX_M-1:0] reachable [0:MAX_N-1];
+reg [MAX_M-1:0] can_reach [0:MAX_N-1];
+reg [3:0] diag_cnt [0:14];
+
+reg [2:0] state;
+reg [3:0] i, j;
+reg [3:0] diag_idx;
+reg path_exists;
+
+wire cell_forest = grid[i][j];
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        i <= 0;
+        j <= 0;
+        path_exists <= 0;
+        for (int k = 0; k < 15; k++) begin
+            diag_cnt[k] <= 4'd0;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= LOAD;
+                    i <= 0;
+                    j <= 0;
+                end
+            end
+
+            LOAD: begin
+                if (i < n) begin
+                    if (j < m) begin
+                        grid[i][j] <= grid_flat[i*MAX_M + j];
+                        reachable[i][j] <= 1'b0;
+                        can_reach[i][j] <= 1'b0;
+                        j <= j + 1'b1;
+                    end else begin
+                        j <= 0;
+                        i <= i + 1'b1;
+                    end
+                end else begin
+                    i <= 0;
+                    j <= 0;
+                    state <= FORWARD;
+                end
+            end
+
+            FORWARD: begin
+                if (i < n && j < m) begin
+                    if (i == 0 && j == 0) begin
+                        reachable[0][0] <= ~grid[0][0];
+                    end else if (!cell_forest) begin
+                        if ((i > 0 && reachable[i-1][j]) || (j > 0 && reachable[i][j-1])) begin
+                            reachable[i][j] <= 1'b1;
+                        end
+                    end
+                    if (j + 1'b1 < m) begin
+                        j <= j + 1'b1;
+                    end else begin
+                        j <= 0;
+                        i <= i + 1'b1;
+                    end
+                end else begin
+                    if (reachable[n-1][m-1]) begin
+                        path_exists <= 1'b1;
+                        i <= n - 1'b1;
+                        j <= m - 1'b1;
+                        state <= BACKWARD;
+                    end else begin
+                        result <= 2'd0;
+                        state <= DONE;
+                    end
+                end
+            end
+
+            BACKWARD: begin
+                if (i >= 0 && j >= 0) begin
+                    if (i == n-1 && j == m-1) begin
+                        can_reach[n-1][m-1] <= ~grid[n-1][m-1];
+                    end else if (!cell_forest) begin
+                        if ((i < n-1 && can_reach[i+1][j]) || (j < m-1 && can_reach[i][j+1])) begin
+                            can_reach[i][j] <= 1'b1;
+                        end
+                    end
+                    if (j > 0) begin
+                        j <= j - 1'b1;
+                    end else begin
+                        j <= m - 1'b1;
+                        if (i > 0) i <= i - 1'b1;
+                        else begin
+                            i <= 0;
+                            j <= 0;
+                            state <= COUNT;
+                        end
+                    end
+                end else begin
+                    state <= COUNT;
+                end
+            end
+
+            COUNT: begin
+                if (i < n && j < m) begin
+                    if (reachable[i][j] && can_reach[i][j] && !cell_forest) begin
+                        diag_idx = i + j;
+                        if (diag_idx < 15) begin
+                            diag_cnt[diag_idx] <= diag_cnt[diag_idx] + 1'b1;
+                        end
+                    end
+                    if (j + 1'b1 < m) begin
+                        j <= j + 1'b1;
+                    end else begin
+                        j <= 0;
+                        i <= i + 1'b1;
+                    end
+                end else begin
+                    i <= 0;
+                    state <= CHECK;
+                end
+            end
+
+            CHECK: begin
+                if (i < (n + m - 2)) begin
+                    if (diag_cnt[i] == 4'd1) begin
+                        result <= 2'd1;
+                        state <= DONE;
+                    end else begin
+                        i <= i + 1'b1;
+                    end
+                end else begin
+                    result <= 2'd2;
+                    state <= DONE;
+                end
+            end
+
+            DONE: begin
+                done <= 1'b1;
+                if (!start) state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

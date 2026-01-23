@@ -1,0 +1,89 @@
+Design a sequential Verilog module named 'carpet_area' that computes the area of an equilateral triangle given distances from an interior point to its three corners.
+
+Problem Analysis:
+Given distances a, b, c from a point P to vertices A, B, C of an equilateral triangle:
+1. Check if point P can exist such that PA=a, PB=b, PC=c inside an equilateral triangle
+2. If valid, compute side length S using the formula: S^2 = (a^2 + b^2 + c^2 + 4*Area(PAB))/3 where Area(PAB) is computed from sides a,b,S.
+3. Compute area of equilateral triangle: Area = sqrt(3)/4 * S^2
+4. If invalid configuration, output -1
+
+We use an iterative approach:
+- Compute S^2 using Newton-Raphson or iterative method
+- Validate that distances can form a valid triangle
+- Check if the point is inside: for equilateral triangle, we must have that the sum of angles APB + BPC + CPA = 2*PI
+- Simpler check: Use Cayley-Menger determinant condition for 4 points in 3D (3 triangle vertices + point) to verify coplanarity and consistency
+
+Simplified algorithm for hardware:
+1. Compute S from the relationship derived from Viviani's theorem generalization for equilateral triangles with internal point:
+   For any point in equilateral triangle with side S, sum of squared distances to vertices: a^2 + b^2 + c^2 = 3*(d^2) + S^2 where d is distance from point to centroid
+   Actually: a^2 + b^2 + c^2 = S^2 + 3*d^2
+   And area formula relates to a,b,c,S.
+
+2. Better approach: Use the formula derived from Stewart's theorem:
+   For equilateral triangle with side S, and point P with distances a,b,c:
+   S^4 - 2*(a^2+b^2+c^2)*S^2 + (a^4+b^4+c^4 - a^2*b^2 - b^2*c^2 - c^2*a^2) = 0
+   This is a quadratic in S^2. Check if real positive solution exists.
+
+3. For validity: The point must be inside the equilateral triangle. For equilateral triangles:
+   The condition for P to be inside is that all angles between vectors are less than 120 degrees.
+   Or: a^2 + b^2 - a*b < S^2 < a^2 + b^2 + a*b for each pair (and cyclic)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [31:0] dist_a // distance to vertex A in Q16.16 format
+input [31:0] dist_b // distance to vertex B in Q16.16 format  
+input [31:0] dist_c // distance to vertex C in Q16.16 format
+
+Outputs:
+output reg [31:0] area // result in Q16.16 format, or 0xFFFFFFFF for -1 (indicates invalid)
+output reg done // high when computation complete
+
+Latency: Approximately 100-200 clock cycles for iterative computation.
+
+Internal Implementation Details:
+- Use state machine: IDLE, CHECK_VALIDITY, COMPUTE_SQUARED, SOLVE_QUADRATIC, VERIFY_INSIDE, COMPUTE_AREA, DONE
+- For floating-point operations, work with Q16.16 format throughout
+- sqrt(3) constant: 0x0001BB67 (≈1.73205 in Q16.16)
+- Maximum iterations for numerical methods: 16-24 iterations per operation
+- Store intermediate values: S_sq, sum_a2b2c2, sum_a4b4c4, sum_ab_sq, etc.
+- Valid range: a,b,c ≤ 100 which is 0x00640000 in Q16.16
+
+The quadratic for S^2: S^4 - 2Q*S^2 + R = 0 where:
+- Q = a^2 + b^2 + c^2
+- R = a^4 + b^4 + c^4 - a^2*b^2 - b^2*c^2 - c^2*a^2
+
+Solution: S^2 = Q + sqrt(Q^2 - R) (taking positive root, need S^2 > Q in general)
+
+Validation:
+- Discriminant D = Q^2 - R must be ≥ 0
+- Q^2 - R = 3*(a^2*b^2 + b^2*c^2 + c^2*a^2) - (a^4 + b^4 + c^4)
+- This is actually 16 times the squared area of triangle with sides a,b,c (by Heron's formula)
+- So D ≥ 0 iff triangle inequality holds for sides a,b,c
+- If D < 0, output -1
+
+For point to be inside equilateral triangle with side S:
+- Check that angles APB, BPC, CPA are all < 120 degrees
+- Equivalent to: cos(angle) > -0.5 for each angle
+- cos(angle APB) = (a^2 + b^2 - S^2) / (2*a*b)
+- So need: (a^2 + b^2 - S^2) / (2*a*b) > -0.5
+- => a^2 + b^2 - S^2 > -a*b
+- => S^2 < a^2 + b^2 + a*b
+- Similarly for other pairs: S^2 < b^2 + c^2 + b*c and S^2 < c^2 + a^2 + c*a
+
+Compute area: Area = (sqrt(3)/4) * S^2
+
+Edge cases:
+- If input distances form degenerate triangle or point outside, output -1
+- Use fixed-point arithmetic with guard bits for intermediate calculations
+- Handle overflow by checking bit widths (Q16.16 squared is Q32.32, need to normalize)
+
+State machine transitions:
+IDLE -> CHECK_VALIDITY on start
+CHECK_VALIDITY -> COMPUTE_SQUARED if triangle inequality holds
+COMPUTE_SQUARED -> SOLVE_QUADRATIC after computing all squares
+SOLVE_QUADRATIC -> VERIFY_INSIDE after solving quadratic
+VERIFY_INSIDE -> COMPUTE_AREA if inside check passes, else DONE with -1
+COMPUTE_AREA -> DONE
+DONE stays DONE until rst_n

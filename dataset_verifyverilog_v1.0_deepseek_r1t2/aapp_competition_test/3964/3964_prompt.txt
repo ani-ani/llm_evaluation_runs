@@ -1,0 +1,227 @@
+Module: bug_free_plans
+
+Interface Specification:
+  Inputs:
+    - clk         : Clock signal (rising edge triggered)
+    - rst_n       : Active-low synchronous reset
+    - start       : Start pulse (assert for 1 cycle to begin computation)
+    - n [3:0]     : Number of programmers (1-8)
+    - m [3:0]     : Number of lines of code (0-8)
+    - b [3:0]     : Maximum total bugs (0-8)
+    - mod [31:0]  : Modulo value (1 to 10^9+7)
+    - a_0 [8:0]   : Bugs per line for programmer 0 (0-500)
+    - a_1 [8:0]   : Bugs per line for programmer 1 (0-500)
+    - a_2 [8:0]   : Bugs per line for programmer 2 (0-500)
+    - a_3 [8:0]   : Bugs per line for programmer 3 (0-500)
+    - a_4 [8:0]   : Bugs per line for programmer 4 (0-500)
+    - a_5 [8:0]   : Bugs per line for programmer 5 (0-500)
+    - a_6 [8:0]   : Bugs per line for programmer 6 (0-500)
+    - a_7 [8:0]   : Bugs per line for programmer 7 (0-500)
+  Outputs:
+    - result [31:0]: Computed number of good plans modulo mod
+    - done         : Asserted high for 1 cycle when result is valid
+
+Timing:
+  After start, the module will take several cycles to complete. For worst-case n=8, m=8, b=8, it takes at most ~500 cycles.
+  The module asserts done for 1 cycle when result is ready.
+  Reset must be held low for at least 2 clock cycles.
+
+Implementation Details:
+  - Uses a 2D DP array dp[0..8][0..8] of 32-bit registers.
+  - State machine: IDLE → INIT → FETCH_A → UPDATE → SUM → DONE.
+  - Computes dp[lines][bugs] for lines=1..m, bugs=0..b.
+  - Sums dp[m][0..b] modulo mod.
+
+Verilog Code:
+
+module bug_free_plans (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,
+    input wire [3:0] m,
+    input wire [3:0] b,
+    input wire [31:0] mod,
+    input wire [8:0] a_0,
+    input wire [8:0] a_1,
+    input wire [8:0] a_2,
+    input wire [8:0] a_3,
+    input wire [8:0] a_4,
+    input wire [8:0] a_5,
+    input wire [8:0] a_6,
+    input wire [8:0] a_7,
+    output reg [31:0] result,
+    output reg done
+);
+
+localparam MAX_M = 8;
+localparam MAX_B = 8;
+
+// States
+localparam IDLE   = 3'd0;
+localparam INIT   = 3'd1;
+localparam FETCH_A = 3'd2;
+localparam UPDATE = 3'd3;
+localparam SUM    = 3'd4;
+localparam DONE   = 3'd5;
+
+reg [2:0] state;
+reg [3:0] i;           // programmer index
+reg [3:0] lines;
+reg [3:0] bugs;
+reg [3:0] init_lines;
+reg [3:0] init_bugs;
+reg [3:0] sum_bugs;
+
+// DP array: dp[lines][bugs]
+reg [31:0] dp [0:MAX_M][0:MAX_B];
+
+// Current a_i
+reg [8:0] current_a;
+
+// Combinational sum for update
+reg [31:0] sum_update;
+
+// Multiplexer for a_i
+always @(*) begin
+    case(i)
+        3'd0: current_a = a_0;
+        3'd1: current_a = a_1;
+        3'd2: current_a = a_2;
+        3'd3: current_a = a_3;
+        3'd4: current_a = a_4;
+        3'd5: current_a = a_5;
+        3'd6: current_a = a_6;
+        3'd7: current_a = a_7;
+        default: current_a = 9'd0;
+    endcase
+end
+
+// Compute sum_update = dp[lines][bugs] + dp[lines-1][bugs - current_a] mod mod
+always @(*) begin
+    if (lines >= 1 && bugs >= current_a && (bugs - current_a) <= MAX_B) begin
+        sum_update = dp[lines][bugs] + dp[lines-1][bugs - current_a];
+        if (sum_update >= mod) sum_update = sum_update - mod;
+    end else begin
+        sum_update = dp[lines][bugs]; // Should not happen in valid UPDATE
+    end
+end
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        i <= 0;
+        lines <= 0;
+        bugs <= 0;
+        init_lines <= 0;
+        init_bugs <= 0;
+        sum_bugs <= 0;
+    end else begin
+        case(state)
+            IDLE: begin
+                if (start) begin
+                    state <= INIT;
+                    done <= 0;
+                    result <= 0;
+                    i <= 0;
+                    lines <= 0;
+                    bugs <= 0;
+                    init_lines <= 0;
+                    init_bugs <= 0;
+                    sum_bugs <= 0;
+                end
+            end
+
+            INIT: begin
+                // Clear entire DP array
+                if (init_lines <= MAX_M && init_bugs <= MAX_B) begin
+                    dp[init_lines][init_bugs] <= 32'd0;
+                    if (init_bugs == MAX_B) begin
+                        init_bugs <= 0;
+                        if (init_lines == MAX_M) begin
+                            dp[0][0] <= 32'd1; // Base case: 0 lines, 0 bugs
+                            state <= FETCH_A;
+                        end else begin
+                            init_lines <= init_lines + 1;
+                        end
+                    end else begin
+                        init_bugs <= init_bugs + 1;
+                    end
+                end else begin
+                    state <= FETCH_A; // Fallback
+                end
+            end
+
+            FETCH_A: begin
+                if (i >= n) begin
+                    state <= SUM;
+                    sum_bugs <= 0;
+                end else begin
+                    // Skip programmer if a_i > b (cannot write any line without exceeding bugs)
+                    if (current_a > b) begin
+                        i <= i + 1;
+                    end else if (m == 0) begin
+                        // If no lines to write, skip programmer
+                        i <= i + 1;
+                    end else begin
+                        lines <= 1;
+                        bugs <= current_a;
+                        state <= UPDATE;
+                    end
+                end
+            end
+
+            UPDATE: begin
+                // Update dp[lines][bugs]
+                dp[lines][bugs] <= sum_update;
+
+                // Next iteration logic
+                if (bugs == b) begin
+                    // End of bugs loop for this line
+                    bugs <= current_a; // Reset bugs for next line
+                    if (lines == m) begin
+                        // End of lines loop for this programmer
+                        i <= i + 1;
+                        state <= FETCH_A;
+                    end else begin
+                        lines <= lines + 1;
+                        // Stay in UPDATE
+                    end
+                end else begin
+                    bugs <= bugs + 1;
+                    // Stay in UPDATE
+                end
+            end
+
+            SUM: begin
+                // Accumulate dp[m][sum_bugs] into result modulo mod
+                if (sum_bugs == 0) begin
+                    result <= dp[m][sum_bugs] % mod;
+                end else begin
+                    if (result + dp[m][sum_bugs] >= mod)
+                        result <= result + dp[m][sum_bugs] - mod;
+                    else
+                        result <= result + dp[m][sum_bugs];
+                end
+
+                if (sum_bugs == b) begin
+                    state <= DONE;
+                end else begin
+                    sum_bugs <= sum_bugs + 1;
+                end
+            end
+
+            DONE: begin
+                done <= 1;
+                // Stay here until reset
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,118 @@
+Verilog module for EmployeeSelector with exactly 4 employees:
+
+```verilog
+module EmployeeSelector (
+    input clk,
+    input rst_n,
+    input start,
+    input [2:0] k,           // number of employees to select (1-4)
+    input [31:0] lambda,     // Q16.16 fixed-point
+    input [15:0] s_1, s_2, s_3, s_4,   // salaries
+    input [15:0] p_1, p_2, p_3, p_4,   // productivities
+    input [15:0] r_1, r_2, r_3, r_4,   // recommender employee numbers (0 or 1..i-1)
+    output reg [63:0] result,
+    output reg done
+);
+
+    // Internal registers
+    reg [2:0] k_reg;
+    reg [31:0] lambda_reg;
+    reg [15:0] s_reg [0:3];
+    reg [15:0] p_reg [0:3];
+    reg [15:0] r_reg [0:3];
+    reg [63:0] term [0:3];  // terms for each employee
+    reg [63:0] best_total;
+    reg [3:0] mask_counter;  // 0 to 15
+    reg [2:0] state;
+    
+    // State definitions
+    localparam IDLE = 0;
+    localparam PRECOMPUTE = 1;
+    localparam ITERATE = 2;
+    localparam DONE = 3;
+
+    // Helper: popcount for 4 bits
+    wire [2:0] popcount;
+    assign popcount = mask_counter[0] + mask_counter[1] + mask_counter[2] + mask_counter[3];
+
+    // Helper: validity for current mask
+    reg valid_reg;
+    wire [3:0] current_mask;
+    assign current_mask = mask_counter;
+    
+    always @(*) begin
+        valid_reg = 1;
+        for (integer i=0; i<4; i=i+1) begin
+            if (current_mask[i] && (r_reg[i] != 0)) begin
+                integer j;
+                j = r_reg[i] - 1;
+                if (j < 0 || j >= 4) valid_reg = 0;
+                else if (!current_mask[j]) valid_reg = 0;
+            end
+        end
+    end
+    assign valid = valid_reg;
+
+    // Helper: total for current mask
+    wire [63:0] current_total;
+    assign current_total = 
+        ( (current_mask[0] ? term[0] : 64'd0) +
+          (current_mask[1] ? term[1] : 64'd0) +
+          (current_mask[2] ? term[2] : 64'd0) +
+          (current_mask[3] ? term[3] : 64'd0) );
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            mask_counter <= 0;
+            best_total <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        k_reg <= k;
+                        lambda_reg <= lambda;
+                        s_reg[0] <= s_1; s_reg[1] <= s_2; s_reg[2] <= s_3; s_reg[3] <= s_4;
+                        p_reg[0] <= p_1; p_reg[1] <= p_2; p_reg[2] <= p_3; p_reg[3] <= p_4;
+                        r_reg[0] <= r_1; r_reg[1] <= r_2; r_reg[2] <= r_3; r_reg[3] <= r_4;
+                        state <= PRECOMPUTE;
+                        mask_counter <= 0;
+                        best_total <= 64'h8000000000000000;
+                    end
+                end
+
+                PRECOMPUTE: begin
+                    term[0] <= (p_reg[0] << 16) - (lambda_reg * s_reg[0]);
+                    term[1] <= (p_reg[1] << 16) - (lambda_reg * s_reg[1]);
+                    term[2] <= (p_reg[2] << 16) - (lambda_reg * s_reg[2]);
+                    term[3] <= (p_reg[3] << 16) - (lambda_reg * s_reg[3]);
+                    state <= ITERATE;
+                end
+
+                ITERATE: begin
+                    if (popcount == k_reg && valid) begin
+                        if (current_total > best_total) begin
+                            best_total <= current_total;
+                        end
+                    end
+                    if (mask_counter == 4'hF) begin
+                        state <= DONE;
+                    end else begin
+                        mask_counter <= mask_counter + 1;
+                    end
+                end
+
+                DONE: begin
+                    result <= best_total;
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule
+```

@@ -1,0 +1,1 @@
+module sum_of_product_lut(\n    input [3:0] n,\n    output reg [15:0] result\n);\n    always @(*) begin\n        case (n)\n            4'd1: result = 16'd1;\n            4'd2: result = 16'd6;\n            4'd3: result = 16'd15;\n            4'd4: result = 16'd56;\n            default: result = 16'd0;\n        endcase\n    end\nendmodule

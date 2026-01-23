@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'math_problem_solver' that finds an m-digit number satisfying: X = (Y concatenated with p) * q, where Y is X with first n digits removed.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] m // total digits (max 16)
+input [7:0] n // digits to remove (max 16)
+input [31:0] p // number to append
+input [31:0] q // multiplier
+
+Outputs:
+output reg [63:0] result // the found number (or 0 if impossible)
+output reg found // high when valid number found
+output reg done // high when computation complete
+
+Specify latency: Result valid approximately 2^10 cycles after start (uses bounded search with early termination).
+
+Behavioral Description:
+The module searches for the smallest m-digit number X satisfying X = (Y * 10^digits(p) + p) * q, where Y is X with first n digits removed.
+
+Algorithm:
+1. Extract digits_p = number of digits in p (1-10)
+2. Compute base = 10^digits_p and base2 = 10^(m-n-digits_p)
+3. Iterate prefix from 10^(n-1) to 10^n - 1 (or until found)
+4. For each prefix, compute remainder = prefix * 10^(m-n) mod q
+5. Need (prefix * base2 * 10^digits_p + p * 10^(m-n) + remainder) * q ≡ prefix * 10^(m-n) (mod 10^m)
+6. Solve using modular arithmetic: X = (Y*p_added) * q
+
+Simplified hardware approach:
+- State machine: IDLE → ITERATE_PREFIX → CHECK_VALID → DONE
+- Use prefix iterator (n digits, max 1000 for n≤3)
+- For each prefix, compute candidate X = ((prefix * 10^(m-n) + suffix_candidate) * q) and verify
+- Since p is fixed, Y_part = (Y * 10^digits(p) + p)
+- X = Y_part * q
+- Y = floor(X / 10^(m-n))
+- Check: Y_part == (Y * 10^digits(p) + p)
+
+For small constraints (m≤9, n≤3), use direct iteration.
+Use state machine with states: IDLE, COMPUTE_CANDIDATE, VERIFY, DONE.
+Result is valid if found=1, else result=0.
+Handle overflow with 64-bit arithmetic.

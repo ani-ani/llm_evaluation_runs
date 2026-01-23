@@ -1,0 +1,49 @@
+module gold_scheduler (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] t0, h0, t1, h1, t2, h2, t3, h3,
+    input wire [7:0] t4, h4, t5, h5, t6, h6, t7, h7,
+    output wire [3:0] result,
+    output wire done
+);
+
+// This module computes the maximum number of gold stores that can be visited.
+// It processes 8 stores, but stores with t=255 and h=0 are considered invalid and never selected.
+// Algorithm:
+// 1. On start, load the 8 pairs into internal arrays.
+// 2. Sort the pairs by h (altitude) in ascending order using bubble sort.
+// 3. Iterate over sorted pairs:
+//    - Maintain an array selected_t (size 8) of selected t values.
+//    - Maintain count of selected stores (0-8).
+//    - Maintain total_time (sum of selected t).
+//    - For each pair (t, h):
+//        * If total_time + t <= h, then add this store:
+//            selected_t[count] = t;
+//            total_time = total_time + t;
+//            count = count + 1;
+//        * Else, if count > 0, find the maximum t in selected_t.
+//          If max_t > t, then replace that store with this one:
+//            total_time = total_time - max_t + t;
+//            replace the max_t entry with t.
+// 4. After processing all 8 pairs, result = count, and done is asserted.
+//
+// Timing:
+// - Start pulse: assert start for one clock cycle.
+// - Sorting takes up to 28 cycles (bubble sort for 8 elements).
+// - Selection takes 8 cycles (one per sorted pair).
+// - Total cycles <= 40.
+// - Done is asserted when computation is complete, and result is valid.
+//
+// Reset:
+// - On rst_n=0, all registers are cleared, done=0, result=0.
+//
+// Implementation details:
+// - Use internal registers t_reg[0:7], h_reg[0:7] to store inputs.
+// - Use i and j for bubble sort.
+// - Use selected_t[0:7], count, total_time.
+// - For max calculation, use combinational logic to find max_t and its index.
+//
+// Note: The module expects exactly 8 pairs. For fewer valid stores, set unused
+//       stores to t=255, h=0 (invalid). These will be sorted first but never selected.
+endmodule

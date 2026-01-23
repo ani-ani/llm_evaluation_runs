@@ -1,0 +1,338 @@
+module trekking #(
+    parameter N = 5,                    // Number of cabins (1..8)
+    parameter M = 6,                    // Number of trails (1..16)
+    parameter logic [3:0] U [0:M-1] = '{5,0,1,2,2,4}, // Trail start nodes (0..N-1)
+    parameter logic [3:0] V [0:M-1] = '{1,3,2,3,4,3}, // Trail end nodes
+    parameter logic [3:0] D [0:M-1] = '{2,8,11,5,2,9}  // Trail durations (0..12)
+) (
+    input  wire       clk,      // Clock
+    input  wire       rst_n,    // Active-low reset
+    input  wire       start,    // Start computation (pulse after parameters set)
+    output reg  [7:0] result,   // Waiting time (hours)
+    output reg        done      // Computation finished, result valid
+);
+
+// ============================================================================
+// CONSTANTS & LOCALPARAMETERS
+// ============================================================================
+localparam INF       = 8'hFF;    // Infinity for distances (255)
+localparam NO_EDGE   = 4'hF;     // No edge in adjacency matrix (15)
+localparam MAX_N     = 8;        // Maximum supported nodes
+localparam MAX_STATE = MAX_N * 13; // State space size (node * 0..12 hours)
+
+// State machine states
+localparam S_IDLE        = 4'd0;
+localparam S_INIT        = 4'd1;  // Initialize matrices
+localparam S_FLOYD_INIT  = 4'd2;  // Prepare Floyd-Warshall
+localparam S_FLOYD_K     = 4'd3;  // Floyd-Warshall k loop
+localparam S_FLOYD_I     = 4'd4;  // Floyd-Warshall i loop
+localparam S_FLOYD_J     = 4'd5;  // Floyd-Warshall j loop
+localparam S_FLOYD_UPD   = 4'd6;  // Floyd-Warshall update
+localparam S_KNIGHT_CALC = 4'd7;  // Compute Dr. Knight elapsed
+localparam S_DK_INIT     = 4'd8;  // Dijkstra init
+localparam S_DK_LOOP     = 4'd9;  // Dijkstra main loop
+localparam S_DK_RELAX    = 4'd10; // Relax neighbors
+localparam S_DK_SLEEP    = 4'd11; // Relax sleep transition
+localparam S_DK_RESULT   = 4'd12; // Extract Mr. Day elapsed
+localparam S_WAIT        = 4'd13; // Wait one cycle
+localparam S_DONE        = 4'd14; // Finish
+
+// ============================================================================
+// REGISTERS & WIRES
+// ============================================================================
+reg  [3:0]  state, next_state;
+reg  [3:0]  i_reg, j_reg, k_reg;  // Loop counters (0..MAX_N-1)
+reg  [3:0]  e_reg;                // Edge counter (0..M-1)
+reg  [7:0]  knight_elapsed_reg;   // Dr. Knight elapsed time
+reg  [7:0]  day_elapsed_reg;      // Mr. Day elapsed time
+reg  [7:0]  T_knight;             // Shortest path distance
+reg  [7:0]  min_dist;             // Minimum distance in Dijkstra
+reg  [7:0]  best_state;           // State with minimum distance
+reg         found_min;            // Flag for min found
+reg  [7:0]  dist [0:MAX_N-1][0:MAX_N-1]; // Floyd-Warshall distance matrix
+reg  [3:0]  adj  [0:MAX_N-1][0:MAX_N-1]; // Adjacency matrix (min edge weight)
+reg  [7:0]  dist_state [0:MAX_STATE-1];  // Dijkstra distances per state
+reg         visited  [0:MAX_STATE-1];    // Dijkstra visited flags
+reg  [3:0]  node_u, node_v, hours_cur;   // For Dijkstra relaxation
+reg  [7:0]  new_dist;
+reg  [3:0]  state_idx;                   // Index = node * 13 + hours
+
+// ============================================================================
+// STATE TRANSITION & OUTPUT LOGIC
+// ============================================================================
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= S_IDLE;
+        done <= 0;
+        result <= 0;
+    end else begin
+        state <= next_state;
+        // Default: clear done when not in DONE
+        if (state != S_DONE) done <= 0;
+        if (state == S_DONE) begin
+            result <= day_elapsed_reg - knight_elapsed_reg; // Waiting time
+            done <= 1;
+        end
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        S_IDLE:        if (start) next_state = S_INIT;
+        S_INIT:        next_state = S_FLOYD_INIT;
+        S_FLOYD_INIT:  next_state = S_FLOYD_K;
+        S_FLOYD_K:     next_state = S_FLOYD_I;
+        S_FLOYD_I:     next_state = S_FLOYD_J;
+        S_FLOYD_J:     next_state = S_FLOYD_UPD;
+        S_FLOYD_UPD:   if (k_reg >= N-1 && i_reg >= N-1 && j_reg >= N-1) next_state = S_KNIGHT_CALC;
+                        else if (j_reg < N-1) next_state = S_FLOYD_J;
+                        else if (i_reg < N-1) next_state = S_FLOYD_I;
+                        else next_state = S_FLOYD_K;
+        S_KNIGHT_CALC: next_state = S_DK_INIT;
+        S_DK_INIT:     next_state = S_DK_LOOP;
+        S_DK_LOOP:     if (found_min) next_state = S_DK_RELAX;
+                        else if (day_elapsed_reg != 0) next_state = S_DK_RESULT; // All processed
+                        else next_state = S_DK_RESULT; // First time
+        S_DK_RELAX:    next_state = S_DK_SLEEP;
+        S_DK_SLEEP:    if (hours_cur == 0) next_state = S_DK_LOOP;
+                        else next_state = S_DK_LOOP;
+        S_DK_RESULT:   next_state = S_WAIT;
+        S_WAIT:        next_state = S_DONE;
+        S_DONE:        next_state = S_IDLE;
+        default:       next_state = S_IDLE;
+    endcase
+end
+
+// ============================================================================
+// DATA PATH - COMPUTATION LOGIC
+// ============================================================================
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset all arrays and counters
+        integer r, c;
+        for (r = 0; r < MAX_N; r = r + 1) begin
+            for (c = 0; c < MAX_N; c = c + 1) begin
+                dist[r][c] <= INF;
+                adj[r][c] <= NO_EDGE;
+            end
+        end
+        for (r = 0; r < MAX_STATE; r = r + 1) begin
+            dist_state[r] <= INF;
+            visited[r] <= 0;
+        end
+        i_reg <= 0; j_reg <= 0; k_reg <= 0; e_reg <= 0;
+        knight_elapsed_reg <= 0; day_elapsed_reg <= 0;
+        T_knight <= 0;
+        min_dist <= 0; best_state <= 0; found_min <= 0;
+        node_u <= 0; node_v <= 0; hours_cur <= 0;
+        new_dist <= 0; state_idx <= 0;
+    end else begin
+        case (state)
+            // ----------------------------------------------------------------
+            // INIT: Load edges into adjacency matrix (take minimum)
+            // ----------------------------------------------------------------
+            S_INIT: begin
+                if (e_reg < M) begin
+                    // Update both directions (undirected graph)
+                    if (adj[U[e_reg]][V[e_reg]] > D[e_reg])
+                        adj[U[e_reg]][V[e_reg]] <= D[e_reg];
+                    if (adj[V[e_reg]][U[e_reg]] > D[e_reg])
+                        adj[V[e_reg]][U[e_reg]] <= D[e_reg];
+                    e_reg <= e_reg + 1;
+                end else begin
+                    e_reg <= 0;
+                    // Initialize distance matrix with adjacency
+                    for (integer r = 0; r < N; r = r + 1) begin
+                        for (integer c = 0; c < N; c = c + 1) begin
+                            if (r == c)
+                                dist[r][c] <= 0;
+                            else if (adj[r][c] != NO_EDGE)
+                                dist[r][c] <= {4'd0, adj[r][c]}; // Convert 4-bit to 8-bit
+                            else
+                                dist[r][c] <= INF;
+                        end
+                    end
+                end
+            end
+
+            // ----------------------------------------------------------------
+            // FLOYD-WARSHALL INIT: Reset loop counters
+            // ----------------------------------------------------------------
+            S_FLOYD_INIT: begin
+                k_reg <= 0; i_reg <= 0; j_reg <= 0;
+            end
+
+            // ----------------------------------------------------------------
+            // FLOYD-WARSHALL LOOPS: k, i, j
+            // ----------------------------------------------------------------
+            S_FLOYD_K: begin
+                i_reg <= 0;
+                if (k_reg < N) k_reg <= k_reg + 1;
+            end
+            S_FLOYD_I: begin
+                j_reg <= 0;
+                if (i_reg < N) i_reg <= i_reg + 1;
+            end
+            S_FLOYD_J: begin
+                if (j_reg < N) j_reg <= j_reg + 1;
+            end
+
+            // ----------------------------------------------------------------
+            // FLOYD-WARSHALL UPDATE: dist[i][j] = min(dist[i][j], dist[i][k] + dist[k][j])
+            // ----------------------------------------------------------------
+            S_FLOYD_UPD: begin
+                if (k_reg < N && i_reg < N && j_reg < N) begin
+                    if (dist[i_reg][k_reg] != INF && dist[k_reg][j_reg] != INF) begin
+                        new_dist <= dist[i_reg][k_reg] + dist[k_reg][j_reg];
+                        if (new_dist < dist[i_reg][j_reg]) begin
+                            dist[i_reg][j_reg] <= new_dist;
+                        end
+                    end
+                end
+            end
+
+            // ----------------------------------------------------------------
+            // KNIGHT CALC: Compute T_knight and knight_elapsed
+            // ----------------------------------------------------------------
+            S_KNIGHT_CALC: begin
+                T_knight <= dist[0][N-1];
+                if (dist[0][N-1] != INF) begin
+                    // days = ceil(T/12) = (T + 11) / 12
+                    // knight_elapsed = T + 12*(days-1)
+                    if (dist[0][N-1] <= 12)
+                        knight_elapsed_reg <= dist[0][N-1];
+                    else begin
+                        // Simple division by 12 (since T <= 84, we can precompute)
+                        // For brevity, we use a small loop to compute days
+                        // In hardware, we can use a combinatorial divider for small values
+                        // Here we assume a helper function; for real implementation, replace with logic
+                        // Since max T=84, we can hardcode a lookup table.
+                        // We'll compute as: days = (T + 11) / 12
+                        // This is a simple division by 12, which can be done with a case statement for T<=84.
+                        // For this specification, we assume a combinational block that computes:
+                        // knight_elapsed_reg = T_knight + 12 * ((T_knight + 11) / 12 - 1)
+                        // Since we don't have division operator, we use a for-loop to compute days.
+                        // This loop will be unrolled by synthesis.
+                        integer days = 0;
+                        for (integer t = 0; t < 84; t = t + 1) begin
+                            if (t == dist[0][N-1]) begin
+                                days = (t + 11) / 12; // Integer division
+                            end
+                        end
+                        knight_elapsed_reg <= dist[0][N-1] + 12 * (days - 1);
+                    end
+                end else begin
+                    knight_elapsed_reg <= INF; // No path
+                end
+            end
+
+            // ----------------------------------------------------------------
+            // DIJKSTRA INIT: Initialize state distances and visited
+            // ----------------------------------------------------------------
+            S_DK_INIT: begin
+                for (integer s = 0; s < MAX_STATE; s = s + 1) begin
+                    dist_state[s] <= INF;
+                    visited[s] <= 0;
+                end
+                // State (0,0) index = 0*13 + 0 = 0
+                dist_state[0] <= 0;
+                min_dist <= INF;
+                found_min <= 0;
+            end
+
+            // ----------------------------------------------------------------
+            // DIJKSTRA LOOP: Find unvisited state with minimum distance
+            // ----------------------------------------------------------------
+            S_DK_LOOP: begin
+                min_dist <= INF;
+                found_min <= 0;
+                // Scan all states to find minimum
+                for (integer s = 0; s < MAX_STATE; s = s + 1) begin
+                    if (!visited[s] && dist_state[s] < min_dist) begin
+                        min_dist <= dist_state[s];
+                        best_state <= s;
+                        found_min <= 1;
+                    end
+                end
+                // If we found a min, we will mark visited and relax in next states
+                if (found_min) begin
+                    visited[best_state] <= 1;
+                    // Extract node and hours from best_state
+                    node_u <= best_state / 13;        // node = index / 13
+                    hours_cur <= best_state % 13;     // hours = index % 13
+                end
+            end
+
+            // ----------------------------------------------------------------
+            // DIJKSTRA RELAX: Walk transitions (edges from node_u)
+            // ----------------------------------------------------------------
+            S_DK_RELAX: begin
+                // Iterate over all possible neighbors
+                for (integer v = 0; v < N; v = v + 1) begin
+                    if (adj[node_u][v] != NO_EDGE) begin
+                        // Check if edge fits within remaining hours today
+                        if (hours_cur + adj[node_u][v] <= 12) begin
+                            // Compute new state index
+                            state_idx <= v * 13 + (hours_cur + adj[node_u][v]);
+                            new_dist <= dist_state[best_state] + adj[node_u][v];
+                            // Update if better
+                            if (new_dist < dist_state[state_idx]) begin
+                                dist_state[state_idx] <= new_dist;
+                            end
+                        end
+                    end
+                end
+            end
+
+            // ----------------------------------------------------------------
+            // DIJKSTRA SLEEP: Sleep transition (reset hours, add 24 - hours_cur)
+            // ----------------------------------------------------------------
+            S_DK_SLEEP: begin
+                if (hours_cur > 0) begin
+                    // Sleep transition: (node_u, 0) with cost 24 - hours_cur
+                    state_idx <= node_u * 13 + 0;
+                    new_dist <= dist_state[best_state] + (24 - hours_cur);
+                    if (new_dist < dist_state[state_idx]) begin
+                        dist_state[state_idx] <= new_dist;
+                    end
+                end
+            end
+
+            // ----------------------------------------------------------------
+            // DIJKSTRA RESULT: Find minimum elapsed time to destination
+            // ----------------------------------------------------------------
+            S_DK_RESULT: begin
+                day_elapsed_reg <= INF;
+                for (integer h = 0; h <= 12; h = h + 1) begin
+                    integer idx = (N-1) * 13 + h;
+                    if (dist_state[idx] < day_elapsed_reg) begin
+                        day_elapsed_reg <= dist_state[idx];
+                    end
+                end
+            end
+
+            // ----------------------------------------------------------------
+            // WAIT: One cycle to latch result
+            // ----------------------------------------------------------------
+            S_WAIT: begin
+                // Nothing, just transition to DONE
+            end
+
+            // ----------------------------------------------------------------
+            // DONE: Result already latched in state transition
+            // ----------------------------------------------------------------
+            S_DONE: begin
+                // Nothing
+            end
+
+            default: begin
+                // Reset counters and arrays
+                e_reg <= 0; i_reg <= 0; j_reg <= 0; k_reg <= 0;
+            end
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'sphere_volume' that calculates the volume of a sphere using fixed-point arithmetic.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [31:0] radius // radius in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+
+Outputs:
+output reg [31:0] volume // result in Q16.16 format
+output reg done // high when computation complete
+
+Specifications:
+- Use Q16.16 fixed-point format throughout (16 integer bits, 16 fractional bits)
+- Volume formula: V = (4/3) * π * r³
+- Pre-compute constant C = (4/3) * π in Q16.16 format: C = 0x0006487E (4.188790205 * 65536 = 274413)
+- Computation sequence:
+  1. Calculate r² (radius * radius) -> intermediate [63:0]
+  2. Calculate r³ = r² * radius -> intermediate [63:0]
+  3. Multiply by C -> intermediate [63:0]
+  4. Extract upper 32 bits for result (shift right by 16)
+- Latency: 6 clock cycles after start (3 multiplies + state overhead)
+- Use state machine with states: IDLE, CALC_SQ, CALC_CUBE, CALC_FINAL, DONE
+
+Implementation notes:
+- Each multiplication takes 1 cycle (combinational multiplier assumed)
+- Register intermediate results between stages
+- For multiplication: [31:0] * [31:0] = [63:0]
+- Final result: take [47:16] of product to get Q16.16 format
+
+Example conversions:
+- Radius 10.0 = 10 * 65536 = 0x000A0000
+- Expected output for radius 10: ~4188.79 * 65536 = 0x06A6F800
+- Radius 20.0 = 20 * 65536 = 0x00140000
+- Expected output: ~33510.32 * 65536 = 0x343C4000

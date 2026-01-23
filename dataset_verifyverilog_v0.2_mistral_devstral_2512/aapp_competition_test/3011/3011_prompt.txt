@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'hill_counter' that implements a simplified hill number checker and counter.
+
+The problem is adapted as follows:
+- Input numbers are limited to 4 decimal digits (0-9999)
+- A hill number has digits that possibly rise and then possibly fall, but never fall and then rise
+- If input is a hill number, output count of hill numbers <= input
+- If not a hill number, output -1 (0xFFFFFFFF)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] n // 16-bit input number (0-9999)
+
+Outputs:
+output reg [31:0] result // result or -1
+output reg done // high when computation complete
+
+Latency: Maximum 100 clock cycles after start asserted.
+
+Module Behavior:
+1. When start is asserted, extract digits of n (4 digits, BCD format)
+2. Check if n is a hill number:
+   - Example: 12321 is hill (1<2<3>2>1)
+   - Example: 12223 is hill (1<2=2=2<3)
+   - Example: 101 is NOT hill (1>0<1 - fall then rise)
+3. If not hill: result = 32'hFFFFFFFF (-1)
+4. If hill: count how many 1-4 digit hill numbers exist <= n
+   - Use digit DP: states track (position, prev_digit, phase)
+   - Phase 0: rising, Phase 1: falling
+   - Count with tight constraint for numbers <= n
+   - Precompute: 1-9: 9 numbers, 10-99: 90 numbers but only hills, etc.
+5. Output result and assert done
+
+Implementation details:
+- Use state machine: IDLE, DIGITIZE, CHECK_HILL, COUNT_HILL, DONE
+- Check hill by scanning digit array: allow initial flat/rising, then falling, no rise after fall
+- For counting: use bounded DP with 4 positions, 10 digit values, 2 phases
+- Result should be 32-bit to handle max count
+
+The module must work for test cases like:
+- n=10: result=10 (hill, 10 hill numbers <=10)
+- n=55: result=55 (hill)
+- n=101: result=0xFFFFFFFF (not hill)
+- n=1234321: Not in range, but n=1234 gives result=94708 (adapted)

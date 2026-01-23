@@ -1,0 +1,28 @@
+Design a sequential Verilog module named 'robber_watches' that counts the number of valid time moments where hours and minutes have distinct base-7 digits.
+
+Problem Adaptation:
+- Input n and m are scaled down to small integers (max around 8 in decimal), representing the maximum allowed hour and minute.
+- The module calculates the number of pairs (hour, minute) such that their base-7 representations (padded to fixed lengths) use distinct digits from 0-6.
+- Since hardware parallelism is better for small inputs, we will process all permutations of digits for the required lengths (max 7 digits total, but practically limited to 4-5 for resource constraints in this adaptation). 
+- Specifically, the module assumes inputs n and m correspond to lengths of 3 and 2 base-7 digits respectively (max values 343 and 49 decimal), or similar small fixed constraints.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] n // Decimal limit for hours (scaled, max 343)
+input [7:0] m // Decimal limit for minutes (scaled, max 49)
+
+Outputs:
+output reg [15:0] result // Total count of valid pairs
+output reg done // High when computation complete
+
+Specification:
+- Latency: Depends on permutation count. For 5 digits (3 hours + 2 minutes), 5! = 120 cycles + overhead.
+- Use a state machine: IDLE -> GENERATE_PERM -> CHECK_VALID -> UPDATE_COUNT -> DONE.
+- The generation should use a recursive depth-first search or iterative permutation generation (e.g., Heap's algorithm logic) constrained to a fixed depth.
+- Since arbitrary recursion is hard in Verilog, implement a stack-based DFS generator or a simple counter that iterates through integer representations and checks for distinct digits (easier for sequential logic).
+- Logic: Iterate 'i' from 0 to 99999 (or similar bound based on n and m). Check if 'i' in base-7 has distinct digits and falls into length constraints. This might be too slow for 7! states (5040). Better: Iterate permutations of digits.
+- Hardware approach: A lookup table of valid permutations is too large. A state machine generating permutations one by one is feasible. Use a stack to generate permutations of digits {0..6} of length L = len(n) + len(m). For each permutation, check if the first part < n and second part < m.
+- Constraint: Let's limit lengths to max 3 for hours (n<343) and 2 for minutes (m<49). Total digits 5. 5! = 120 states. A state machine can iterate through these 120 permutations.
+- The module should implement a generator for permutations of '0123456' of length L, check bounds, and accumulate count.

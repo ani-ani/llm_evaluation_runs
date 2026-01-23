@@ -1,0 +1,60 @@
+module dots_and_boxes (
+    input wire clk,          // Clock
+    input wire rst_n,        // Active-low reset
+    input wire start,        // Start computation (pulse high for one cycle)
+    input wire [11:0] edges, // Current edge state: 1 = present, 0 = absent
+                             // Bit mapping:
+                             //   [0]: H row1 col1 (between dots (1,1)-(1,2))
+                             //   [1]: H row1 col2 (between dots (1,2)-(1,3))
+                             //   [2]: H row2 col1 (between dots (2,1)-(2,2))
+                             //   [3]: H row2 col2 (between dots (2,2)-(2,3))
+                             //   [4]: H row3 col1 (between dots (3,1)-(3,2))
+                             //   [5]: H row3 col2 (between dots (3,2)-(3,3))
+                             //   [6]: V col1 row1 (between dots (1,1)-(2,1))
+                             //   [7]: V col1 row2 (between dots (2,1)-(3,1))
+                             //   [8]: V col2 row1 (between dots (1,2)-(2,2))
+                             //   [9]: V col2 row2 (between dots (2,2)-(3,2))
+                             //   [10]: V col3 row1 (between dots (1,3)-(2,3))
+                             //   [11]: V col3 row2 (between dots (2,3)-(3,3))
+    output reg [3:0] result, // Maximum number of additional moves (0..12)
+    output reg done          // High when result is valid
+);
+
+// This module computes the maximum number of edges that can be added without completing any square.
+// The algorithm enumerates all subsets of missing edges and checks the per-square capacity constraint.
+// Steps:
+// 1. Upon start, compute current edge counts per square (combinational).
+// 2. Iterate over all possible masks from 0 to 4095 (12-bit).
+//    For each mask, if it is a subset of missing_edges (i.e., mask & ~missing_edges == 0), then:
+//    - Compute added edge counts per square by summing the edges in the mask.
+//    - If for all squares, current_count + added_count <= 3, then the subset is valid.
+//    - Keep track of the maximum size (popcount) among valid subsets.
+// 3. After all masks processed, output the maximum size.
+
+// State machine states:
+// S_IDLE: Wait for start signal.
+// S_COMPUTE_CURRENT: Latch the current_counts computed combinationally from edges.
+// S_INIT_MASK: Initialize mask = 0, max_count = 0.
+// S_LOOP_MASK: Check if mask == 4095, if yes go to S_DONE, else go to S_CHECK_SUBSET.
+// S_CHECK_SUBSET: Check if mask is subset of missing_edges. If yes, go to S_RESET_ADDED; else go to S_NEXT_MASK.
+// S_RESET_ADDED: Set added_counts[0:3] = 0, popcnt = 0, bit_index = 0.
+// S_LOOP_BITS: If bit_index >= 12, go to S_CHECK_VALID. Else, if mask[bit_index] is 1, go to S_ADD_EDGE; else go to S_NEXT_BIT.
+// S_ADD_EDGE: Based on bit_index, update added_counts for the affected squares (use lookup table). Increment popcnt by 1. Then go to S_NEXT_BIT.
+// S_NEXT_BIT: Increment bit_index, go to S_LOOP_BITS.
+// S_CHECK_VALID: Check if current_counts[s] + added_counts[s] <= 3 for all squares s. If valid and popcnt > max_count, update max_count. Then go to S_NEXT_MASK.
+// S_NEXT_MASK: Increment mask, go to S_LOOP_MASK.
+// S_DONE: Set result = max_count, assert done, then return to S_IDLE after one cycle (or stay until reset).
+
+// Additional notes:
+// - The current_counts are computed combinationally from the input edges. You can use a series of if statements or a case statement.
+// - The mapping of edge index to affected squares must be implemented (see bit mapping above). Use a case statement on bit_index to set squares_affected (a 4-bit mask).
+// - missing_edges = ~edges.
+// - The combinational check for subset: is_subset = (mask & ~missing_edges) == 0.
+// - The combinational check for validity: valid = (current_counts[0] + added_counts[0] <= 3) && ... for all four squares.
+// - popcnt can be counted as we iterate over bits.
+// - The state machine should be implemented with a sequential always block for state and registers, and combinational always block for next state and outputs.
+// - Ensure that all loops terminate and that the design does not have any latches.
+
+// The module is for N=3 only. The input edges vector must be provided accordingly.
+
+endmodule

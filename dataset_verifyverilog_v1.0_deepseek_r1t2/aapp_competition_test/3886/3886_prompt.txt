@@ -1,0 +1,142 @@
+module find_char(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] n,      // Scaled down: max 10 for hardware feasibility
+    input [15:0] k,     // k up to 10^18 scaled to 16 bits
+    output reg [7:0] char,
+    output reg done
+);
+
+// Fixed strings (stored as ASCII values)
+reg [7:0] f0 [0:74];      // 75 chars: "What are you doing at the end of the world? Are you busy? Will you save us?"
+reg [7:0] prefix [0:33];  // 34 chars: "What are you doing while sending \""
+reg [7:0] middle [0:31];  // 32 chars: "\"? Are you busy? Will you send \""
+reg [7:0] suffix [0:1];   // 2 chars: "\"?"
+
+// Length lookup table (computed at compile time for n=0 to 10)
+reg [15:0] length [0:10]; // Maximum k=10^18 fits in 16 bits after scaling
+
+// State machine states
+localparam IDLE = 2'd0;
+localparam CHECK = 2'd1;
+localparam DONE_STATE = 2'd2;
+
+reg [1:0] state;
+reg [7:0] curr_n;
+reg [15:0] curr_k;
+
+// Initialize strings and lengths
+initial begin
+    // f0: 75 chars
+    f0 = {8'd87, 8'd104, 8'd97, 8'd116, 8'd32, 8'd97, 8'd114, 8'd101, 8'd32, 8'd121,
+          8'd111, 8'd117, 8'd32, 8'd100, 8'd111, 8'd105, 8'd110, 8'd103, 8'd32, 8'd97,
+          8'd116, 8'd32, 8'd116, 8'd104, 8'd101, 8'd32, 8'd101, 8'd110, 8'd100, 8'd32,
+          8'd111, 8'd102, 8'd32, 8'd116, 8'd104, 8'd101, 8'd32, 8'd119, 8'd111, 8'd114,
+          8'd108, 8'd100, 8'd63, 8'd32, 8'd65, 8'd114, 8'd101, 8'd32, 8'd121, 8'd111,
+          8'd117, 8'd32, 8'd98, 8'd117, 8'd115, 8'd121, 8'd63, 8'd32, 8'd87, 8'd105,
+          8'd108, 8'd108, 8'd32, 8'd121, 8'd111, 8'd117, 8'd32, 8'd115, 8'd97, 8'd118,
+          8'd101, 8'd32, 8'd117, 8'd115, 8'd63};
+    
+    // prefix: 34 chars
+    prefix = {8'd87, 8'd104, 8'd97, 8'd116, 8'd32, 8'd97, 8'd114, 8'd101, 8'd32, 8'd121,
+              8'd111, 8'd117, 8'd32, 8'd100, 8'd111, 8'd105, 8'd110, 8'd103, 8'd32, 8'd119,
+              8'd104, 8'd105, 8'd108, 8'd101, 8'd32, 8'd115, 8'd101, 8'd110, 8'd100, 8'd105,
+              8'd110, 8'd103, 8'd32, 8'd34};
+    
+    // middle: 32 chars
+    middle = {8'd34, 8'd63, 8'd32, 8'd65, 8'd114, 8'd101, 8'd32, 8'd121, 8'd111, 8'd117,
+              8'd32, 8'd98, 8'd117, 8'd115, 8'd121, 8'd63, 8'd32, 8'd87, 8'd105, 8'd108,
+              8'd108, 8'd32, 8'd121, 8'd111, 8'd117, 8'd32, 8'd115, 8'd101, 8'd110, 8'd100,
+              8'd32, 8'd34};
+    
+    // suffix: 2 chars
+    suffix = {8'd34, 8'd63};
+    
+    // Lengths: f0=75, f1=75+75+68=218, f2=218*2+68=504, etc.
+    length[0] = 75;
+    length[1] = 75*2 + 68;  // 218
+    length[2] = 218*2 + 68; // 504
+    length[3] = 504*2 + 68; // 1076
+    length[4] = 1076*2 + 68; // 2220
+    length[5] = 2220*2 + 68; // 4508
+    length[6] = 4508*2 + 68; // 9084
+    length[7] = 9084*2 + 68; // 18236
+    length[8] = 18236*2 + 68; // 36540
+    length[9] = 36540*2 + 68; // 73148
+    length[10] = 73148*2 + 68; // 146364
+end
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        char <= 0;
+        curr_n <= 0;
+        curr_k <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    curr_n <= (n > 10) ? 10 : n;  // Cap n at 10
+                    curr_k <= k;
+                    state <= CHECK;
+                end
+            end
+            
+            CHECK: begin
+                if (curr_n == 0) begin
+                    if (curr_k <= 75 && curr_k > 0) begin
+                        char <= f0[curr_k - 1];
+                        done <= 1;
+                        state <= DONE_STATE;
+                    end else begin
+                        char <= 8'd46;  // '.'
+                        done <= 1;
+                        state <= DONE_STATE;
+                    end
+                end else if (curr_k <= 34) begin
+                    char <= prefix[curr_k - 1];
+                    done <= 1;
+                    state <= DONE_STATE;
+                end else if (curr_k <= 34 + length[curr_n-1]) begin
+                    // First recursive part
+                    curr_k <= curr_k - 34;
+                    curr_n <= curr_n - 1;
+                    state <= CHECK;
+                end else if (curr_k <= 34 + length[curr_n-1] + 32) begin
+                    // Middle string
+                    char <= middle[curr_k - 34 - length[curr_n-1] - 1];
+                    done <= 1;
+                    state <= DONE_STATE;
+                end else if (curr_k <= 34 + length[curr_n-1] + 32 + length[curr_n-1]) begin
+                    // Second recursive part
+                    curr_k <= curr_k - 34 - length[curr_n-1] - 32;
+                    curr_n <= curr_n - 1;
+                    state <= CHECK;
+                end else if (curr_k <= 34 + length[curr_n-1] + 32 + length[curr_n-1] + 2) begin
+                    // Suffix
+                    char <= suffix[curr_k - 34 - length[curr_n-1] - 32 - length[curr_n-1] - 1];
+                    done <= 1;
+                    state <= DONE_STATE;
+                end else begin
+                    // Out of bounds
+                    char <= 8'd46;  // '.'
+                    done <= 1;
+                    state <= DONE_STATE;
+                end
+            end
+            
+            DONE_STATE: begin
+                // Wait for start to go low
+                if (!start) begin
+                    state <= IDLE;
+                    done <= 0;
+                end
+            end
+        endcase
+    end
+end
+
+endmodule

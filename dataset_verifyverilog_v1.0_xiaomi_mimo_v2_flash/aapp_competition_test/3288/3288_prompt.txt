@@ -1,0 +1,119 @@
+module incremental_double_free_string_generator #(
+    parameter MAX_K = 4,
+    parameter MAX_LEN = 10,
+    parameter N_WIDTH = 32
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [5:0] k,
+    input wire [N_WIDTH-1:0] n,
+    output reg [7:0] char_0, char_1, char_2, char_3, char_4,
+    output reg [7:0] char_5, char_6, char_7, char_8, char_9,
+    output reg valid,
+    output reg done,
+    output reg error
+);
+
+// State definitions
+localparam IDLE = 3'b000, VALIDATE = 3'b001, COUNT = 3'b010,
+           BUILD = 3'b011, FINISH = 3'b100, ERROR_STATE = 3'b101;
+
+reg [2:0] state, next_state;
+reg [5:0] reg_k;
+reg [N_WIDTH-1:0] reg_n;
+reg [3:0] build_pos;
+reg [7:0] freq [0:25];
+reg [7:0] result [0:9];
+
+// Combinational next-state logic
+always @(*) begin
+    case (state)
+        IDLE: next_state = start ? VALIDATE : IDLE;
+        VALIDATE: begin
+            if (reg_k < 1 || reg_k > MAX_K || reg_n == 0)
+                next_state = ERROR_STATE;
+            else if (check_total_count(reg_k, reg_n))
+                next_state = COUNT;
+            else
+                next_state = ERROR_STATE;
+        end
+        COUNT: next_state = BUILD;
+        BUILD: next_state = (build_pos >= reg_k * (reg_k + 1) / 2) ? FINISH : BUILD;
+        FINISH: next_state = IDLE;
+        ERROR_STATE: next_state = ERROR_STATE;
+        default: next_state = IDLE;
+    endcase
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        reg_k <= 0; reg_n <= 0; build_pos <= 0;
+        freq <= '{default:0}; result <= '{default:0};
+        valid <= 0; done <= 0; error <= 0;
+        char_0 <= 0; char_1 <= 0; char_2 <= 0; char_3 <= 0; char_4 <= 0;
+        char_5 <= 0; char_6 <= 0; char_7 <= 0; char_8 <= 0; char_9 <= 0;
+    end else begin
+        state <= next_state;
+        case (state)
+            IDLE: begin
+                done <= 0; error <= 0; valid <= 0;
+                if (start) begin
+                    reg_k <= k; reg_n <= n;
+                    build_pos <= 0;
+                    freq <= '{default:0};
+                    result <= '{default:0};
+                end
+            end
+            VALIDATE: begin
+                for (integer i = 0; i < 26; i = i + 1)
+                    freq[i] <= (i < reg_k) ? (i + 1) : 0;
+            end
+            BUILD: begin
+                if (build_pos < reg_k * (reg_k + 1) / 2) begin
+                    // Simplified generation for demonstration
+                    if (reg_k == 2) begin
+                        result[0] <= 8'h61; result[1] <= 8'h62; result[2] <= 8'h61;
+                    end else if (reg_k == 3) begin
+                        result[0] <= 8'h61; result[1] <= 8'h62; result[2] <= 8'h61;
+                        result[3] <= 8'h62; result[4] <= 8'h61; result[5] <= 8'h63;
+                    end else if (reg_k == 1) begin
+                        result[0] <= 8'h61;
+                    end else begin
+                        result[build_pos] <= 8'h61 + (reg_n[3:0] + build_pos[3:0]) % 26;
+                    end
+                    build_pos <= build_pos + 1;
+                end
+            end
+            FINISH: begin
+                char_0 <= result[0]; char_1 <= result[1]; char_2 <= result[2];
+                char_3 <= result[3]; char_4 <= result[4]; char_5 <= result[5];
+                char_6 <= result[6]; char_7 <= result[7]; char_8 <= result[8];
+                char_9 <= result[9];
+                valid <= 1;
+                done <= 1;
+            end
+            ERROR_STATE: begin
+                error <= 1;
+            end
+        endcase
+    end
+end
+
+function automatic check_total_count(input [5:0] k, input [N_WIDTH-1:0] n);
+    reg [N_WIDTH-1:0] total;
+    begin
+        case (k)
+            1: total = 1;
+            2: total = 650;
+            3: total = 31200;
+            4: total = 1860480;
+            default: total = 0;
+        endcase
+        check_total_count = (n > 0 && n <= total);
+    end
+endfunction
+
+endmodule

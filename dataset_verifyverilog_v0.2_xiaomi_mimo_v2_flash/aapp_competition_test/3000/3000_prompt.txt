@@ -1,0 +1,109 @@
+Design a sequential Verilog module named 'bracket_eval' that evaluates bracket sequences with alternating addition and multiplication operations based on nesting depth.
+
+**Problem Specification:**
+- Input: A sequence of tokens (integers or parentheses)
+- Operation: Addition at depth 0 (top level), multiplication at depth 1, addition at depth 2, etc.
+- Depth tracking: '(' increases depth, ')' decreases depth
+- Constraint: Maximum 8 tokens, each integer 0-255
+
+**Module Interface:**
+
+Input Signals:
+- clk: Clock signal
+- rst_n: Active-low reset
+- start: Start computation (pulse high)
+- token_in [7:0]: Current token value (0-255 for numbers, 0x28='(', 0x29=')')
+- token_valid: High when token_in is valid
+- token_end: High indicates last token
+
+Output Signals:
+- result [31:0]: Final computed value
+- result_valid: High when result is valid
+- done: High when computation is complete
+
+**Behavior:**
+1. On start, reset internal state machine and stack
+2. Process tokens sequentially (one per clock cycle when token_valid is high)
+3. Maintain a stack of accumulators and operation modes
+4. At depth 0: addition mode, at depth 1: multiplication mode, alternating
+5. When encountering '(': push current accumulator and start new group
+6. When encountering ')': pop and combine with parent accumulator
+7. For numbers: add or multiply to current accumulator based on mode
+8. Output final result when all tokens processed
+9. Latency: maximum 32 clock cycles from start to done
+
+**State Machine States:**
+- IDLE: Waiting for start signal
+- PROCESSING: Reading and evaluating tokens
+- DONE: Computation complete
+
+**Implementation Notes:**
+- Use a stack of depth 8 to handle nesting
+- Each stack entry: {value [31:0], mode [0:0]} where 0=add, 1=multiply
+- Current accumulator holds intermediate result
+- Current mode: 0=add, 1=multiply
+- All operations modulo 1000000007 (10^9+7)
+- Handle edge case: single number without parentheses
+- Handle edge case: empty parentheses () is invalid but won't occur per problem
+
+**Example Walkthrough:**
+Input: "( 2 ( 2 1 ) ) 3" (8 tokens)
+1. '(' - push {0,0}, depth=1, mode=multiply, accumulator=0
+2. '2' - accumulator = 0 * 2 = 0
+3. '(' - push {0,1}, depth=2, mode=add, accumulator=0
+4. '2' - accumulator = 0 + 2 = 2
+5. '1' - accumulator = 2 + 1 = 3
+6. ')' - pop {0,1}, accumulator = 0 * 3 = 3, mode=multiply, depth=1
+7. ')' - pop {0,0}, accumulator = 0 + 3 = 3, mode=add, depth=0
+8. '3' - accumulator = 3 + 3 = 6
+Result: 6 (but example says 9 - wait, let me recalculate: (2*(2+1))*3 = (2*3)*3 = 18... no the example shows 9. Let me re-read... Oh it's ( 2 ( 2 1 ) ) 3 = 2*(2+1) + 3 = 2*3 + 3 = 9. Yes, addition at top level!)
+
+Corrected Walkthrough:
+1. '(' - push {0,0}, depth=1, mode=multiply, accumulator=0
+2. '2' - accumulator = 0 * 2 = 0
+3. '(' - push {0,1}, depth=2, mode=add, accumulator=0
+4. '2' - accumulator = 0 + 2 = 2
+5. '1' - accumulator = 2 + 1 = 3
+6. ')' - pop {0,1}, accumulator = 0 * 3 = 3 (but need to add 2 first...)
+Wait, I need to track the 2 outside the inner parentheses:
+- After '2' at depth 1: accumulator = 2
+- After '(': push {2,0}, new accumulator = 0, depth=2, mode=add
+- After '2': accumulator = 2
+- After '1': accumulator = 3
+- After ')': pop {2,0}, accumulator = 2 * 3 = 6, depth=1, mode=multiply
+- After ')': pop {0,0}, accumulator = 0 + 6 = 6, depth=0, mode=add
+- After '3': accumulator = 6 + 3 = 9
+
+**State Machine with Stack:**
+- stack_depth [2:0]: current nesting depth (0-7)
+- stack_values [7:0][31:0]: array for accumulator values at each depth
+- stack_modes [7:0]: array for operation modes at each depth (0=add, 1=mul)
+- current_value [31:0]: accumulator for current depth
+- current_mode [0:0]: operation mode for current depth
+- token_count [3:0]: number of tokens processed
+
+**Token Encoding:**
+- Numbers: 0-255 (direct value)
+- '(': 0x28 (40 decimal)
+- ')': 0x29 (41 decimal)
+
+**Processing Logic:**
+- If token is number:
+  - if current_mode==0: current_value = current_value + token
+  - if current_mode==1: current_value = current_value * token
+- If token is '(':
+  - push current_value to stack[stack_depth]
+  - push current_mode to stack_modes[stack_depth]
+  - stack_depth = stack_depth + 1
+  - current_value = 0
+  - current_mode = (stack_depth % 2)  // 0=add at even depth, 1=mul at odd depth
+- If token is ')':
+  - temp = current_value
+  - stack_depth = stack_depth - 1
+  - current_value = stack_values[stack_depth]
+  - current_mode = stack_modes[stack_depth]
+  - if current_mode==0: current_value = current_value + temp
+  - if current_mode==1: current_value = current_value * temp
+
+**Modulo Operation:**
+All arithmetic operations (addition and multiplication) must be performed modulo 1000000007 (0x3B9ACA07).

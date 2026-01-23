@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'linear_congruence_solver' that solves the linear congruence equation Ax + B ≡ P (mod M) for the minimal non-negative x. 
+
+The module will parse a simplified arithmetic expression string containing variable 'x' to find coefficients A and B. The expression is limited to 8 characters and supports only addition, multiplication, and parentheses, e.g., "3*x+5" or "x+10".
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] expr_char_0 // Expression character 0 (ASCII)
+input [7:0] expr_char_1 // Expression character 1
+input [7:0] expr_char_2 // Expression character 2
+input [7:0] expr_char_3 // Expression character 3
+input [7:0] expr_char_4 // Expression character 4
+input [7:0] expr_char_5 // Expression character 5
+input [7:0] expr_char_6 // Expression character 6
+input [7:0] expr_char_7 // Expression character 7
+input [19:0] P // Target remainder (0 to M-1)
+input [19:0] M // Modulus (1 to 1000000, scaled to 20-bit)
+
+Outputs:
+output reg [19:0] result_x // The minimal non-negative solution for x
+output reg done // High when computation is complete
+output reg error // High if expression parsing fails
+
+Specification:
+1. The module should parse the 8-character expression to extract coefficients A and B such that the expression equals Ax + B.
+   - Example: "3*x+5" -> A=3, B=5
+   - Example: "x+10" -> A=1, B=10
+   - Example: "5+3*x" -> A=3, B=5
+
+2. Solve the linear congruence Ax + B ≡ P (mod M) for x.
+   This is equivalent to Ax ≡ (P - B) (mod M).
+   Let C = (P - B) mod M.
+   Solve Ax ≡ C (mod M).
+   This requires finding the modular inverse of A modulo M, if it exists.
+   Use Extended Euclidean Algorithm to find A^{-1} mod M.
+   Then x = C * A^{-1} mod M.
+   If no inverse exists, assert error.
+
+3. The module must be sequential with a state machine:
+   - State IDLE: Wait for start signal
+   - State PARSE: Parse expression to find A and B (over several cycles)
+   - State COMPUTE: Calculate C and perform Extended Euclidean Algorithm
+   - State DONE: Set done signal and result
+
+4. Latency: Result valid 100-200 clock cycles after start asserted (allowing for iterative EEA).
+
+5. Use 20-bit arithmetic for P, M, A, B, C to handle M up to ~1,000,000.
+
+Behavioral Description:
+The module operates in several stages. First, it parses the ASCII expression characters to identify the coefficient of x (A) and the constant term (B). Since the expression is simple (e.g., "A*x+B" or "x+B"), it scans the characters for 'x', digits, and operators. It builds A and B by accumulating digits. For "x" without a coefficient, A defaults to 1. It also handles the case where 'x' is on the right side (e.g., "B+A*x").
+
+After parsing, it computes C = (P - B) mod M. Then it solves Ax ≡ C (mod M). It calls a subroutine to perform the Extended Euclidean Algorithm on A and M to find gcd(A, M) and coefficients (u, v) such that Au + Mv = gcd(A, M). If gcd(A, M) divides C, a solution exists. The solution is x = (C * u) mod M (where u is the modular inverse if gcd=1). The module iterates through the EEA steps using a loop state machine. Finally, it outputs the minimal non-negative x.

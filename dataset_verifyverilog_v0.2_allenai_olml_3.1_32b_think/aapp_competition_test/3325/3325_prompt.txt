@@ -1,0 +1,310 @@
+Design a sequential Verilog module named 'aquarium_water_height' that computes water height in a convex polygon tank.
+
+**Problem Adaptation:**
+- Maximum 8 vertices (instead of 100)
+- Fixed-point arithmetic using Q16.16 format
+- Water volume: 0-2000 litres converted to cm³ (0-2,000,000 cm³)
+- Depth D: 0-1000 cm (fits in 16 bits)
+- Vertex coordinates: ±1000 cm (fits in 16 bits signed, extended to 32-bit for Q16.16)
+- Water height computed via iterative binary search over 0-1000 cm range
+- Volume calculation using trapezoidal integration of polygon cross-section
+
+**Inputs:**
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_vertices // 3-8 vertices (encoded as 3'b001 = 4 vertices, etc.)
+input [31:0] depth // D in Q16.16 format (16.0000 fixed-point)
+input [31:0] volume_cm3 // L*1000 in Q16.16 format
+input [7:0] vertex_index // index for loading vertices (0-7)
+input signed [31:0] vertex_x // x-coordinate in Q16.16
+input signed [31:0] vertex_y // y-coordinate in Q16.16
+input load_vertex // pulse to load current vertex
+output reg [31:0] water_height // result in Q16.16 format
+output reg done // high when computation complete
+output reg error // high if invalid state
+
+**Latency:** 1200 cycles max (100 iterations × 12 cycles per iteration)
+
+**Internal Operation:**
+1. IDLE: Wait for start, reset state
+2. LOAD_VERTICES: Accept 8 vertices via vertex_index/load_vertex
+3. COMPUTE_VOLUME: For given water height H, compute polygon area at height H
+   - Find intersection points of y=H line with polygon edges
+   - Sort intersection x-coordinates (bubble sort for 8 elements max)
+   - Compute area under water line using trapezoid rule
+   - Multiply by depth to get volume
+4. BINARY_SEARCH: Compare computed volume with target volume, adjust height
+   - Initial range: 0 to max_y of polygon
+   - 10 iterations of binary search (2^-10 ≈ 0.001 precision)
+5. DONE: Output final water_height
+
+**Volume Calculation Algorithm:**
+- For each edge from (x1,y1) to (x2,y2):
+  - If edge crosses H (min(y1,y2) ≤ H ≤ max(y1,y2)):
+    - Compute intersection x = x1 + (x2-x1)*(H-y1)/(y2-y1)
+    - Store in intersection array
+- Sort intersections by x
+- For each adjacent pair, add trapezoid area: (x2-x1)*H
+- Multiply total area by depth to get volume
+
+**Q16.16 Fixed-Point Operations:**
+- All calculations use 32-bit signed arithmetic
+- Division: use approximation or shift (for binary search)
+- Multiplication: result >> 16
+- Use built-in division for intersection calculation
+
+**State Machine States:**
+- IDLE (0): Waiting for start
+- LOAD (1): Loading vertices
+- INIT_SEARCH (2): Initialize binary search bounds
+- COMPUTE_ITER (3): Compute volume for current guess
+- UPDATE_BOUNDS (4): Update binary search bounds
+- DONE (5): Result ready
+
+**Module Specification:**
+module aquarium_water_height (
+    input clk,
+    input rst_n,
+    input start,
+    input [2:0] num_vertices,
+    input [31:0] depth,
+    input [31:0] volume_cm3,
+    input [7:0] vertex_index,
+    input signed [31:0] vertex_x,
+    input signed [31:0] vertex_y,
+    input load_vertex,
+    output reg [31:0] water_height,
+    output reg done,
+    output reg error
+);
+
+// Internal registers for 8 vertices (x,y)
+reg signed [31:0] vx [0:7];
+reg signed [31:0] vy [0:7];
+reg [2:0] vertex_count;
+reg vertices_loaded;
+
+// Binary search state
+reg [31:0] low, high, mid;
+reg [31:0] computed_volume;
+reg [3:0] iteration_count;
+
+// Intersection storage (max 16 intersections for 8 edges)
+reg signed [31:0] intersections [0:15];
+reg [3:0] intersection_count;
+
+// State machine
+reg [2:0] state;
+parameter IDLE = 3'b000;
+parameter LOAD = 3'b001;
+parameter INIT_SEARCH = 3'b010;
+parameter COMPUTE_ITER = 3'b011;
+parameter UPDATE_BOUNDS = 3'b100;
+parameter DONE = 3'b101;
+
+// Helper signals for volume computation
+reg [31:0] current_height;
+reg signed [31:0] temp_x;
+reg [3:0] edge_idx;
+reg [3:0] sort_count;
+reg [3:0] sort_inner;
+
+// Division helper (simplified 32-bit unsigned division)
+// Returns dividend / divisor (simplified for hardware)
+reg [31:0] div_result;
+reg div_valid;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset all registers
+        water_height <= 0;
+        done <= 0;
+        error <= 0;
+        state <= IDLE;
+        vertex_count <= 0;
+        vertices_loaded <= 0;
+        iteration_count <= 0;
+        low <= 0;
+        high <= 32'h00640000; // 100.0 in Q16.16
+        mid <= 0;
+        computed_volume <= 0;
+        intersection_count <= 0;
+        edge_idx <= 0;
+        sort_count <= 0;
+        sort_inner <= 0;
+        current_height <= 0;
+        // Reset vertex arrays
+        for (integer i = 0; i < 8; i = i + 1) begin
+            vx[i] <= 0;
+            vy[i] <= 0;
+        end
+        // Reset intersection array
+        for (integer i = 0; i < 16; i = i + 1) begin
+            intersections[i] <= 0;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                error <= 0;
+                if (start) begin
+                    if (num_vertices < 3 || num_vertices > 8) begin
+                        error <= 1;
+                        state <= IDLE;
+                    end else begin
+                        vertex_count <= 0;
+                        vertices_loaded <= 0;
+                        state <= LOAD;
+                    end
+                end
+            end
+
+            LOAD: begin
+                if (load_vertex) begin
+                    if (vertex_index < num_vertices) begin
+                        vx[vertex_index] <= vertex_x;
+                        vy[vertex_index] <= vertex_y;
+                        vertex_count <= vertex_count + 1;
+                    end
+                end
+                if (vertex_count == num_vertices) begin
+                    vertices_loaded <= 1;
+                    state <= INIT_SEARCH;
+                    // Find max_y for high bound
+                    high <= 0;
+                    for (integer i = 0; i < 8; i = i + 1) begin
+                        if (i < num_vertices && vy[i] > high) begin
+                            high <= vy[i];
+                        end
+                    end
+                    low <= 0;
+                    iteration_count <= 0;
+                end
+            end
+
+            INIT_SEARCH: begin
+                // Initialize for binary search
+                mid <= (low + high) >> 1; // Divide by 2
+                state <= COMPUTE_ITER;
+                edge_idx <= 0;
+                intersection_count <= 0;
+                current_height <= (low + high) >> 1;
+                computed_volume <= 0;
+            end
+
+            COMPUTE_ITER: begin
+                // Compute volume at current_height using trapezoidal integration
+                // Step 1: Find intersections with all edges
+                if (edge_idx < num_vertices) begin
+                    reg signed [31:0] x1, y1, x2, y2;
+                    reg signed [31:0] dx, dy;
+                    reg signed [31:0] intersect_x;
+                    
+                    x1 = vx[edge_idx];
+                    y1 = vy[edge_idx];
+                    x2 = vx[(edge_idx + 1) % num_vertices];
+                    y2 = vy[(edge_idx + 1) % num_vertices];
+                    
+                    // Check if edge crosses current_height
+                    if ((y1 <= current_height && y2 >= current_height) || 
+                        (y2 <= current_height && y1 >= current_height)) begin
+                        if (y1 != y2) begin
+                            // Compute intersection: x = x1 + (x2-x1)*(current_height-y1)/(y2-y1)
+                            // Using Q16.16 arithmetic
+                            dx = x2 - x1;
+                            dy = y2 - y1;
+                            // Simplified division - approximate
+                            if (dy != 0) begin
+                                // Multiply then divide to avoid overflow
+                                // This is a simplified version - exact division would need more cycles
+                                reg signed [63:0]_mult] = dx * (current_height - y1);
+                                // Approximate division by shift for dy (assuming dy is power of 2 or use this as approximation)
+                                // For this problem, we use a simplified 64-bit to 32-bit divide
+                                intersect_x = x1 + (dx * (current_height - y1)) / dy;
+                                if (intersection_count < 16) begin
+                                    intersections[intersection_count] <= intersect_x;
+                                    intersection_count <= intersection_count + 1;
+                                end
+                            end
+                        end
+                    end
+                    edge_idx <= edge_idx + 1;
+                end else if (edge_idx == num_vertices) begin
+                    // Step 2: Sort intersections by x coordinate (bubble sort)
+                    if (sort_count < intersection_count - 1) begin
+                        if (sort_inner < intersection_count - sort_count - 1) begin
+                            if (intersections[sort_inner] > intersections[sort_inner + 1]) begin
+                                // Swap
+                                intersections[sort_inner] <= intersections[sort_inner + 1];
+                                intersections[sort_inner + 1] <= intersections[sort_inner];
+                            end
+                            sort_inner <= sort_inner + 1;
+                        end else begin
+                            sort_count <= sort_count + 1;
+                            sort_inner <= 0;
+                        end
+                    end else begin
+                        // Step 3: Compute area using trapezoid rule
+                        edge_idx <= num_vertices + 1; // Move to next step
+                        sort_count <= 0;
+                        computed_volume <= 0;
+                    end
+                end else if (edge_idx == num_vertices + 1) begin
+                    // Sum trapezoid areas
+                    if (sort_count < intersection_count - 1 && intersection_count >= 2) begin
+                        reg signed [31:0] width;
+                        width = intersections[sort_count + 1] - intersections[sort_count];
+                        if (width > 0) begin
+                            // area += width * current_height (both in Q16.16, result needs to be divided by 2^16)
+                            reg signed [63:0] area = width * current_height;
+                            computed_volume <= computed_volume + (area >> 16);
+                        end
+                        sort_count <= sort_count + 2; // Process pairs
+                    end else begin
+                        // Step 4: Multiply by depth
+                        // volume = area * depth / 2^16
+                        reg signed [63:0] vol = computed_volume * depth;
+                        computed_volume <= vol >> 16;
+                        state <= UPDATE_BOUNDS;
+                    end
+                end
+            end
+
+            UPDATE_BOUNDS: begin
+                // Binary search logic
+                if (computed_volume < volume_cm3) begin
+                    low <= mid;
+                end else begin
+                    high <= mid;
+                end
+                
+                iteration_count <= iteration_count + 1;
+                
+                if (iteration_count >= 10) begin
+                    water_height <= (low + high) >> 1;
+                    done <= 1;
+                    state <= DONE;
+                end else begin
+                    mid <= (low + high) >> 1;
+                    state <= COMPUTE_ITER;
+                    edge_idx <= 0;
+                    intersection_count <= 0;
+                    current_height <= (low + high) >> 1;
+                    computed_volume <= 0;
+                    sort_count <= 0;
+                    sort_inner <= 0;
+                end
+            end
+
+            DONE: begin
+                if (!start) begin
+                    done <= 0;
+                    state <= IDLE;
+                end
+            end
+        endcase
+    end
+end
+
+endmodule

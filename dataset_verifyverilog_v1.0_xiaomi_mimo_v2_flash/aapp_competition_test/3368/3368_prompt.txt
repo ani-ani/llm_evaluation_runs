@@ -1,0 +1,53 @@
+Verilog module specification:
+
+Module: euler_animal_check
+
+Interface:
+  Inputs:
+    clk         : Clock signal (rising edge)
+    rst_n       : Active-low synchronous reset
+    start       : Start pulse (1 cycle) to begin computation
+    n[3:0]      : Number of enclosures (nodes), 1..8
+    m[4:0]      : Number of misplaced animals (edges), 0..16
+    src[15:0][3:0] : Source node ID for each edge (array of 16, only first m used)
+    dst[15:0][3:0] : Destination node ID for each edge (array of 16, only first m used)
+  Outputs:
+    result[1:0] : Encoded result (00=FALSE ALARM, 01=POSSIBLE, 10=IMPOSSIBLE)
+    done        : Asserted high for 1 cycle when result is valid
+
+Behavior:
+  - Reset: done=0, result=0, internal state cleared
+  - On start: process all edges (m)
+    1. If m==0: set result=00, done=1
+    2. Else:
+       a. Compute indegree/outdegree for each node (0..n-1)
+       b. Build adjacency matrix for undirected connectivity
+       c. Check degree conditions:
+          - Count nodes with outdeg - indeg == 1 (start_count)
+          - Count nodes with indeg - outdeg == 1 (end_count)
+          - Other nodes must have indeg == outdeg
+          - start_count <=1, end_count <=1
+       d. Check connectivity:
+          - Find any node with total degree >0
+          - BFS/DFS on adjacency matrix to mark reachable nodes
+          - All nodes with degree >0 must be reachable
+       e. If conditions satisfied: result=01 (POSSIBLE)
+          Else: result=10 (IMPOSSIBLE)
+    3. Assert done for 1 cycle
+
+Timing:
+  - Computation may take multiple cycles due to sequential processing
+  - Maximum 16 edges, 8 nodes → completes within 256 cycles
+  - Result stable when done=1
+
+State Machine (suggested):
+  IDLE -> PROCESS_EDGES (update degrees & adjacency) -> 
+  CHECK_DEGREES (compute differences) -> 
+  CHECK_CONNECTIVITY (BFS) -> DONE
+
+Implementation notes:
+  - Use 4-bit registers for degrees (max 16)
+  - Use 3-bit node IDs (0..7)
+  - Adjacency matrix: 8x8 bit array
+  - BFS queue: 8-element array of node IDs
+  - All loops bounded by parameters

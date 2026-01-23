@@ -1,0 +1,232 @@
+module frog_regent (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] N,
+    input wire [7:0] start_seq [0:15],
+    input wire [7:0] target_seq [0:15],
+    output reg [7:0] proclamation,
+    output reg proclamation_valid,
+    output reg done,
+    output reg error
+);
+
+// State machine states
+parameter IDLE = 3'b000;
+parameter FIND_DIFF = 3'b001;
+parameter FIND_FROG = 3'b010;
+parameter EXECUTE_LEAPS = 3'b011;
+parameter RENORMALIZE = 3'b100;
+parameter OUTPUT_PROCLAMATION = 3'b101;
+parameter CHECK_DONE = 3'b110;
+parameter FINISHED = 3'b111;
+
+reg [2:0] state, next_state;
+reg [7:0] current_seq [0:15];
+reg [7:0] target_frog;
+reg [7:0] position;
+reg [7:0] leap_count;
+reg [7:0] proclamation_counter;
+reg [7:0] diff_index;
+
+// Helper functions
+function automatic [7:0] find_position;
+    input [7:0] frog;
+    input [7:0] size;
+    integer i;
+    begin
+        find_position = 8'd255;
+        for (i = 0; i < size; i = i + 1) begin
+            if (current_seq[i] == frog) begin
+                find_position = i;
+                break;
+            end
+        end
+    end
+endfunction
+
+task swap_adjacent;
+    input [7:0] pos;
+    input [7:0] size;
+    reg [7:0] next_pos;
+    reg [7:0] temp;
+    begin
+        next_pos = (pos + 1) % size;
+        temp = current_seq[pos];
+        current_seq[pos] = current_seq[next_pos];
+        current_seq[next_pos] = temp;
+    end
+endtask
+
+task renormalize;
+    input [7:0] size;
+    reg [7:0] one_pos;
+    reg [7:0] temp_seq [0:15];
+    integer i, j;
+    begin
+        one_pos = find_position(8'd1, size);
+        if (one_pos == 8'd255) begin
+            error <= 1'b1;
+        end else begin
+            j = 0;
+            for (i = one_pos; i < size; i = i + 1) begin
+                temp_seq[j] = current_seq[i];
+                j = j + 1;
+            end
+            for (i = 0; i < one_pos; i = i + 1) begin
+                temp_seq[j] = current_seq[i];
+                j = j + 1;
+            end
+            for (i = 0; i < size; i = i + 1) begin
+                current_seq[i] <= temp_seq[i];
+            end
+        end
+    end
+endtask
+
+function automatic sequences_equal;
+    input [7:0] size;
+    integer i;
+    begin
+        sequences_equal = 1'b1;
+        for (i = 0; i < size; i = i + 1) begin
+            if (current_seq[i] != target_seq[i]) begin
+                sequences_equal = 1'b0;
+                break;
+            end
+        end
+    end
+endfunction
+
+// State transitions
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: if (start) next_state = FIND_DIFF;
+        
+        FIND_DIFF: begin
+            if (diff_index < N && diff_index != 0)
+                next_state = FIND_FROG;
+            else if (sequences_equal(N))
+                next_state = FINISHED;
+            else
+                next_state = FIND_DIFF; // Continue searching
+        end
+        
+        FIND_FROG: next_state = EXECUTE_LEAPS;
+        
+        EXECUTE_LEAPS: begin
+            if (leap_count == 0)
+                next_state = RENORMALIZE;
+            else
+                next_state = EXECUTE_LEAPS;
+        end
+        
+        RENORMALIZE: next_state = OUTPUT_PROCLAMATION;
+        
+        OUTPUT_PROCLAMATION: next_state = CHECK_DONE;
+        
+        CHECK_DONE: begin
+            if (proclamation_counter >= 8'd100) // Safety limit
+                next_state = FINISHED;
+            else
+                next_state = FIND_DIFF;
+        end
+        
+        FINISHED: next_state = FINISHED;
+        
+        default: next_state = IDLE;
+    endcase
+end
+
+// Datapath
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        proclamation <= 8'd0;
+        proclamation_valid <= 1'b0;
+        done <= 1'b0;
+        error <= 1'b0;
+        leap_count <= 8'd0;
+        position <= 8'd0;
+        target_frog <= 8'd0;
+        diff_index <= 8'd1;
+        proclamation_counter <= 8'd0;
+        for (integer i = 0; i < 16; i = i + 1) begin
+            current_seq[i] <= 8'd0;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                proclamation_valid <= 1'b0;
+                done <= 1'b0;
+                error <= 1'b0;
+                diff_index <= 8'd1;
+                proclamation_counter <= 8'd0;
+                if (start) begin
+                    for (integer i = 0; i < 16; i = i + 1) begin
+                        if (i < N)
+                            current_seq[i] <= start_seq[i];
+                        else
+                            current_seq[i] <= 8'd0;
+                    end
+                end
+            end
+            
+            FIND_DIFF: begin
+                if (diff_index < N) begin
+                    if (current_seq[diff_index] != target_seq[diff_index]) begin
+                        target_frog <= target_seq[diff_index];
+                    end else begin
+                        diff_index <= diff_index + 1;
+                    end
+                end
+            end
+            
+            FIND_FROG: begin
+                position <= find_position(target_frog, N);
+                leap_count <= target_frog;
+                if (position == 8'd255)
+                    error <= 1'b1;
+            end
+            
+            EXECUTE_LEAPS: begin
+                if (leap_count > 0) begin
+                    swap_adjacent(position, N);
+                    position <= (position + 1) % N;
+                    leap_count <= leap_count - 1;
+                end
+            end
+            
+            RENORMALIZE: begin
+                renormalize(N);
+            end
+            
+            OUTPUT_PROCLAMATION: begin
+                proclamation <= target_frog;
+                proclamation_valid <= 1'b1;
+                proclamation_counter <= proclamation_counter + 1;
+            end
+            
+            CHECK_DONE: begin
+                proclamation_valid <= 1'b0;
+                diff_index <= 8'd1; // Reset for next iteration
+            end
+            
+            FINISHED: begin
+                done <= 1'b1;
+                proclamation_valid <= 1'b0;
+            end
+        endcase
+    end
+end
+
+endmodule

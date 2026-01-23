@@ -1,0 +1,175 @@
+module rain_optimizer (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] d,  // Distance (0-16m)
+    input [7:0] t,  // Time limit (0-16s)
+    input [7:0] c,  // Number of clouds (0-8)
+    input [7:0] r,  // Number of roofs (0-4)
+    // Cloud data: 8 clouds, each with start time, end time, probability, intensity
+    input [7:0] cloud_start [0:7],
+    input [7:0] cloud_end [0:7],
+    input [15:0] cloud_prob [0:7],  // Q8.8 fixed point
+    input [7:0] cloud_intensity [0:7],
+    // Roof data: 4 roofs, each with start and end position
+    input [7:0] roof_start [0:3],
+    input [7:0] roof_end [0:3],
+    output reg [31:0] result,  // Q16.16 fixed point
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam COMPUTE_E = 3'd1;
+localparam DP_INIT = 3'd2;
+localparam DP_COMPUTE = 3'd3;
+localparam FINISHED = 3'd4;
+
+// Registers for state machine
+reg [2:0] state, next_state;
+reg [7:0] time_idx, pos_idx;
+reg [7:0] cloud_idx;
+reg [31:0] dp_next [0:16];  // Q16.16
+reg [31:0] dp_curr [0:16];  // Q16.16
+reg [31:0] E [0:16];  // Expected rain at each time (Q16.16)
+reg [15:0] roof_mask [0:16];  // Bitmask: bit=1 if position is under roof
+
+// Helper functions
+function [31:0] min;
+    input [31:0] a, b;
+    begin
+        min = (a < b) ? a : b;
+    end
+endfunction
+
+// Combinational logic for roof coverage
+always @(*) begin
+    // Initialize roof_mask
+    for (integer i = 0; i < 16; i = i + 1) begin
+        roof_mask[i] = 0;
+    end
+    // Mark covered positions
+    for (integer j = 0; j < 4; j = j + 1) begin
+        if (j < r) begin
+            for (integer k = 0; k < 16; k = k + 1) begin
+                if (k >= roof_start[j] && k < roof_end[j]) begin
+                    roof_mask[k] = 1;
+                end
+            end
+        end
+    end
+end
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: if (start) next_state = COMPUTE_E;
+        COMPUTE_E: if (cloud_idx >= c || cloud_idx >= 8) next_state = DP_INIT;
+        DP_INIT: next_state = DP_COMPUTE;
+        DP_COMPUTE: if (time_idx == 0 && pos_idx == 0) next_state = FINISHED;
+        FINISHED: next_state = IDLE;
+    endcase
+end
+
+// Main computation
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        done <= 0;
+        result <= 0;
+        cloud_idx <= 0;
+        time_idx <= 0;
+        pos_idx <= 0;
+        // Reset E and dp arrays
+        for (integer i = 0; i < 16; i = i + 1) begin
+            E[i] <= 0;
+            dp_next[i] <= 32'h7FFFFFFF;  // Infinity
+            dp_curr[i] <= 32'h7FFFFFFF;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                cloud_idx <= 0;
+                time_idx <= 0;
+                pos_idx <= 0;
+            end
+            
+            COMPUTE_E: begin
+                // Compute expected rain for each time step
+                if (cloud_idx < c && cloud_idx < 8) begin
+                    for (integer tm = 0; tm < 16; tm = tm + 1) begin
+                        if (tm >= cloud_start[cloud_idx] && tm < cloud_end[cloud_idx]) begin
+                            // E[tm] += p_i * a_i (Q8.8 * integer = Q8.8, then shift to Q16.16)
+                            E[tm] <= E[tm] + (cloud_prob[cloud_idx] * cloud_intensity[cloud_idx]);
+                        end
+                    end
+                    cloud_idx <= cloud_idx + 1;
+                end
+            end
+            
+            DP_INIT: begin
+                // Initialize DP: at position d at any time, rain = 0
+                for (integer i = 0; i < 16; i = i + 1) begin
+                    if (i <= d) begin
+                        dp_next[i] <= 0;
+                    end else begin
+                        dp_next[i] <= 32'h7FFFFFFF;
+                    end
+                end
+                time_idx <= (t > 0) ? t - 1 : 0;
+                pos_idx <= (d > 0) ? d - 1 : 0;
+            end
+            
+            DP_COMPUTE: begin
+                // Dynamic programming: work backwards from (time_idx, pos_idx)
+                if (time_idx > 0) begin
+                    // Option 1: Wait (if under roof)
+                    if (roof_mask[pos_idx] && pos_idx <= d) begin
+                        dp_curr[pos_idx] <= min(dp_curr[pos_idx], dp_next[pos_idx]);
+                    end
+                    
+                    // Option 2: Move
+                    if (pos_idx < d) begin
+                        // Rain during movement: E[time_idx] if not under roof
+                        // Note: We assume movement covers [time_idx, time_idx+1]
+                        if (!roof_mask[pos_idx]) begin
+                            dp_curr[pos_idx] <= min(dp_curr[pos_idx], dp_next[pos_idx + 1] + E[time_idx]);
+                        end else begin
+                            dp_curr[pos_idx] <= min(dp_curr[pos_idx], dp_next[pos_idx + 1]);
+                        end
+                    end
+                    
+                    // Update indices
+                    if (pos_idx == 0) begin
+                        // Finished this time step
+                        for (integer i = 0; i < 16; i = i + 1) begin
+                            dp_next[i] <= dp_curr[i];
+                            dp_curr[i] <= 32'h7FFFFFFF;
+                        end
+                        time_idx <= time_idx - 1;
+                        pos_idx <= (d > 0) ? d - 1 : 0;
+                    end else begin
+                        pos_idx <= pos_idx - 1;
+                    end
+                end
+            end
+            
+            FINISHED: begin
+                result <= dp_next[0];
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+endmodule

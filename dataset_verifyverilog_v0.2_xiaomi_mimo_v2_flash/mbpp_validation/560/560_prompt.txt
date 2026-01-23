@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'tuple_union_sort' that implements the union of two fixed-size tuples and outputs the result in sorted order.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] tuple1 [0:7] // First tuple of 8 elements, each 8 bits
+input [7:0] tuple2 [0:7] // Second tuple of 8 elements, each 8 bits
+
+Outputs:
+output reg [7:0] result [0:7] // Result array containing union of inputs in sorted order
+output reg done // High when computation is complete
+
+Behavioral Description:
+The module takes two input arrays (representing the tuples) and computes their union in sorted order. Since hardware cannot dynamically resize arrays, the output is a fixed-size array of 8 elements. Empty positions in the output array are filled with 0xFF (255), representing a value outside the valid input range (valid inputs are assumed 0-254). The computation is performed in several stages:
+
+1. **Merge Stage (MERGE)**: Combine the two 8-element arrays into a single 16-element temporary array. Duplicate values are removed during this stage. This is done sequentially, checking each element from tuple2 against all previously merged elements in the temporary array.
+
+2. **Sort Stage (SORT)**: Sort the unique elements in the temporary array using a simple bubble sort algorithm implemented as a state machine. The sorting is done in-place on the temporary array.
+
+3. **Pack Stage (PACK)**: Copy the sorted unique elements to the result array, filling any remaining positions with 0xFF.
+
+State Machine:
+- IDLE: Wait for start signal.
+- MERGE: Populate temp array with unique elements from tuple1 and tuple2.
+- SORT_PASS: Perform a pass of bubble sort on the temp array.
+- SORT_CHECK: Check if the array is sorted.
+- PACK: Copy sorted elements to result array and fill rest with 0xFF.
+- DONE: Set done signal high.
+
+Timing:
+- Latency: Approximately 300 clock cycles after start is asserted (depends on specific implementation, but it is bounded and fixed for these sizes).
+- Inputs are sampled at the beginning of the MERGE stage.
+
+Constraints:
+- Maximum 8 unique elements expected (as we discard duplicates and input tuples are size 8).
+- Input values are non-negative integers less than 255.
+- Output array is fixed size 8.
+- 0xFF is used as a sentinel for empty slots.
+
+Example Timing:
+At cycle 0: start = 1, tuple1 = {1,2,3,4,0,0,0,0}, tuple2 = {3,4,5,6,0,0,0,0}
+At cycle N: done = 1, result = {1,2,3,4,5,6,0xFF,0xFF}

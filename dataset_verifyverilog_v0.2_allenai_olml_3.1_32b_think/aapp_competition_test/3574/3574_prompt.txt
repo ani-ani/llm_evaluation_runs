@@ -1,0 +1,290 @@
+Design a sequential Verilog module named 'magical_subarray' that finds the longest magical subarray within a specific query range.
+
+Problem Definition:
+An array is magical if all values are between the first and last value of the subarray (inclusive).
+Given an array of N numbers, and a query (L, R), find the maximum length of a magical subarray within indices [L, R].
+
+Constraints:
+- N = 8 (hardcoded)
+- Q = 8 (max queries)
+- Values: 0 to 255 (8-bit unsigned)
+- Input format: The module will take the full array and a query, but since we are in hardware, we will process one query at a time.
+
+Module Interface:
+- Inputs:
+  - clk: Clock
+  - rst_n: Active-low reset
+  - start: Start signal (asserts when new query is loaded)
+  - array_data [0:7][7:0]: The fixed array of 8 elements
+  - query_L [2:0]: Left index of query (0-based)
+  - query_R [2:0]: Right index of query (0-based)
+
+- Outputs:
+  - result [3:0]: Maximum length found (max possible is 8, so 4 bits)
+  - done: High when computation is finished
+
+Algorithm Description:
+The module needs to scan the subarray defined by query_L and query_R.
+We need to check all subarrays (i, j) where L <= i <= j <= R.
+For each subarray, we check if it is magical.
+1. Calculate min_val and max_val of the subarray (i to j).
+2. Check if all elements in range [i, j] are >= min_val and <= max_val.
+3. If magical, record the length (j - i + 1).
+4. Find the maximum length among all magical subarrays.
+
+Since N=8, we can use nested loops or a state machine to iterate through all combinations.
+State Machine States:
+- IDLE: Wait for start signal.
+- INIT_START: Initialize outer loop index i = query_L.
+- CHECK_SUBARRAY: Initialize inner loop j = i, current_min = array[i], current_max = array[i].
+- SCAN-elements: Scan elements from i to j to find min/max (if j > i).
+- VALIDATE: Check if the subarray [i, j] is magical by verifying all elements are between min and max.
+- UPDATE_RESULT: If valid, update max_len if (j-i+1) > current max_len.
+- INCREMENT_J: Increment j, repeat until j > query_R.
+- INCREMENT_I: Increment i, repeat until i > query_R.
+- DONE: Assert done signal.
+
+Verilog Code:
+module magical_subarray (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] array_data [0:7],
+    input [2:0] query_L,
+    input [2:0] query_R,
+    output reg [3:0] result,
+    output reg done
+);
+
+    reg [2:0] i; // Outer loop index (start of subarray)
+    reg [2:0] j; // Inner loop index (end of subarray)
+    reg [7:0] current_min;
+    reg [7:0] current_max;
+    reg [7:0] val;
+    reg [3:0] k; // Index for validation loop
+    reg is_magical;
+    
+    // State encoding
+    localparam IDLE = 4'b0000;
+    localparam INIT_START = 4'b0001;
+    localparam CHECK_SUBARRAY = 4'b0010;
+    localparam FIND_MIN_MAX = 4'b0011;
+    localparam VALIDATE = 4'b0100;
+    localparam UPDATE_RESULT = 4'b0101;
+    localparam INCREMENT_J = 4'b0110;
+    localparam INCREMENT_I = 4'b0111;
+    localparam DONE = 4'b1000;
+    
+    reg [3:0] state, next_state;
+    reg [3:0] max_len;
+    
+    // State transition logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) state <= IDLE;
+        else state <= next_state;
+    end
+    
+    // Next state logic
+    always @(*) begin
+        case (state)
+            IDLE: next_state = start ? INIT_START : IDLE;
+            INIT_START: next_state = CHECK_SUBARRAY;
+            CHECK_SUBARRAY: next_state = FIND_MIN_MAX;
+            FIND_MIN_MAX: begin
+                if (j > i) begin
+                    if (array_data[j] < current_min || array_data[j] > current_max)
+                        next_state = FIND_MIN_MAX; // Need to update min/max and continue scanning
+                    else
+                        next_state = FIND_MIN_MAX; // Continue scanning until end of subarray
+                    // Wait, we need a loop for min/max. 
+                    // Actually, we can calculate min/max in one pass or use state to iterate.
+                    // Let's use a separate index 'k' for scanning min/max.
+                    // Let's redefine states for clarity.
+                    next_state = VALIDATE; // Placeholder, will be overridden below
+                end else next_state = VALIDATE;
+            end
+            VALIDATE: begin
+                if (!is_magical) next_state = INCREMENT_J; // Skip if not magical
+                else next_state = UPDATE_RESULT;
+            end
+            UPDATE_RESULT: next_state = INCREMENT_J;
+            INCREMENT_J: begin
+                if (j < query_R) next_state = CHECK_SUBARRAY;
+                else next_state = INCREMENT_I;
+            end
+            INCREMENT_I: begin
+                if (i < query_R) next_state = CHECK_SUBARRAY;
+                else next_state = DONE;
+            end
+            DONE: next_state = DONE;
+            default: next_state = IDLE;
+        endcase
+    end
+    
+    // Datapath logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            result <= 0;
+            done <= 0;
+            max_len <= 0;
+        end else begin
+            case (state)
+                INIT_START: begin
+                    i <= query_L;
+                    max_len <= 0;
+                    done <= 0;
+                end
+                CHECK_SUBARRAY: begin
+                    j <= i;
+                    current_min <= array_data[i];
+                    current_max <= array_data[i];
+                    k <= i; // k will scan for min/max
+                end
+                FIND_MIN_MAX: begin
+                    if (k < j) begin // Wait for j to be set correctly or scan up to j
+                       // Actually, we need to iterate k from i to j
+                       // Let's refine this state to iterate k.
+                    end else if (k == j && k > i) begin
+                        // Update min/max for index k=j
+                        if (array_data[k] < current_min) current_min <= array_data[k];
+                        if (array_data[k] > current_max) current_max <= array_data[k];
+                        // If we reached j, we are done with min/max calculation for this [i, j]
+                        // But we need to set a flag or just transition to VALIDATE when k wraps around
+                    end
+                    // Better logic:
+                    // In FIND_MIN_MAX state, we scan k from i to j.
+                    // We increment k in INCREMENT_K state.
+                end
+                UPDATE_RESULT: begin
+                    if (j - i + 1 > max_len) max_len <= j - i + 1;
+                end
+                DONE: begin
+                    result <= max_len;
+                    done <= 1;
+                end
+            endcase
+        end
+    end
+endmodule
+
+// Revised Module with clear states:
+module magical_subarray (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] array_data [0:7],
+    input [2:0] query_L,
+    input [2:0] query_R,
+    output reg [3:0] result,
+    output reg done
+);
+
+    reg [2:0] i;
+    reg [2:0] j;
+    reg [2:0] k; // Used for scanning elements in current subarray
+    reg [7:0] c_min;
+    reg [7:0] c_max;
+    reg [3:0] max_len;
+    reg valid_flag;
+
+    localparam S_IDLE = 0;
+    localparam S_INIT = 1;
+    localparam S_LOOP_I = 2;
+    localparam S_LOOP_J = 3;
+    localparam S_SCAN_MIN_MAX = 4; // Loop k from i to j to find min/max
+    localparam S_CHECK_MAGICAL = 5; // Loop k from i to j to check validity
+    localparam S_UPDATE = 6;
+    localparam S_DONE = 7;
+
+    reg [3:0] state;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= S_IDLE;
+            result <= 0;
+            done <= 0;
+        end else begin
+            case (state)
+                S_IDLE: begin
+                    done <= 0;
+                    if (start) state <= S_INIT;
+                end
+
+                S_INIT: begin
+                    i <= query_L;
+                    max_len <= 0;
+                    state <= S_LOOP_I;
+                end
+
+                S_LOOP_I: begin
+                    if (i <= query_R) begin
+                        j <= i;
+                        state <= S_LOOP_J;
+                    end else begin
+                        state <= S_DONE;
+                    end
+                end
+
+                S_LOOP_J: begin
+                    if (j <= query_R) begin
+                        // Start scanning for min/max of [i, j]
+                        k <= i;
+                        c_min <= array_data[i];
+                        c_max <= array_data[i];
+                        state <= S_SCAN_MIN_MAX;
+                    end else begin
+                        i <= i + 1;
+                        state <= S_LOOP_I;
+                    end
+                end
+
+                S_SCAN_MIN_MAX: begin
+                    if (k < j) begin
+                        k <= k + 1;
+                        if (array_data[k+1] < c_min) c_min <= array_data[k+1];
+                        if (array_data[k+1] > c_max) c_max <= array_data[k+1];
+                    end else begin
+                        // Min/Max calculated for [i, j]
+                        k <= i;
+                        valid_flag <= 1;
+                        state <= S_CHECK_MAGICAL;
+                    end
+                end
+
+                S_CHECK_MAGICAL: begin
+                    if (k <= j) begin
+                        // Check if array_data[k] is within [c_min, c_max]
+                        if (array_data[k] < c_min || array_data[k] > c_max) begin
+                            valid_flag <= 0;
+                            // We can break early, but let's just set flag and finish loop
+                            // To break early, we'd need to jump to S_UPDATE. 
+                            // Let's just finish the loop for simplicity or jump if invalid.
+                            // Optimization: Jump to UPDATE immediately if invalid found.
+                            state <= S_UPDATE;
+                        end else begin
+                            k <= k + 1;
+                        end
+                    end else begin
+                        state <= S_UPDATE;
+                    end
+                    // Handle k > j case (loop done) - actually handled by if condition
+                    if (k == j) state <= S_UPDATE; // Last element checked
+                end
+
+                S_UPDATE: begin
+                    if (valid_flag) begin
+                        if (j - i + 1 > max_len) max_len <= j - i + 1;
+                    end
+                    j <= j + 1;
+                    state <= S_LOOP_J;
+                end
+
+                S_DONE: begin
+                    result <= max_len;
+                    done <= 1;
+                    state <= S_IDLE;
+                end
+            endcase
+        end
+    end
+endmodule

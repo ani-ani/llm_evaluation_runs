@@ -1,0 +1,146 @@
+module meow_factor (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [4:0] char_0, char_1, char_2, char_3, char_4, char_5, char_6, char_7,
+    input wire [2:0] len,
+    output reg [3:0] result,
+    output reg done
+);
+
+// MEOW character codes (0-indexed from 'a')
+localparam CHAR_M = 5'd12;  // 'm' - 'a'
+localparam CHAR_E = 5'd4;   // 'e' - 'a'
+localparam CHAR_O = 5'd14;  // 'o' - 'a'
+localparam CHAR_W = 5'd22;  // 'w' - 'a'
+
+// States
+localparam IDLE = 2'd0;
+localparam INIT = 2'd1;
+localparam COMPUTE = 2'd2;
+localparam FINISH = 2'd3;
+
+reg [1:0] state;
+reg [2:0] char_idx;      // Current character index (0-7)
+reg [1:0] meow_idx;      // Current 'meow' position (0-3)
+reg [3:0] dp_prev [0:4]; // Previous DP row
+reg [3:0] dp_curr [0:4]; // Current DP row
+reg [3:0] min_result;    // Minimum dp[i][4] seen
+reg [4:0] current_char;  // Current character value
+
+// Character selection
+always @(*) begin
+    case(char_idx)
+        3'd0: current_char = char_0;
+        3'd1: current_char = char_1;
+        3'd2: current_char = char_2;
+        3'd3: current_char = char_3;
+        3'd4: current_char = char_4;
+        3'd5: current_char = char_5;
+        3'd6: current_char = char_6;
+        3'd7: current_char = char_7;
+        default: current_char = 5'd0;
+    endcase
+end
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        char_idx <= 0;
+        meow_idx <= 0;
+        min_result <= 4'd15;
+    end else begin
+        case(state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Initialize DP for empty string (i=0)
+                    dp_prev[0] <= 4'd0;
+                    dp_prev[1] <= 4'd1;
+                    dp_prev[2] <= 4'd2;
+                    dp_prev[3] <= 4'd3;
+                    dp_prev[4] <= 4'd4;
+                    min_result <= 4'd4;  // dp[0][4] = 4
+                    char_idx <= 0;
+                    meow_idx <= 0;
+                    if (len == 3'd0) begin
+                        result <= 4'd4;
+                        done <= 1;
+                    end else begin
+                        state <= INIT;
+                    end
+                end
+            end
+            INIT: begin
+                state <= COMPUTE;
+            end
+            COMPUTE: begin
+                if (char_idx < len && char_idx < 3'd8) begin
+                    case(meow_idx)
+                        2'd0: begin
+                            dp_curr[0] <= char_idx + 1;
+                            meow_idx <= 2'd1;
+                        end
+                        2'd1: begin
+                            dp_curr[1] <= min3(
+                                dp_prev[0] + ((current_char == CHAR_M) ? 4'd0 : 4'd1),
+                                dp_prev[1] + 4'd1,
+                                dp_curr[0] + 4'd1
+                            );
+                            meow_idx <= 2'd2;
+                        end
+                        2'd2: begin
+                            dp_curr[2] <= min3(
+                                dp_prev[1] + ((current_char == CHAR_E) ? 4'd0 : 4'd1),
+                                dp_prev[2] + 4'd1,
+                                dp_curr[1] + 4'd1
+                            );
+                            meow_idx <= 2'd3;
+                        end
+                        2'd3: begin
+                            dp_curr[3] <= min3(
+                                dp_prev[2] + ((current_char == CHAR_O) ? 4'd0 : 4'd1),
+                                dp_prev[3] + 4'd1,
+                                dp_curr[2] + 4'd1
+                            );
+                            dp_curr[4] <= min3(
+                                dp_prev[3] + ((current_char == CHAR_W) ? 4'd0 : 4'd1),
+                                dp_prev[4] + 4'd1,
+                                dp_curr[3] + 4'd1
+                            );
+                            if (dp_curr[4] < min_result) min_result <= dp_curr[4];
+                            dp_prev[0] <= dp_curr[0];
+                            dp_prev[1] <= dp_curr[1];
+                            dp_prev[2] <= dp_curr[2];
+                            dp_prev[3] <= dp_curr[3];
+                            dp_prev[4] <= dp_curr[4];
+                            char_idx <= char_idx + 1;
+                            meow_idx <= 2'd0;
+                        end
+                    endcase
+                end else begin
+                    state <= FINISH;
+                end
+            end
+            FINISH: begin
+                result <= min_result;
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+function [3:0] min3;
+    input [3:0] a, b, c;
+    reg [3:0] temp;
+    begin
+        temp = (a < b) ? a : b;
+        min3 = (temp < c) ? temp : c;
+    end
+endfunction
+
+endmodule

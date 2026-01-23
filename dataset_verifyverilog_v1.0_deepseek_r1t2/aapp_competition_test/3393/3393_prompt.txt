@@ -1,0 +1,89 @@
+MODULE SPECIFICATION (target: Verilog 2001)
+
+Create a module that computes the minimum sum of difficulties of exactly k courses, given 8 courses with optional Level I/Level II pairing constraints. The module must use a brute‑force search over all subsets.
+
+--- INTERFACE ---
+
+module course_selection (
+    input  wire        clk,          // Clock, rising edge active
+    input  wire        rst_n,        // Active‑low synchronous reset
+    input  wire        start,        // Pulse high to start computation
+    input  wire [3:0]  k,            // Number of courses to take (1..8)
+    input  wire [7:0]  diff [0:7],   // Difficulties of the 8 courses
+    input  wire [0:7]  is_level2,    // 1 if course is Level II, else 0
+    input  wire [2:0]  prereq_idx[0:7], // For Level II: index of its Level I course
+    output reg  [15:0] result,       // Minimum sum of difficulties
+    output reg         done          // High for one cycle when result is ready
+);
+
+--- FUNCTIONAL DESCRIPTION ---
+
+The module enumerates all 256 subsets of the 8 courses (mask from 8'h00 to 8'hFF).
+For each subset it computes:
+  • popcount = number of selected courses
+  • sum = sum of difficulties of selected courses
+  • valid = 1 if for every selected Level II course its prerequisite Level I course is also selected, else 0
+
+When a subset is valid, popcount equals k, and its sum is smaller than the current minimum, the minimum is updated.
+
+--- IMPLEMENTATION GUIDELINES ---
+
+1. Use a state machine with the following states:
+   IDLE       – waiting for start
+   INIT_MIN   – initialize minimum to 0xFFFF
+   LOOP       – (combinational) compute popcount, sum, valid for current mask
+   CHECK      – compare popcount and validity
+   UPDATE     – update minimum if conditions met
+   INCREMENT  – increment mask; if mask wraps to 0 go to DONE, else back to LOOP
+   DONE       – set done=1, present result
+
+2. The combinational block for popcount, sum and validity must loop over i=0..7
+   and use the current mask register.
+
+3. The state transitions should be synchronous on the rising clock edge.
+
+4. On reset (rst_n=0) all registers are cleared, done=0.
+
+5. The output 'done' is high only in the DONE state.
+
+6. The result is stored in a register and appears at the output after the DONE state.
+
+--- SIGNAL WIDTHS ---
+  diff        : 8 bits each (0..255) – sufficient for scaled difficulties.
+  k           : 4 bits (0..15) – only values 1..8 are meaningful.
+  result      : 16 bits – maximum possible sum is 8*255 = 2040.
+  mask        : 8 bits – one bit per course.
+  is_level2   : 8 bits – one bit per course.
+  prereq_idx  : 8 × 3 bits – index of prerequisite (0..7).
+
+--- NOTES ---
+- The design assumes that all 8 courses are present; unused courses should be
+  given a very high difficulty (e.g., 255) and is_level2=0 to avoid being selected.
+- The pairing is completely flexible via the prereq_idx input.
+- The module is purely combinational for the subset evaluation; the sequential
+  part only iterates through masks.
+
+--- TESTBENCH REQUIREMENTS ---
+A cocotb testbench must:
+- Import cocotb and necessary modules.
+- Define the helper functions from the template (is_value_defined, safe_int, etc.).
+- Instantiate the DUT, generate a clock (10 ns period), and perform an active‑low reset.
+- For each test case (provided in the problem statement), load the 8 courses,
+  set is_level2 and prereq_idx accordingly, set k, pulse start, wait for done,
+  and compare the result with the expected output.
+- Use the array assignment rules: assign each element individually (never assign a Python list directly).
+- Include a timeout and proper error reporting.
+
+--- EXAMPLE TEST CASE MAPPING ---
+Test case 1 (n=5, k=2):
+  Index 0: linearalgebra, diff=10, is_level2=0, prereq_idx don’t care
+  Index 1: calculus1 (Level I), diff=10, is_level2=0, prereq_idx don’t care
+  Index 2: calculus2 (Level II), diff=20, is_level2=1, prereq_idx=1
+  Index 3: honorsanalysis1 (Level I), diff=50, is_level2=0, prereq_idx don’t care
+  Index 4: honorsanalysis2 (Level II), diff=100, is_level2=1, prereq_idx=3
+  Indices 5‑7: unused, set diff=255, is_level2=0
+  Expected result: 20
+
+Test case 2 (n=7, k=5) – similar mapping.
+
+The testbench should loop over these two test cases, assert the expected result, and report pass/fail.

@@ -1,0 +1,1 @@
+module parity_calculator (\n    input [31:0] num,\n    output parity\n);\n    wire [31:0] stage1 = num ^ (num >> 1);\n    wire [31:0] stage2 = stage1 ^ (stage1 >> 2);\n    wire [31:0] stage3 = stage2 ^ (stage2 >> 4);\n    wire [31:0] stage4 = stage3 ^ (stage3 >> 8);\n    wire [31:0] stage5 = stage4 ^ (stage4 >> 16);\n    assign parity = stage5[0];\nendmodule\n

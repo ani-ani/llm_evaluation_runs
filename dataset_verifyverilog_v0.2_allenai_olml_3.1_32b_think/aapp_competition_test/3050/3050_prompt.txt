@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'robot_trail_calculator' that simulates the GL-bot movement to detect cycles in its trail.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] grid_data // 8-bit ASCII character for grid cell
+input [7:0] prog_char // 8-bit ASCII character for program instruction
+
+Outputs:
+output reg [7:0] result // The calculated cycle length X or 1
+output reg done // High when computation is complete
+output reg grid_addr_valid // Request to read from grid memory
+output reg prog_addr_valid // Request to read from program memory
+output reg [7:0] grid_addr // Row*16 + Col (max 200 -> 8 bits)
+output reg [7:0] prog_addr // Instruction index (max 200 -> 8 bits)
+
+Specifications:
+1. The module simulates the robot's movement one step per clock cycle.
+2. It uses a state machine: IDLE, LOAD_GRID, LOAD_PROG, UPDATE_STATE, CHECK_CYCLE, DONE.
+3. State Representation: We need to track (row, col, prog_index). Since N <= 200, we need 8 bits for row, 8 bits for col, 8 bits for prog_index. Total 24 bits.
+4. Visited State Tracking: Use a memory block (dual-port or inferred) to store visited states. Address = (row * 200 + col) * 200 + prog_index. We need to write '1' to the visited address when we first visit a state.
+5. Cycle Detection: If we visit a state that is already marked '1', we have a cycle. We then need to calculate the length of the cycle.
+6. Trail Calculation: We need to store the sequence of visited cells (row, col) to calculate the cycle length. Since we need to calculate 'X' (smallest repeating subsequence), we need to trace back. However, a simpler interpretation for hardware is to count the steps between the first and second visit of the state. Let's store the step count when a state is visited.
+7. Algorithm:
+   - Initialize (row, col) from 'R' position.
+   - Initialize prog_index = 0.
+   - Initialize step_count = 0.
+   - Store (row, col) in a trail buffer (FIFO style or memory) at index step_count.
+   - Mark state (row, col, prog_index) as visited with step_count.
+   - Loop:
+     - Read instruction at prog_index.
+     - Determine target (r_new, c_new).
+     - Read grid cell at (r_new, c_new).
+     - If empty ('.') or 'R', update (row, col) = (r_new, c_new). Append to trail.
+     - If impassable ('#'), do not update (row, col). Do not append to trail.
+     - Update prog_index = (prog_index + 1) % prog_len.
+     - Increment step_count.
+     - Check if state (row, col, prog_index) is visited:
+       - If yes: Cycle detected. Retrieve step_count of first visit. Result = current_step - first_step. Done.
+       - If no: Mark as visited with current step_count. Continue.
+   - If step_count exceeds a safety limit (e.g., 200*200*200 + buffer), stop and output 1 (no cycle, finite trail).
+
+Note: The problem asks for the period X of the infinite trail. If a state repeats, the sequence of moves repeats. The length of the cycle is the period. The implementation should use 8-bit registers for coordinates and indices to match the constraints (N<=200).

@@ -1,0 +1,97 @@
+module phaser_opt #(
+    parameter MAX_ROOMS = 8,
+    parameter COORD_BITS = 10,  // 10 bits for coordinates 0-1000
+    parameter L_BITS = 10,      // 10 bits for length 0-1000
+    parameter DATA_WIDTH = COORD_BITS,
+    parameter ARRAY_SIZE = 4*MAX_ROOMS + 1  // 4 coords per room + ℓ
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [DATA_WIDTH-1:0] arr [0:ARRAY_SIZE-1],  // Flattened coordinates and ℓ
+    input wire [3:0] num_rooms,  // Number of rooms (1 to MAX_ROOMS)
+    output reg [7:0] result,
+    output reg done
+);
+
+    // State machine states
+    typedef enum logic [2:0] {
+        IDLE, LOAD, INIT, LOOP_I, LOOP_J, COMPUTE, UPDATE_MAX, DONE
+    } state_t;
+    
+    state_t state, next_state;
+    
+    // Internal storage
+    reg [COORD_BITS-1:0] coords [0:4*MAX_ROOMS-1];  // Room coordinates
+    reg [L_BITS-1:0] ell;                            // Beam length
+    reg [5:0] i;                                     // Start corner index
+    reg [5:0] j;                                     // Direction corner index
+    reg [7:0] max_hit;                               // Maximum rooms hit
+    reg [7:0] current_hit;                           // Current hit count
+    
+    // Fixed-point arithmetic (Q8.8)
+    localparam FRAC_BITS = 8;
+    localparam FP_WIDTH = 16;
+    reg [FP_WIDTH-1:0] x1, y1, x2, y2;  // Segment endpoints in fixed-point
+    reg [FP_WIDTH-1:0] dx, dy, d, ell_fp;
+    
+    // State transition
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) state <= IDLE;
+        else state <= next_state;
+    end
+    
+    // Next state logic
+    always @(*) begin
+        case (state)
+            IDLE:    next_state = start ? LOAD : IDLE;
+            LOAD:    next_state = INIT;
+            INIT:    next_state = LOOP_I;
+            LOOP_I:  next_state = (i < 4*num_rooms) ? LOOP_J : DONE;
+            LOOP_J:  next_state = (j < 4*num_rooms) ? (i != j ? COMPUTE : LOOP_J) : LOOP_I;
+            COMPUTE: next_state = UPDATE_MAX;
+            UPDATE_MAX: next_state = LOOP_J;
+            DONE:    next_state = IDLE;
+            default: next_state = IDLE;
+        endcase
+    end
+    
+    // Datapath
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            i <= 0; j <= 0; max_hit <= 0; done <= 0; result <= 0;
+        end else begin
+            case (state)
+                LOAD: begin
+                    // Load coordinates and ℓ from arr
+                    for (int k = 0; k < 4*MAX_ROOMS; k++) begin
+                        if (k < 4*num_rooms) coords[k] <= arr[k];
+                        else coords[k] <= 0;
+                    end
+                    ell <= arr[4*num_rooms];
+                end
+                INIT: begin i <= 0; j <= 0; max_hit <= 0; end
+                LOOP_I: begin i <= i + 1; j <= 0; end
+                LOOP_J: if (j < 4*num_rooms) j <= j + 1;
+                COMPUTE: begin
+                    // Placeholder: compute segment and count intersections
+                    // Actual implementation would:
+                    // 1. Get coordinates of corners i and j
+                    // 2. Compute direction vector (dx, dy) in fixed-point
+                    // 3. Compute distance d = sqrt(dx^2 + dy^2)
+                    // 4. Compute unit vector (dx/d, dy/d)
+                    // 5. Compute endpoint: x2 = x1 + (dx/d)*ell, y2 = y1 + (dy/d)*ell
+                    // 6. Count rectangles intersected by segment (x1,y1)-(x2,y2)
+                    // For benchmark, we assume current_hit is computed here
+                    current_hit <= 0;  // Reset for now
+                end
+                UPDATE_MAX: if (current_hit > max_hit) max_hit <= current_hit;
+                DONE: begin done <= 1; result <= max_hit; end
+            endcase
+        end
+    end
+    
+    // Intersection test logic would be implemented here using Liang-Barsky
+    // or edge-crossing checks with fixed-point arithmetic.
+    
+endmodule

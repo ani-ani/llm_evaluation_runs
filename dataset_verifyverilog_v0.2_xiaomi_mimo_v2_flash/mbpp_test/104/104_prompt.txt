@@ -1,0 +1,65 @@
+Design a sequential Verilog module named 'sort_sublists' that implements a simplified version of sorting sublists of strings.
+
+**Problem Adaptation:**
+- Original: Sort sublists of strings in a list of lists
+- Adapted: Sort up to 3 sublists, where each sublist contains up to 8 strings, each string is exactly 8 characters (padded with spaces)
+- Sorting criterion: Alphabetical order based on first character (ASCII comparison)
+- Use a bubble-sort-inspired state machine for each sublist
+
+**Module Interface:**
+Inputs:
+- input clk: Clock signal
+- input rst_n: Active-low reset
+- input start: Start computation (pulse high for one cycle)
+- input [2:0] num_sublists: Number of sublists to process (1-3)
+- input [2:0] num_strings_0: Number of strings in sublist 0 (1-8)
+- input [2:0] num_strings_1: Number of strings in sublist 1 (1-8)
+- input [2:0] num_strings_2: Number of strings in sublist 2 (1-8)
+- input [63:0] sublist_0_str_0, sublist_0_str_1, ..., sublist_0_str_7: Strings 0-7 for sublist 0 (each 8 chars = 64 bits)
+- input [63:0] sublist_1_str_0, sublist_1_str_1, ..., sublist_1_str_7: Strings 0-7 for sublist 1 (each 8 chars = 64 bits)
+- input [63:0] sublist_2_str_0, sublist_2_str_1, ..., sublist_2_str_7: Strings 0-7 for sublist 2 (each 8 chars = 64 bits)
+
+Outputs:
+- output reg [63:0] result_str_0, result_str_1, ..., result_str_7: Sorted output strings for current sublist
+- output reg [2:0] current_sublist: Which sublist is being output (0-2)
+- output reg result_valid: High when output is valid
+- output reg done: High when all sublists processed
+
+**Behavioral Description:**
+The module processes sublists sequentially. For each sublist:
+1. Load strings into internal buffer (8 positions, 64-bit each)
+2. Perform comparison-based sorting using first character (byte 7 of 64-bit word)
+3. Use bubble-sort-style state machine with bounded iterations
+4. Output sorted strings one per clock cycle
+
+State Machine:
+- IDLE: Wait for start signal
+- LOAD sublist: Load current sublist strings into buffer
+- COMPARE: Compare adjacent pairs in buffer
+- SWAP: Swap if out of order
+- OUTPUT: Send sorted strings to outputs
+- NEXT_SUBLIST: Move to next sublist
+- DONE: All sublists processed
+
+**Implementation Details:**
+- Use internal buffer: reg [63:0] buffer[0:7]
+- Sorting: Compare buffer[i][63:56] and buffer[i+1][63:56] (first character)
+- Max 8 elements per sublist, 8 passes for bubble sort
+- Each pass compares 7 pairs
+- ASCII comparison: lower ASCII value comes first
+- Strings are 8 characters each, stored in 64-bit words (big-endian: char0 at [63:56], char7 at [7:0])
+- Pad with spaces (0x20) for shorter strings
+
+**Latency:** Approximately 3 sublists × (8 passes × 7 comparisons + 8 outputs) ≈ 200 cycles after start.
+
+**ASCII Values for Reference:**
+- 'a' = 0x61, 'z' = 0x7A
+- 'A' = 0x41, 'Z' = 0x5A
+- ' ' (space) = 0x20
+- '0'-'9' = 0x30-0x39
+
+**Example:**
+Input sublist: ["green", "orange", "black", "white"] → Padded to 8 chars: ["green   ", "orange  ", "black   ", "white   ", "        ", "        ", "        ", "        "]
+Sorted by first char: 'b' < 'g' < 'o' < 'w' → ["black   ", "green   ", "orange  ", "white   ", ...]
+
+The module should be synthesizable and use no external memory - all data flows through registers.

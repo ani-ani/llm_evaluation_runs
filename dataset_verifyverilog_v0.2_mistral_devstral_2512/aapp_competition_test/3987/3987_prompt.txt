@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'dragon_sequence_solver' that computes the maximum length of the longest non-decreasing subsequence after reversing exactly one interval of a binary sequence.
+
+The module processes sequences of length up to 16 containing values 1 or 2. It implements a 4-state dynamic programming approach:
+- State 0: Count of 1s (subsequence: 1...)
+- State 1: Count of 1s followed by 2s (subsequence: 1...2...)
+- State 2: Count of 1s followed by 2s followed by 1s (subsequence: 1...2...1...)
+- State 3: Count of 1s followed by 2s followed by 1s followed by 2s (subsequence: 1...2...1...2...)
+
+The state transitions simulate the effect of reversing an interval to maximize the non-decreasing subsequence length.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation (high for one cycle)
+input [4:0] sequence_length // Length of input sequence (1 to 16)
+input [15:0] sequence_data // Packed sequence data: bits [1:0] = element 0, [3:2] = element 1, etc. (Value 1 is 01, Value 2 is 10)
+
+Outputs:
+output reg [7:0] max_length // Result: maximum subsequence length (0 to 16)
+output reg done // High when computation is complete
+
+Specification:
+- Latency: 18 clock cycles after start is asserted (16 for processing + 2 for setup/done)
+- Use a state machine with states: IDLE, READING, PROCESSING, DONE
+- Maintain 4 counters (dp[0], dp[1], dp[2], dp[3]) representing the DP states
+- On each cycle (from index 0 to sequence_length-1):
+  - Extract current value (1 or 2) from sequence_data
+  - Update counters according to the algorithm:
+    If value == 1:
+      dp[0] = dp[0] + 1
+      dp[2] = max(dp[2] + 1, dp[1] + 1)
+    If value == 2:
+      dp[1] = max(dp[1] + 1, dp[0] + 1)
+      dp[3] = max(dp[3] + 1, dp[2] + 1)
+  - Also update max_length with the maximum of all dp values
+- In DONE state, output the final max_length and keep done high until reset or new start
+- Ensure proper reset of all registers and counters

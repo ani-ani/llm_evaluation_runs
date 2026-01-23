@@ -1,0 +1,56 @@
+Design a sequential Verilog module named 'robber_language_decoder' that counts how many original passwords could produce a given encrypted password in Robber Language, where Edvin sometimes failed to transform consonants.
+
+Background:
+- Robber Language: consonants become C+o+C (e.g., 'c' -> 'coc'), vowels unchanged
+- Edvin's error: sometimes he doesn't transform consonants at all
+- Given encrypted string, count valid original passwords
+
+Algorithm:
+Process string from left to right with DP:
+- At each position, track count of valid interpretations
+- If current char is a vowel: must be original vowel → move 1 position forward
+- If current char is a consonant:
+  - Could be untransformed original consonant → move 1 position forward
+  - Could be start of transformed consonant C+o+C → move 3 positions forward (if pattern matches)
+
+Adaptations for hardware:
+- Input string: 16 characters maximum (padded with nulls)
+- Output: number of ways modulo 1000009
+- Process one character per clock cycle using state machine
+- Use 32-bit arithmetic (enough for modulo 1000009)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] char_in // current character from string (one-hot or ASCII)
+input [15:0] str_len // actual length of string (1-16)
+
+Outputs:
+output reg [31:0] result // number of ways modulo 1000009
+output reg done // high when computation complete
+output reg error // high if invalid input detected
+
+Latency: Result valid (str_len + 2) clock cycles after start asserted.
+
+State Machine:
+- IDLE: Wait for start signal, initialize DP array
+- READING: Load string into buffer (16 cycles max)
+- PROCESSING: Compute DP transitions
+- CALCULATING: Apply modulo operation
+- DONE: Result ready
+
+DP Implementation:
+Use two 32-bit registers (dp_curr, dp_next) and track position.
+Processing logic per character:
+- Read char at current position
+- If vowel: dp_next = dp_curr (single interpretation)
+- If consonant: dp_next = dp_curr + (dp_curr if valid C+o+C pattern)
+- Update position and swap registers
+
+Edge Cases:
+- Empty string: result = 1 (one way: empty original)
+- String ends mid-pattern: invalid interpretations ignored
+- All consonants: exponential growth with modulo
+
+Module interface must support streaming input (one char per cycle) to simulate reading from memory.

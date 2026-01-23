@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'rebus_solver' that solves an arithmetic rebus expression of the form '? [+|-] ? [+|-] ... = n'.
+
+The module processes a fixed-width input string containing the expression and determines if valid positive integers (1 to n) can replace the question marks.
+
+**Adapted Constraints:**
+- Maximum 10 operators (11 question marks) (Parameterized: MAX_TERMS = 11)
+- Input string width: 200 characters (Input signals: 200 bytes)
+- Maximum n value: 255 (8 bits)
+- Values for question marks are constrained to 1 to n
+- Target n is provided as an 8-bit integer
+
+**Inputs:**
+- `clk`: System clock
+- `rst_n`: Active-low reset
+- `start`: High to start processing a new input
+- `char_in [1999:0]`: Input string as 200 ASCII characters (padded with spaces if needed, 8 bits per char)
+- `n_in [7:0]`: The target value n
+
+**Outputs:**
+- `result_valid`: High when computation is complete and result is valid
+- `is_possible`: High if a solution exists
+- `sol_vals [10:0][7:0]`: Array of 11 values representing the solution for each '?'
+- `sol_signs [10:0]`: Array of signs: 1 for '+', 0 for '-'
+- `num_terms`: Number of question marks found in input
+
+**Behavior:**
+The module must implement a state machine (IDLE, PARSE, SOLVE, OUTPUT) to:
+1. **Parse**: Extract the sequence of operators and the target n from `char_in`.
+2. **Solve**: Determine if a solution exists using the criteria:
+   - Let `pos` be count of positive terms, `neg` be count of negative terms.
+   - Feasibility range: `(pos - neg * n) <= n <= (pos * n - neg)`
+3. **Construct Solution**: If feasible, assign values to terms. A simple greedy approach:
+   - Initialize all terms to 1. Current Sum = `pos - neg`.
+   - While `Current Sum < n`: Increase a positive term by min(remaining_diff, n-1).
+   - While `Current Sum > n`: Increase a negative term by min(remaining_diff, n-1).
+   
+**Timing:**
+- Start parsing 2 clock cycles after `start` is asserted.
+- `result_valid` goes high 30 clock cycles after parsing begins.
+- Output values are held stable until next `start`.

@@ -1,0 +1,3 @@
+module element_counter(input [7:0] target, input [11:0][7:0] data_array, output [7:0] count);
+  assign count = (data_array[0] == target) + (data_array[1] == target) + (data_array[2] == target) + (data_array[3] == target) + (data_array[4] == target) + (data_array[5] == target) + (data_array[6] == target) + (data_array[7] == target) + (data_array[8] == target) + (data_array[9] == target) + (data_array[10] == target) + (data_array[11] == target);
+endmodule

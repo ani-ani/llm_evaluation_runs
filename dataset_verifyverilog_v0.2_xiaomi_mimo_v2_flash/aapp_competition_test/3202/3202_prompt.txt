@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'marble_insertion_dp' that computes the minimum number of marbles to insert to make all marbles vanish.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0] N // number of marbles (max 16)
+input [2:0] K // required consecutive marbles (2-5)
+input [7:0] marble_colors [0:15] // array of marble colors (1-100)
+
+Outputs:
+output reg [7:0] min_insertions // minimum marbles to insert
+output reg done // high when computation complete
+
+Specification:
+The module uses dynamic programming to find minimum insertions. The algorithm:
+- For each subarray [i,j], compute min insertions to eliminate that range
+- If we can eliminate a middle segment [i+1,j-1] and arr[i]==arr[j], we need max(0, K-2-(j-i-1)) insertions
+- Otherwise, try all split points and sum insertions
+- Base case: if arr[i]==arr[j], cost = max(0, K-(j-i+1)), else cost = (j-i+1)%K
+
+Latency: Result valid 1024 clock cycles after start asserted (enough for 16^2 DP states)
+Use state machine: IDLE, INIT_DP, COMPUTE_DP, FIND_RESULT, DONE
+
+Parameter: MAX_N = 16 (max marbles), MAX_K = 5 (max consecutive requirement)
+
+The DP table needs 16x16 = 256 entries, each 8 bits (max 255 insertions needed).
+Process in phases:
+1. Initialize DP table for length=1
+2. For each length from 2 to N, compute DP[i][j]
+3. DP[i][j] = min over split points k: DP[i][k] + DP[k+1][j]
+4. Special case: if arr[i]==arr[j], also consider eliminating middle then connecting
+
+For length L subarray starting at i:
+- If arr[i]==arr[i+L-1] and L >= K: cost = 0 (already valid)
+- If arr[i]==arr[i+L-1] and L < K: cost = K-L (need K-L insertions)
+- Otherwise: split into two parts
+
+Module should use a 2D array DP[16][16] implemented as BRAM or registers.
+Use a counter for length (1 to N) and inner loops for start index and split points.

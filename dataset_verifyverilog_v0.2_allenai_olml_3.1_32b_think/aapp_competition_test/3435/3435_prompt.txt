@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'pattern_match_counter' that counts binary strings of length n that contain a given pattern as a substring.
+
+Problem Specifications:
+- Binary strings of length n (scaled to 16 bits max)
+- Pattern P consists of '1' (must match) and '*' (wildcard)
+- Pattern length m ≤ 8 characters
+- Count all 2^n strings where pattern appears as substring
+
+Module Interface:
+- Clock and reset for sequential operation
+- Pattern input as 8-byte array (8 characters, each 8 bits: '1'=0x31, '*'=0x2A)
+- n input: string length (0-16)
+- m input: pattern length (0-8)
+- Start signal to begin computation
+- Output: count of valid strings (result)
+- Done signal when computation complete
+
+Algorithm Approach:
+1. Build NFA/DFA states from pattern (max 9 states for 8-char pattern)
+2. Use DP table: dp[length][state] = number of strings
+3. State transitions:
+   - From state i, on input '0' or '1', go to next matching state
+   - Pattern matches if we reach state m (accepting state)
+4. Iterate for n steps, updating DP table
+5. Sum all strings that reach accepting state
+
+Implementation Details:
+- Use 16-bit counter for DP values (max 2^16 = 65536 for n=16)
+- State machine: IDLE, BUILD_AUTOMATA, COMPUTE_DP, OUTPUT_RESULT
+- Clock cycles needed: 1 (init) + m*2 (build) + n*4 (DP) + 1 (output) ≈ 50 cycles
+- Pattern characters: input wire [7:0] pattern[0:7]
+
+Example:
+Pattern "1*1" (m=3), n=3: 2 strings (101, 111)
+Pattern "1" (m=1), n=10: 1023 strings (all except 0000000000)
+
+Output Format:
+module pattern_match_counter(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] pattern [0:7],  // Pattern characters
+    input [4:0] n,               // String length (0-16)
+    input [3:0] m,               // Pattern length (0-8)
+    output reg [15:0] result,    // Count of valid strings
+    output reg done
+);
+
+Specify states, transitions, DP logic, and timing.

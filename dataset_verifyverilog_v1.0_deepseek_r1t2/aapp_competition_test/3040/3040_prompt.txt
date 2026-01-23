@@ -1,0 +1,206 @@
+module longest_repeated_substring (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr [0:15],  // 16-character string, each 8 bits (ASCII)
+    input wire [4:0] len,          // actual string length (1-16)
+    output reg [7:0] result [0:15], // output substring
+    output reg [4:0] out_len,       // length of output substring
+    output reg done
+);
+
+// State machine states
+localparam IDLE = 3'b000;
+localparam CHECK_L = 3'b001;
+localparam COMPARE = 3'b010;
+localparam NEXT_J = 3'b011;
+localparam NEXT_I = 3'b100;
+localparam UPDATE_BEST = 3'b101;
+localparam FINISHED = 3'b110;
+
+reg [2:0] state;
+reg [4:0] L;           // current substring length being checked
+reg [4:0] i, j, k;     // loop counters
+reg [7:0] best_substring [0:15]; // best substring found so far
+reg [4:0] best_len;    // length of best substring
+reg found_repeated;    // flag for current L
+reg [7:0] temp_char1, temp_char2; // for comparison
+reg [4:0] valid_len;   // adjusted length (avoid empty)
+
+integer m;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset
+        state <= IDLE;
+        done <= 0;
+        out_len <= 0;
+        L <= 0;
+        i <= 0;
+        j <= 0;
+        k <= 0;
+        found_repeated <= 0;
+        best_len <= 0;
+        for (m = 0; m < 16; m = m + 1) begin
+            result[m] <= 8'h00;
+            best_substring[m] <= 8'h00;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start && len > 1) begin
+                    // Initialize
+                    valid_len <= (len > 16) ? 16 : len;
+                    L <= (len > 16) ? 16 : len;
+                    i <= 0;
+                    j <= 0;
+                    k <= 0;
+                    found_repeated <= 0;
+                    best_len <= 0;
+                    done <= 0;
+                    state <= CHECK_L;
+                end else if (start && len <= 1) begin
+                    // Single character - output that character
+                    for (m = 0; m < 16; m = m + 1) begin
+                        result[m] <= (m == 0 && len == 1) ? arr[0] : 8'h00;
+                    end
+                    out_len <= (len == 1) ? 1 : 0;
+                    done <= 1;
+                    state <= FINISHED;
+                end
+            end
+            
+            CHECK_L: begin
+                if (L >= 2) begin
+                    i <= 0;
+                    j <= 1;
+                    found_repeated <= 0;
+                    state <= COMPARE;
+                end else if (best_len == 0) begin
+                    // No repeated substring found (shouldn't happen per problem constraints)
+                    // Output single character (first char)
+                    for (m = 0; m < 16; m = m + 1) begin
+                        result[m] <= (m == 0) ? arr[0] : 8'h00;
+                    end
+                    out_len <= 1;
+                    done <= 1;
+                    state <= FINISHED;
+                end else begin
+                    // Output best substring found
+                    for (m = 0; m < 16; m = m + 1) begin
+                        result[m] <= (m < best_len) ? best_substring[m] : 8'h00;
+                    end
+                    out_len <= best_len;
+                    done <= 1;
+                    state <= FINISHED;
+                end
+            end
+            
+            COMPARE: begin
+                // Compare characters at positions i+k and j+k
+                if (k < L && i + k < valid_len && j + k < valid_len) begin
+                    temp_char1 <= arr[i + k];
+                    temp_char2 <= arr[j + k];
+                    k <= k + 1;
+                    state <= COMPARE; // stay to complete comparison
+                end else if (k == L) begin
+                    // Complete comparison - check if all matched
+                    if (temp_char1 == temp_char2 && found_repeated == 0) begin
+                        // Need to compare again for full L characters
+                        k <= 0;
+                        state <= COMPARE; // restart comparison for full check
+                    end else if (temp_char1 == temp_char2 && found_repeated == 1) begin
+                        // Already found repetition for this L, update best if needed
+                        state <= UPDATE_BEST;
+                    end else begin
+                        // Mismatch
+                        state <= NEXT_J;
+                    end
+                end else begin
+                    // Partial match, continue or finish
+                    if (k == L) begin
+                        if (found_repeated) begin
+                            state <= UPDATE_BEST;
+                        end else begin
+                            state <= NEXT_J;
+                        end
+                    end else begin
+                        state <= NEXT_J; // partial string, not enough characters
+                    end
+                end
+            end
+            
+            NEXT_J: begin
+                // Move to next j
+                if (j + 1 < valid_len - L + 1 && i + L <= valid_len && j + L <= valid_len) begin
+                    j <= j + 1;
+                    k <= 0;
+                    state <= COMPARE;
+                end else begin
+                    // Move to next i
+                    state <= NEXT_I;
+                end
+            end
+            
+            NEXT_I: begin
+                // Move to next i
+                if (i + 1 < valid_len - L + 1) begin
+                    i <= i + 1;
+                    j <= i + 2;
+                    k <= 0;
+                    state <= COMPARE;
+                end else begin
+                    // Move to next L
+                    L <= L - 1;
+                    state <= CHECK_L;
+                end
+            end
+            
+            UPDATE_BEST: begin
+                // Check if this substring is better than current best
+                if (L > best_len || (L == best_len && substring_smaller(i, L))) begin
+                    // Update best substring
+                    best_len <= L;
+                    for (m = 0; m < 16; m = m + 1) begin
+                        if (m < L) begin
+                            best_substring[m] <= arr[i + m];
+                        end else begin
+                            best_substring[m] <= 8'h00;
+                        end
+                    end
+                end
+                found_repeated <= 1;
+                state <= NEXT_J;
+            end
+            
+            FINISHED: begin
+                // Stay done
+                done <= 1;
+            end
+            
+            default: begin
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+// Helper function to compare current substring with best lexicographically
+function automatic integer substring_smaller;
+    input [4:0] start_idx;
+    input [4:0] length;
+    integer idx;
+    begin
+        substring_smaller = 0;
+        for (idx = 0; idx < length; idx = idx + 1) begin
+            if (arr[start_idx + idx] < best_substring[idx]) begin
+                substring_smaller = 1;
+                break;
+            end else if (arr[start_idx + idx] > best_substring[idx]) begin
+                break;
+            end
+        end
+    end
+endfunction
+
+endmodule

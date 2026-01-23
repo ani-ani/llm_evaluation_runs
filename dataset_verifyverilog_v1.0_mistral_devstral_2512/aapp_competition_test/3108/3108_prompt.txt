@@ -1,0 +1,54 @@
+Design a Verilog module that finds the maximum average of a consecutive subsequence of length at least K in an array of 8 integers. The module should use a sequential design with clock and reset.
+
+INTERFACE SPECIFICATION (testbench will use these exact names):
+
+  Inputs:
+    - clk         : Clock signal (rising edge triggered)
+    - rst_n       : Active-low synchronous reset
+    - start       : Start pulse (assert for 1 cycle to begin computation)
+    - arr_0, arr_1, ..., arr_7 : 8-bit input values (each [7:0])
+    - K           : 3-bit input (range 1 to 8)
+
+  Outputs:
+    - result      : 32-bit output in Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+    - done        : Asserted high for 1 cycle when result is valid
+
+  Timing:
+    - Assert start for 1 clock cycle
+    - done will go high when computation completes (within 100 cycles)
+    - Sample result on the same cycle done is high
+
+  Reset behavior:
+    - On rst_n=0: done=0, result=0, internal state cleared
+    - Minimum 2 clock cycles of reset required
+
+  Implementation Details:
+    - The module must latch the input array when start is asserted
+    - Must iterate over all subarrays of length >= K
+    - Use cross-multiplication (sum1 * len2 > sum2 * len1) to compare averages
+    - At the end, compute result = (best_sum * 65536) / best_len
+    - Use a state machine with the following states: IDLE, START, INIT_I, ACCUM, COMPARE, COMPUTE_RESULT, DONE
+    - All registers should be cleared on reset
+    - Avoid combinatorial loops; use registered outputs
+    - The design should be synthesizable and meet timing for a 100MHz clock
+
+  Internal Registers:
+    - loaded_arr[7:0][7:0]  : Latched input array
+    - best_sum[15:0]        : Sum of best subarray found so far
+    - best_len[3:0]         : Length of best subarray
+    - current_sum[15:0]     : Sum of current subarray
+    - i[3:0]                : Outer loop index
+    - j[3:0]                : Inner loop index
+    - state[3:0]            : State machine state
+    - done_reg              : Done signal register
+    - result_reg[31:0]      : Result register
+
+  State Machine Description:
+    IDLE: Wait for start signal. On start, latch arr_0..arr_7 into loaded_arr, set best_sum=0, best_len=0, i=0, go to INIT_I.
+    INIT_I: Set j=i, current_sum=0. If i+K-1 >= 8, go to COMPUTE_RESULT. Else go to ACCUM.
+    ACCUM: Add loaded_arr[j] to current_sum, increment j. If j < i+K, stay in ACCUM. Else go to COMPARE.
+    COMPARE: Compare (current_sum, j-i) with (best_sum, best_len) using cross-multiplication. Update best_sum and best_len if current average is greater. Then if j < 8, add loaded_arr[j] to current_sum, increment j, stay in COMPARE. Else increment i, go to INIT_I.
+    COMPUTE_RESULT: Compute result_reg = (best_sum * 65536) / best_len using integer division. Go to DONE.
+    DONE: Assert done_reg for 1 cycle, then go to IDLE.
+
+  Note: All arithmetic operations should use unsigned integers. The division is integer division (truncating). This yields a Q16.16 fixed-point number with sufficient precision (error < 0.000015).

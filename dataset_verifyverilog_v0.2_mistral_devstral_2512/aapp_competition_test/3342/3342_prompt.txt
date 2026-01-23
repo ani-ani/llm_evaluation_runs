@@ -1,0 +1,58 @@
+Design a sequential Verilog module named `laser_fence_solver` that solves a simplified geometric optimization problem.
+
+**Problem Statement**:
+Given a set of N onions and M fence posts, select K posts to maximize the number of onions strictly inside the convex hull of the selected posts.
+
+**Scaled Constraints**:
+- Max Onions (N) = 16
+- Max Fence Posts (M) = 8
+- Max Selection (K) = 4
+- Coordinates: Signed 32-bit integers (Input range up to 10^9).
+
+**Inputs**:
+- `clk`: System clock
+- `rst_n`: Active-low reset
+- `start`: High for 1 cycle to start computation
+- `num_onions [3:0]`: Actual number of onions (1-16)
+- `num_posts [3:0]`: Actual number of fence posts (3-8)
+- `select_k [2:0]`: Number of posts to select (3-4)
+- `data_in [31:0]`: Coordinate data (X, Y)
+- `data_valid`: High when `data_in` contains valid coordinate
+- `data_type`: 0 for Onion, 1 for Fence Post
+
+**Outputs**:
+- `result [7:0]`: Maximum number of onions protected
+- `done`: High when computation is complete
+
+**Behavior**:
+1.  **Load Phase**: When `start` is high, wait for `data_valid` signals. Store onions in `reg [15:0][31:0] onion_x, onion_y` and posts in `reg [7:0][31:0] post_x, post_y`. Increment internal counters based on `data_type` until `num_onions` and `num_posts` are filled.
+2.  **Computation Phase**: 
+    - Iterate through all combinations of `select_k` posts out of `num_posts`.
+    - For each combination, compute the convex hull of the selected posts. Since `select_k` <= 4, the hull is the polygon defined by the selected points sorted angularly (or simply the boundary for 3-4 points).
+    - For each onion, perform a point-in-convex-polygon test. This is done by checking that the onion is to the same side of all edges of the hull (using cross products). Strictly inside means all cross products must be either strictly positive or strictly negative (depending on winding order).
+    - Track the maximum count of onions inside any hull.
+3.  **Result**: Output the maximum count on `result` and set `done` high.
+
+**Implementation Details**:
+- Use a finite state machine (FSM) to manage loading and computing.
+- Use combinational logic for cross product calculation: `dx1 * dy2 - dx2 * dy1`.
+- Since full sorting is complex, for `select_k` <= 4, hardcode the convex hull logic: 
+  - If `select_k` == 3, hull is the triangle.
+  - If `select_k` == 4, find the convex hull (quadrilateral or triangle) by checking diagonals or sorting 4 points.
+- Latency: Expect ~2000-5000 cycles for exhaustive search.
+
+**Module Definition**:
+module laser_fence_solver (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] num_onions,
+    input wire [3:0] num_posts,
+    input wire [2:0] select_k,
+    input wire [31:0] data_in,
+    input wire data_valid,
+    input wire data_type,
+    output reg [7:0] result,
+    output reg done
+);
+// Implementation here...

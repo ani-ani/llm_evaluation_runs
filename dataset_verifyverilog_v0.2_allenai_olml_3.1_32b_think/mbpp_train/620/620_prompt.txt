@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'largest_subset' that computes the size of the largest subset where every pair of numbers is divisible (either a[i] % a[j] == 0 or a[j] % a[i] == 0).
+
+The module handles a fixed-size list of up to 8 numbers (N=8), where each number is 8 bits wide (0-255).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation (pulse once)
+input [2:0] count // Number of valid elements in the list (1-8)
+input [7:0] data_in // Input data value
+input [2:0] addr // Address for loading data (0 to N-1)
+input write_en // Write enable for loading data
+
+Outputs:
+output reg [3:0] result // Result (maximum subset size, 1-8)
+output reg done // High when computation complete
+output reg valid // High when result is valid
+
+Latency: Approximately 640 clock cycles (8*8*10 cycles for DP computation)
+
+Behavior:
+1. The module stores 8 numbers in an internal array 'arr[0:7]'.
+2. To load data: Set 'write_en' high, provide 'data_in' and 'addr', toggle clock.
+3. When 'start' is high (while rst_n is high), the FSM begins computation:
+   - State IDLE: Wait for start signal
+   - State LOAD: Initialize DP array with 1's
+   - State OUTER: Loop i from count-1 down to 0
+   - State INNER: Loop j from i+1 to count-1
+   - State COMPARE: Check if arr[j] % arr[i] == 0 OR arr[i] % arr[j] == 0 using a divider
+   - State UPDATE: Update DP[i] = 1 + max(DP[j])
+   - State FIND_MAX: Find maximum value in DP array
+   - State DONE: Assert done and valid
+
+Implementation details:
+- Use a 8x8 bit array 'arr' to store numbers
+- Use a 8x4 bit array 'dp' to store DP values (max subset size is 8, so 4 bits)
+- Implement combinational division for modulo check: (a % b == 0) can be checked by seeing if (a / b) * b == a
+- Use 8x8 divider module or check divisibility via repeated subtraction (simple in hardware)
+- The divider should check if dividend is divisible by divisor without remainder
+- State machine should have ~10 states for proper sequencing
+- Result is the maximum value from DP array

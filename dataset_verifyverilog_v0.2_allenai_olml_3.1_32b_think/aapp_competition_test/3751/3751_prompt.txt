@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'identifier_validator' that checks if a sequence of characters follows the obfuscation rule: characters must appear in alphabetical order based on their first occurrence (first new char must be 'a', next must be 'b', etc.).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start validation (loads first character)
+input [7:0] char_in // ASCII character input (8-bit)
+input valid_in // High when char_in is valid
+
+Outputs:
+output reg result // High if sequence is valid so far
+output reg error // High if invalid character encountered
+output reg done // High when sequence is complete (or error)
+
+Behavior:
+- The module acts as a single-character stream processor.
+- State machine states: IDLE, WAIT_START, READ_CHAR, VALIDATE, ERROR, DONE.
+- When in IDLE and start is asserted, reset state.
+- The module expects characters to arrive one per cycle when valid_in is high.
+- The first unique character must be 'a' (0x61).
+- The second unique character must be 'b' (0x62), and so on.
+- Any previously seen character is allowed any time.
+- The 'next_expected' character increments only when the current 'next_expected' is received.
+- If a character > 'next_expected' is seen (and it's not a duplicate), it's an error.
+- If a character < 'next_expected' is seen (and it's not a duplicate), it's allowed.
+- Example: 'a' (expect 'b'), 'b' (expect 'c'), 'a' (ok, duplicate), 'c' (expect 'd').
+- Example: 'a' (expect 'b'), 'c' (error, skipped 'b').
+
+Latency: Result valid 1 clock cycle after processing each character.
+State Machine:
+- IDLE: Wait for start signal.
+- WAIT_START: Wait for valid_in to be high.
+- VALIDATE: Check character. If valid, update result/error. Transition to WAIT_START for next char or DONE if sequence ends.
+- ERROR: Latch error. Stay here.
+- DONE: Latch success. Stay here.
+
+Note: The input string length is effectively unbounded for the stream logic, but we assume the stream terminates when valid_in goes low (end of string). The testbench will feed characters sequentially.

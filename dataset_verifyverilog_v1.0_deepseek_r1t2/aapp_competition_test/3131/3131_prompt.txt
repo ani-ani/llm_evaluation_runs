@@ -1,0 +1,189 @@
+module sum_of_maxes (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] N,
+    input [3:0] K,
+    input [511:0] values_packed,
+    output reg [31:0] result,
+    output reg done
+);
+
+// Constants
+localparam MOD = 32'd1000000007;
+localparam MAX_N = 16;
+
+// Binomial table
+reg [31:0] binom_table [0:15][0:15];
+integer i, j;
+initial begin
+    for (i = 0; i < 16; i = i + 1) begin
+        for (j = 0; j < 16; j = j + 1) begin
+            if (j == 0)
+                binom_table[i][j] = 32'd1;
+            else if (j > i)
+                binom_table[i][j] = 32'd0;
+            else
+                binom_table[i][j] = binom_table[i-1][j-1] + binom_table[i-1][j];
+        end
+    end
+end
+
+// Unpack values
+wire [31:0] data [0:15];
+generate
+    genvar g;
+    for (g = 0; g < 16; g = g + 1) begin : unpack
+        assign data[g] = values_packed[g*32 +: 32];
+    end
+endgenerate
+
+// State definitions
+localparam IDLE = 4'd0;
+localparam LOAD = 4'd1;
+localparam SORT_INIT = 4'd2;
+localparam SORT_COMPARE = 4'd3;
+localparam SORT_SWAP = 4'd4;
+localparam SORT_NEXT_INDEX = 4'd5;
+localparam SORT_NEXT_PASS = 4'd6;
+localparam COMPUTE = 4'd7;
+localparam REDUCE = 4'd8;
+localparam DONE = 4'd9;
+
+reg [3:0] state, next_state;
+
+// Internal registers
+reg [31:0] data_reg [0:15];
+reg [3:0] pass_count;
+reg [3:0] index_count;
+reg [3:0] i_count;
+reg [63:0] accumulator;
+reg [63:0] product;
+
+// State transition and datapath
+always @(posedge clk) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        accumulator <= 0;
+        product <= 0;
+        pass_count <= 0;
+        index_count <= 0;
+        i_count <= 0;
+        for (integer idx = 0; idx < 16; idx = idx + 1) begin
+            data_reg[idx] <= 0;
+        end
+    end else begin
+        state <= next_state;
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    for (integer idx = 0; idx < 16; idx = idx + 1) begin
+                        data_reg[idx] <= data[idx];
+                    end
+                end
+            end
+
+            SORT_INIT: begin
+                pass_count <= 0;
+                index_count <= 0;
+            end
+
+            SORT_COMPARE: begin
+                if (data_reg[index_count] > data_reg[index_count+1]) begin
+                    data_reg[index_count] <= data_reg[index_count+1];
+                    data_reg[index_count+1] <= data_reg[index_count];
+                end
+            end
+
+            SORT_NEXT_INDEX: begin
+                index_count <= index_count + 1;
+            end
+
+            SORT_NEXT_PASS: begin
+                pass_count <= pass_count + 1;
+                index_count <= 0;
+            end
+
+            COMPUTE: begin
+                if (i_count >= K-1) begin
+                    product <= binom_table[i_count][K-1] * data_reg[i_count];
+                    accumulator <= accumulator + (binom_table[i_count][K-1] * data_reg[i_count]);
+                end
+                i_count <= i_count + 1;
+            end
+
+            REDUCE: begin
+                if (accumulator >= MOD) begin
+                    accumulator <= accumulator - MOD;
+                end
+            end
+
+            DONE: begin
+                result <= accumulator[31:0];
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: begin
+            if (start) next_state = LOAD;
+        end
+
+        LOAD: begin
+            if (N <= 1) next_state = COMPUTE;
+            else next_state = SORT_INIT;
+        end
+
+        SORT_INIT: begin
+            next_state = SORT_COMPARE;
+        end
+
+        SORT_COMPARE: begin
+            next_state = SORT_SWAP;
+        end
+
+        SORT_SWAP: begin
+            next_state = SORT_NEXT_INDEX;
+        end
+
+        SORT_NEXT_INDEX: begin
+            if (index_count < (N-1 - pass_count)) next_state = SORT_COMPARE;
+            else next_state = SORT_NEXT_PASS;
+        end
+
+        SORT_NEXT_PASS: begin
+            if (pass_count < N-1) next_state = SORT_COMPARE;
+            else next_state = COMPUTE;
+        end
+
+        COMPUTE: begin
+            if (i_count >= N) next_state = DONE;
+            else if (i_count >= K-1) next_state = REDUCE;
+            else next_state = COMPUTE;
+        end
+
+        REDUCE: begin
+            if (accumulator >= MOD) next_state = REDUCE;
+            else begin
+                if (i_count >= N) next_state = DONE;
+                else next_state = COMPUTE;
+            end
+        end
+
+        DONE: begin
+            next_state = IDLE;
+        end
+
+        default: next_state = IDLE;
+    endcase
+end
+
+endmodule

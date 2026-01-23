@@ -1,0 +1,167 @@
+module lamp_assigner (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] k,  // Number of lamps (1-16)
+    input [31:0] packed_lamp_rows,  // 16 lamps × 2 bits each
+    input [31:0] packed_lamp_cols,
+    output reg result,
+    output reg done
+);
+
+// Constants
+parameter GRID_SIZE = 4;
+parameter MAX_REACH = 2;  // Covers up to 5 squares
+parameter MAX_LAMPS = 16;
+
+// States
+localparam IDLE = 0;
+localparam PRECOMPUTE = 1;
+localparam INIT_ASSIGN = 2;
+localparam CHECK_ASSIGN = 3;
+localparam ASSIGN_PASS = 4;
+localparam ASSIGN_FAIL = 5;
+localparam FINISHED = 6;
+
+// Registers
+reg [3:0] state;
+reg [15:0] assignment_counter;  // Current assignment
+reg [15:0] max_assignment;      // 2^k - 1
+reg [1:0] lamp_rows [0:15];     // Unpacked rows
+reg [1:0] lamp_cols [0:15];     // Unpacked cols
+reg [1:0] row_interval_start [0:15];
+reg [1:0] row_interval_end [0:15];
+reg [1:0] col_interval_start [0:15];
+reg [1:0] col_interval_end [0:15];
+
+// Intermediate storage for checking
+reg [1:0] row_group_col [0:3][0:3];   // [row][index] -> column
+reg [1:0] row_group_start [0:3][0:3]; // [row][index] -> start
+reg [1:0] row_group_end [0:3][0:3];   // [row][index] -> end
+reg [1:0] row_group_count [0:3];      // Count per row
+reg [1:0] col_group_row [0:3][0:3];   // [col][index] -> row
+reg [1:0] col_group_start [0:3][0:3]; // [col][index] -> start
+reg [1:0] col_group_end [0:3][0:3];   // [col][index] -> end
+reg [1:0] col_group_count [0:3];      // Count per col
+
+// Sorting/checking variables
+reg [2:0] i, j;
+reg overlap_found;
+
+// Unpack inputs
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Clear all
+    end else if (start && state == IDLE) begin
+        for (i = 0; i < 16; i = i + 1) begin
+            lamp_rows[i] <= packed_lamp_rows[2*i +: 2];
+            lamp_cols[i] <= packed_lamp_cols[2*i +: 2];
+        end
+        max_assignment <= (1 << k) - 1;
+    end
+end
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 0;
+        done <= 0;
+        assignment_counter <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) state <= PRECOMPUTE;
+            end
+            
+            PRECOMPUTE: begin
+                // Precompute intervals for all lamps
+                for (i = 0; i < 16; i = i + 1) begin
+                    // Row interval (for row mode)
+                    row_interval_start[i] <= (lamp_cols[i] >= MAX_REACH) ? lamp_cols[i] - MAX_REACH : 0;
+                    row_interval_end[i] <= (lamp_cols[i] + MAX_REACH < GRID_SIZE) ? lamp_cols[i] + MAX_REACH : GRID_SIZE - 1;
+                    
+                    // Column interval (for column mode)
+                    col_interval_start[i] <= (lamp_rows[i] >= MAX_REACH) ? lamp_rows[i] - MAX_REACH : 0;
+                    col_interval_end[i] <= (lamp_rows[i] + MAX_REACH < GRID_SIZE) ? lamp_rows[i] + MAX_REACH : GRID_SIZE - 1;
+                end
+                state <= INIT_ASSIGN;
+            end
+            
+            INIT_ASSIGN: begin
+                assignment_counter <= 0;
+                state <= CHECK_ASSIGN;
+            end
+            
+            CHECK_ASSIGN: begin
+                // Clear grouping
+                for (i = 0; i < 4; i = i + 1) begin
+                    row_group_count[i] <= 0;
+                    col_group_count[i] <= 0;
+                end
+                
+                // Group lamps by assignment
+                for (i = 0; i < 16; i = i + 1) begin
+                    if (i < k) begin
+                        if (assignment_counter[i] == 0) begin  // Row mode
+                            row_group_col[lamp_rows[i]][row_group_count[lamp_rows[i]]] <= lamp_cols[i];
+                            row_group_start[lamp_rows[i]][row_group_count[lamp_rows[i]]] <= row_interval_start[i];
+                            row_group_end[lamp_rows[i]][row_group_count[lamp_rows[i]]] <= row_interval_end[i];
+                            row_group_count[lamp_rows[i]] <= row_group_count[lamp_rows[i]] + 1;
+                        end else begin  // Column mode
+                            col_group_row[lamp_cols[i]][col_group_count[lamp_cols[i]]] <= lamp_rows[i];
+                            col_group_start[lamp_cols[i]][col_group_count[lamp_cols[i]]] <= col_interval_start[i];
+                            col_group_end[lamp_cols[i]][col_group_count[lamp_cols[i]]] <= col_interval_end[i];
+                            col_group_count[lamp_cols[i]] <= col_group_count[lamp_cols[i]] + 1;
+                        end
+                    end
+                end
+                
+                // Next state: sort and check
+                state <= ASSIGN_PASS;
+                i <= 0;  // Start with row 0
+                j <= 0;  // Start with first pair
+                overlap_found <= 0;
+            end
+            
+            ASSIGN_PASS: begin
+                // Check rows for overlaps
+                if (i < 4) begin  // For each row
+                    if (row_group_count[i] > 1) begin
+                        // Simple bubble sort (1 cycle per comparison) - in practice would need multiple cycles
+                        // For now, assume we check in next state
+                        state <= ASSIGN_FAIL;
+                    end else begin
+                        i <= i + 1;
+                    end
+                end else begin
+                    // All rows checked, now check columns
+                    i <= 0;
+                    state <= ASSIGN_FAIL;  // Move to column checking
+                end
+            end
+            
+            ASSIGN_FAIL: begin
+                // Check if current assignment passes
+                if (!overlap_found && assignment_counter <= max_assignment) begin
+                    result <= 1;
+                    done <= 1;
+                    state <= FINISHED;
+                end else if (assignment_counter < max_assignment) begin
+                    assignment_counter <= assignment_counter + 1;
+                    state <= CHECK_ASSIGN;
+                end else begin
+                    result <= 0;
+                    done <= 1;
+                    state <= FINISHED;
+                end
+            end
+            
+            FINISHED: begin
+                // Stay done
+            end
+        endcase
+    end
+end
+
+endmodule

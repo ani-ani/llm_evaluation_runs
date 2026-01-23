@@ -1,0 +1,94 @@
+module find_diff_first_even_odd (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [7:0] arr_5,
+    input wire [7:0] arr_6,
+    input wire [7:0] arr_7,
+    input wire [2:0] len,  // Number of valid elements (1-8)
+    output reg [15:0] result,
+    output reg done
+);
+
+    // Internal state definitions
+    reg [2:0] index;           // Current array index being processed
+    reg [7:0] first_even;      // Store first even number found
+    reg [7:0] first_odd;       // Store first odd number found
+    reg even_found;            // Flag: first even found
+    reg odd_found;             // Flag: first odd found
+    reg processing;            // Processing state flag
+    
+    // Input selection based on index
+    wire [7:0] current_val;
+    assign current_val = (index == 3'd0) ? arr_0 :
+                        (index == 3'd1) ? arr_1 :
+                        (index == 3'd2) ? arr_2 :
+                        (index == 3'd3) ? arr_3 :
+                        (index == 3'd4) ? arr_4 :
+                        (index == 3'd5) ? arr_5 :
+                        (index == 3'd6) ? arr_6 :
+                        arr_7;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            done <= 1'b0;
+            result <= 16'd0;
+            index <= 3'd0;
+            first_even <= 8'd0;
+            first_odd <= 8'd0;
+            even_found <= 1'b0;
+            odd_found <= 1'b0;
+            processing <= 1'b0;
+        end else begin
+            if (start && !processing) begin
+                // Start new computation
+                processing <= 1'b1;
+                done <= 1'b0;
+                index <= 3'd0;
+                first_even <= 8'd0;
+                first_odd <= 8'd0;
+                even_found <= 1'b0;
+                odd_found <= 1'b0;
+            end else if (processing) begin
+                if (index < len) begin
+                    // Process current element
+                    if (!even_found && (current_val[0] == 1'b0)) begin
+                        first_even <= current_val;
+                        even_found <= 1'b1;
+                    end
+                    if (!odd_found && (current_val[0] == 1'b1)) begin
+                        first_odd <= current_val;
+                        odd_found <= 1'b1;
+                    end
+                    index <= index + 1'b1;
+                end else begin
+                    // All elements processed, compute result
+                    if (even_found && odd_found) begin
+                        // Calculate difference (even - odd)
+                        result <= {8'd0, first_even} - {8'd0, first_odd};
+                    end else if (even_found && !odd_found) begin
+                        // No odd found, use -1 as per spec
+                        result <= {8'd0, first_even} - 16'hFFFF;  // -1 in 16-bit
+                    end else if (!even_found && odd_found) begin
+                        // No even found, use -1 as per spec
+                        result <= 16'hFFFF - {8'd0, first_odd};  // -1 in 16-bit
+                    end else begin
+                        // Neither found (shouldn't happen with len>0)
+                        result <= 16'd0;
+                    end
+                    done <= 1'b1;
+                    processing <= 1'b0;
+                end
+            end else begin
+                done <= 1'b0;
+            end
+        end
+    end
+
+endmodule

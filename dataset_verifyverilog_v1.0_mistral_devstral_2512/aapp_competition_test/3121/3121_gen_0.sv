@@ -1,0 +1,204 @@
+module CaveSystem (
+    input clk, rst_n, start,
+    input [15:0] A, H,      // Unnar's stats
+    input [3:0] n, m,        // nodes (1-8), edges (0-16)
+    // Edge inputs - 16 sets (only first m are used)
+    input [3:0] from_0, to_0, from_1, to_1, from_2, to_2, from_3, to_3,
+    input [3:0] from_4, to_4, from_5, to_5, from_6, to_6, from_7, to_7,
+    input [3:0] from_8, to_8, from_9, to_9, from_10, to_10, from_11, to_11,
+    input [3:0] from_12, to_12, from_13, to_13, from_14, to_14, from_15, to_15,
+    input [15:0] a_0, h_0, a_1, h_1, a_2, h_2, a_3, h_3,
+    input [15:0] a_4, h_4, a_5, h_5, a_6, h_6, a_7, h_7,
+    input [15:0] a_8, h_8, a_9, h_9, a_10, h_10, a_11, h_11,
+    input [15:0] a_12, h_12, a_13, h_13, a_14, h_14, a_15, h_15,
+    output reg [31:0] result,
+    output reg done
+);
+
+// States
+localparam [2:0] IDLE = 3'b000;
+localparam [2:0] PRECOMP = 3'b001;
+localparam [2:0] DIJK_INIT = 3'b010;
+localparam [2:0] DIJK_SELECT = 3'b011;
+localparam [2:0] DIJK_RELAX = 3'b100;
+localparam [2:0] OUTPUT = 3'b101;
+
+reg [2:0] state;
+reg [3:0] edge_cnt, node_cnt;
+reg [3:0] current_node;
+
+// Edge buffer
+reg [3:0] edge_from [0:15];
+reg [3:0] edge_to [0:15];
+reg [31:0] edge_damage [0:15];
+
+// Dijkstra storage
+reg [31:0] dist [0:7];
+reg visited [0:7];
+
+// Temporary registers for damage calculation
+reg [31:0] k, damage;
+
+// Helper to get edge inputs
+function [3:0] get_from(input [3:0] idx);
+    case(idx)
+        0: get_from = from_0; 1: get_from = from_1; 2: get_from = from_2; 3: get_from = from_3;
+        4: get_from = from_4; 5: get_from = from_5; 6: get_from = from_6; 7: get_from = from_7;
+        8: get_from = from_8; 9: get_from = from_9; 10: get_from = from_10; 11: get_from = from_11;
+        12: get_from = from_12; 13: get_from = from_13; 14: get_from = from_14; 15: get_from = from_15;
+        default: get_from = 4'b0;
+    endcase
+endfunction
+
+function [3:0] get_to(input [3:0] idx);
+    case(idx)
+        0: get_to = to_0; 1: get_to = to_1; 2: get_to = to_2; 3: get_to = to_3;
+        4: get_to = to_4; 5: get_to = to_5; 6: get_to = to_6; 7: get_to = to_7;
+        8: get_to = to_8; 9: get_to = to_9; 10: get_to = to_10; 11: get_to = to_11;
+        12: get_to = to_12; 13: get_to = to_13; 14: get_to = to_14; 15: get_to = to_15;
+        default: get_to = 4'b0;
+    endcase
+endfunction
+
+function [15:0] get_a(input [3:0] idx);
+    case(idx)
+        0: get_a = a_0; 1: get_a = a_1; 2: get_a = a_2; 3: get_a = a_3;
+        4: get_a = a_4; 5: get_a = a_5; 6: get_a = a_6; 7: get_a = a_7;
+        8: get_a = a_8; 9: get_a = a_9; 10: get_a = a_10; 11: get_a = a_11;
+        12: get_a = a_12; 13: get_a = a_13; 14: get_a = a_14; 15: get_a = a_15;
+        default: get_a = 16'b0;
+    endcase
+endfunction
+
+function [15:0] get_h(input [3:0] idx);
+    case(idx)
+        0: get_h = h_0; 1: get_h = h_1; 2: get_h = h_2; 3: get_h = h_3;
+        4: get_h = h_4; 5: get_h = h_5; 6: get_h = h_6; 7: get_h = h_7;
+        8: get_h = h_8; 9: get_h = h_9; 10: get_h = h_10; 11: get_h = h_11;
+        12: get_h = h_12; 13: get_h = h_13; 14: get_h = h_14; 15: get_h = h_15;
+        default: get_h = 16'b0;
+    endcase
+endfunction
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        edge_cnt <= 0;
+        node_cnt <= 0;
+        current_node <= 0;
+        // Initialize visited and dist
+        for (integer i = 0; i < 8; i = i + 1) begin
+            visited[i] <= 0;
+            dist[i] <= 32'hFFFFFFFF; // Infinity
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= PRECOMP;
+                    edge_cnt <= 0;
+                end
+            end
+
+            PRECOMP: begin
+                // Compute damage for edge_cnt
+                if (edge_cnt < m) begin
+                    // Get edge data
+                    edge_from[edge_cnt] <= get_from(edge_cnt);
+                    edge_to[edge_cnt] <= get_to(edge_cnt);
+                    // Damage calculation: k = ceil(h/A), damage = (k-1)*a
+                    // k = (h + A - 1) / A (unsigned division)
+                    // Use 32-bit to avoid overflow
+                    if (A != 0) begin
+                        k <= ({16'h0, get_h(edge_cnt)} + {16'h0, A} - 32'h1) / {16'h0, A};
+                        // Damage will be computed in next cycle (combinational)
+                    end else begin
+                        k <= 0;
+                    end
+                    edge_cnt <= edge_cnt + 1;
+                end else begin
+                    state <= DIJK_INIT;
+                    edge_cnt <= 0;
+                end
+            end
+
+            DIJK_INIT: begin
+                // Store damage from previous cycle
+                if (edge_cnt < m) begin
+                    edge_damage[edge_cnt] <= (k - 32'h1) * {16'h0, get_a(edge_cnt)};
+                    edge_cnt <= edge_cnt + 1;
+                end else begin
+                    // Initialize Dijkstra
+                    dist[0] <= 0;  // Start node
+                    for (integer i = 1; i < 8; i = i + 1) begin
+                        dist[i] <= 32'hFFFFFFFF;
+                    end
+                    visited[0] <= 0;
+                    for (integer i = 1; i < 8; i = i + 1) begin
+                        visited[i] <= 0;
+                    end
+                    state <= DIJK_SELECT;
+                    node_cnt <= 0;
+                    current_node <= 0;
+                end
+            end
+
+            DIJK_SELECT: begin
+                // Find unvisited node with minimum dist
+                // Check if node_cnt is within valid nodes (n)
+                if (node_cnt < n && !visited[node_cnt]) begin
+                    if (dist[node_cnt] < dist[current_node] || visited[current_node]) begin
+                        current_node <= node_cnt;
+                    end
+                    node_cnt <= node_cnt + 1;
+                end else if (node_cnt == n) begin
+                    // Finished checking all nodes
+                    if (visited[current_node] || dist[current_node] == 32'hFFFFFFFF) begin
+                        // No reachable unvisited nodes
+                        state <= OUTPUT;
+                    end else begin
+                        state <= DIJK_RELAX;
+                        edge_cnt <= 0;
+                        visited[current_node] <= 1;
+                    end
+                    node_cnt <= 0;
+                end
+            end
+
+            DIJK_RELAX: begin
+                // Relax edges from current_node
+                if (edge_cnt < m) begin
+                    if (edge_from[edge_cnt] == current_node && edge_cnt < m) begin
+                        // Update neighbor
+                        if (dist[edge_to[edge_cnt]] > dist[current_node] + edge_damage[edge_cnt]) begin
+                            dist[edge_to[edge_cnt]] <= dist[current_node] + edge_damage[edge_cnt];
+                        end
+                    end
+                    edge_cnt <= edge_cnt + 1;
+                end else begin
+                    state <= DIJK_SELECT;
+                    node_cnt <= 0;
+                    // Find next min node by resetting current_node to first unvisited
+                    // Will be updated in DIJK_SELECT
+                    current_node <= 0;
+                end
+            end
+
+            OUTPUT: begin
+                // Compute result
+                if (dist[n-1] < H) begin
+                    result <= H - dist[n-1];
+                end else begin
+                    result <= 32'hFFFFFFFF; // Oh no
+                end
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

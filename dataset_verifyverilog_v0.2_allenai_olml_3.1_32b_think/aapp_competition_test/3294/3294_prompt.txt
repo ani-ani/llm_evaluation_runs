@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'shortest_path_calculator' that computes the shortest distance from origin (0,0) to any point on a polygon boundary, where distance is defined as sqrt(x^2 + y^2).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] poly_x [0:7] // x-coordinates of 8-vertex polygon (Q12.4 fixed-point)
+input [15:0] poly_y [0:7] // y-coordinates of 8-vertex polygon (Q12.4 fixed-point)
+input [2:0] vertex_count // actual number of vertices (1-8)
+
+Outputs:
+output reg [31:0] min_distance // minimum distance in Q16.16 fixed-point format
+output reg done // high when computation complete
+
+Specification:
+- The module calculates the minimum Euclidean distance from origin (0,0) to any point on the polygon boundary (including vertices and edges)
+- Use Q12.4 fixed-point format for coordinates (12 integer bits, 4 fractional bits)
+- Use Q16.16 fixed-point format for distance calculation and output
+- Process vertices: compute distance to each vertex (sqrt(x^2 + y^2))
+- Process edges: for each edge, compute shortest distance from origin to line segment
+  - Find projection of origin onto infinite line
+  - If projection lies within segment, use perpendicular distance
+  - Otherwise, use min distance to endpoints
+- Use state machine with states: IDLE, LOAD_VERTICES, CALC_VERTEX_DIST, CALC_EDGE_DIST, DONE
+- Latency: maximum 256 clock cycles after start
+- Implement combinational sqrt for 32-bit inputs (result in Q16.16)
+- Use iterative approach for edge distance calculation
+- All arithmetic operations should be done with fixed-point logic
+- The module should work for any polygon with 1-8 vertices
+- Origin (0,0) is always outside the polygon (not touching)
+
+Distance calculation:
+- Vertex distance: d = sqrt(x^2 + y^2)
+- Edge distance: For segment from A to B:
+  - Compute t = (A·B) / (A·A) where projection of origin onto line AB
+  - If 0 ≤ t ≤ 1, point P = A + t*(B-A) is on segment
+  - Distance = sqrt(Px^2 + Py^2)
+  - Else, distance = min(d(A), d(B))
+
+Implementation notes:
+- Use Q16.16 for intermediate distance calculations
+- For sqrt: implement digit-recurrence or lookup for small values
+- For fixed-point division: use iterative approximation or embedded multiplier
+- Vertex coordinates are scaled by 16 (4 fractional bits)
+- Output distance is scaled by 65536 (16 fractional bits)
+- Use parameter VERTEX_COUNT = 8 for maximum vertices

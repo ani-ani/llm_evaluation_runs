@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'traffic_probability' that computes the probability of a car stopping at each traffic light or passing all lights, based on a simplified traffic simulation.
+
+Simplifications:
+- Number of lights N is fixed to 4 (max).
+- Light positions are scaled to max 15 meters.
+- Cycle durations (r+g) are scaled to max 8 seconds.
+- Car speed is 1 m/s (time = distance).
+- Time is represented as Q16.16 fixed-point (16 integer, 16 fractional bits).
+- We use a fixed-point format for probabilities (scaled by 1000 or similar for integer math, or Q16.16).
+- Since true continuous probability requires real numbers, we will perform a discrete sweep of 'start time' offset with a resolution of 0.25s (Q8.8 precision) over the common period (LCM of cycles), which is sufficient for the small constraints.
+
+Module Interface:
+Inputs:
+input clk: System clock
+input rst_n: Active low reset
+input start: Start computation
+input [5:0] light_index: Index of light to configure (0-3)
+input [7:0] x_pos: Position of light (meters, scaled 0-15)
+input [7:0] r_dur: Red duration (seconds, scaled 0-8)
+input [7:0] g_dur: Green duration (seconds, scaled 0-8)
+input config_valid: High when light data is valid
+
+Outputs:
+output reg [31:0] prob_stop [3:0]: Probability of stopping at light i (Q16.16 format)
+output reg [31:0] prob_pass: Probability of passing all lights (Q16.16 format)
+output reg done: High when computation complete
+
+Operation:
+1. Accept configuration for 4 lights (sequential write to light_index).
+2. On start, calculate the LCM of all cycle durations (r+g) to determine the sweep period.
+3. Discretize time into steps (e.g., 0.25s). 
+4. For each time step, simulate the car traveling to each light:
+   - Calculate arrival time at light i: start_time + x_pos[i].
+   - Check if light is red at arrival: (arrival_time % cycle_i) < r_i.
+   - If red, record stop for this light (if not already stopped at an earlier light).
+   - If green, proceed to next light.
+5. Count valid start times (no stops) and stop counts for each light.
+6. Calculate probabilities: count / total_steps.
+
+Note: Inputs are integers. Probabilities must be output in Q16.16 fixed-point format. 
+For example, probability 0.5 is 0x00008000.
+
+Latency: The module should take a bounded number of cycles to compute (e.g., < 2000 cycles).
+Use a state machine: IDLE, CONFIG, COMPUTE, DONE.

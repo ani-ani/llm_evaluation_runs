@@ -1,0 +1,291 @@
+module critical_elements (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [4:0] n,          // number of elements (2-16)
+    input wire [7:0] arr [15:0], // input sequence (use only first n elements)
+    output reg [7:0] critical [15:0],
+    output reg [4:0] critical_count,
+    output reg done
+);
+
+// Parameters
+parameter MAX_N = 16;
+parameter DATA_WIDTH = 8;
+parameter COUNT_WIDTH = 5;
+parameter LIS_WIDTH = 5;
+
+// State definitions for main FSM
+localparam IDLE = 0;
+localparam START_ORIG_LIS = 1;
+localparam WAIT_ORIG_LIS = 2;
+localparam LOOP_I = 3;
+localparam BUILD_TEMP_INIT = 4;
+localparam BUILD_TEMP_LOOP = 5;
+localparam START_TEMP_LIS = 6;
+localparam WAIT_TEMP_LIS = 7;
+localparam COMPARE_LIS = 8;
+localparam INCREMENT_I = 9;
+localparam SORT_INIT = 10;
+localparam SORT_PASS_LOOP = 11;
+localparam SORT_SWAP_LOOP = 12;
+localparam SORT_NEXT_PASS = 13;
+localparam OUTPUT_DONE = 14;
+
+// State definitions for DP FSM
+localparam DP_IDLE = 0;
+localparam DP_INIT = 1;
+localparam DP_OUTER = 2;
+localparam DP_INNER = 3;
+localparam DP_UPDATE = 4;
+localparam DP_NEXT_J = 5;
+localparam DP_NEXT_I = 6;
+localparam DP_FIND_MAX = 7;
+localparam DP_DONE = 8;
+
+// Registers for main FSM
+reg [4:0] state, next_state;
+reg [7:0] original_array [15:0];
+reg [7:0] temp_array [15:0];
+reg [7:0] array_reg [15:0];   // current array for DP
+reg [4:0] array_len;
+reg [4:0] i, j, k;            // loop indices for building temp
+reg [4:0] pass, idx;          // indices for bubble sort
+reg [7:0] l_orig, l_temp;     // LIS lengths
+reg [4:0] critical_count_reg;
+reg [7:0] critical_array [15:0];
+reg start_dp;
+reg dp_done;
+reg [7:0] lis_result;
+
+// Registers for DP FSM
+reg [4:0] dp_state, next_dp_state;
+reg [4:0] dp_i, dp_j;
+reg [7:0] dp_values [15:0];
+reg [7:0] temp_val;
+reg swap_needed;
+
+// Helper function: compute LIS for array in array_reg[0:array_len-1]
+// Uses dp_i and dp_j as indices
+
+// Main FSM next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: if (start) next_state = START_ORIG_LIS;
+        START_ORIG_LIS: next_state = WAIT_ORIG_LIS;
+        WAIT_ORIG_LIS: if (dp_done) next_state = LOOP_I;
+        LOOP_I: if (i < n) next_state = BUILD_TEMP_INIT; else next_state = SORT_INIT;
+        BUILD_TEMP_INIT: next_state = BUILD_TEMP_LOOP;
+        BUILD_TEMP_LOOP: if (j >= n) next_state = START_TEMP_LIS; else next_state = BUILD_TEMP_LOOP;
+        START_TEMP_LIS: next_state = WAIT_TEMP_LIS;
+        WAIT_TEMP_LIS: if (dp_done) next_state = COMPARE_LIS;
+        COMPARE_LIS: next_state = INCREMENT_I;
+        INCREMENT_I: next_state = LOOP_I;
+        SORT_INIT: if (critical_count_reg > 0) next_state = SORT_PASS_LOOP; else next_state = OUTPUT_DONE;
+        SORT_PASS_LOOP: if (pass >= critical_count_reg - 1) next_state = OUTPUT_DONE; else next_state = SORT_SWAP_LOOP;
+        SORT_SWAP_LOOP: if (idx >= critical_count_reg - 1 - pass) next_state = SORT_NEXT_PASS; else next_state = SORT_SWAP_LOOP;
+        SORT_NEXT_PASS: next_state = SORT_PASS_LOOP;
+        OUTPUT_DONE: next_state = IDLE;
+        default: next_state = IDLE;
+    endcase
+end
+
+// DP FSM next state logic
+always @(*) begin
+    next_dp_state = dp_state;
+    case (dp_state)
+        DP_IDLE: if (start_dp) next_dp_state = DP_INIT;
+        DP_INIT: next_dp_state = DP_OUTER;
+        DP_OUTER: if (dp_i < array_len) next_dp_state = DP_INNER; else next_dp_state = DP_FIND_MAX;
+        DP_INNER: if (dp_j < dp_i) next_dp_state = DP_UPDATE; else next_dp_state = DP_NEXT_I;
+        DP_UPDATE: next_dp_state = DP_NEXT_J;
+        DP_NEXT_J: next_dp_state = DP_INNER;
+        DP_NEXT_I: next_dp_state = DP_OUTER;
+        DP_FIND_MAX: next_dp_state = DP_DONE;
+        DP_DONE: next_dp_state = DP_IDLE;
+        default: next_dp_state = DP_IDLE;
+    endcase
+end
+
+// Sequential logic for main FSM
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        critical_count <= 0;
+        start_dp <= 0;
+        dp_done <= 0;
+        i <= 0;
+        j <= 0;
+        k <= 0;
+        pass <= 0;
+        idx <= 0;
+        l_orig <= 0;
+        l_temp <= 0;
+        critical_count_reg <= 0;
+    end else begin
+        state <= next_state;
+        dp_state <= next_dp_state;
+        
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    // Copy input array to original_array
+                    for (int idx = 0; idx < MAX_N; idx = idx + 1) begin
+                        original_array[idx] <= arr[idx];
+                    end
+                    i <= 0;
+                    critical_count_reg <= 0;
+                    done <= 0;
+                end
+            end
+            
+            START_ORIG_LIS: begin
+                // Set up for original LIS computation
+                for (int idx = 0; idx < MAX_N; idx = idx + 1) begin
+                    array_reg[idx] <= original_array[idx];
+                end
+                array_len <= n;
+                start_dp <= 1;
+            end
+            
+            WAIT_ORIG_LIS: begin
+                start_dp <= 0;
+                if (dp_done) begin
+                    l_orig <= lis_result;
+                end
+            end
+            
+            LOOP_I: begin
+                // No action, just checking i
+            end
+            
+            BUILD_TEMP_INIT: begin
+                j <= 0;
+                k <= 0;
+            end
+            
+            BUILD_TEMP_LOOP: begin
+                if (j < n) begin
+                    if (j != i) begin
+                        temp_array[k] <= original_array[j];
+                        k <= k + 1;
+                    end
+                    j <= j + 1;
+                end
+            end
+            
+            START_TEMP_LIS: begin
+                // Set up for temporary LIS computation
+                for (int idx = 0; idx < MAX_N; idx = idx + 1) begin
+                    array_reg[idx] <= temp_array[idx];
+                end
+                array_len <= n - 1;
+                start_dp <= 1;
+            end
+            
+            WAIT_TEMP_LIS: begin
+                start_dp <= 0;
+                if (dp_done) begin
+                    l_temp <= lis_result;
+                end
+            end
+            
+            COMPARE_LIS: begin
+                if (l_temp < l_orig) begin
+                    critical_array[critical_count_reg] <= original_array[i];
+                    critical_count_reg <= critical_count_reg + 1;
+                end
+            end
+            
+            INCREMENT_I: begin
+                i <= i + 1;
+            end
+            
+            SORT_INIT: begin
+                critical_count <= critical_count_reg;
+                pass <= 0;
+            end
+            
+            SORT_PASS_LOOP: begin
+                if (pass < critical_count_reg - 1) begin
+                    idx <= 0;
+                end
+            end
+            
+            SORT_SWAP_LOOP: begin
+                if (critical_array[idx] > critical_array[idx + 1]) begin
+                    // Swap
+                    critical_array[idx] <= critical_array[idx + 1];
+                    critical_array[idx + 1] <= critical_array[idx];
+                end
+                idx <= idx + 1;
+            end
+            
+            SORT_NEXT_PASS: begin
+                pass <= pass + 1;
+            end
+            
+            OUTPUT_DONE: begin
+                done <= 1;
+            end
+        endcase
+        
+        // DP FSM actions
+        case (dp_state)
+            DP_INIT: begin
+                for (int idx = 0; idx < array_len; idx = idx + 1) begin
+                    dp_values[idx] <= 1;
+                end
+                dp_i <= 0;
+            end
+            
+            DP_OUTER: begin
+                if (dp_i < array_len) begin
+                    dp_j <= 0;
+                end
+            end
+            
+            DP_INNER: begin
+                // No action
+            end
+            
+            DP_UPDATE: begin
+                if (array_reg[dp_j] < array_reg[dp_i]) begin
+                    if (dp_values[dp_j] + 1 > dp_values[dp_i]) begin
+                        dp_values[dp_i] <= dp_values[dp_j] + 1;
+                    end
+                end
+            end
+            
+            DP_NEXT_J: begin
+                dp_j <= dp_j + 1;
+            end
+            
+            DP_NEXT_I: begin
+                dp_i <= dp_i + 1;
+            end
+            
+            DP_FIND_MAX: begin
+                // Find maximum in dp_values
+                lis_result <= 0;
+                for (int idx = 0; idx < array_len; idx = idx + 1) begin
+                    if (dp_values[idx] > lis_result) begin
+                        lis_result <= dp_values[idx];
+                    end
+                end
+            end
+            
+            DP_DONE: begin
+                dp_done <= 1;
+            end
+            
+            DP_IDLE: begin
+                dp_done <= 0;
+            end
+        endcase
+    end
+end
+
+endmodule

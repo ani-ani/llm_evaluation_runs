@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'package_manager' that implements a topological sort to determine the installation order of software packages.
+
+**Inputs:**
+- `clk`: Clock signal
+- `rst_n`: Active-low reset
+- `start`: Start computation (pulse high for one cycle)
+- `pkg_idx [2:0]`: Index of the current package being defined (0 to N-1)
+- `pkg_name [79:0]`: 8-character ASCII name of the package (8 bytes, 64 bits + padding)
+- `dep_name [79:0]`: Dependency name to be added (8 bytes)
+- `dep_valid`: High when a dependency is valid for the current `pkg_idx`
+- `def_done`: High when package definition for `pkg_idx` is complete
+- `n_pkgs [3:0]`: Total number of packages (N), max 8
+
+**Outputs:**
+- `result_name [79:0]`: The name of the next package to install (in order)
+- `result_valid`: High when `result_name` is valid
+- `done`: High when all packages are ordered or error detected
+- `error`: High if cycle detected (cannot be ordered)
+
+**Behavior:**
+1. **Configuration Phase:**
+The module must first receive package definitions. Assert `start` to reset. For each package `i` (0 to N-1), drive `pkg_idx` to `i`, `pkg_name` to its name, and `dep_name` to each dependency name, pulsing `dep_valid` high for each dependency. Pulse `def_done` high to move to the next package index. This loads a dependency matrix internally.
+
+2. **Processing Phase:**
+After `def_done` for the last package and a pulse of `start` (or implicit transition), the module enters the sorting state.
+The module performs the following steps iteratively (taking 1-2 cycles per package output):
+- Identify all packages that have no unresolved dependencies (in-degree = 0) among the remaining uninstalled packages.
+- If multiple packages are available, select the one with the lexicographically smallest name (ASCII comparison).
+- Output the selected package name on `result_name` with `result_valid` high.
+- Mark the package as installed.
+- Decrement the in-degree of packages that depend on the installed package.
+- Repeat until all packages are installed.
+
+3. **Error Handling:**
+If at any point no packages are available to install but not all packages are installed, assert `error` and `done`. This indicates a cycle.
+
+4. **Lexicographical Ordering:**
+The comparison must be done character by character (byte by byte), from most significant to least significant, to find the minimum string.
+
+**Constraints:**
+- Max 8 packages.
+- Max 5 dependencies per package (though input allows 20, HDL requires scaling).
+- Package names are fixed 8-byte strings.
+- Use Q16.16 for any calculations if needed (not strictly needed here, integer logic preferred).
+
+**Example Trace:**
+If `n_pkgs` = 3, with packages A (dep C), B (dep A), C (no dep):
+1. Load definitions.
+2. Select C (no deps), output C.
+3. Select A (C satisfied), output A.
+4. Select B (A satisfied), output B.
+5. Done.

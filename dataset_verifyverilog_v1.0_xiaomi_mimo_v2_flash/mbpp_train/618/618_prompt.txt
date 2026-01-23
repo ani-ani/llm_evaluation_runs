@@ -1,0 +1,51 @@
+## Module: Element-wise Division of Two Lists
+
+### Description
+Divide two lists element-wise using fixed-point arithmetic. Each list contains 8 elements of 16-bit values. The division is performed using Q16.16 fixed-point format (16 integer bits, 16 fractional bits).
+
+### Interface Specification
+
+**Inputs:**
+- `clk` : Clock signal (rising edge triggered)
+- `rst_n` : Active-low synchronous reset
+- `start` : Start pulse (assert for 1 cycle to begin computation)
+- `numerator[0:7]` : 8-element input array, each element 16 bits
+  - Access pattern: numerator[0], numerator[1], ... numerator[7]
+- `denominator[0:7]` : 8-element input array, each element 16 bits
+  - Access pattern: denominator[0], denominator[1], ... denominator[7]
+- `len` : 3-bit value (1-8) indicating number of valid elements to process
+
+**Outputs:**
+- `result[0:7]` : 8-element output array, each element 32 bits (Q16.16 format)
+  - Access pattern: result[0], result[1], ... result[7]
+- `done` : Asserted high for 1 cycle when all results are valid
+
+### Functional Requirements
+1. Perform fixed-point division: result[i] = (numerator[i] << 16) / denominator[i]
+2. Process elements sequentially (one per clock cycle)
+3. Only process `len` number of elements
+4. Handle division by zero: saturate output to maximum value (32'h7FFFFFFF)
+5. Output is Q16.16 format: multiply by 65536 to get integer representation
+
+### Timing Behavior
+- Assert `start` for 1 clock cycle to begin computation
+- Internal processing: 1 cycle per element + 2 cycles overhead
+- `done` goes high when computation completes
+- Sample all `result[]` values on the same cycle `done` is high
+- `done` pulse width: 1 clock cycle
+
+### Reset Behavior
+- On `rst_n=0`: `done=0`, all `result[]` values = 0, internal state machine reset
+- Minimum 2 clock cycles of reset required
+
+### Example I/O (Q16.16 format)
+- Input: numerator[0] = 262144 (4.0 * 65536), denominator[0] = 65536 (1.0 * 65536)
+- Output: result[0] = 2621440 (4.0 * 65536)
+- Input: numerator[1] = 327680 (5.0 * 65536), denominator[1] = 131072 (2.0 * 65536)
+- Output: result[1] = 163840 (2.5 * 65536)
+
+### Implementation Notes
+- Use iterative fixed-point division algorithm (restoring or non-restoring)
+- 32-bit internal width for division operations
+- Latency: `len` + 2 cycles from start to done
+- Maximum `len` = 8 elements

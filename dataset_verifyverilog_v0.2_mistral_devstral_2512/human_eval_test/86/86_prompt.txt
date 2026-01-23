@@ -1,0 +1,56 @@
+Design a sequential Verilog module named 'anti_shuffle' that implements a simplified version of the string anti-shuffle algorithm.
+
+The module processes a fixed-width string (16 characters maximum) and sorts the alphabetical characters within each word while preserving word boundaries and non-alphabetic characters.
+
+**Input Specification:**
+- Input string is represented as a 16-element array of 8-bit ASCII characters
+- Each character is one byte (7-bit ASCII + 1 parity bit)
+- Word boundaries are defined by non-alphabetic characters (spaces, punctuation)
+- Non-alphabetic characters are preserved in their original positions
+- Alphabetic characters within each word are sorted in ascending ASCII order
+
+**Interface:**
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0][7:0] input_string // 16 characters, 8 bits each
+
+output reg [15:0][7:0] result_string // Sorted output string
+output reg done // High when computation complete
+
+**Behavioral Specification:**
+- Latency: 256 clock cycles after start asserted (to allow bubble sort on worst case)
+- Use state machine with states: IDLE, SCAN_SORT, OUTPUT, DONE
+- In SCAN_SORT state:
+  - Process characters from index 0 to 15
+  - Detect word boundaries by checking if char is alphabetic (A-Z, a-z)
+  - For each word (sequence of alphabetic chars), perform sorting:
+    - Use bubble sort logic within the word segment
+    - Compare adjacent characters and swap if needed
+    - Non-alphabetic characters remain fixed and break word segments
+- In OUTPUT state:
+  - Transfer sorted result to output register
+- Non-alphabetic characters are preserved exactly at their positions
+- Empty string (all non-alphabetic or zero) should output same as input
+
+**Example:**
+Input:  "Hi" (0x48, 0x69, 0x00...0x00) → Output: "Hi" (0x48, 0x69...)
+Input:  "hello" (0x68,0x65,0x6C,0x6C,0x6F...) → Output: "ehllo" (0x65,0x68,0x6C,0x6C,0x6F...)
+Input:  "Hello World!!!" → Output: "Hello !!!Wdlor"
+
+**Implementation Notes:**
+- Use parameter for max string length: parameter STR_LEN = 16
+- Use parameter for character width: parameter CHAR_W = 8
+- Implement a 16-byte buffer for temporary sorting
+- Sorting is performed in-place on word segments
+- Bubble sort requires O(n²) comparisons - use bounded counters
+- Done signal goes high when result is ready
+- Module should reset to clean state on rst_n
+
+**ASCII ranges for reference:**
+- 'A' = 0x41, 'Z' = 0x5A
+- 'a' = 0x61, 'z' = 0x7A
+- Space = 0x20
+- Punctuation = 0x21-0x2F, 0x3A-0x40, etc.
+
+The module should be synthesizable and use reasonable hardware resources.

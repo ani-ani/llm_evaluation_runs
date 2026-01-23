@@ -1,0 +1,97 @@
+Design a sequential Verilog module named 'random_walk_meeting' that computes the expected meeting time of two random walkers on a small graph.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] n // number of nodes (1 to 8)
+input [2:0] s // Alice's initial station
+input [2:0] t // Bob's initial station
+input [5:0] adj_matrix [0:7][0:7] // 8x8 adjacency matrix (flattened: adj_matrix[i*8 + j])
+
+Outputs:
+output reg [31:0] result // Q16.16 fixed-point expected time (or 0xFFFFFFFF if never meet)
+output reg valid // high when result is valid
+output reg never_meet // high if they will never meet
+
+Specifications:
+- Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits).
+- The module implements an iterative solver for the system of linear equations derived from the Markov chain.
+- For each pair (i, j) of stations, let E(i, j) be the expected time to meet.
+- If i == j, E(i, j) = 0.
+- If i != j and both have no neighbors, E(i, j) = infinity (never meet).
+- Otherwise: E(i, j) = 1 + (1/(deg(i)*deg(j))) * sum over all neighbors u of i, v of j of E(u, v).
+- The module should use a state machine to iteratively update the expected values until convergence (or max iterations).
+- States: IDLE, INIT_EDGES, CHECK_CONVERGENCE, UPDATE_VALUES, DONE, NEVER.
+- Since it's hard to do arbitrary iterations in pure hardware without a processor, we will unroll for a fixed number of iterations (e.g., 32) or use a small state machine that runs for a bounded number of cycles.
+- We will use a simple relaxation method: initialize E(i,j) = 0, then iteratively update: E_new(i,j) = 1 + avg(E_old(u,v)). Repeat for fixed number of steps (e.g., 16).
+- We need to store E values for all pairs (i,j) where i,j < 8. That's 64 pairs. We can use a RAM or 64 registers.
+- Let's use 64 registers of 32 bits each (index: i*8 + j).
+- Edge weights: we need to know degrees and neighbors. We can pass the adjacency matrix directly.
+- Input format: The 'adj_matrix' is a flattened 8x8 matrix. adj_matrix[i*8 + j] = 1 if edge exists.
+- We assume undirected graph, so matrix is symmetric.
+
+Behavior:
+1. IDLE: Wait for start signal.
+2. INIT_EDGES: Initialize E[i][j] registers. If i==j, set to 0. Else set to 0 (or some initial guess).
+3. CHECK_CONVERGENCE (or rather UPDATE loop): Run for fixed iterations (e.g., 16).
+   - In each iteration, calculate new values for all pairs (i, j).
+   - If i==j, skip (value stays 0).
+   - Calculate deg(i) and deg(j) by summing row i and col j (or just row i since undirected).
+   - If deg(i)==0 or deg(j)==0 and i!=j, then E(i,j) is infinite (never meet). Mark flag.
+   - Sum E(u,v) for all neighbors u of i and v of j.
+   - E_new = 1 + (Sum / (deg(i)*deg(j))).
+   - Use Q16.16 arithmetic.
+4. DONE: Output final E[s][t].
+5. NEVER: Output 0xFFFFFFFF for result and set never_meet high.
+
+Constraint: This requires many multiplications and divisions. We will implement integer arithmetic. Division of Q16.16 numbers requires scaling.
+Actually, we can implement the update logic: 
+E_new = 1 + (Sum / (deg(i)*deg(j)))
+In fixed point: E_new = (1 << 16) + (Sum << 16) / (deg(i)*deg(j))
+Sum is in Q16.16. deg(i)*deg(j) is integer.
+So we need a divider.
+
+Simplification for Verilog: Since dynamic programming in hardware is resource intensive, we will implement a specialized controller that computes the update for a single pair (i,j) per clock cycle or a few cycles, and iterates through all pairs.
+Actually, calculating all 64 pairs per iteration is too much for a small module.
+Let's refine: We will compute E(s, t) directly using a state machine that processes the graph. 
+Wait, the problem is 'Expected time'. This requires solving a system of linear equations.
+Alternative approach: Value Iteration.
+We have 64 states (pairs of nodes). We update values in place.
+Since n <= 8, 64 states is manageable in FPGA BRAM or registers.
+We will iterate a fixed number of times (e.g., 20) to approximate the solution.
+
+Verilog Structure:
+- Registers for E values: reg [31:0] E [0:63].
+- Helper logic to compute neighbors.
+- State machine: 
+  - IDLE
+  - PREP_ITER: Setup loop counters (iter_count, i, j)
+  - CALC_DEG: Compute degrees of i and j.
+  - CHECK_NEVER: If deg(i)==0 or deg(j)==0 and i!=j -> NEVER state.
+  - SUM_NEIGHBORS: Accumulate sum of E[u][v].
+  - UPDATE_E: E_new = 1 + Sum / (deg_i * deg_j).
+  - NEXT_PAIR: Increment i/j indices.
+  - NEXT_ITER: Check if iterations done.
+  - DONE
+
+Note on fixed-point arithmetic:
+- Sum and E values are Q16.16.
+- Multiplication: (A * B) >> 16.
+- Division: (A << 16) / B.
+- We will need a divider unit.
+
+Inputs: 
+- n, s, t: 3 bits (0-7).
+- adj_matrix: 64 bits total? No, 8x8=64 entries. Each entry 1 bit. Input is 64 bits flat.
+
+To keep it manageable, we'll assume the 'adj_matrix' is provided as a 64-bit vector `input [63:0] adj_flat`. We can index it.
+
+Result:
+- valid: high when done.
+- result: Q16.16 value.
+- never_meet: high if impossible.
+
+Latency: Iterative. E.g., 20 iterations * ~50 cycles = 1000 cycles.
+
+Let's write the prompt.

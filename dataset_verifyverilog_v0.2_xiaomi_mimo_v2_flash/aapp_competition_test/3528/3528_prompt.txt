@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'elastic_band_area' that computes areas of convex hulls after iteratively removing extremal points.
+
+The module implements a simplified version for N ≤ 16 points:
+- Input: Point coordinates (x, y) for up to 16 points
+- Input: Removal sequence (up to 14 removals)
+- Output: Areas of convex hull after each removal
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [5:0] num_points // actual number of points (3-16)
+input [5:0] num_removals // number of removals to perform (1-14)
+input [31:0] points_x [0:15] // x-coordinates of up to 16 points
+input [31:0] points_y [0:15] // y-coordinates of up to 16 points
+input [3:0] removals [0:13] // removal sequence: 0=L, 1=R, 2=U, 3=D
+
+Outputs:
+output reg [31:0] area_out // current area in Q16.16 fixed-point format
+output reg [3:0] area_idx // which removal iteration this area corresponds to
+output reg area_valid // high when area_out is valid
+output reg done // high when all removals complete
+
+Behavior:
+The module maintains an internal array of active points. On start, it:
+1. Initializes with all points
+2. Computes convex hull using Graham scan (simplified for small N)
+3. Calculates polygon area using shoelace formula (returns Q16.16 format)
+4. Outputs the area with area_valid high for 1 cycle
+5. Removes the specified extremal point (based on removal sequence)
+6. Repeats until all removals done
+
+Convex Hull Algorithm:
+- Use simplified Graham scan with selection sort for finding lowest point
+- Compute cross product: cross(o,a,b) = (a.x-o.x)*(b.y-o.y) - (a.y-o.y)*(b.x-o.x)
+- Sort points by polar angle using bubble sort (works for N≤16)
+- Build hull using stack-based approach
+
+Area Calculation:
+- Use shoelace formula: area = 0.5 * |Σ(x_i*y_{i+1} - x_{i+1}*y_i)|
+- Result in Q16.16 format (multiply by 65536)
+
+State Machine: IDLE, CONVEX_HULL, CALCULATE_AREA, REMOVE_POINT, DONE
+
+Latency: Approximately 2000-5000 clock cycles per removal (for small N, unrolled loops)
+
+Special Note:
+All arithmetic is integer-based. Area calculation produces Q16.16 fixed-point output.
+For example, an area of 9.5 would output 9.5 * 65536 = 622592 (0x00098000).
+
+The module should handle the full pipeline for computing multiple areas sequentially.

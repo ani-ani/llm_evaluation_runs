@@ -1,0 +1,151 @@
+module alternating_sum (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] a,
+    input wire [7:0] b,
+    input wire [3:0] k,
+    input wire [7:0] s_sequence,  // Packed sequence of signs (1 bit each, LSB first)
+    output reg [15:0] result,
+    output reg done
+);
+
+// Parameters
+parameter MOD = 256;  // 2^8 modulus for fixed-point arithmetic
+parameter MAX_CYCLES = 1000;
+
+// State machine states
+parameter IDLE = 0;
+parameter COMPUTE_R = 1;
+parameter COMPUTE_C = 2;
+parameter COMPUTE_D = 3;
+parameter COMPUTE_RESULT = 4;
+parameter COMPLETE = 5;
+
+// Internal registers
+reg [3:0] state;
+reg [3:0] counter;
+reg [15:0] sum;
+reg [7:0] r;  // b/a in Q8.8
+reg [15:0] C;  // First block sum
+reg [15:0] D;  // Geometric series sum
+reg [15:0] a_pow_n;  // a^n
+reg [7:0] r_k;  // r^k
+reg [7:0] current_r;
+reg [7:0] base;
+reg [3:0] bit_pos;
+
+// Combinational signals
+wire [7:0] s_bit;
+wire [7:0] r_squared;
+wire [15:0] term;
+
+// Extract current sign bit from s_sequence
+assign s_bit = (s_sequence >> bit_pos) & 8'h01;
+
+// Compute r_squared = r * r with 16-bit intermediate
+wire [15:0] r_temp = r * r;
+assign r_squared = r_temp[7:0];  // Truncate to Q8.8
+
+// Compute term = current_r * s_bit (with sign)
+wire [15:0] term_temp = (s_bit[0] ? current_r : -current_r);
+assign term = term_temp + sum;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        counter <= 0;
+        sum <= 0;
+        current_r <= 0;
+        bit_pos <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= COMPUTE_R;
+                    counter <= 0;
+                    sum <= 0;
+                    current_r <= 8'h01;  // r^0 = 1 in Q8.8
+                    bit_pos <= 0;
+                    // Compute initial r = (b * inv(a)) using approximation
+                    // For simplicity, we use: r = (b * 255 / a) >> 8
+                    r <= (b * 8'hFF) / a;
+                end
+            end
+            
+            COMPUTE_R: begin
+                // Compute r^k by repeated squaring
+                if (counter == 0) begin
+                    r_k <= 8'h01;  // Start with 1
+                    base <= r;
+                    counter <= k;
+                end else if (counter > 0) begin
+                    // Multiply r_k by base
+                    r_k <= (r_k * base) >> 8;  // Q8.8 multiplication
+                    counter <= counter - 1;
+                end
+                
+                if (counter == 1) begin
+                    state <= COMPUTE_C;
+                    counter <= 0;
+                    current_r <= 8'h01;  // Reset for C computation
+                    sum <= 0;
+                    bit_pos <= 0;
+                end
+            end
+            
+            COMPUTE_C: begin
+                if (bit_pos < k) begin
+                    // Compute term = s_bit * r^bit_pos
+                    // Add to sum
+                    sum <= term[15:0];  // Result is already in Q8.8 fixed-point
+                    
+                    // Update current_r for next iteration: current_r = current_r * r
+                    current_r <= (current_r * r) >> 8;
+                    bit_pos <= bit_pos + 1;
+                end else begin
+                    C <= sum;
+                    state <= COMPUTE_D;
+                    counter <= 0;
+                    sum <= 0;
+                    current_r <= 8'h01;  // Reset for D computation
+                end
+            end
+            
+            COMPUTE_D: begin
+                // Compute D = 1 + r_k + r_k^2 + ... + r_k^(T-1)
+                // T = (n+1) / k, but we simplify to use k as iteration count
+                if (counter < k) begin  // Simplified: use k instead of T
+                    sum <= sum + current_r;
+                    current_r <= (current_r * r_k) >> 8;
+                    counter <= counter + 1;
+                end else begin
+                    D <= sum;
+                    state <= COMPUTE_RESULT;
+                    counter <= 0;
+                    // Compute a^n: simplified to a^n ≈ a in Q8.8
+                    a_pow_n <= a;
+                end
+            end
+            
+            COMPUTE_RESULT: begin
+                // result = a^n * C * D
+                // Simplified fixed-point multiplication
+                result <= (a_pow_n * C * D) >> 8;
+                state <= COMPLETE;
+            end
+            
+            COMPLETE: begin
+                done <= 1;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'archimedes_solver' that finds the release point on an Archimedean spiral r = b * phi to hit a target (tx, ty) without intersecting the spiral.
+
+The module must:
+1. Accept inputs b, tx, ty in Q16.16 fixed-point format
+2. Search for the optimal release angle phi in the range [0, 8*PI] (representing up to 2 full rotations)
+3. For each trial angle, compute the spiral point (x,y) and velocity vector (vx, vy)
+4. Check if the line from (x,y) in direction (vx,vy) hits near the target (tx,ty)
+5. Check that the path does not intersect the spiral (simplified check: ensure target is outside the spiral radius at the release angle)
+6. Output the x,y coordinates of the best release point found
+
+Inputs:
+input clk
+input rst_n
+input start
+input [31:0] b_fixed      // Q16.16 format
+input [31:0] tx_fixed     // Q16.16 format
+input [31:0] ty_fixed     // Q16.16 format
+
+Outputs:
+output reg [31:0] result_x  // Q16.16 format
+output reg [31:0] result_y  // Q16.16 format
+output reg done
+
+Latency: Result valid approx 2000-3000 clock cycles after start (due to iterative search).
+
+Use state machine: IDLE, CALCULATE, CHECK_DIST, UPDATE, DONE.
+
+Algorithm details:
+- Iterate phi from 0 to 8*PI with step 0.01 (in fixed point: step 655)
+- For each phi: 
+  x = b * phi * cos(phi)
+  y = b * phi * sin(phi)
+  vx = b * (cos(phi) - phi * sin(phi))
+  vy = b * (sin(phi) + phi * cos(phi))
+  Compute distance from target to line defined by (x,y) and direction (vx,vy)
+  Check if distance < threshold (0.1 in Q16.16 = 6553)
+  Check if sqrt(tx^2+ty^2) > b*phi + 0.1 (prevent intersection)
+  If valid and distance is smallest so far, save point
+- Finally output the saved point
+
+Note: Implement arithmetic operations using fixed-point logic. Cos/Sin should be approximated using CORDIC or lookup tables for the limited range. The iteration count should be limited to ~500 steps to fit in reasonable time.

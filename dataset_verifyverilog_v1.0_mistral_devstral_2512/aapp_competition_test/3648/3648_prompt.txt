@@ -1,0 +1,31 @@
+module SecureNetwork (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] n,          // number of buildings (1-8)
+    input [3:0] p,          // number of insecure buildings (0-8)
+    input [31:0] insecure_list, // packed insecure IDs (8 x 4 bits, LSB first)
+    input [63:0] edge_u,    // edge start nodes (16 x 4 bits)
+    input [63:0] edge_v,    // edge end nodes (16 x 4 bits)
+    input [255:0] edge_cost, // edge costs (16 x 16 bits)
+    input [15:0] edge_valid, // mask for valid edges
+    output reg [15:0] result, // total cost if possible
+    output reg done,          // pulse when computation finishes
+    output reg impossible     // 1 if no valid network exists
+);
+
+// Behavioral description:
+// - Sequential FSM with states: IDLE, CHECK_SPECIAL, FIND_MIN, BUILD_MST, COMPUTE, DONE
+// - On start pulse, processes input graph according to security constraint.
+// - Handles three cases:
+//   1) p == n: if n==1 -> result=0; if n==2 -> find edge between the two; else impossible.
+//   2) p == 0 -> standard MST (Kruskal) on all nodes.
+//   3) 0 < p < n -> find min edge from each insecure node to any secure node;
+//      then MST on secure subgraph; sum costs; if any insecure has no edge or secure subgraph disconnected -> impossible.
+// - Union-find used for MST (max 8 secure nodes).
+// - Edge sorting via repeated min selection (max 16 edges).
+// - Guaranteed to finish within 1000 cycles.
+// - On reset (rst_n=0): all outputs 0.
+// - Timing: Assert start for 1 cycle; after computation, done pulses high for 1 cycle.
+
+endmodule

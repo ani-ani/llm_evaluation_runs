@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'ticket_optimizer' that computes the minimum number of coupons needed for a sequence of bus trips.
+
+Problem Context:
+- Johan makes N trips (N ≤ 8, fixed at compile time)
+- Each trip has a zone Z (0-7) and time T (0-255, strictly increasing)
+- A ticket is valid for 10000 seconds, but we scale this to 256 cycles (2^8)
+- Ticket covers interval [A, B] of zones, costs 2 + |A - B| coupons
+- Initially at zone 0
+
+Module Interface:
+module ticket_optimizer #(
+    parameter N = 8  // Maximum number of trips
+)(
+    input clk,              // Clock
+    input rst_n,            // Active-low reset
+    input start,            // Start computation
+    input [2:0] trip_zone,  // Current trip zone (0-7)
+    input [7:0] trip_time,  // Current trip time (0-255)
+    input load_trip,        // Load current trip data
+    input compute,          // Compute next state
+    output reg [15:0] min_cost, // Minimum cost (max 8 trips * 10 coupons = 80)
+    output reg done,        // High when all trips processed
+    output reg [2:0] debug_state  // Debug: current state
+);
+
+Behavior:
+1. Use state machine: IDLE, LOAD_TRIP, COMPUTE, COMPLETE
+2. Track state for all possible ticket intervals [A,B] where A,B ∈ [0,7]
+3. For each trip, consider two options:
+   a) Buy new ticket covering this trip's zone
+   b) Use existing ticket if it covers current zone and is valid (time difference < 256)
+4. Update minimum cost for each possible interval state
+5. Store trip history in a small FIFO or register file (8 entries × 8 bits zone + 8 bits time)
+
+Implementation Details:
+- Use DP with states representing: [last_ticket_A][last_ticket_B][last_ticket_start_time][cost]
+- Since zones are 0-7, we have 8×8×256×cost states
+- Cost is capped at 255 for 8-bit storage
+- Output min_cost accumulates minimum coupons needed
+- done asserted after processing all N trips
+
+For Sequential Operation:
+- Latency: ~10-20 clock cycles per trip (depends on state updates)
+- Use start signal to initialize
+- Load each trip using load_trip signal (assert when trip_zone and trip_time are valid)
+- Use compute signal to advance computation
+- Internal state tracks which trip index is being processed
+
+Fixed-Point Note:
+This problem uses pure integers, no floating point conversion needed.

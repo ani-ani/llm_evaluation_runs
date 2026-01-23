@@ -1,0 +1,62 @@
+Design a sequential Verilog module named 'triangle_coverage_compare' that determines if two sets of triangles produce identical coverage on an 8x8 grid.
+
+**Problem Adaptation:**
+- Grid size: 8x8 pixels (coordinates 0-7 for x and y)
+- Input triangles: Each triangle defined by 3 points with 4-bit coordinates (0-7)
+- Both Garry and Jerry can provide up to 4 triangles each
+- A triangle covers a pixel if its center (pixel+0.5, pixel+0.5) is inside the triangle
+- Compare the binary coverage maps to determine if they are identical
+
+**Inputs:**
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] garry_tri_count // 0-4 triangles for Garry
+input [2:0] jerry_tri_count // 0-4 triangles for Jerry
+input [5:0] garry_tri_0_x1, garry_tri_0_y1, garry_tri_0_x2, garry_tri_0_y2, garry_tri_0_x3, garry_tri_0_y3 // Triangle 0 vertices (3-bit each for x,y)
+input [5:0] garry_tri_1_x1, garry_tri_1_y1, garry_tri_1_x2, garry_tri_1_y2, garry_tri_1_x3, garry_tri_1_y3 // Triangle 1 vertices
+input [5:0] garry_tri_2_x1, garry_tri_2_y1, garry_tri_2_x2, garry_tri_2_y2, garry_tri_2_x3, garry_tri_2_y3 // Triangle 2 vertices
+input [5:0] garry_tri_3_x1, garry_tri_3_y1, garry_tri_3_x2, garry_tri_3_y2, garry_tri_3_x3, garry_tri_3_y3 // Triangle 3 vertices
+input [5:0] jerry_tri_0_x1, jerry_tri_0_y1, jerry_tri_0_x2, jerry_tri_0_y2, jerry_tri_0_x3, jerry_tri_0_y3 // Triangle 0 vertices
+input [5:0] jerry_tri_1_x1, jerry_tri_1_y1, jerry_tri_1_x2, jerry_tri_1_y2, jerry_tri_1_x3, jerry_tri_1_y3 // Triangle 1 vertices
+input [5:0] jerry_tri_2_x1, jerry_tri_2_y1, jerry_tri_2_x2, jerry_tri_2_y2, jerry_tri_2_x3, jerry_tri_2_y3 // Triangle 2 vertices
+input [5:0] jerry_tri_3_x1, jerry_tri_3_y1, jerry_tri_3_x2, jerry_tri_3_y2, jerry_tri_3_x3, jerry_tri_3_y3 // Triangle 3 vertices
+
+**Outputs:**
+output reg same // 1 if coverage is identical, 0 otherwise
+output reg done // high when computation complete
+
+**Latency:** Maximum 256 clock cycles after start asserted.
+
+**Algorithm:**
+1. Use a state machine with states: IDLE, GARRY_PROCESS, JERRY_PROCESS, COMPARE, DONE
+2. For each triangle, determine which pixels (0-63) it covers
+3. For a pixel (px, py), its center is (px + 0.5, py + 0.5)
+4. A point is inside triangle if it's on same side of all three edges
+5. Use barycentric or half-space test: For edge from A to B, point P is inside if cross(B-A, P-A) >= 0 (assuming counter-clockwise)
+6. Store Garry's coverage in a 64-bit reg array: garry_coverage[63:0]
+7. Store Jerry's coverage in a 64-bit reg array: jerry_coverage[63:0]
+8. Compare bit-by-bit in COMPARE state
+9. Set same=1 if all bits match, 0 otherwise
+
+**Implementation Details:**
+- Pixel centers: For pixel p (0-63), x = {p[5:3], 1'b1} (in 4.1 fixed-point), y = {p[2:0], 1'b1}
+- Triangle vertices use 3-bit integers (0-7), need to convert to 4.1 format by appending binary point
+- Edge test: cross_product = (x2-x1)*(y3-y1) - (y2-y1)*(x3-x1) (for triangle vertices)
+- Inside test for point (px, py): check cross product for each edge
+- Use shift registers for pixel iteration
+- Operation count: 64 pixels × max 4 triangles = 256 operations max
+
+**State Machine:**
+- IDLE: wait for start
+- GARRY_PROCESS: iterate through all 64 pixels and Garry's triangles, set bits in garry_coverage
+- JERRY_PROCESS: iterate through all 64 pixels and Jerry's triangles, set bits in jerry_coverage
+- COMPARE: XOR garry_coverage with jerry_coverage, check if result is zero
+- DONE: set done=1, hold result
+
+**Simplification for Hardware:**
+- Use a counter for pixels (0-63)
+- Counter for triangle index (0-3)
+- Multiplexers to select current triangle data
+- Combinational logic for inside test
+- Sequential logic to accumulate coverage bits

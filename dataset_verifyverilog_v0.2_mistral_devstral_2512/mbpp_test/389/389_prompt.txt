@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'lucas_number' that computes the n'th Lucas number using an iterative approach.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] n // n value (0-15, 5-bit input)
+
+Outputs:
+output reg [15:0] result // Lucas number result
+output reg done // high when computation complete
+
+Specification:
+- Lucas numbers: L(0) = 2, L(1) = 1, L(n) = L(n-1) + L(n-2) for n ≥ 2
+- Use iterative state machine (non-recursive) to avoid stack overhead
+- Latency: Result valid 17 clock cycles after start asserted (worst case n=15)
+- Maximum n supported: 15 (fits in 5 bits, Lucas(15)=1364 fits in 16 bits)
+
+State Machine States:
+- IDLE: Wait for start signal
+- INIT: Initialize for n=0 or n=1 cases
+- ITER: Iterate from 2 to n, computing L(i) = L(i-1) + L(i-2)
+- DONE: Set done signal high
+
+Behavioral Description:
+1. On reset (rst_n=0), all registers cleared, state = IDLE
+2. When start=1 and state=IDLE:
+   - If n=0: result = 2, go to DONE
+   - If n=1: result = 1, go to DONE
+   - If n≥2: initialize prev = 2 (L0), curr = 1 (L1), counter = 2, go to ITER
+3. In ITER state:
+   - next = prev + curr
+   - prev = curr
+   - curr = next
+   - increment counter
+   - If counter <= n: stay in ITER
+   - If counter > n: result = curr, go to DONE
+4. In DONE state: done = 1, stay until reset or new start
+
+Implementation Notes:
+- Use 16-bit registers for values (max Lucas(15)=1364)
+- Use 5-bit counter for iteration count (0-31 range)
+- All operations are combinational within state transitions
+- Result remains stable in DONE state

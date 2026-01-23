@@ -1,0 +1,90 @@
+Design a sequential Verilog module named 'event_duration_solver' that solves for event durations given telescope observations.
+
+Problem Scaling:
+- M (event types): 4 max
+- N (telescopes): 8 max
+- Days per year: 365
+- Event durations: 1-365 days
+- Observation counts F_i: 0-200
+
+Each observation gives an equation:
+Duration = (End_Day - Start_Day) + 365 * (End_Year - Start_Year)
+Duration = sum(F_i * duration_i) for i=1 to M
+
+We need to find duration_i values that satisfy all N equations.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [8:0] start_day // start day of year (1-365)
+input [8:0] end_day // end day of year (1-365)
+input [7:0] F [0:3] // observation counts for 4 event types
+
+Outputs:
+output reg [8:0] duration [0:3] // computed durations for 4 event types
+output reg done // high when computation complete
+output reg valid // high if solution found
+
+Specify latency: 1000 clock cycles max (iterative search).
+
+Behavior:
+1. Calculate observation_window = (end_day - start_day) if end >= start, else (end_day + 365 - start_day)
+2. Iterate through possible duration combinations
+3. For each combination, check if sum(F[i] * duration[i]) == observation_window for all N observations
+4. Output first valid solution found
+
+Implementation Strategy:
+- Use a state machine: IDLE → READ_OBS → SOLVE → OUTPUT
+- In SOLVE state, use nested loops or a structured search for duration values
+- For each telescope, check if equation holds
+- Since we have limited M=4, we can iterate d0=1..365, d1=1..365, etc., but optimize by checking constraints
+- Use parameterizable bounds for search
+
+State Machine States:
+- IDLE: Wait for start signal, clear registers
+- READ_OBS: Load observation data (simulated inputs from memory/registers)
+- SOLVE: Search for duration values that satisfy all observations
+- CHECK: Verify current candidate against all observations
+- OUTPUT: Present result and set done signal
+
+Notes:
+- The module should be able to handle multiple observations (N values)
+- Since we can't store N observations easily in small hardware, we'll process one observation at a time or assume N is processed sequentially
+- A practical approach: assume the input provides one observation per clock cycle, and we validate against stored duration values
+- Alternative: Input is pre-loaded, and solver searches for valid durations
+
+For this implementation, let's design it as:
+- External logic feeds observations one by one
+- Solver maintains current best fit
+- Or simpler: solver computes based on single observation with constraint matching
+
+Actually, for a clean HDL spec, let's make it process one observation but track consistency:
+- Input: current observation
+- State: maintains accumulated constraints
+- Goal: find durations that work for all seen observations
+
+Simpler yet for HDL: Implement a solver that takes one observation and tries to find durations. The testbench will handle multiple observations by reconfiguring. But this is complex.
+
+Better approach: The solver receives parameters and searches. We'll assume it has access to N observations (hardcoded or parameterized).
+
+Final Spec:
+Design a combinational/sequential hybrid that:
+1. Takes M=4 event types, N=1 observation for simplicity (can be extended)
+2. Iterates through duration possibilities
+3. Uses constraint propagation
+
+Actually, let's make it a sequential solver that:
+- Has N observation slots (N=8 parameter)
+- Each slot contains: observation_window and F_i array
+- Searches for duration values that satisfy all slots
+- Uses iterative deepening search
+
+Module Spec:
+- Parameter N = 8 (max telescopes)
+- Parameter M = 4 (max event types)
+- Input: observation data (for simplicity, pre-loaded or streaming)
+- Output: durations, valid flag
+
+For the actual implementation described in prompt, let's make it practical:
+It will search for durations in a loop, checking constraints incrementally.

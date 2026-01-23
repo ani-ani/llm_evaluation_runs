@@ -1,0 +1,61 @@
+Design a sequential Verilog module named 'max_clique_solver' that finds the largest subset of sensors where each pair can communicate directly.
+
+Problem Adaptation:
+- Maximum 8 sensors (n ≤ 8)
+- Distance threshold d ≤ 10000
+- Coordinates range -10000 to 10000
+- Use Q16.16 fixed-point format for distance calculations
+- Maximum subset size: 8
+- Output: size and indices of sensors in subset
+
+Module Specification:
+module max_clique_solver (
+    input clk,
+    input rst_n,
+    input start,
+    input [2:0] n,                    // Number of sensors (1-8)
+    input [31:0] d,                   // Distance threshold in Q16.16 format
+    input [7:0][31:0] x_coords,       // X coordinates (Q16.16)
+    input [7:0][31:0] y_coords,       // Y coordinates (Q16.16)
+    output reg [2:0] size,            // Size of maximum clique
+    output reg [2:0] sensor_indices [7:0], // Indices of sensors (1-based, 0=unused)
+    output reg done                   // Computation complete
+);
+
+Behavioral Description:
+The module uses a sequential state machine to:
+1. IDLE: Wait for start signal
+2. COMPUTE_ADJ: Build adjacency matrix by calculating Euclidean distances
+   - For each pair (i,j), compute: dist² = (x_i - x_j)² + (y_i - y_j)²
+   - Compare with d² (pre-computed)
+3. ENUMERATE: Brute-force check all 2^n subsets
+   - For each subset, verify it's a clique (all pairs connected)
+   - Track maximum size and corresponding indices
+4. DONE: Output results
+
+Distance Calculation:
+- Use Q16.16 format: value = real_value * 65536
+- Euclidean distance: sqrt((x2-x1)² + (y2-y1)²)
+- For comparison, compare squared distances to avoid sqrt: dist² ≤ d²
+- Compute difference, square it (32-bit × 32-bit = 64-bit, take upper 32 bits)
+- Use state machine with 256 cycles max for subset enumeration
+
+States: IDLE, COMPUTE_ADJ, ENUMERATE_SUBSETS, CHECK_CLIQUE, UPDATE_BEST, DONE
+
+Latency: Maximum 512 clock cycles (64 for adjacency + 256*2 for enumeration)
+
+Output Format:
+- size: number of sensors in subset (0-8)
+- sensor_indices: array of 8 values, first 'size' entries are 1-based indices, rest are 0
+
+Example: For input "4 1
+0 0
+0 1
+1 0
+1 1
+" (after fixed-point conversion):
+- Adjacency: sensors 1-2 distance=1.0 ≤ 1.0, 1-3=1.0 ≤ 1.0, etc.
+- Maximum clique size: 2
+- Indices: 1, 2 (or 3,4 or 1,3 or 2,4)
+
+Note: All arithmetic operations must handle Q16.16 format. Intermediate products may need 64-bit multiplication. Use shift operations for division by powers of 2.

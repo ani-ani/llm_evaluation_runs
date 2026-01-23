@@ -1,0 +1,84 @@
+Design a sequential Verilog module named 'dj_polygon_gigs' that maximizes earnings for a DJ selecting gigs in a graph.
+
+Problem Adaptation:
+- Gigs: 16 maximum (5-bit index)
+- Venues: 8 maximum (3-bit venue ID)
+- Roads: 20 maximum
+- Time values: 32-bit unsigned integers
+- Money values: 16-bit unsigned integers
+- Maximum time: 2^20 cycles simulated
+
+Module calculates:
+1. Pre-computed all-pairs shortest paths (passed as input parameter)
+2. Dynamic programming to select optimal gigs based on time and travel constraints
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] total_gigs // Number of gigs (1-16)
+input [4:0] total_venues // Number of venues (1-8)
+
+// Graph adjacency matrix (flattened): venues x venues
+// For each pair (i,j), distance matrix[i][j] at index (i*8 + j)
+// Use 32-bit distances, MAX_DISTANCE = 32'hFFFF_FFFF
+input [31:0] dist_matrix [0:63] // 8x8 distance matrix
+
+// Gig information
+input [2:0] gig_venue [0:15] // Venue for each gig
+input [31:0] gig_start [0:15] // Start time for each gig
+input [31:0] gig_end [0:15] // End time for each gig (exclusive)
+input [15:0] gig_money [0:15] // Money for each gig
+
+Outputs:
+output reg [15:0] max_earnings // Maximum earnings achievable
+output reg done // High when computation complete
+
+Latency: Approximately 150,000 clock cycles (enough for DP with 16 gigs)
+
+Implementation Strategy:
+1. Use Floyd-Warshall distances (provided as input matrix)
+2. Sort gigs by end time using bitonic sorter or bublesort (small N=16)
+3. Dynamic programming: dp[i] = max earnings ending with gig i
+   dp[i] = money[i] + max(dp[j]) for all j where:
+     - j < i (in sorted order)
+     - end_time[j] + dist[venue[j]][venue[i]] <= start_time[i]
+4. Track max over all dp values
+
+State Machine States:
+- IDLE: Wait for start signal
+- SORT: Sort gigs by end time (8 clock cycles for 16 elements)
+- DP_INIT: Initialize dp array
+- DP_OUTER: Outer loop over gigs (i = 0 to N-1)
+- DP_INNER: Inner loop over previous gigs (j = 0 to i-1)
+- DP_UPDATE: Calculate valid transitions and update dp[i]
+- DONE: Output final result
+
+Implementation Details:
+- Use 16-bit dp array for earnings (max 2^16-1)
+- Use 5-bit counters for gig indices
+- Comparator logic for time constraints: time_j + travel_time <= time_i
+- Use combinational logic for distance lookup: dist_matrix[gig_venue[j]][gig_venue[i]]
+- Need to handle time comparison carefully: subtraction without overflow
+
+Constraint: All gigs must be pre-sorted by end time in ascending order for DP to work correctly.
+
+Edge Cases:
+- If no gigs possible: output 0
+- If traveling impossible (distance = infinity): skip transition
+- Gigs at same venue with overlapping times cannot both be taken
+- Start at venue 1 (index 0 in distance matrix) at time 0
+
+Test with the provided examples:
+Example 1: 3 gigs, 2 venues
+Gig 0: venue 0 (1), time 4-6, money 6
+Gig 1: venue 0 (1), time 6-10, money 5
+Gig 2: venue 1 (2), time 10-30, money 33
+Dist: dist[0][1] = 10, dist[1][0] = 10, others = 0 or big
+Result: 33 (travel to gig 2)
+
+Example 2: 3 gigs
+Gig 0: venue 0, time 4-6, money 30
+Gig 1: venue 0, time 6-10, money 40
+Gig 2: venue 1, time 10-30, money 50
+Result: 70 (stay at venue 0 for gigs 0 and 1)

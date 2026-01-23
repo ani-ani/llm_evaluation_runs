@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'door_unlock_solver' that determines if all doors can be unlocked simultaneously given the constraints.
+
+The problem is a 2-SAT problem: 
+- Each door is controlled by exactly 2 switches.
+- Door state is 1 (unlocked) or 0 (locked).
+- Toggling a switch flips the states of all doors it controls.
+- We need to find a set of switch toggles (binary variables) such that all doors are unlocked (state 1).
+
+For a door controlled by switch A and B:
+- If initially unlocked (1): The XOR of toggle states must be 0. (A=B=0 or A=B=1).
+- If initially locked (0): The XOR of toggle states must be 1. (A=0,B=1 or A=1,B=0).
+
+We scale the problem for hardware implementation:
+- Max switches (m) = 4
+- Max rooms (n) = 4
+- Input format: We will process the graph defined by rooms and switches.
+
+The module should use a simplified logic approach:
+1. Build the implication graph (4 nodes per switch: variable and negation).
+2. Compute Strongly Connected Components (SCC) using a sequential state machine.
+3. Check if any variable and its negation are in the same SCC.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [1:0] room_count // Number of rooms (n)
+input [1:0] switch_count // Number of switches (m)
+input [3:0] room_status // Packed room status bits (bit i = status of room i)
+input [3:0] switch_room_map_0 // Bitmask: switch 0 controls these rooms
+input [3:0] switch_room_map_1 // Bitmask: switch 1 controls these rooms
+input [3:0] switch_room_map_2 // Bitmask: switch 2 controls these rooms
+input [3:0] switch_room_map_3 // Bitmask: switch 3 controls these rooms
+
+Outputs:
+output reg result // 1 if solvable (YES), 0 if not (NO)
+output reg done // High when computation is complete
+
+Specifications:
+- Use a state machine (IDLE, BUILD_EDGES, SCC_DFS, CHECK, DONE).
+- The implication graph for 4 switches has 8 nodes (0-7: Switch 0+, 0-, 1+, 1-, ...).
+- Edges represent implications derived from room constraints.
+  - For locked door (0) controlled by A, B: Clauses are (A or B) and (!A or !B). Implications: !A -> B, !B -> A, A -> !B, B -> !A.
+  - For unlocked door (1) controlled by A, B: Clauses are (!A or B) and (A or !B). Implications: A -> B, B -> A, !A -> !B, !B -> !A.
+- SCC computation: Use Tarjan's algorithm or Kosaraju's adapted for small fixed graph.
+  - Since graph is small (8 nodes), we can unroll loops or use a small stack-based DFS state machine.
+- Latency: Max 512 clock cycles (allowing deep traversal for safety).
+
+Behavior:
+1. IDLE: Wait for start.
+2. BUILD_EDGES: Calculate implications for all rooms and populate edge list structure.
+3. SCC_DFS: Run iterative DFS to find SCCs.
+4. CHECK: Verify no switch variable and its negation share the same SCC ID.
+5. DONE: Assert result and done.

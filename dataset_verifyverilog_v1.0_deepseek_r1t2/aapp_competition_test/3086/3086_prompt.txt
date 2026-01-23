@@ -1,0 +1,89 @@
+module event_duration (
+  input [4:0] start_month, start_day,
+  input [4:0] end_month, end_day,
+  input [7:0] F1,
+  output reg signed [9:0] result,
+  output reg valid
+);
+  // Function to compute day of year (1-365)
+  function [8:0] compute_doy;
+    input [4:0] month, day;
+    begin
+      case (month)
+        1: compute_doy = day;
+        2: compute_doy = 31 + day;
+        3: compute_doy = 59 + day;
+        4: compute_doy = 90 + day;
+        5: compute_doy = 120 + day;
+        6: compute_doy = 151 + day;
+        7: compute_doy = 181 + day;
+        8: compute_doy = 212 + day;
+        9: compute_doy = 243 + day;
+        10: compute_doy = 273 + day;
+        11: compute_doy = 304 + day;
+        12: compute_doy = 334 + day;
+        default: compute_doy = 0;
+      endcase
+    end
+  endfunction
+
+  wire [8:0] start_doy = compute_doy(start_month, start_day);
+  wire [8:0] end_doy = compute_doy(end_month, end_day);
+
+  // Possible lengths
+  wire [8:0] L_same = (end_doy >= start_doy) ? (end_doy - start_doy) : 9'd0;
+  wire [8:0] L_cross = 365 - start_doy + end_doy;
+
+  always @* begin
+    reg found;
+    reg [9:0] res;
+    found = 0;
+    res = -1;
+
+    // Try non-crossing interpretation
+    if (end_doy >= start_doy) begin
+      if (F1 == 0) begin
+        if (L_same == 0) begin
+          found = 1;
+          res = 1;
+        end
+      end else begin
+        if (L_same % F1 == 0) begin
+          integer q;
+          q = L_same / F1;
+          if (q >= 1 && q <= 365) begin
+            found = 1;
+            res = q;
+          end
+        end
+      end
+    end
+
+    // If not found, try crossing interpretation
+    if (!found) begin
+      if (F1 == 0) begin
+        if (L_cross == 0) begin
+          found = 1;
+          res = 1;
+        end
+      end else begin
+        if (L_cross % F1 == 0) begin
+          integer q;
+          q = L_cross / F1;
+          if (q >= 1 && q <= 365) begin
+            found = 1;
+            res = q;
+          end
+        end
+      end
+    end
+
+    if (found) begin
+      result = res;
+      valid = 1;
+    end else begin
+      result = -1;
+      valid = 0;
+    end
+  end
+endmodule

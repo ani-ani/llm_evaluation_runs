@@ -1,0 +1,69 @@
+module sorted_train (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] n,              // Number of cars (1-16)
+    input [7:0] p [0:15],      // Permutation array
+    output reg [7:0] result,    // Minimum moves
+    output reg done
+);
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam BUILD = 2'b01;
+    localparam COMPUTE = 2'b10;
+    localparam DONE = 2'b11;
+    
+    reg [1:0] state;
+    reg [7:0] j, k;             // Counters
+    reg [7:0] current_len, max_len;
+    reg [7:0] inv [0:15];       // Position array
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            j <= 0;
+            k <= 0;
+            current_len <= 0;
+            max_len <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start && n > 0) begin
+                        state <= BUILD;
+                        j <= 0;
+                    end
+                end
+                BUILD: begin
+                    if (j < n) begin
+                        inv[p[j]-1] <= j;
+                        j <= j + 1;
+                    end else begin
+                        state <= COMPUTE;
+                        k <= 1;
+                        current_len <= 1;
+                        max_len <= 1;
+                    end
+                end
+                COMPUTE: begin
+                    if (k < n) begin
+                        if (inv[k] > inv[k-1]) begin
+                            current_len <= current_len + 1;
+                            if (current_len + 1 > max_len)
+                                max_len <= current_len + 1;
+                        end else
+                            current_len <= 1;
+                        k <= k + 1;
+                    end else begin
+                        result <= n - max_len;
+                        state <= DONE;
+                        done <= 1;
+                    end
+                end
+                DONE: done <= 1;
+            endcase
+        end
+    end
+endmodule

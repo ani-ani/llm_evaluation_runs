@@ -1,0 +1,308 @@
+module handsome_finder (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] len,             // Number of digits (1-4)
+    input wire [3:0] digits [0:3],    // Input digits (digits[0] is most significant)
+    output reg [3:0] res1 [0:3],      // First result digits
+    output reg [3:0] res2 [0:3],      // Second result digits (if two)
+    output reg [1:0] count,           // Number of results (1 or 2)
+    output reg done                   // Computation finished
+);
+
+// The module finds the closest handsome number(s) to the input number.
+// A number is handsome if every two consecutive digits have different parity.
+// Single-digit numbers are handsome.
+// The module searches for the previous handsome number (less than N) and the next handsome number (greater than N).
+// It computes absolute distances and outputs the closest number(s).
+// If two numbers are equally close, output both (smaller first).
+// The search is bounded to 1000 iterations per direction for 4-digit numbers.
+
+// Helper functions (to be implemented in combinational logic or state machine):
+// - is_handsome(digits, len): returns 1 if handsome
+// - increment(digits, len): increments number by 1, updates digits and len (handles carry)
+// - decrement(digits, len): decrements number by 1, updates digits and len (handles borrow)
+// - digits_to_int(digits, len): converts digits to integer value
+// - int_to_digits(value, len): converts integer to digits (used for initial N)
+
+// State machine states:
+localparam IDLE = 3'b000;
+localparam PREV_DECREMENT = 3'b001;
+localparam PREV_CHECK = 3'b010;
+localparam NEXT_INCREMENT = 3'b011;
+localparam NEXT_CHECK = 3'b100;
+localparam COMPARE = 3'b101;
+localparam DONE = 3'b110;
+
+reg [2:0] state, next_state;
+
+// Registers for candidates and original number
+reg [3:0] orig_digits [0:3];
+reg [3:0] orig_len;
+reg [31:0] orig_value;
+reg [3:0] prev_digits [0:3];
+reg [3:0] prev_len;
+reg [31:0] prev_value;
+reg [3:0] next_digits [0:3];
+reg [3:0] next_len;
+reg [31:0] next_value;
+reg [31:0] dist_prev, dist_next;
+reg [31:0] iter_count;
+reg [31:0] MAX_ITER = 1000;
+
+// Helper registers for combinational logic
+reg [3:0] temp_digits [0:3];
+reg [3:0] temp_len;
+reg [31:0] temp_value;
+reg is_handsome_flag;
+reg inc_carry, dec_borrow;
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: if (start) next_state = PREV_DECREMENT;
+        PREV_DECREMENT: next_state = PREV_CHECK;
+        PREV_CHECK: if (is_handsome_flag) next_state = NEXT_INCREMENT;
+                    else if (iter_count >= MAX_ITER) next_state = NEXT_INCREMENT;
+                    else next_state = PREV_DECREMENT;
+        NEXT_INCREMENT: next_state = NEXT_CHECK;
+        NEXT_CHECK: if (is_handsome_flag) next_state = COMPARE;
+                    else if (iter_count >= MAX_ITER) next_state = COMPARE;
+                    else next_state = NEXT_INCREMENT;
+        COMPARE: next_state = DONE;
+        DONE: next_state = IDLE;
+        default: next_state = IDLE;
+    endcase
+end
+
+// Output and register updates
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset all registers
+        orig_len <= 0;
+        orig_value <= 0;
+        prev_len <= 0;
+        prev_value <= 0;
+        next_len <= 0;
+        next_value <= 0;
+        dist_prev <= 0;
+        dist_next <= 0;
+        iter_count <= 0;
+        count <= 0;
+        done <= 0;
+        // Reset digit arrays
+        for (integer i = 0; i < 4; i = i + 1) begin
+            orig_digits[i] <= 0;
+            prev_digits[i] <= 0;
+            next_digits[i] <= 0;
+            res1[i] <= 0;
+            res2[i] <= 0;
+        end
+    end else begin
+        case (state)
+            IDLE: if (start) begin
+                // Capture input
+                for (integer i = 0; i < 4; i = i + 1) begin
+                    orig_digits[i] <= (i < len) ? digits[i] : 4'd0;
+                end
+                orig_len <= len;
+                // Convert to integer (simple loop, assuming len <= 4)
+                orig_value <= 0;
+                for (integer i = 0; i < 4; i = i + 1) begin
+                    if (i < len)
+                        orig_value <= orig_value * 10 + digits[i];
+                end
+                // Initialize prev and next candidates as orig +/- 1
+                prev_digits <= digits;
+                prev_len <= len;
+                next_digits <= digits;
+                next_len <= len;
+                // Decrement prev by 1 (handle borrow)
+                // This will be done in PREV_DECREMENT state
+                // But we need to compute prev_value after decrement
+                // So we'll do decrement in PREV_DECREMENT state
+                iter_count <= 0;
+            end
+
+            PREV_DECREMENT: begin
+                // Decrement prev_digits by 1
+                // Implementation: start from least significant digit
+                temp_digits = prev_digits;
+                temp_len = prev_len;
+                dec_borrow = 0;
+                // Decrement loop
+                for (integer i = 3; i >= 0; i = i - 1) begin
+                    if (i < temp_len) begin
+                        if (temp_digits[i] == 4'd0) begin
+                            temp_digits[i] = 4'd9;
+                            dec_borrow = 1;
+                        end else begin
+                            temp_digits[i] = temp_digits[i] - 1;
+                            dec_borrow = 0;
+                            break;
+                        end
+                    end
+                end
+                // If borrow still set, number was 0, becomes 0 (or underflow) – but we assume N>0
+                // Update prev_digits and prev_len (handle leading zeros)
+                prev_digits <= temp_digits;
+                // Adjust length if leading zeros
+                if (temp_len > 1 && temp_digits[0] == 4'd0) begin
+                    // Need to find new most significant non-zero digit
+                    if (temp_digits[1] != 4'd0) prev_len <= 3;
+                    else if (temp_digits[2] != 4'd0) prev_len <= 2;
+                    else if (temp_digits[3] != 4'd0) prev_len <= 1;
+                    else prev_len <= 1; // case of 0
+                end else begin
+                    prev_len <= temp_len;
+                end
+                // Update iter_count
+                iter_count <= iter_count + 1;
+            end
+
+            PREV_CHECK: begin
+                // Check if prev_digits is handsome
+                // Compute is_handsome_flag
+                is_handsome_flag = 1;
+                if (prev_len == 0) is_handsome_flag = 0;
+                else if (prev_len == 1) is_handsome_flag = 1;
+                else begin
+                    for (integer i = 0; i < prev_len - 1; i = i + 1) begin
+                        if (prev_digits[i] % 2 == prev_digits[i+1] % 2) begin
+                            is_handsome_flag = 0;
+                            break;
+                        end
+                    end
+                end
+                // If handsome, compute prev_value
+                if (is_handsome_flag) begin
+                    prev_value = 0;
+                    for (integer i = 0; i < prev_len; i = i + 1)
+                        prev_value = prev_value * 10 + prev_digits[i];
+                end
+            end
+
+            NEXT_INCREMENT: begin
+                // Increment next_digits by 1
+                temp_digits = next_digits;
+                temp_len = next_len;
+                inc_carry = 1; // Start with adding 1
+                for (integer i = 3; i >= 0; i = i - 1) begin
+                    if (i < temp_len) begin
+                        if (inc_carry) begin
+                            if (temp_digits[i] == 4'd9) begin
+                                temp_digits[i] = 4'd0;
+                                inc_carry = 1;
+                            end else begin
+                                temp_digits[i] = temp_digits[i] + 1;
+                                inc_carry = 0;
+                                break;
+                            end
+                        end else begin
+                            break;
+                        end
+                    end
+                end
+                // If carry still set, we need to increase length: e.g., 999 -> 1000
+                if (inc_carry) begin
+                    // New length = temp_len + 1, digits become 1 followed by zeros
+                    // This is a simplification for 4-digit max; we assume temp_len < 4
+                    if (temp_len < 4) begin
+                        temp_len = temp_len + 1;
+                        for (integer i = 3; i >= 0; i = i - 1) begin
+                            if (i == 0) temp_digits[i] = 4'd1;
+                            else if (i < temp_len) temp_digits[i] = 4'd0;
+                        end
+                    end else begin
+                        // Cannot increase beyond 4 digits, set to 0 (error case)
+                        temp_len = 1;
+                        temp_digits[0] = 4'd0;
+                    end
+                end
+                next_digits <= temp_digits;
+                next_len <= temp_len;
+                iter_count <= iter_count + 1;
+            end
+
+            NEXT_CHECK: begin
+                // Check if next_digits is handsome
+                is_handsome_flag = 1;
+                if (next_len == 0) is_handsome_flag = 0;
+                else if (next_len == 1) is_handsome_flag = 1;
+                else begin
+                    for (integer i = 0; i < next_len - 1; i = i + 1) begin
+                        if (next_digits[i] % 2 == next_digits[i+1] % 2) begin
+                            is_handsome_flag = 0;
+                            break;
+                        end
+                    end
+                end
+                // If handsome, compute next_value
+                if (is_handsome_flag) begin
+                    next_value = 0;
+                    for (integer i = 0; i < next_len; i = i + 1)
+                        next_value = next_value * 10 + next_digits[i];
+                end
+            end
+
+            COMPARE: begin
+                // Compute distances
+                if (prev_len > 0 && is_handsome_flag) begin
+                    dist_prev = orig_value - prev_value;
+                end else begin
+                    dist_prev = 32'hFFFFFFFF; // Max distance if not found
+                end
+                if (next_len > 0 && is_handsome_flag) begin
+                    dist_next = next_value - orig_value;
+                end else begin
+                    dist_next = 32'hFFFFFFFF;
+                end
+                // Set results
+                if (dist_prev < dist_next) begin
+                    // Only prev
+                    count <= 1;
+                    for (integer i = 0; i < 4; i = i + 1) begin
+                        res1[i] <= (i < prev_len) ? prev_digits[i] : 4'd0;
+                        res2[i] <= 0;
+                    end
+                end else if (dist_next < dist_prev) begin
+                    // Only next
+                    count <= 1;
+                    for (integer i = 0; i < 4; i = i + 1) begin
+                        res1[i] <= (i < next_len) ? next_digits[i] : 4'd0;
+                        res2[i] <= 0;
+                    end
+                end else begin
+                    // Both (dist_prev == dist_next)
+                    count <= 2;
+                    for (integer i = 0; i < 4; i = i + 1) begin
+                        res1[i] <= (i < prev_len) ? prev_digits[i] : 4'd0; // smaller
+                        res2[i] <= (i < next_len) ? next_digits[i] : 4'd0;
+                    end
+                end
+            end
+
+            DONE: begin
+                done <= 1;
+            end
+
+            default: begin
+                // Reset outputs
+                count <= 0;
+                done <= 0;
+            end
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,47 @@
+Implement a Verilog module named `currency_exchange` that computes the minimum leftover rubles after exchanging rubles to dollars and euros optimally.
+
+Problem adaptation:
+- Dollar bills: any integer amount (since 1-dollar bill exists).
+- Euro bills: multiples of 5 euros (since smallest euro bill is 5).
+- Let B = 5 * e (rubles per 5-euro unit).
+- For a fixed number of 5-euro units j (j >= 0), the optimal number of dollars is floor((n - j*B)/d), leaving leftover = (n - j*B) mod d.
+- We need to minimize leftover over j such that j*B <= n.
+- Since d <= 100, we only need to consider j from 0 to d-1 (because (n - j*B) mod d depends on j mod d). Also j must satisfy j*B <= n.
+
+Algorithm:
+1. Compute n_mod_d = n % d using a sequential bit-by-bit algorithm (27 cycles).
+2. Compute B = 5 * e (e is 8-bit, B <= 500).
+3. Initialize min_rem = 8'hFF (max possible leftover < 100).
+4. Loop j from 0 to d-1:
+   - If j*B > n, break.
+   - Compute rem = (n_mod_d - (j*B) mod d) mod d.
+   - Update min_rem = min(min_rem, rem).
+   - Increment j and update (j*B) mod d incrementally: add B and take mod d.
+5. After loop, set result = min_rem.
+
+Interface:
+- Inputs:
+  - clk: system clock, rising edge.
+  - rst_n: active-low synchronous reset.
+  - start: start pulse (assert for 1 cycle to begin computation).
+  - n[31:0]: initial rubles (unsigned, up to 1e8).
+  - d[7:0]: dollar price in rubles (30-100).
+  - e[7:0]: euro price in rubles (30-100).
+- Outputs:
+  - result[7:0]: minimal leftover rubles (0-99).
+  - done: asserted high for 1 cycle when computation is done.
+
+Timing:
+- On reset, state = IDLE, done=0, result=0.
+- When start is asserted, module captures inputs and begins computation.
+- Computation requires several cycles (max ~100 for loop + 27 for n% d).
+- When done is asserted, result holds the answer.
+
+Implementation guidelines:
+- Use a finite state machine with states: IDLE, COMPUTE_N_MOD, LOOP_INIT, LOOP_BODY, LOOP_CHECK, DONE.
+- Compute n_mod_d using a shift-add-subtract algorithm: for each bit of n (from MSB to LSB), shift remainder left, add bit, if remainder >= d subtract d.
+- Use registers: n_reg, d_reg, e_reg, B, n_mod_d, i (loop counter), iB (current j*B), iB_mod_d, min_rem, rem, bit_counter, temp_n, remainder_temp.
+- Ensure all arithmetic fits within specified bit widths.
+- The module should be synthesizable and use only standard Verilog-2001.
+
+Now generate the complete Verilog module code.

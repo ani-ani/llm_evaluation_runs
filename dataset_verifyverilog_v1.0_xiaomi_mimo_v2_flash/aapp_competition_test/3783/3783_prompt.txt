@@ -1,0 +1,54 @@
+MODULE: SubsetCostSum
+PARAMETERS:
+  MAX_K = 8  // Maximum supported k value (8 for scalability)
+
+PORTS:
+  input         clk;      // Clock, rising edge
+  input         rst_n;    // Active-low synchronous reset
+  input         start;    // Start pulse (assert for 1 cycle)
+  input  [31:0] N;        // Number of people (1 <= N <= 1e9)
+  input  [7:0]  k;        // Exponent (1 <= k <= MAX_K)
+  output [31:0] result;   // Result modulo 1e9+7
+  output        done;     // Asserted high for 1 cycle when result is ready
+
+DESCRIPTION:
+  This module computes the sum of costs over all non-empty subsets of a set of N elements,
+  where the cost of a subset of size x is x^k, modulo MOD=1e9+7.
+  The computation uses the formula: sum_{i=1}^{k} S(k,i) * i! * C(N,i) * 2^{N-i} mod MOD.
+  It implements a state machine to compute Stirling numbers of the second kind S(k,i) for i=0..k,
+  factorials, binomial coefficients C(N,i) using iterative multiplication and modular inverses,
+  and powers of 2. All operations are performed modulo MOD.
+  The module supports k up to MAX_K (8). For k > MAX_K, behavior is undefined.
+  The computation takes approximately O(k^2) clock cycles after start is asserted.
+  Reset (rst_n=0) clears all internal state and sets done=0, result=0.
+  When start is asserted, the module begins computation. done is asserted for one cycle
+  when the result is available.
+
+INTERNAL ALGORITHM (high-level):
+  1. Initialize Stirling number array dp[0:MAX_K] to zero, set dp[0]=1.
+  2. For n from 1 to k:
+       For i from n down to 1:
+         dp[i] = (i * dp[i] + dp[i-1]) mod MOD.
+  3. Compute factorial array fact[0:MAX_K]: fact[0]=1; for i=1..k: fact[i] = fact[i-1] * i mod MOD.
+  4. Compute modular inverses inv[1:MAX_K] using precomputed values (since MAX_K is small).
+  5. Compute binomial coefficient array comb[0:MAX_K]: comb[0]=1; for i=1..k: comb[i] = comb[i-1] * (N - i + 1) % MOD * inv[i] % MOD.
+  6. Compute pow2_N = 2^N mod MOD using fast exponentiation.
+  7. Compute inv2 = (MOD+1)/2 (500000004).
+  8. Initialize result = 0, pow2_N_i = pow2_N.
+  9. For i from 0 to k:
+         term = dp[i] * fact[i] % MOD * comb[i] % MOD * pow2_N_i % MOD;
+         result = (result + term) % MOD;
+         pow2_N_i = pow2_N_i * inv2 % MOD;  // update for next i
+  10. Assert done and output result.
+
+TIMING:
+  - After start deassertion, the module will take a deterministic number of cycles:
+    - Stirling DP: k * (k+1)/2 cycles (worst-case ~36 for k=8)
+    - Factorial: k cycles
+    - Inverses: k cycles (if computed sequentially)
+    - Binomial: k cycles
+    - Exponentiation: 32 cycles (fixed)
+    - Final sum: k cycles
+    Total roughly 2*k^2 + 32 + constant cycles.
+  - done is asserted for exactly one cycle when computation finishes.
+  - During computation, the module ignores further start pulses.

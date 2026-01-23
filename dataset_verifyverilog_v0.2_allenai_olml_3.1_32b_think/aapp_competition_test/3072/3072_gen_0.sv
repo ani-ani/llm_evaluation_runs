@@ -1,0 +1,1 @@
+module max_perimeter_rectangle(input [7:0] grid [0:7], output [6:0] max_perimeter); wire any_free; assign any_free = | | grid[0] | grid[1] | grid[2] | grid[3] | grid[4] | grid[5] | grid[6] | grid[7]; assign max_perimeter = any_free ? 4 : 0; endmodule

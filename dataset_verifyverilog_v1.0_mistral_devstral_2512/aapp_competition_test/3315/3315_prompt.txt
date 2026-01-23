@@ -1,0 +1,219 @@
+module teleportation (
+    input clk,
+    input rst_n,
+    input start,
+    input [1:0] N,
+    input [7:0] str0_char0,
+    input [7:0] str0_char1,
+    input [7:0] str0_char2,
+    input [7:0] str0_char3,
+    input [1:0] len0,
+    input [7:0] str1_char0,
+    input [7:0] str1_char1,
+    input [7:0] str1_char2,
+    input [7:0] str1_char3,
+    input [1:0] len1,
+    input [7:0] str2_char0,
+    input [7:0] str2_char1,
+    input [7:0] str2_char2,
+    input [7:0] str2_char3,
+    input [1:0] len2,
+    input [7:0] str3_char0,
+    input [7:0] str3_char1,
+    input [7:0] str3_char2,
+    input [7:0] str3_char3,
+    input [1:0] len3,
+    output [2:0] result,
+    output done
+);
+
+// Internal registers for storing strings and lengths
+reg [7:0] str_reg [0:3][0:3];
+reg [1:0] len_reg [0:3];
+reg [1:0] N_reg;
+
+// DP array and state
+reg [2:0] dp [0:3];
+reg [2:0] result_reg;
+reg done_reg;
+reg [2:0] state;
+reg [1:0] i_reg, j_reg;
+reg [2:0] dp_temp;
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam LOAD = 3'd1;
+localparam COMPUTE_START = 3'd2;
+localparam COMPUTE_OUTER = 3'd3;
+localparam COMPUTE_INNER = 3'd4;
+localparam UPDATE_DP = 3'd5;
+localparam FIND_MAX = 3'd6;
+localparam DONE = 3'd7;
+
+// Prefix-suffix checker module
+module prefix_suffix_checker (
+    input [7:0] a [0:3],
+    input [1:0] len_a,
+    input [7:0] b [0:3],
+    input [1:0] len_b,
+    output reg prefix_valid,
+    output reg suffix_valid
+);
+    always @(*) begin
+        prefix_valid = 1;
+        suffix_valid = 1;
+        if (len_a > len_b) begin
+            prefix_valid = 0;
+            suffix_valid = 0;
+        end else begin
+            // Prefix check
+            for (integer k=0; k<4; k=k+1) begin
+                if (k < len_a) begin
+                    if (a[k] != b[k]) begin
+                        prefix_valid = 0;
+                    end
+                end
+            end
+            // Suffix check
+            for (integer k=0; k<4; k=k+1) begin
+                if (k < len_a) begin
+                    if (a[k] != b[len_b - len_a + k]) begin
+                        suffix_valid = 0;
+                    end
+                end
+            end
+        end
+    end
+endmodule
+
+// Generate combinational comparators for all pairs (j,i)
+wire [0:0] valid_pair [0:3][0:3];
+genvar gi, gj;
+generate
+    for (gi=0; gi<4; gi=gi+1) begin: outer
+        for (gj=0; gj<4; gj=gj+1) begin: inner
+            wire prefix_valid, suffix_valid;
+            prefix_suffix_checker u_checker (
+                .a(str_reg[gj]),
+                .len_a(len_reg[gj]),
+                .b(str_reg[gi]),
+                .len_b(len_reg[gi]),
+                .prefix_valid(prefix_valid),
+                .suffix_valid(suffix_valid)
+            );
+            assign valid_pair[gj][gi] = prefix_valid && suffix_valid;
+        end
+    end
+endgenerate
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done_reg <= 0;
+        result_reg <= 0;
+        // Reset other registers if needed
+    end else begin
+        case (state)
+            IDLE: begin
+                done_reg <= 0;
+                if (start) begin
+                    state <= LOAD;
+                end
+            end
+
+            LOAD: begin
+                // Capture input strings and N
+                N_reg <= N;
+                str_reg[0][0] <= str0_char0;
+                str_reg[0][1] <= str0_char1;
+                str_reg[0][2] <= str0_char2;
+                str_reg[0][3] <= str0_char3;
+                len_reg[0] <= len0;
+                str_reg[1][0] <= str1_char0;
+                str_reg[1][1] <= str1_char1;
+                str_reg[1][2] <= str1_char2;
+                str_reg[1][3] <= str1_char3;
+                len_reg[1] <= len1;
+                str_reg[2][0] <= str2_char0;
+                str_reg[2][1] <= str2_char1;
+                str_reg[2][2] <= str2_char2;
+                str_reg[2][3] <= str2_char3;
+                len_reg[2] <= len2;
+                str_reg[3][0] <= str3_char0;
+                str_reg[3][1] <= str3_char1;
+                str_reg[3][2] <= str3_char2;
+                str_reg[3][3] <= str3_char3;
+                len_reg[3] <= len3;
+                state <= COMPUTE_START;
+            end
+
+            COMPUTE_START: begin
+                i_reg <= 0;
+                j_reg <= 0;
+                dp[0] <= 1;
+                dp[1] <= 1;
+                dp[2] <= 1;
+                dp[3] <= 1;
+                state <= COMPUTE_OUTER;
+            end
+
+            COMPUTE_OUTER: begin
+                if (i_reg >= N_reg) begin
+                    state <= FIND_MAX;
+                end else begin
+                    j_reg <= 0;
+                    dp_temp <= 1;
+                    state <= COMPUTE_INNER;
+                end
+            end
+
+            COMPUTE_INNER: begin
+                if (j_reg >= i_reg) begin
+                    state <= UPDATE_DP;
+                end else begin
+                    // Check if valid_pair[j_reg][i_reg] is true
+                    if (valid_pair[j_reg][i_reg]) begin
+                        if (dp[j_reg] + 1 > dp_temp) begin
+                            dp_temp <= dp[j_reg] + 1;
+                        end
+                    end
+                    j_reg <= j_reg + 1;
+                end
+            end
+
+            UPDATE_DP: begin
+                dp[i_reg] <= dp_temp;
+                i_reg <= i_reg + 1;
+                state <= COMPUTE_OUTER;
+            end
+
+            FIND_MAX: begin
+                // Find max dp value among indices 0 to N_reg-1
+                result_reg <= 1;
+                for (integer k=0; k<4; k=k+1) begin
+                    if (k < N_reg) begin
+                        if (dp[k] > result_reg) begin
+                            result_reg <= dp[k];
+                        end
+                    end
+                end
+                state <= DONE;
+            end
+
+            DONE: begin
+                done_reg <= 1;
+                if (!start) begin
+                    state <= IDLE;
+                end
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+assign result = result_reg;
+assign done = done_reg;
+
+endmodule

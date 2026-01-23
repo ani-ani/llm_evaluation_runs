@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'airline_scheduler' that computes the minimum number of planes required for a small set of flights.
+
+The module solves a simplified version of the problem with the following constraints:
+- Number of airports n <= 4
+- Number of flights m <= 4
+- Inspection times and flight times are scaled to fit 16-bit integers (max 65535)
+- Flight departure times are scaled to fit 16-bit integers
+
+The algorithm works in two stages:
+1. Compute a compatibility matrix `adj` of size m x m. `adj[i][j] = 1` if plane `i` can perform flight `j` immediately after flight `i`. A plane can transition if it arrives at flight `j`'s source airport before flight `j`'s departure time. Travel time includes flight `i` duration, inspection at landing airport `i`, and flight to flight `j`'s source.
+2. Count connected components in the flight graph. The minimum number of planes is the number of connected components.
+
+Inputs (16-bit unless specified):
+- `clk`, `rst_n`: Standard synchronous logic
+- `start`: Pulse to start computation
+- `n`: Number of airports (1-4)
+- `m`: Number of flights (1-4)
+- `inspection_times [0:3][15:0]`: Inspection times for airports 0 to 3
+- `flight_times [0:3][0:3][15:0]`: Matrix of flight times
+- `flight_reqs [0:3][0:3][15:0]`: For flight `i`: [source, dest, depart_time]
+
+Outputs:
+- `result [7:0]`: Minimum number of planes
+- `done`: High when computation is finished
+
+Latency: Approximately 100 clock cycles.
+
+State Machine States:
+- `IDLE`: Wait for start signal
+- `LOAD_DATA`: Transfer input data to internal registers
+- `CHECK_ADJ`: Iterate through flight pairs (i, j) to compute compatibility
+- `FIND_COMPONENTS`: Iterate through flights to count connected components using DFS-like logic (limited depth)
+- `DONE`: Set done signal high
+
+Internal Logic:
+- Use fixed-size loops for iteration (up to 4 flights)
+- For transition check: Calculate `arrival_time = flight_i_depart + flight_time(i_dest, j_source) + inspection_time(j_source)`
+- Condition: `arrival_time <= flight_j_depart`
+- For component counting: Use a visited array and iterate through flights to find unvisited nodes, then traverse reachable nodes.

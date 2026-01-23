@@ -1,0 +1,108 @@
+Design a sequential Verilog module named 'alphabet_solver' that solves the alphabet ordering problem.
+
+Problem: Given N words sorted lexicographically, derive the alphabet order from letter constraints, or detect IMPOSSIBLE (cycles) or AMBIGUOUS (multiple valid orderings).
+
+Adaptations:
+- Maximum alphabet size: 16 characters (letters 'b' through 'z' mapped to indices 0-15)
+- Maximum word length: 16 characters
+- Maximum number of words: 8
+- Fixed-width input: Each word is exactly 16 characters, padded with zeros (null terminator concept)
+- Use adjacency matrix (16x16 bits) for constraint graph
+- Implement topological sort and cycle detection
+- Use Floyd-Warshall transitive closure for ambiguity detection
+
+Module Interface:
+module alphabet_solver (
+    input clk,                    // Clock signal
+    input rst_n,                  // Active-low reset
+    input start,                  // Start computation
+    
+    // Input words: 8 words, each 16 characters, each character encoded as 5 bits (0-31)
+    // 0 represents null/padding, 'a' = 1, 'b' = 2, ..., 'z' = 26
+    input [4:0] word_chars_0,     // Character index: word [7:0], char [15:0]
+    input [4:0] word_chars_1,
+    input [4:0] word_chars_2,
+    input [4:0] word_chars_3,
+    input [4:0] word_chars_4,
+    input [4:0] word_chars_5,
+    input [4:0] word_chars_6,
+    input [4:0] word_chars_7,
+    
+    // Number of valid words (1 to 8)
+    input [3:0] num_words,
+    
+    // Highest character in alphabet (encoded: 'b'=2, 'z'=26)
+    input [4:0] max_char,
+    
+    // Output: Result type (0=ORDERED, 1=IMPOSSIBLE, 2=AMBIGUOUS)
+    output reg [1:0] result_type,
+    
+    // Output alphabet order (up to 16 characters, 5 bits each)
+    output reg [4:0] alphabet_0,
+    output reg [4:0] alphabet_1,
+    output reg [4:0] alphabet_2,
+    output reg [4:0] alphabet_3,
+    output reg [4:0] alphabet_4,
+    output reg [4:0] alphabet_5,
+    output reg [4:0] alphabet_6,
+    output reg [4:0] alphabet_7,
+    output reg [4:0] alphabet_8,
+    output reg [4:0] alphabet_9,
+    output reg [4:0] alphabet_10,
+    output reg [4:0] alphabet_11,
+    output reg [4:0] alphabet_12,
+    output reg [4:0] alphabet_13,
+    output reg [4:0] alphabet_14,
+    output reg [4:0] alphabet_15,
+    
+    output reg done               // High when computation complete
+);
+
+Behavioral Description:
+The module implements a multi-stage pipeline:
+
+1. **Constraint Extraction (State 0-7)**:
+   - Compare consecutive words character by character
+   - First differing character creates an edge in constraint graph
+   - Example: "cab" vs "badca" -> 'c' vs 'b' -> c < b in alphabet
+   - Store directed graph as adjacency matrix (adj[16][16])
+   - adj[i][j] = 1 means char i must come before char j
+
+2. **Cycle Detection (State 8-15)**:
+   - Perform topological sort on constraint graph
+   - Track in-degrees of each node
+   - Remove nodes with in-degree 0 iteratively
+   - If all nodes processed: no cycle
+   - If some nodes remain: cycle exists -> IMPOSSIBLE
+
+3. **Transitive Closure (State 16-31)**:
+   - Use Floyd-Warshall to compute reachability
+   - If node i can reach node j AND node j can reach node i (i != j): IMPOSSIBLE
+   - For ambiguity: count number of valid topological orders
+   - More than 1 valid order = AMBIGUOUS
+
+4. **Output Generation (State 32-33)**:
+   - If IMPOSSIBLE: set result_type = 1
+   - If AMBIGUOUS: set result_type = 2
+   - If unique order: set result_type = 0 and output ordered alphabet
+
+States:
+- IDLE (0): Wait for start
+- PARSE (1-8): Extract constraints from word pairs
+- CHECK_CYCLE (9-16): Detect cycles
+- TRANSITIVE (17-24): Compute Floyd-Warshall
+- COUNT_ORDERS (25-30): Check for multiple valid orderings
+- OUTPUT (31-32): Format results
+- DONE (33): Signal completion
+
+Implementation Notes:
+- Use internal memory: adj[16][16] (256 bits), reach[16][16] (256 bits)
+- Use counters for loop iterations (4-bit for 0-15)
+- All internal operations use 5-bit or 6-bit arithmetic
+- Pipeline latency: approximately 40 clock cycles after start
+
+Edge Cases:
+- Empty characters (0) are ignored in comparisons
+- If words are identical up to length, shorter word comes first (handled by length check)
+- Unreachable characters (no constraints) can be placed anywhere
+- Partial ordering constraints may still yield unique result if graph is a tree

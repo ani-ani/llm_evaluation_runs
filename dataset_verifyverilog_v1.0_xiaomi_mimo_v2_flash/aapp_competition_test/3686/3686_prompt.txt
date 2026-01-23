@@ -1,0 +1,50 @@
+// Verilog Module Specification for TwoLinesCover
+// Parameters:
+//   MAX_POINTS = 8   (maximum number of points)
+//   COORD_WIDTH = 8  (bit width of X/Y coordinates, signed)
+//
+// Inputs:
+//   clk         : clock (posedge)
+//   rst_n       : active-low reset
+//   start       : start pulse (1 cycle) - initiates computation
+//   count[3:0]  : number of valid points (1 to MAX_POINTS)
+//   x[0:MAX_POINTS-1][COORD_WIDTH-1:0] : X coordinates (signed)
+//   y[0:MAX_POINTS-1][COORD_WIDTH-1:0] : Y coordinates (signed)
+//
+// Outputs:
+//   success     : 1 if points can be covered by at most two lines, else 0
+//   done        : 1 for one cycle when result is ready (after start)
+//
+// Behavior:
+//   - On reset (rst_n=0), success=0, done=0.
+//   - When start=1, the module computes the result in the same cycle.
+//     The computation is combinational; success is updated and done is asserted.
+//   - For count <= 2, always success = 1.
+//   - For count >= 3, the module checks all possible pairs of points (i,j) with i<j,
+//     i<count, j<count to define a candidate line. For each candidate line,
+//     it checks which points lie on that line (using cross-product equality).
+//     The remaining points (those not on the line) must be collinear (or zero/one point).
+//     If any such pair yields success, success=1.
+//   - The cross-product uses 16-bit arithmetic to avoid overflow.
+//   - The module should be fully combinational except for the registered success
+//     and done signals (which are updated on the clock edge).
+//
+// Implementation notes:
+//   - Use for loops unrolled at synthesis time (MAX_POINTS is small).
+//   - Consider only points with index < count.
+//   - Collinearity check for remaining points: if less than 2 points remain, true;
+//     else take first two points of remaining set and verify all others lie on the line.
+//   - Use signed arithmetic for coordinates? The coordinates are signed; but cross-product
+//     can be computed using unsigned multiplication of signed values; careful with sign extension.
+//     Alternatively, treat coordinates as unsigned two's complement and use unsigned multiplication,
+//     then compare results as signed equality. Since we only care about equality, sign doesn't matter
+//     as long as we are consistent.
+//
+// Example: For points (0,0), (1,0), (0,1), (2,2), count=4.
+//   - Pair (0,0)-(1,0) gives line y=0; points on line: (0,0),(1,0). Remaining: (0,1),(2,2) not collinear => fail.
+//   - Pair (0,0)-(0,1) gives line x=0; points on line: (0,0),(0,1). Remaining: (1,0),(2,2) not collinear => fail.
+//   - Pair (0,0)-(2,2) gives line y=x; points on line: (0,0),(2,2). Remaining: (1,0),(0,1) not collinear => fail.
+//   - Pair (1,0)-(2,2) gives line? Not all points on line; remaining include (0,0),(0,1) not collinear.
+//   - Thus success=0.
+//
+// The LLM should generate Verilog code implementing this specification.

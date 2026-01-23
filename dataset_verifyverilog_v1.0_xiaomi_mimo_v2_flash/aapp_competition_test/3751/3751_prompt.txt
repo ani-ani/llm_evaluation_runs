@@ -1,0 +1,115 @@
+module obfuscation_check (
+    input wire clk,           // Clock, rising edge
+    input wire rst_n,         // Active-low reset
+    input wire start,         // Start pulse (1 cycle)
+    input wire [4:0] char_0,  // Character 0
+    input wire [4:0] char_1,  // Character 1
+    input wire [4:0] char_2,  // Character 2
+    input wire [4:0] char_3,  // Character 3
+    input wire [4:0] char_4,  // Character 4
+    input wire [4:0] char_5,  // Character 5
+    input wire [4:0] char_6,  // Character 6
+    input wire [4:0] char_7,  // Character 7
+    input wire [3:0] len,     // Number of valid characters (1-8)
+    output reg result,        // 1 if valid, 0 otherwise
+    output reg done           // Pulsed high for 1 cycle when finished
+);
+
+// State encoding
+localparam IDLE = 2'b00;
+localparam PROC = 2'b01;
+localparam DONE = 2'b10;
+
+reg [1:0] state, next_state;
+reg [2:0] index, next_index;
+reg [7:0] seen, next_seen;
+reg [2:0] next_expected, next_next_expected;
+reg next_result, next_done;
+
+wire [4:0] current_char;
+assign current_char = (index == 3'd0) ? char_0 :
+                      (index == 3'd1) ? char_1 :
+                      (index == 3'd2) ? char_2 :
+                      (index == 3'd3) ? char_3 :
+                      (index == 3'd4) ? char_4 :
+                      (index == 3'd5) ? char_5 :
+                      (index == 3'd6) ? char_6 :
+                      char_7;
+
+// Combinational next-state logic
+always @(*) begin
+    // Defaults
+    next_state = state;
+    next_index = index;
+    next_seen = seen;
+    next_next_expected = next_expected;
+    next_result = result;
+    next_done = 1'b0;
+
+    case (state)
+        IDLE: begin
+            if (start) begin
+                next_state = PROC;
+                next_index = 3'b0;
+                next_seen = 8'b0;
+                next_next_expected = 3'b0;
+                next_result = 1'b1;
+            end
+        end
+
+        PROC: begin
+            if (index < len) begin
+                // Check if letter already seen
+                if (seen[current_char[2:0]]) begin
+                    // Already seen, just move to next
+                    next_index = index + 1'b1;
+                end else begin
+                    // New letter
+                    if (current_char[2:0] == next_expected) begin
+                        // Correct order
+                        next_seen = seen | (1'b1 << current_char[2:0]);
+                        next_next_expected = next_expected + 1'b1;
+                        next_index = index + 1'b1;
+                    end else begin
+                        // Wrong order
+                        next_result = 1'b0;
+                        next_state = DONE;
+                        next_done = 1'b1;
+                    end
+                end
+            end else begin
+                // Processed all characters
+                next_state = DONE;
+                next_done = 1'b1;
+                next_result = result; // still valid
+            end
+        end
+
+        DONE: begin
+            // Return to IDLE after one cycle
+            next_state = IDLE;
+            next_done = 1'b0;
+        end
+    endcase
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        index <= 3'b0;
+        seen <= 8'b0;
+        next_expected <= 3'b0;
+        result <= 1'b0;
+        done <= 1'b0;
+    end else begin
+        state <= next_state;
+        index <= next_index;
+        seen <= next_seen;
+        next_expected <= next_next_expected;
+        result <= next_result;
+        done <= next_done;
+    end
+end
+
+endmodule

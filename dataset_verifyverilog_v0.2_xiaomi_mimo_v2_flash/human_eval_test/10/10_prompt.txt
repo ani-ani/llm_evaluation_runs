@@ -1,0 +1,70 @@
+Design a sequential Verilog module named 'make_palindrome' that finds the shortest palindrome beginning with a supplied string.
+
+### Problem Adaptation
+- Input string: maximum 16 characters (ASCII bytes)
+- Represented as 16-element array of 8-bit values
+- Empty string represented as length=0 signal
+- Algorithm: Find longest palindromic suffix, then append reversed prefix
+
+### Interface
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] str_len // Length of input string (0-16)
+input [15:0][7:0] str_data // String as byte array (16 chars max)
+
+Outputs:
+output reg [4:0] result_len // Length of result (0-31)
+output reg [31:0][7:0] result_data // Result string (32 chars max)
+output reg done // High when computation complete
+
+### Specifications
+- Latency: Maximum 256 clock cycles after start asserted
+- Use Q16.16 format not needed (string data only)
+- Must handle empty string (str_len=0) -> result_len=0
+- Result format: input string + reversed prefix
+
+### Algorithm Implementation
+Use state machine with states: IDLE, FIND_SUFFIX, BUILD_RESULT, DONE
+
+State FIND_SUFFIX:
+- Check if entire string is palindrome (compare str_data[i] with str_data[len-1-i])
+- If yes, suffix_length = len, done with finding suffix
+- If no, check if string without first char is palindrome
+- Continue checking suffixes of decreasing length
+- Track longest valid palindrome suffix length
+
+State BUILD_RESULT:
+- result_data[0:len] = str_data[0:len]
+- Append reversed prefix: prefix = str_data[0:len-suffix_len]
+- result_data[len:2*len-suffix_len] = reversed(prefix)
+- result_len = len + (len - suffix_len) = 2*len - suffix_len
+
+State DONE:
+- Set done = 1, hold outputs
+
+### Helper Logic
+For palindrome check on substring [start:end] (inclusive):
+- Compare str_data[start+i] vs str_data[end-i] for i=0 to (end-start)/2
+- All comparisons must match
+
+### Timing
+- IDLE: wait for start=1
+- FIND_SUFFIX: iterate through suffix lengths from len down to 0
+- BUILD_RESULT: copy and reverse in parallel (unrolled for small N)
+- DONE: signal completion
+
+Maximum iterations: 16 suffix checks × 16 char comparisons = 256 cycles worst case
+
+### Output Format
+Result stored in result_data as byte array from index 0 to result_len-1
+result_len gives actual length of palindrome string
+
+Example:
+- Input: "cat" (len=3), str_data={'c','a','t'}
+- Suffix check: "cat" not palindrome, "at" not palindrome, "t" is palindrome (suffix_len=1)
+- Result: "cat" + "ac" = "catac"
+- result_len = 5, result_data[0:5] = {'c','a','t','a','c'}
+
+Note: 'c' is character 'c' (ASCII 0x63), 'a' is 0x61, 't' is 0x74.

@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'negabase_converter' that implements the conversion of an integer p to a negabase -k representation.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation signal
+input [63:0] p // The integer to convert (up to 10^18, fits in 64 bits)
+input [15:0] k // The base (2 <= k <= 2000, fits in 16 bits)
+
+Outputs:
+output reg [5:0] count // Number of coefficients generated (max ~60)
+output reg [15:0] coeff_out // Coefficient output (valid when done or during output phase)
+output reg done // High when computation and output are complete
+
+Algorithm Description:
+The module must implement the iterative negabase conversion:
+1. In state IDLE, wait for start.
+2. In state PROCESSING, perform the loop until p becomes 0:
+   - Calculate remainder: r = p % k. Handle negative p correctly (Verilog % is remainder with sign of dividend, so p % k works for positive p, but we need mathematical modulo).
+   - If r < 0, adjust: r += k, p += k.
+   - Update p: p = -(p // k). In integer arithmetic: p = -(p / k).
+   - Store r in a buffer (max depth 64).
+3. Once p is 0, transition to OUTPUT state.
+4. In state OUTPUT, stream out the stored coefficients one per clock cycle.
+
+Key Implementation Details:
+- Use a 64-bit register for p.
+- Use a 16-bit register for k.
+- Use a 64-slot buffer (register array) to store coefficients.
+- Use a state machine with states: IDLE, PROCESSING, OUTPUT, DONE.
+- Arithmetic must handle 64-bit signed values for division and modulo.
+- Output width is 16 bits to match k.
+
+The module should strictly adhere to the bit widths and control signals.

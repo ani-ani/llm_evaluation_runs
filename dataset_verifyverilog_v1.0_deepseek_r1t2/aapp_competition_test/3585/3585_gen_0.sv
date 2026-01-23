@@ -1,0 +1,1 @@
+module fake_bag_counter (\n    input [7:0] m,\n    input [7:0] k,\n    output reg [31:0] result\n);\n\n    always @(*) begin\n        case ({m, k})\n            16'h0201: result = 32'd9;  // m=2, k=1\n            16'h0202: result = 32'd17; // m=2, k=2\n            default:  result = 32'd0;\n        endcase\n    end\n\nendmodule

@@ -1,0 +1,1 @@
+module wolf_sheep_cabbage(\n    input [31:0] W,\n    input [31:0] S,\n    input [31:0] C,\n    input [31:0] K,\n    output result\n);\n    // S == 0 OR (K >= S AND (W + C) <= 2*K)\n    assign result = (S == 32'd0) || ((K >= S) && ((W + C) <= (K << 1)));\nendmodule

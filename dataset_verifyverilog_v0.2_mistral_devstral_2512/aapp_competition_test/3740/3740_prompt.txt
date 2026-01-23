@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'digit_sum_pairs_counter' that counts pairs of positive integers (l, r) where l <= r and the sum of digit counts f(l)+...+f(r) equals S.
+
+The module must handle scaled inputs where S is scaled down by factor 65536 (using Q16.16 fixed-point format). The algorithm approximates the problem by iterating through possible digit lengths (1 to 9) and checking geometric sum constraints.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] S // Input target sum (scaled by 65536 for Q16.16 format)
+
+Outputs:
+output reg [31:0] result // Count modulo 10^9 + 7
+output reg done // High when computation complete
+
+Latency: Approximately 15,000 clock cycles (worst case for loops). Result valid when done is high.
+
+Behavioral Description:
+The module uses a state machine with states: IDLE, CALCULATE_LOOP_1, CALCULATE_LOOP_2, CALCULATE_LOOP_3, FINALIZE.
+
+1. IDLE: Wait for start signal. On start, initialize result to 0, initialize loop counters and intermediate registers.
+
+2. CALCULATE_LOOP_1: First pass counting pairs. Iterate 'n' from 1 to 9. For each n, calculate the bound 'k_max' and 'k_min'. If k_max >= k_min, add (k_max - k_min + 1) to result. Use 32-bit arithmetic for all calculations. The target S is in Q16.16 format, so comparisons and divisions must account for the fractional part (use bit shifting).
+
+3. CALCULATE_LOOP_2: Second pass for specific digit lengths. Iterate 'k' from 9 to 128 (scaled bound). Calculate 'n_max' and 'n_min'. If valid, add the count to result.
+
+4. CALCULATE_LOOP_3: Third pass for geometric progression terms. Iterate 'd' (divisor) from 1 to 128. Check if 'd' divides S (checking integer part). Calculate the count of numbers with 'd' digits and subtract the used count. Add to result.
+
+5. FINALIZE: Perform modulo operation (10^9 + 7) on the final result and set done high.
+
+Key Operations:
+- Q16.16 Handling: Inputs are interpreted as S_fixed = S >> 16 for integer comparisons. Division should be integer division.
+- Modulo: All additions should be accumulated in a 64-bit internal register (simulated with 32-bit logic for this spec, or explicitly state 64-bit math if needed, but 32-bit is sufficient for scaled S < 2^32) and modulo applied at the end or at each addition to prevent overflow.
+- Precision: Since S is scaled, intermediate calculations for 'n * k' must be compared against S. 'n * k' should be shifted left 16 bits before comparison if we keep S fixed, or shift S right 16 bits (losing precision). We assume shifting S right 16 bits is acceptable for the simplified problem.
+- Constraints: Internal counters must handle up to 128 iterations. The maximum value of (S >> 16) will be roughly 1525 (for S=100,000,000). Ensure all intermediate variables (k_max, n_min, etc.) fit in 32 bits.
+
+State Machine Logic:
+- state = IDLE: if start, state <= CALCULATE_LOOP_1, init counters.
+- state = CALCULATE_LOOP_1: iterate n=1 to 9. Calculate. If finished, state <= CALCULATE_LOOP_2.
+- state = CALCULATE_LOOP_2: iterate k=9 to 128. Calculate. If finished, state <= CALCULATE_LOOP_3.
+- state = CALCULATE_LOOP_3: iterate d=1 to 128. Check divisibility (S % d == 0). If finished, state <= FINALIZE.
+- state = FINALIZE: result <= result % 1000000007, done <= 1, state <= IDLE.
+
+Note: The problem involves counting integer solutions to equations. This module implements a simplified heuristic version suitable for hardware implementation, focusing on the loops and arithmetic operations defined.

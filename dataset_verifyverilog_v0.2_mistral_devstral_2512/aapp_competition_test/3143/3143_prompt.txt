@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'attendance_solver' that computes the minimal number of inspections required to strike all names from the attendance list, assuming optimal student repositioning.
+
+The module should handle a simplified problem where:
+- Maximum number of students N = 8
+- Maximum list length M = 8
+- Student names and positions are integers 1 to 8
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] student_name_in // Current student name (1-8)
+input [2:0] required_name_in // Name from list (1-8)
+
+Outputs:
+output reg [7:0] total_inspections // Total inspections count
+output reg [7:0] position_history [0:7] // Position chosen for each inspection
+output reg done // High when computation complete
+
+Specification:
+The module implements the following algorithm adapted from the Python problem:
+1. Maintain a queue of student names (max 8 elements)
+2. Maintain a list of required names (max 8 elements)
+3. For each step, the student at the front is inspected against the current required name
+4. If match: strike name from list, increment inspections
+5. If no match: increment inspections, student moves to new position
+6. The goal is to minimize total inspections by choosing optimal positions
+
+Since true optimality requires complex simulation, the module will implement a greedy approach:
+- If front student matches required name: move to front (position 1) to quickly remove that name
+- If mismatch: move to back (position 8) to cycle through students
+
+Latency: Result valid 500 clock cycles after start asserted.
+Use state machine with states: IDLE, LOAD_QUEUE, LOAD_LIST, SIMULATE, OUTPUT_RESULT.
+
+For fixed-point representation (if needed for any calculations), use Q16.16 format.
+All indices are 0-based internally, but output positions are 1-based.
+
+Example:
+Queue: [4,3,2,1], List: [4,1,2,4,4]
+Step 1: Front=4, List[0]=4 (match) -> strike, move 4 to pos 1, insp=1
+Step 2: Front=3, List[1]=1 (no match) -> move 3 to back, insp=2
+Step 3: Front=2, List[1]=1 (no match) -> move 2 to back, insp=3
+Step 4: Front=1, List[1]=1 (match) -> strike, move 1 to pos 1, insp=4
+...
+Total insp = 7, positions = [1, 8, 8, 1, 1, 8, 1] (adjusted for 1-based output)
+
+Note: The module must store the position choices in an array to output them sequentially.

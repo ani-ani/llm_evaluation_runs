@@ -1,0 +1,1 @@
+module part_simulator(input clk, input rst_n, input [5:0] R, input [5:0] C, input [7:0] grid_cell, input [31:0] cell_score, input valid_in, output reg [63:0] max_score_out, output reg valid_out); assign max_score_out = cell_score; assign valid_out = valid_in; endmodule

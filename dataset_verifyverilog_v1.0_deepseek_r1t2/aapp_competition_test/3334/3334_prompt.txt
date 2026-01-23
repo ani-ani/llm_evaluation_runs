@@ -1,0 +1,99 @@
+module tree_avg_dist (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,                    // Number of ports (2-8)
+    input wire [63:0] dist_matrix,         // Packed 8x8 distance matrix, each 8-bit element
+    output reg [15:0] result,              // Q8.8 fixed-point average distance
+    output reg done
+);
+
+// Internal state definitions
+reg [2:0] state;                           // State machine
+reg [3:0] i, j;                            // Loop counters
+reg [7:0] dist_sum;                       // Sum of distances (8-bit max for n=8)
+reg [7:0] divisor;                         // n*(n-1)/2
+reg [15:0] temp_result;                   // For division
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam CALC_SUM = 3'd1;
+localparam DIVIDE = 3'd2;
+localparam CONVERT = 3'd3;
+localparam DONE = 3'd4;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 16'd0;
+        done <= 1'b0;
+        dist_sum <= 8'd0;
+        divisor <= 8'd0;
+        i <= 4'd0;
+        j <= 4'd0;
+        temp_result <= 16'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    state <= CALC_SUM;
+                    dist_sum <= 8'd0;
+                    i <= 4'd0;
+                    j <= 4'd0;
+                end
+            end
+            
+            CALC_SUM: begin
+                // Extract distance from packed matrix
+                // Each row has 8 elements of 8 bits
+                // dist_matrix[i*64 + j*8 +: 8]
+                if (i < n && j < n) begin
+                    if (i != j) begin
+                        dist_sum <= dist_sum + dist_matrix[i*64 + j*8 +: 8];
+                    end
+                    // Increment counters
+                    if (j == n - 1) begin
+                        j <= 4'd0;
+                        i <= i + 1'b1;
+                    end else begin
+                        j <= j + 1'b1;
+                    end
+                end else begin
+                    state <= DIVIDE;
+                    // Calculate divisor = n*(n-1)/2
+                    divisor <= (n * (n - 1)) >> 1;
+                    i <= 4'd0;
+                end
+            end
+            
+            DIVIDE: begin
+                // Perform division: dist_sum / divisor
+                // For Q8.8: result = (dist_sum << 8) / divisor
+                if (divisor != 8'd0) begin
+                    temp_result <= (dist_sum << 8) / divisor;
+                end else begin
+                    temp_result <= 16'd0; // Avoid division by zero
+                end
+                state <= CONVERT;
+            end
+            
+            CONVERT: begin
+                // Result already in Q8.8 format
+                result <= temp_result;
+                state <= DONE;
+            end
+            
+            DONE: begin
+                done <= 1'b1;
+                if (!start) begin
+                    state <= IDLE;
+                end
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

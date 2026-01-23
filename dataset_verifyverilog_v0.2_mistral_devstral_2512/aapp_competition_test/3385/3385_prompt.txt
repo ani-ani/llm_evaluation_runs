@@ -1,0 +1,75 @@
+Design a sequential Verilog module named 'costume_solver' that computes the number of ways to assign costumes to children in a ring.
+
+Problem Adaptation:
+- n children (1 ≤ n ≤ 16), each has costume 0 (bat) or 1 (pumpkin)
+- For each child i (0 to n-1), we are given l_i, r_i, x_i
+- We see children i-l_i to i+r_i (mod n)
+- Constraint: sum of costumes in window ≡ x_i (mod 2)
+- Goal: Count number of valid assignments modulo 10^9+7
+
+Solution Approach:
+This is a system of n linear equations over GF(2).
+Let variable c_i be costume of child i.
+Equation i: c_{i-l_i} ^ c_{i-l_i+1} ^ ... ^ c_{i+r_i} = x_i (mod 2)
+
+The number of solutions is 2^(n - rank) mod (10^9+7) if system is consistent.
+
+Inputs:
+input clk                // Clock signal
+input rst_n              // Active-low reset
+input start              // Start computation
+input [3:0] n            // Number of children (1-16)
+input [3:0] i            // Index of current constraint being loaded (0 to n-1)
+input [3:0] l            // Left offset for current constraint
+input [3:0] r            // Right offset for current constraint
+input x                  // Parity value for current constraint
+
+Outputs:
+output reg [29:0] result // Number of ways mod 10^9+7
+output reg done          // High when computation complete
+output reg impossible    // High if no solution exists
+
+Behavior:
+The module implements a linear system solver for GF(2) with n variables and n equations.
+
+1. Initialization (LOAD state):
+   - When start is asserted, wait for n constraint inputs
+   - Each constraint i adds a row to the augmented matrix
+   - For constraint (l, r, x), set bits [i-l, ..., i+r] (mod n) to 1 in row i
+   - Set augmented column bit i to x
+   - After n constraints, transition to SOLVE
+
+2. Gaussian Elimination (SOLVE state):
+   - Perform row reduction to row echelon form over GF(2)
+   - Pivot on each column j from 0 to n-1:
+     * Find pivot row with bit j set (from current row down)
+     * Swap rows if needed
+     * XOR pivot row into all other rows with bit j set
+   - Track rank and consistency
+   - If any row has all zero coefficients but augmented bit = 1, inconsistent
+   - Transition to DONE
+
+3. Result Calculation:
+   - result = 2^(n - rank) mod (10^9+7)
+   - Use binary exponentiation (fast power)
+   - If impossible: result = 0
+
+Timing:
+- LOAD phase: n cycles to load constraints
+- SOLVE phase: O(n²) cycles for elimination (max 256 cycles for n=16)
+- CALC phase: O(log n) cycles for power (max 16 cycles)
+- Total latency: ~300 cycles after start
+
+State Machine States:
+- IDLE: Wait for start
+- LOAD: Loading constraint matrix (n cycles)
+- SOLVE: Gaussian elimination
+- CALC: Compute 2^(n-rank) mod MOD
+- DONE: Result ready
+
+Implementation Notes:
+- Matrix size: 16x16 (max) plus augmented column
+- Use block RAM or registers for matrix storage
+- XOR operations for GF(2) arithmetic
+- Binary exponentiation for power of 2 modulo 10^9+7
+- MOD = 1000000007 (0x3B9ACA07)

@@ -1,0 +1,60 @@
+Design a sequential Verilog module named 'roller_coaster_fun' that computes the maximum fun Jimmy can gain from roller coaster rides within a given time budget.
+
+PROBLEM ADAPTATION:
+- Maximum 8 roller coasters (instead of 100)
+- Maximum time budget: 256 cycles (instead of 25000)
+- Fun coefficients a_i, b_i: 8-bit values (0-255)
+- Time per ride t_i: 8-bit value (0-255)
+- Fun function: f(i,k) = a_i - (k-1)^2 * b_i for k-th ride (k starts at 1)
+- Ride count per coaster limited to 8 rides (max k=8)
+- Each coaster contributes at most 8 items to knapsack (rides 1-8)
+- This becomes a bounded knapsack problem with at most 8*8=64 items
+
+MODULE INTERFACE:
+Input:
+  clk: clock signal
+  rst_n: active-low reset (asynchronous)
+  start: start computation (pulse high for one cycle)
+  // Coaster data inputs (8 coasters, each 24 bits: a_i[7:0], b_i[7:0], t_i[7:0])
+  input [7:0] coaster_a [0:7],  // fun coefficient a for 8 coasters
+  input [7:0] coaster_b [0:7],  // fun coefficient b for 8 coasters  
+  input [7:0] coaster_t [0:7],  // time per ride for 8 coasters
+  input [7:0] time_budget,      // maximum time budget (0-255)
+
+Output:
+  output reg [15:0] max_fun,    // maximum total fun achievable
+  output reg done,              // high when computation complete
+
+SPECS:
+- State machine: IDLE → PREPARE_ITEMS → DP_COMPUTE → DONE
+- In PREPARE_ITEMS: Compute all possible rides for each coaster
+  For each coaster i (0-7):
+    For ride count k from 1 to 8:
+      Calculate fun = a_i - (k-1)^2 * b_i
+      If fun > 0:
+        Add item with (fun, time=t_i) to item list
+        [Note: This creates at most 64 items]
+- In DP_COMPUTE: Unbounded knapsack DP
+  Use 256-entry lookup table for DP states (time 0-255)
+  Initialize dp[0] = 0, dp[t] = 0 for t>0
+  For each item in item list:
+    For time from item.time to time_budget:
+      dp[time] = max(dp[time], dp[time - item.time] + item.fun)
+- Result is dp[time_budget]
+
+IMPLEMENTATION NOTES:
+- Use 16-bit width for fun values (max: 255 + 254 + ... ≈ 2000)
+- Use 9-bit DP array (256 entries × 16-bit fun)
+- Process one item per clock cycle in DP_COMPUTE state
+- Maximum latency: ~70 cycles (64 items + overhead)
+- All operations combinational within states
+- Output max_fun in Q16.0 format (integer only)
+
+Example:
+Coaster 0: a=5, b=0, t=5
+  Ride 1: fun=5-0=5 > 0
+  Ride 2: fun=5-0=5 > 0
+  ... (all 8 rides have fun=5)
+Coaster 1: a=7, b=0, t=7
+  All 8 rides have fun=7
+With=For time_budget=8: Max fun=5+7=12

@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'badge_connectivity' that determines how many badge numbers permit passage from a starting room to a destination room in a security system.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] start_room // starting room (1-8, encoded as 0-7)
+input [2:0] dest_room // destination room (1-8, encoded as 0-7)
+input [5:0] num_locks // number of locks (0-63)
+input [15:0] badge_min // minimum badge value (Q16.16 format)
+input [15:0] badge_max // maximum badge value (Q16.16 format)
+
+Lock configuration (must be loaded before start):
+input [2:0] lock_from // source room for current lock
+input [2:0] lock_to // destination room for current lock
+input [15:0] lock_range_min // minimum badge for this lock (Q16.16)
+input [15:0] lock_range_max // maximum badge for this lock (Q16.16)
+input lock_load // load current lock configuration
+input lock_next // advance to next lock index
+
+Outputs:
+output reg [31:0] valid_badge_count // number of valid badge IDs
+output reg done // high when computation complete
+output reg error // high if no path exists
+
+The module should:
+1. Accept lock configurations loaded sequentially (load lock, then next)
+2. Store up to 16 locks in internal memory
+3. When start is asserted, find all badge values in [badge_min, badge_max] that can reach dest from start
+4. Use BFS/DFS to explore graph connectivity
+5. For each reachable path, compute intersection of lock ranges
+6. Count distinct badge values that satisfy all path constraints
+7. Return count in valid_badge_count
+
+Latency: Result valid ~200 clock cycles after start asserted (depends on number of locks)
+
+State Machine:
+- IDLE: Wait for start signal
+- LOAD_CONFIG: Accept lock configurations (wait for lock_load/lock_next)
+- PREPARE_SEARCH: Initialize BFS structures
+- EXPLORE: Execute graph traversal
+- CALCULATE: Compute range intersections and count
+- DONE: Present results
+
+Implementation Notes:
+- Use Q16.16 fixed-point format for badge values
+- Adjacency matrix for 8x8 graph
+- Track reachable rooms using bit masks
+- For range intersection: find common intervals across all reachable paths
+- Since we need to count badge numbers, compute final valid interval [min_common, max_common]
+- Count = max(0, max_common - min_common + 1)
+
+This is a simplified version for benchmarking: limited to 8 rooms, 16 locks, and fixed badge range operations.

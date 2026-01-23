@@ -1,0 +1,59 @@
+Design a sequential Verilog module named 'barbarian_substring_matcher' that implements a simplified substring matching system for barbarians.
+
+Problem Adaptation:
+- Support N=8 barbarians (instead of 10^5)
+- Each barbarian has a pattern of max 8 characters
+- Process Q=8 queries (instead of 10^5)
+- Type 1: Show a word P of max 8 characters and increment counters for all matching barbarians
+- Type 2: Return the counter value for barbarian S
+- Each barbarian maintains a counter of how many shown words contain their pattern
+- Patterns and words use ASCII lowercase letters (8-bit characters)
+- Use naive substring matching (O(len(P)*len(pattern)) per barbarian per query) since N and string lengths are small
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start new operation
+input [2:0] operation_type // 0: idle, 1: type1 (show word), 2: type2 (query barbarian)
+input [2:0] barbarian_id // Barbarian ID (0-7 for 8 barbarians, input is 1-indexed but module uses 0-indexed)
+input [63:0] string_input // 8 characters, ASCII packed (8 bits per char)
+input [2:0] string_length // Actual length of string (1-8 characters)
+
+Outputs:
+output reg [15:0] result // Counter value for type2 operations
+output reg done // High when operation complete
+output reg valid // High when result is valid
+
+Internal Behavior:
+- Store 8 barbarian patterns in registers (each 64-bit, 8 chars)
+- Store pattern lengths (3 bits each, total 24 bits for 8 patterns)
+- Store 8 counters (16-bit each, total 128 bits)
+- Use state machine: IDLE, LOAD_PATTERN, PROCESS_TYPE1, PROCESS_TYPE2, DONE
+- For type 1: For each barbarian, check if its pattern appears in input string using character-by-character comparison
+- For type 2: Simply read the counter for the specified barbarian
+- Initialize patterns once (for testing, patterns are pre-loaded or loaded via configuration)
+- For simplicity, patterns are loaded in first 8 cycles after reset, then operation mode
+
+State Machine:
+- IDLE: Wait for start signal
+- LOAD_PATTERN: Load patterns for all 8 barbarians (takes 8 cycles)
+- PROCESS_TYPE1: Check each barbarian's pattern against input string
+- PROCESS_TYPE2: Read counter for specified barbarian
+- DONE: Set done flag, return to IDLE
+
+Pattern Loading:
+- After reset, when start=1 and operation_type=0, load patterns sequentially
+- Pattern 0: string_input[7:0], Pattern 1: string_input[15:8], etc.
+- Use barbarian_id to specify which pattern to load in each cycle
+
+For Type 1 Matching:
+- For each barbarian i (0 to 7):
+  - If pattern_i length is 0, skip
+  - Check all possible starting positions in string_input
+  - For each position j from 0 to (string_length - pattern_length):
+    - Compare pattern_i[k] with string_input[(j+k)*8 +: 8] for k from 0 to pattern_length-1
+    - If all match, increment counter_i and stop checking this barbarian
+
+Latency: Maximum 256 clock cycles for type 1 (8 barbarians × 8 positions × 8 chars worst case), 1 cycle for type 2, 8 cycles for pattern loading.
+
+Use proper state encoding and ensure all signals are properly registered.

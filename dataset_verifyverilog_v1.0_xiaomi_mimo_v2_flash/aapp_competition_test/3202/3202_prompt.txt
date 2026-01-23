@@ -1,0 +1,198 @@
+module min_insertions (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr [0:7],  // Fixed-size array for up to 8 marbles
+    input wire [3:0] N,           // Actual number of marbles (1-8)
+    input wire [3:0] K,           // Threshold (2-5)
+    output reg [7:0] result,
+    output reg done
+);
+
+// DP array: dp[l][r][k] = min insertions for subarray [l,r] with k extras of color arr[l]
+// Dimensions: l,r in [0,7], k in [0,4] (since K≤5)
+reg [7:0] dp [0:7][0:7][0:4];
+
+// State machine states
+reg [3:0] state;
+localparam IDLE = 0;
+localparam INIT = 1;
+localparam LOOP_LEN = 2;
+localparam LOOP_L = 3;
+localparam COMPUTE_STATE = 4;
+localparam LOOP_I = 5;
+localparam NEXT_I = 6;
+localparam UPDATE_DP = 7;
+localparam NEXT_K = 8;
+localparam NEXT_L = 9;
+localparam DONE = 10;
+
+// Loop counters
+reg [3:0] len, l, k, i;
+reg [7:0] cost1, cost2, temp;
+
+// Helper signals
+wire [7:0] seg1, seg2;
+wire seg1_valid, seg2_valid;
+
+// Compute segment values
+assign seg1_valid = (l+1 <= i-1);
+assign seg1 = seg1_valid ? dp[l+1][i-1][0] : 8'd0;
+
+assign seg2_valid = (i+1 <= r);
+always @(*) begin
+    if (k+1 >= K) begin
+        seg2 = seg2_valid ? dp[i+1][r][0] : 8'd0;
+    end else begin
+        seg2 = dp[i][r][k+1];
+    end
+end
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 8'd0;
+        len <= 4'd1;
+        l <= 4'd0;
+        k <= 4'd0;
+        i <= 4'd0;
+        cost1 <= 8'd0;
+        cost2 <= 8'd0;
+        temp <= 8'd0;
+        // Reset DP array to 0
+        for (integer a = 0; a < 8; a = a + 1) begin
+            for (integer b = 0; b < 8; b = b + 1) begin
+                for (integer c = 0; c < 5; c = c + 1) begin
+                    dp[a][b][c] <= 8'd0;
+                end
+            end
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= INIT;
+                    len <= 4'd1;
+                    l <= 4'd0;
+                    k <= 4'd0;
+                end
+            end
+
+            INIT: begin
+                // Initialize base cases: length 1
+                if (l < N) begin
+                    for (k = 0; k < K; k = k + 1) begin
+                        if (k + 1 >= K) begin
+                            dp[l][l][k] <= 8'd0;
+                        end else begin
+                            dp[l][l][k] <= K - (k + 1);
+                        end
+                    end
+                    l <= l + 1;
+                end else begin
+                    l <= 4'd0;
+                    k <= 4'd0;
+                    len <= 4'd2;  // Start from length 2
+                    state <= LOOP_LEN;
+                end
+            end
+
+            LOOP_LEN: begin
+                if (len > N) begin
+                    state <= DONE;
+                end else begin
+                    l <= 4'd0;
+                    state <= LOOP_L;
+                end
+            end
+
+            LOOP_L: begin
+                if (l >= N - len + 1) begin
+                    len <= len + 1;
+                    state <= LOOP_LEN;
+                end else begin
+                    k <= 4'd0;
+                    state <= COMPUTE_STATE;
+                end
+            end
+
+            COMPUTE_STATE: begin
+                // Compute option1
+                if (k + 1 >= K) begin
+                    cost1 <= dp[l+1][l+len-1][0];
+                end else begin
+                    cost1 <= (K - (k + 1)) + dp[l+1][l+len-1][0];
+                end
+                // Initialize option2 computation
+                i <= l + 1;
+                cost2 <= 8'd255;  // Large number (INF)
+                state <= LOOP_I;
+            end
+
+            LOOP_I: begin
+                if (i > l + len - 1) begin
+                    state <= UPDATE_DP;
+                end else begin
+                    // Check if arr[l] == arr[i]
+                    if (arr[l] == arr[i]) begin
+                        // Compute temp
+                        if (k + 1 >= K) begin
+                            temp <= seg1 + seg2;
+                        end else begin
+                            temp <= seg1 + seg2;
+                        end
+                        state <= NEXT_I;
+                    end else begin
+                        state <= NEXT_I;
+                    end
+                end
+            end
+
+            NEXT_I: begin
+                if (arr[l] == arr[i] && temp < cost2) begin
+                    cost2 <= temp;
+                end
+                i <= i + 1;
+                state <= LOOP_I;
+            end
+
+            UPDATE_DP: begin
+                dp[l][l+len-1][k] <= (cost1 < cost2) ? cost1 : cost2;
+                state <= NEXT_K;
+            end
+
+            NEXT_K: begin
+                k <= k + 1;
+                if (k + 1 < K) begin
+                    state <= COMPUTE_STATE;
+                end else begin
+                    l <= l + 1;
+                    state <= NEXT_L;
+                end
+            end
+
+            NEXT_L: begin
+                if (l < N - len + 1) begin
+                    k <= 4'd0;
+                    state <= COMPUTE_STATE;
+                end else begin
+                    len <= len + 1;
+                    state <= LOOP_LEN;
+                end
+            end
+
+            DONE: begin
+                result <= dp[0][N-1][0];
+                done <= 1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

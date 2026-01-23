@@ -1,0 +1,77 @@
+module string_pattern_matcher (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] char_in,  // Current character input (ASCII)
+    input wire [3:0] str_len,   // Input string length (1-16)
+    output reg [7:0] count,     // Number of 'std' occurrences
+    output reg done             // Computation complete
+);
+
+    // Internal state
+    reg [3:0] index;            // Current character position
+    reg [7:0] window [0:2];     // Sliding window: 3-character buffer
+    reg [7:0] cnt;              // Accumulated count
+    reg processing;             // Processing state flag
+    reg [1:0] shift_count;      // Tracks shift operations after new char
+    
+    // ASCII values for pattern matching
+    localparam CHAR_S = 8'h73;  // 's'
+    localparam CHAR_T = 8'h74;  // 't'
+    localparam CHAR_D = 8'h64;  // 'd'
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            index <= 4'd0;
+            cnt <= 8'd0;
+            done <= 1'b0;
+            processing <= 1'b0;
+            shift_count <= 2'd0;
+            window[0] <= 8'd0;
+            window[1] <= 8'd0;
+            window[2] <= 8'd0;
+            count <= 8'd0;
+        end else begin
+            if (start && !processing) begin
+                // Start new computation
+                index <= 4'd0;
+                cnt <= 8'd0;
+                done <= 1'b0;
+                processing <= 1'b1;
+                shift_count <= 2'd0;
+                window[0] <= 8'd0;
+                window[1] <= 8'd0;
+                window[2] <= 8'd0;
+            end else if (processing) begin
+                if (shift_count == 2'd0) begin
+                    // Load new character into window
+                    if (index < str_len) begin
+                        window[2] <= char_in;
+                        shift_count <= 2'd1;
+                        index <= index + 1'b1;
+                    end else begin
+                        // All characters processed
+                        processing <= 1'b0;
+                        done <= 1'b1;
+                        count <= cnt;
+                    end
+                end else begin
+                    // Shift window and check pattern
+                    window[0] <= window[1];
+                    window[1] <= window[2];
+                    window[2] <= 8'd0;
+                    shift_count <= shift_count - 1'b1;
+                    
+                    // Check for 'std' pattern in window[0:2]
+                    if (shift_count == 2'd1 && window[0] == CHAR_S && window[1] == CHAR_T && window[2] == CHAR_D) begin
+                        cnt <= cnt + 1'b1;
+                    end
+                end
+            end else begin
+                done <= 1'b0;
+            end
+        end
+    end
+
+endmodule

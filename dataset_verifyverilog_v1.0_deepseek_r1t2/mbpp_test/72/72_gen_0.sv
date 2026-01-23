@@ -1,0 +1,1 @@
+module dif_square(\n    input [7:0] n,\n    output result\n);\n    assign result = (n[1:0] != 2'b10);\nendmodule

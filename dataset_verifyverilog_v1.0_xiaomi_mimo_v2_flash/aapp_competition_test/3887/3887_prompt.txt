@@ -1,0 +1,125 @@
+module rebus_solver (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] num_positive,  // Number of positive terms (1-8)
+    input wire [3:0] num_negative,  // Number of negative terms (0-8)
+    input wire [19:0] n,            // Target value (1-1,000,000)
+    output reg done,
+    output reg possible,
+    output reg [19:0] positive_terms [0:7],  // Positive terms (8 elements)
+    output reg [19:0] negative_terms [0:7]   // Negative terms (8 elements)
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam PRECOMPUTE = 3'b001;
+localparam CHECK = 3'b010;
+localparam ASSIGN_POSITIVE = 3'b011;
+localparam ASSIGN_NEGATIVE = 3'b100;
+localparam DONE = 3'b101;
+
+reg [2:0] state, next_state;
+reg signed [31:0] adjustment;
+reg [31:0] rem;
+reg [3:0] index;
+reg [31:0] limit_positive, limit_negative;
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        possible <= 0;
+        adjustment <= 0;
+        rem <= 0;
+        index <= 0;
+        limit_positive <= 0;
+        limit_negative <= 0;
+        // Initialize all terms to 1
+        for (integer i = 0; i < 8; i = i + 1) begin
+            positive_terms[i] <= 20'd1;
+            negative_terms[i] <= 20'd1;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) state <= PRECOMPUTE;
+            end
+            
+            PRECOMPUTE: begin
+                // Compute base = num_positive - num_negative
+                // Compute adjustment = n - (num_positive - num_negative)
+                adjustment <= $signed(n) - $signed(num_positive) + $signed(num_negative);
+                // Maximum adjustment possible
+                limit_positive <= num_positive * (n - 1);
+                limit_negative <= num_negative * (n - 1);
+                state <= CHECK;
+            end
+            
+            CHECK: begin
+                if (adjustment >= 0) begin
+                    if (adjustment <= $signed(limit_positive)) begin
+                        possible <= 1;
+                        rem <= adjustment;
+                        index <= 0;
+                        state <= ASSIGN_POSITIVE;
+                    end else begin
+                        possible <= 0;
+                        state <= DONE;
+                    end
+                end else begin
+                    if (-adjustment <= $signed(limit_negative)) begin
+                        possible <= 1;
+                        rem <= -adjustment;
+                        index <= 0;
+                        state <= ASSIGN_NEGATIVE;
+                    end else begin
+                        possible <= 0;
+                        state <= DONE;
+                    end
+                end
+            end
+            
+            ASSIGN_POSITIVE: begin
+                if (index < num_positive) begin
+                    if (rem > (n - 1)) begin
+                        positive_terms[index] <= 1 + (n - 1);
+                        rem <= rem - (n - 1);
+                    end else begin
+                        positive_terms[index] <= 1 + rem;
+                        rem <= 0;
+                    end
+                    index <= index + 1;
+                end else begin
+                    state <= DONE;
+                end
+            end
+            
+            ASSIGN_NEGATIVE: begin
+                if (index < num_negative) begin
+                    if (rem > (n - 1)) begin
+                        negative_terms[index] <= 1 + (n - 1);
+                        rem <= rem - (n - 1);
+                    end else begin
+                        negative_terms[index] <= 1 + rem;
+                        rem <= 0;
+                    end
+                    index <= index + 1;
+                end else begin
+                    state <= DONE;
+                end
+            end
+            
+            DONE: begin
+                done <= 1;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,1 @@
+module car_race_collision(\n    input [7:0] n,\n    output [7:0] collisions\n);\n    assign collisions = n * n;\nendmodule

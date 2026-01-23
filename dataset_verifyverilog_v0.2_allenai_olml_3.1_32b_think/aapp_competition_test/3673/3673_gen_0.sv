@@ -1,0 +1,1 @@
+module dance_solver (input clk, input rst_n, input start, input [7:0] N, input [7:0] K, input [7:0] A_in [0:7], output reg [7:0] P_out [0:7], output reg done, output reg possible); always @(posedge clk) begin if (!rst_n) begin P_out <= 8'b0; done <= 1'b0; possible <= 1'b0; end end endmodule

@@ -1,0 +1,143 @@
+module eris_sabotage #(
+    parameter N_MAX = 4,
+    parameter BITS = 4
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [1:0] n,
+    input wire [BITS-1:0] arr_0,
+    input wire [BITS-1:0] arr_1,
+    input wire [BITS-1:0] arr_2,
+    input wire [BITS-1:0] arr_3,
+    output reg [BITS-1:0] result_0,
+    output reg [BITS-1:0] result_1,
+    output reg [BITS-1:0] result_2,
+    output reg [BITS-1:0] result_3,
+    output reg done,
+    output reg impossible
+);
+
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam SEARCH = 2'b01;
+    localparam DONE = 2'b10;
+
+    // Registers for input storage
+    reg [1:0] n_reg;
+    reg [BITS-1:0] orig [0:N_MAX-1];
+
+    // State machine registers
+    reg [1:0] state;
+    reg [1:0] i_reg;
+    reg [1:0] bit_reg;
+    reg found_reg;
+    reg impossible_reg;
+    reg [BITS-1:0] result_reg [0:N_MAX-1];
+
+    // Combinational signals for current candidate
+    wire [BITS-1:0] new_number;
+    wire [BITS-1:0] cand [0:N_MAX-1];
+    wire sorted_flag;
+    wire cmp0, cmp1, cmp2;
+
+    // Combinational logic for new_number
+    assign new_number = orig[i_reg] ^ (1 << bit_reg);
+
+    // Candidate list
+    assign cand[0] = (i_reg == 0) ? new_number : orig[0];
+    assign cand[1] = (i_reg == 1) ? new_number : orig[1];
+    assign cand[2] = (i_reg == 2) ? new_number : orig[2];
+    assign cand[3] = (i_reg == 3) ? new_number : orig[3];
+
+    // Sorted check
+    assign cmp0 = (n_reg > 1) ? (cand[0] <= cand[1]) : 1'b1;
+    assign cmp1 = (n_reg > 2) ? (cand[1] <= cand[2]) : 1'b1;
+    assign cmp2 = (n_reg > 3) ? (cand[2] <= cand[3]) : 1'b1;
+    assign sorted_flag = cmp0 & cmp1 & cmp2;
+
+    // State machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            impossible <= 0;
+            i_reg <= 0;
+            bit_reg <= 0;
+            found_reg <= 0;
+            impossible_reg <= 0;
+            result_reg[0] <= 0;
+            result_reg[1] <= 0;
+            result_reg[2] <= 0;
+            result_reg[3] <= 0;
+            orig[0] <= 0;
+            orig[1] <= 0;
+            orig[2] <= 0;
+            orig[3] <= 0;
+            n_reg <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    impossible <= 0;
+                    if (start) begin
+                        n_reg <= n;
+                        orig[0] <= arr_0;
+                        orig[1] <= arr_1;
+                        orig[2] <= arr_2;
+                        orig[3] <= arr_3;
+                        i_reg <= 0;
+                        bit_reg <= 0;
+                        found_reg <= 0;
+                        impossible_reg <= 0;
+                        state <= SEARCH;
+                    end
+                end
+
+                SEARCH: begin
+                    if (!sorted_flag) begin
+                        found_reg <= 1;
+                        result_reg[0] <= cand[0];
+                        result_reg[1] <= cand[1];
+                        result_reg[2] <= cand[2];
+                        result_reg[3] <= cand[3];
+                        state <= DONE;
+                    end else begin
+                        if (bit_reg < 2'b11) begin
+                            bit_reg <= bit_reg + 1;
+                        end else begin
+                            bit_reg <= 0;
+                            if (i_reg < n_reg - 1) begin
+                                i_reg <= i_reg + 1;
+                            end else begin
+                                impossible_reg <= 1;
+                                state <= DONE;
+                            end
+                        end
+                    end
+                end
+
+                DONE: begin
+                    done <= 1;
+                    if (found_reg) begin
+                        result_0 <= result_reg[0];
+                        result_1 <= result_reg[1];
+                        result_2 <= result_reg[2];
+                        result_3 <= result_reg[3];
+                        impossible <= 0;
+                    end else begin
+                        result_0 <= orig[0];
+                        result_1 <= orig[1];
+                        result_2 <= orig[2];
+                        result_3 <= orig[3];
+                        impossible <= 1;
+                    end
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'rectangular_grid_checker' that implements a simplified version of the rectangular connected component validation.
+
+Task: Determine the minimum number of cell changes required to make an 8x8 binary grid satisfy the condition that all connected components of 0s and 1s form filled rectangles.
+
+Constraints:
+- Grid size: 8 rows x 8 columns
+- Input values: 0 or 1
+- Max changes (k): 4
+- Output: Minimum changes needed (0-4), or 5 (representing -1/impossible)
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] row_data [7:0] // 8 rows, each 8 bits wide. Represents the current row being loaded.
+input [2:0] row_index // Index of the current row (0-7) valid when loading
+input load_row // Signal to load the current row_data into the grid
+
+Outputs:
+output reg [3:0] result // Minimum changes (0-4), or 5 if impossible
+output reg done // High when computation complete
+
+Behavior:
+1. The module loads the 8x8 grid row by row using the load_row signal.
+2. Once loaded, on start signal, it determines if the grid satisfies the rectangular condition.
+3. It checks every 2x2 subgrid in parallel. If a 2x2 subgrid contains diagonally equal values but off-diagonally different values (e.g., 1 0 / 0 1), it forms a 'corner' of a non-rectangular shape.
+4. The algorithm calculates the number of such invalid corners and sums them up.
+5. If the calculated changes are <= 4, output that number. If > 4 or the pattern is fundamentally unfixable (e.g., specific diagonal patterns), output 5.
+
+Latency: Result valid 128 clock cycles after start (allowing one cycle per cell check plus overhead).
+
+States: IDLE, LOAD_GRID, PROCESSING, DONE.
+
+During PROCESSING:
+- Iterate through rows i (0-6) and cols j (0-6)
+- Check subgrid at (i,j), (i+1,j), (i,j+1), (i+1,j+1)
+- Invalid if (a[i][j] == a[i+1][j+1]) && (a[i][j+1] != a[i+1][j])
+- Accumulate invalid count.
+- Compare accumulated count against k (4).
+
+Example fixed-point like logic: No floating point used. Bitwise logic on 8-bit rows.

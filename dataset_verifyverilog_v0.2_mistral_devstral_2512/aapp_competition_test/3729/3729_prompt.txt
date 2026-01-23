@@ -1,0 +1,28 @@
+Design a sequential Verilog module named 'probability_calculator' that computes the probability that Jon Snow likes the arrangement of food boxes and wine barrels. The module calculates (ValidCount / TotalCount) mod (10^9 + 7).
+
+The algorithm relies on these definitions:
+- Total arrangements: nCr(f + w, w) if f > 0 and w > 0.
+- Valid arrangements (where all wine stack heights > h):
+  - If w == 0: 1
+  - Else: Sum over k (number of wine stacks) from 1 to min(w//(h+1), f+1) of nCr(f+1, k) * nCr(w - k*h - 1, k-1).
+- Final Result: ValidCount * inverse(TotalCount) mod M, where M = 10^9 + 7.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [16:0] f // Number of food boxes (0 to 100,000)
+input [16:0] w // Number of wine barrels (0 to 100,000)
+input [16:0] h // Minimum height constraint (0 to 100,000)
+
+Outputs:
+output reg [31:0] result // The final probability p * q^-1 mod 10^9+7
+output reg done // High when computation is complete
+
+Internal Logic:
+- Use a Lookup Table (LUT) for factorials up to 200,000 (size 200k x 28 bits). The module should initialize this LUT (or assume it is pre-loaded via a state machine loop if BRAM is not inferred).
+- Use a state machine (IDLE, PREPARE, CALCULATE, INVERSE, FINALIZE, DONE).
+- Handle modular arithmetic: nCr(n, r) = fac[n] * inv(fac[r]) * inv(fac[n-r]) mod M.
+- Implement a modular exponentiation block for computing inverses (x^(M-2) mod M).
+- The summation for valid arrangements requires a loop over k. The loop range is small (at most 17 for w=100k, h=100k) or bounded by f+1.
+- Latency: Specify that the result is valid approximately 10,000 clock cycles after start (to account for LUT generation and modular exponentiations).

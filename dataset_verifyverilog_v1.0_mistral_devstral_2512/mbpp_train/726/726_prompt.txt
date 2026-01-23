@@ -1,0 +1,97 @@
+module multiply_adjacent (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [3:0] length,  // Number of valid input elements (1-5)
+    output reg [15:0] result,
+    output reg result_valid,
+    output reg done
+);
+
+    // State machine states
+    reg [2:0] state;
+    localparam IDLE = 3'b000;
+    localparam COMPUTE = 3'b001;
+    localparam OUTPUT = 3'b010;
+    localparam FINISHED = 3'b011;
+    
+    // Internal registers
+    reg [2:0] index;           // Current pair index (0 to length-2)
+    reg [15:0] product_reg;    // Temporary product storage
+    
+    // Input array storage (for sequential access)
+    reg [7:0] input_data [0:4];
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            state <= IDLE;
+            result <= 16'b0;
+            result_valid <= 1'b0;
+            done <= 1'b0;
+            index <= 3'b0;
+            product_reg <= 16'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    result_valid <= 1'b0;
+                    done <= 1'b0;
+                    index <= 3'b0;
+                    
+                    if (start && length >= 2) begin
+                        // Load input array
+                        input_data[0] <= arr_0;
+                        input_data[1] <= arr_1;
+                        input_data[2] <= arr_2;
+                        input_data[3] <= arr_3;
+                        input_data[4] <= arr_4;
+                        state <= COMPUTE;
+                    end else if (start && length == 1) begin
+                        // Special case: single element, return empty
+                        done <= 1'b1;
+                        state <= FINISHED;
+                    end
+                end
+                
+                COMPUTE: begin
+                    // Compute product of current adjacent pair
+                    product_reg <= input_data[index] * input_data[index + 1];
+                    index <= index + 1;
+                    state <= OUTPUT;
+                end
+                
+                OUTPUT: begin
+                    // Output the product and check if done
+                    result <= product_reg;
+                    result_valid <= 1'b1;
+                    
+                    if (index >= length - 1) begin
+                        // All pairs computed
+                        done <= 1'b1;
+                        state <= FINISHED;
+                    end else begin
+                        // More pairs to compute
+                        state <= COMPUTE;
+                    end
+                end
+                
+                FINISHED: begin
+                    // Wait for start to go low
+                    if (!start) begin
+                        result_valid <= 1'b0;
+                        done <= 1'b0;
+                        state <= IDLE;
+                    end
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

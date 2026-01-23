@@ -1,0 +1,54 @@
+Design a combinational Verilog module named 'cable_car_planner' that checks feasibility and generates cable car connections for n stations and k cable cars per company.
+
+Inputs:
+input [3:0] n // number of stations (1 to 8)
+input [2:0] k // number of cable cars per company (1 to 4)
+
+Outputs:
+output valid // 1 if possible, 0 otherwise
+output [3:0] ms_0, me_0 // Mobi cable car 0
+output [3:0] ms_1, me_1 // Mobi cable car 1
+output [3:0] ms_2, me_2 // Mobi cable car 2
+output [3:0] ms_3, me_3 // Mobi cable car 3
+output [3:0] vs_0, ve_0 // Vina cable car 0
+output [3:0] vs_1, ve_1 // Vina cable car 1
+output [3:0] vs_2, ve_2 // Vina cable car 2
+output [3:0] vs_3, ve_3 // Vina cable car 3
+
+Behavior:
+The condition for feasibility is that 2*k <= n - 1 (since we need disjoint paths covering pairs of stations). If valid is 1:
+- Mobi cars connect: (1,2), (3,4), (5,6), (7,8) for k=1,2,3,4
+- Vina cars connect: (1,n), (2,n-1), (3,n-2), (4,n-3) (offset to avoid Mobi paths)
+  Specifically: if k=1: (1,3), k=2: (1,3) and (2,4), etc. ensuring distinct pairs.
+  We use a pattern: Mobi takes pairs starting from 1 (1-2, 3-4...)
+  Vina takes pairs starting from 1 but skipping Mobi destinations: (1, n) is safe if n>2. (2, n-1) is safe if n>4.
+  Since 2k <= n-1, we have room.
+  Let's define specific assignment:
+  Mobi i: ms[i] = 2*i+1, me[i] = 2*i+2
+  Vina i: vs[i] = 2*i+1, ve[i] = n - i
+  This must satisfy unique start/end conditions and non-overlapping connection.
+  Actually, simpler construction:
+  Mobi: (1,2), (3,4) ...
+  Vina: (1,n), (2,n-1) ...
+  Check: pair (1,2) vs (1,n). If n=3, (1,2) and (1,3) -> valid. If n=4, (1,2) and (1,4) -> valid.
+  Distinct start points? No, Vina start 1 overlaps Mobi start 1? Wait, conditions say 'All MS_i are unique' (start points of Mobi). 'All VS_i are unique'. It does NOT say MS_i cannot equal VS_j. It says 'No pair of stations is connected by both companies'.
+  So (1,2) Mobi, (1,3) Vina is OK. They share station 1 but don't connect same pair.
+  Thus output logic:
+  If 2*k > n-1, valid = 0, outputs x.
+  Else valid = 1.
+  For i in 0 to k-1:
+    ms[i] = 2*i + 1
+    me[i] = 2*i + 2
+    vs[i] = 2*i + 1
+    ve[i] = n - i
+  We must verify ve[i] > vs[i] (since VS_i < VE_i).
+  ve[k-1] = n - (k-1). We need n - (k-1) > 2*(k-1)+1.
+  Since 2k <= n-1 -> n >= 2k+1. 
+  n - k + 1 > 2k - 1? 
+  n > 3k - 2. 
+  If n=3, k=1: 3 > 1. True.
+  If n=5, k=2: 5 > 4. True.
+  If n=5, k=3: 2k=6 > n-1=4. Invalid case.
+  So this construction works for valid cases.
+  Note: Output widths [3:0] allows values 0-15. n is 1-8, k is 1-4.
+  All outputs must be valid regardless of 'valid' flag for hardware simplicity, but only correct for valid cases.

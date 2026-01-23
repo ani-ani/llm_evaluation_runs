@@ -1,0 +1,55 @@
+Module stoichiometry_balancer solves chemical equation balancing via integer matrix null space computation.
+
+**INTERFACE SPECIFICATION:**
+
+Inputs:
+  - clk         : Clock (rising edge)
+  - rst_n       : Active-low synchronous reset
+  - start       : Start pulse (1 cycle) after matrix loaded
+  - entry_value : 16-bit signed matrix entry A[e,m] = sign_m * count_m,e
+  - entry_elem  : Element index 0-9 (4 bits)
+  - entry_mol   : Molecule index 0-19 (5 bits)
+  - entry_valid : Valid entry pulse
+  - num_elements: Actual element count 1-10 (4 bits)
+  - num_molecules: Actual molecule count 1-20 (5 bits)
+
+Outputs:
+  - coeffs[0:19]: 10-bit coefficients C_m (unsigned, 1-1000)
+  - coeffs_valid: Asserted when coefficients are valid
+  - done        : Computation complete
+
+**FUNCTIONAL BEHAVIOR:**
+
+1. LOAD state: Accept matrix entries sequentially. Store in register array [0:9][0:19] of 16-bit signed.
+
+2. SOLVE state: Perform fraction-free Gaussian elimination:
+   - For each column j from 0 to M-2:
+     - Find pivot row i ≥ j with non-zero A[i][j]
+     - Swap rows if needed
+     - Eliminate column j below pivot using Bareiss formula:
+       A[i][k] = (A[i][k]*A[j][j] - A[i][j]*A[j][k]) / divisor
+   - Track submatrix for null space extraction
+
+3. FIND_SOLUTION state:
+   - Identify free variables (columns without pivot)
+   - Set last free variable to 1, others to 0
+   - Back-substitute to compute bound variables
+   - Result is integer vector x with x[free] = 1
+
+4. SCALE state:
+   - Compute GCD of all coefficients using Euclidean algorithm
+   - Divide all coefficients by GCD to minimize
+
+5. DONE state: Output coefficients and assert valid
+
+**IMPLEMENTATION NOTES:**
+- Use 3-stage pipeline for GCD computation
+- All arithmetic is signed 16-bit; handle overflow carefully
+- Use parameters for MAX_ELEMENTS=10, MAX_MOLECULES=20
+- State machine must complete within ~1000 cycles
+- Reset clears matrix and coefficients to zero
+
+**EXAMPLE MAPPING:**
+For input: +1 2 H 2 O 1 (H₂O) on left, -1 1 O 2 (O₂) on right
+Matrix: element H: row = [+2, -0], element O: row = [+1, -2]
+Solution: coefficients = [6, 6, 6, 1] for [H₂O, CO₂, O₂, C₆H₁₂O₆]

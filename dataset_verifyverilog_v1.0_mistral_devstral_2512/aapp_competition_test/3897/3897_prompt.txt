@@ -1,0 +1,178 @@
+module decomposition_counter (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,
+    input wire [4:0] exp0, exp1, exp2, exp3, exp4, exp5, exp6, exp7, exp8, exp9, exp10,
+    output reg [31:0] result,
+    output reg done
+);
+
+    parameter MOD = 1000000007;
+    parameter MAX_PRIMES = 11;
+
+    // State encoding
+    localparam IDLE = 3'b000;
+    localparam COMPUTE_BINOM = 3'b001;
+    localparam NUMERATOR_LOOP = 3'b010;
+    localparam MULTIPLY = 3'b011;
+    localparam MULTIPLY_INVERSE = 3'b100;
+    localparam ACCUMULATE_RESULT = 3'b101;
+    localparam UPDATE_RESULT = 3'b110;
+    localparam DONE = 3'b111;
+
+    // Registers
+    reg [2:0] state;
+    reg [3:0] n_reg;
+    reg [4:0] exp_reg [0:MAX_PRIMES-1];
+    reg [31:0] numerator;
+    reg [31:0] binom;
+    reg [4:0] prime_index;
+    reg [3:0] loop_i;
+
+    // Multiplication unit signals
+    reg [31:0] mul_a, mul_b;
+    reg [31:0] mul_a_reg, mul_b_reg;
+    reg [31:0] mul_result;
+    reg [5:0] mul_count;
+    reg mul_start, mul_done;
+
+    // Inverse factorial lookup (indexed by n-1, so size 8 for n=1..8)
+    wire [31:0] inv_fact [0:7];
+    assign inv_fact[0] = 32'd1;                // inv(0!)
+    assign inv_fact[1] = 32'd1;                // inv(1!)
+    assign inv_fact[2] = 32'd500000004;        // inv(2!)
+    assign inv_fact[3] = 32'd166666668;        // inv(3!)
+    assign inv_fact[4] = 32'd41666667;         // inv(4!)
+    assign inv_fact[5] = 32'd808333337;        // inv(5!)
+    assign inv_fact[6] = 32'd201388893;        // inv(6!)
+    assign inv_fact[7] = 32'd35791429;         // inv(7!)
+
+    // Main state machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            mul_start <= 0;
+            mul_done <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        n_reg <= n;
+                        exp_reg[0] <= exp0;
+                        exp_reg[1] <= exp1;
+                        exp_reg[2] <= exp2;
+                        exp_reg[3] <= exp3;
+                        exp_reg[4] <= exp4;
+                        exp_reg[5] <= exp5;
+                        exp_reg[6] <= exp6;
+                        exp_reg[7] <= exp7;
+                        exp_reg[8] <= exp8;
+                        exp_reg[9] <= exp9;
+                        exp_reg[10] <= exp10;
+                        result <= 32'd1;
+                        prime_index <= 0;
+                        state <= COMPUTE_BINOM;
+                    end
+                end
+
+                COMPUTE_BINOM: begin
+                    if (prime_index < MAX_PRIMES) begin
+                        if (exp_reg[prime_index] > 0) begin
+                            numerator <= 32'd1;
+                            loop_i <= 4'd1;
+                            state <= NUMERATOR_LOOP;
+                        end else begin
+                            prime_index <= prime_index + 1;
+                        end
+                    end else begin
+                        state <= DONE;
+                    end
+                end
+
+                NUMERATOR_LOOP: begin
+                    if (loop_i < n_reg) begin
+                        mul_a <= numerator;
+                        mul_b <= exp_reg[prime_index] + loop_i;
+                        mul_start <= 1'b1;
+                        state <= MULTIPLY;
+                    end else begin
+                        mul_a <= numerator;
+                        mul_b <= inv_fact[n_reg - 1];
+                        mul_start <= 1'b1;
+                        state <= MULTIPLY_INVERSE;
+                    end
+                end
+
+                MULTIPLY: begin
+                    if (mul_start) mul_start <= 1'b0;
+                    if (mul_done) begin
+                        numerator <= mul_result;
+                        loop_i <= loop_i + 1;
+                        state <= NUMERATOR_LOOP;
+                        mul_done <= 1'b0;
+                    end
+                end
+
+                MULTIPLY_INVERSE: begin
+                    if (mul_start) mul_start <= 1'b0;
+                    if (mul_done) begin
+                        binom <= mul_result;
+                        state <= ACCUMULATE_RESULT;
+                        mul_done <= 1'b0;
+                    end
+                end
+
+                ACCUMULATE_RESULT: begin
+                    mul_a <= result;
+                    mul_b <= binom;
+                    mul_start <= 1'b1;
+                    state <= UPDATE_RESULT;
+                end
+
+                UPDATE_RESULT: begin
+                    if (mul_start) mul_start <= 1'b0;
+                    if (mul_done) begin
+                        result <= mul_result;
+                        prime_index <= prime_index + 1;
+                        state <= COMPUTE_BINOM;
+                        mul_done <= 1'b0;
+                    end
+                end
+
+                DONE: begin
+                    done <= 1'b1;
+                    if (!start) state <= IDLE;
+                end
+            endcase
+
+            // Multiplication unit (32-cycle shift-add)
+            if (mul_start) begin
+                mul_count <= 6'd32;
+                mul_result <= 32'd0;
+                mul_b_reg <= mul_b;
+                mul_a_reg <= mul_a;
+            end else if (mul_count > 0) begin
+                // Add if LSB of multiplier is 1
+                if (mul_b_reg[0]) begin
+                    if (mul_result + mul_a_reg >= MOD)
+                        mul_result <= mul_result + mul_a_reg - MOD;
+                    else
+                        mul_result <= mul_result + mul_a_reg;
+                end
+                // Double multiplicand
+                mul_a_reg <= {mul_a_reg[30:0], 1'b0};
+                if (mul_a_reg >= MOD)
+                    mul_a_reg <= mul_a_reg - MOD;
+                // Shift multiplier
+                mul_b_reg <= mul_b_reg >> 1;
+                mul_count <= mul_count - 1;
+            end else if (mul_count == 0 && (state == MULTIPLY || state == MULTIPLY_INVERSE || state == UPDATE_RESULT)) begin
+                mul_done <= 1'b1;
+            end
+        end
+    end
+endmodule

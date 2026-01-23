@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'debate_selection' that selects spectators to maximize total influence while satisfying Alice and Bob support constraints.
+
+Problem Adaptation:
+- Maximum N=8 spectators
+- 4 types: 00 (neither), 01 (Bob only), 10 (Alice only), 11 (both)
+- Influence values: 0-255 (8-bit unsigned)
+- Constraints: 2*a >= m (Alice support) and 2*b >= m (Bob support)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] count_00, count_01, count_10, count_11 // counts of each type (0-8)
+input [7:0] inf_00_0, inf_00_1, inf_00_2, inf_00_3, inf_00_4, inf_00_5, inf_00_6, inf_00_7 // influences for type 00
+input [7:0] inf_01_0, inf_01_1, inf_01_2, inf_01_3, inf_01_4, inf_01_5, inf_01_6, inf_01_7 // influences for type 01
+input [7:0] inf_10_0, inf_10_1, inf_10_2, inf_10_3, inf_10_4, inf_10_5, inf_10_6, inf_10_7 // influences for type 10
+input [7:0] inf_11_0, inf_11_1, inf_11_2, inf_11_3, inf_11_4, inf_11_5, inf_11_6, inf_11_7 // influences for type 11
+
+Outputs:
+output reg [15:0] result // maximal total influence (0-2040)
+output reg done // high when computation complete
+output reg valid // high if valid solution found
+
+Latency: Result valid 200 clock cycles after start asserted.
+
+Behavior:
+1. Sort each type's influences descending (bubble sort network)
+2. Greedy selection:
+   - Take all type 11 (both support)
+   - Pair min(count_01, count_10) of type 01 and 10
+   - Remaining unpaired type 01/10 and all type 00 go to candidate pool
+3. Constraint check: Let a, b = total Alice/Bob supporters, m = total selected
+   - Valid if 2*a >= m AND 2*b >= m AND m > 0
+4. Add top influences from pool until constraints met or pool exhausted
+5. Use state machine: IDLE -> SORT -> SELECT -> VALIDATE -> DONE
+
+Implementation notes:
+- Use 8-entry sorting networks for each type
+- Track counts and accumulated influence
+- Validate constraints after each addition
+- If no valid set exists, result=0

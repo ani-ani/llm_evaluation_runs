@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'visual_parser' that matches top-left corners to bottom-right corners to form valid nested rectangles. The module processes a fixed-size problem with at most 8 corner pairs on an 8x8 grid.
+
+Problem Adaptation:
+- Grid size: 8 rows x 8 columns
+- Max input pairs: 8
+- Coordinates range: 1-8
+- Each corner is a distinct location on the grid
+- Goal: Match top-left to bottom-right such that all formed rectangles are properly nested or disjoint (no partial overlap)
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing
+input [2:0] num_pairs // Number of pairs (1-8)
+input [7:0] tl_valid // Bitmask: tl_valid[i] = 1 if top-left corner i exists
+input [2:0] tl_row [0:7] // Row coordinate for top-left corners
+input [2:0] tl_col [0:7] // Column coordinate for top-left corners
+input [7:0] br_valid // Bitmask: br_valid[i] = 1 if bottom-right corner i exists
+input [2:0] br_row [0:7] // Row coordinate for bottom-right corners
+input [2:0] br_col [0:7] // Column coordinate for bottom-right corners
+
+Outputs:
+output reg [2:0] match_idx [0:7] // match_idx[i] = j means top-left i matches bottom-right j (0-7)
+output reg valid // 1 if valid matching found
+output reg done // High when computation complete
+
+Latency: Max 1000 clock cycles (worst-case exhaustive search)
+
+Behavior:
+1. Reset: Initialize all outputs to 0
+2. On start: Begin exhaustive search for valid matching
+   - Try all permutations of matches (8! max, but limited by num_pairs)
+   - For each permutation, check validity:
+     a) For each pair (i, j): tl_row[i] < br_row[i] AND tl_col[i] < br_col[i]
+     b) For any two pairs (i, j) and (k, l): Check if rectangles are nested or disjoint
+        - Nested: Rect i contains j OR Rect j contains i
+        - Disjoint: No overlap at all
+        - Invalid: Partial overlap (share some area but neither contains the other)
+3. If valid matching found: Set match_idx, valid=1, done=1
+4. If no valid matching after exhaustive search: valid=0, done=1
+
+State Machine: IDLE -> SEARCHING -> DONE
+
+Module should implement:
+- A state machine to control search iteration
+- Registers to store current permutation
+- Combinational logic to check rectangle validity
+- Counter to iterate through permutations
+
+Constraints:
+- Use iterative approach (not recursive)
+- Output format: match_idx[0] corresponds to first top-left in input, etc.
+- Each output index is 0-7, or 0 if no match (though valid=0 implies syntax error)
+- The module should signal syntax error via valid=0 and done=1

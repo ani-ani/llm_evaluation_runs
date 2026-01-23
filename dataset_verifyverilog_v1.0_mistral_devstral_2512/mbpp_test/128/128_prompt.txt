@@ -1,0 +1,134 @@
+module long_words_filter #(
+    parameter MAX_WORD_LEN = 16,
+    parameter DATA_WIDTH = 8
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,                 // Pulse high to clear state and start new list processing
+    input wire [DATA_WIDTH-1:0] char_in, // ASCII character input
+    input wire valid_in,              // High when char_in is valid
+    input wire end_of_word,           // High if this char is the last char of a word (or end of stream)
+    
+    input wire [5:0] n,               // Minimum length threshold
+    
+    output reg match_found,           // High if current word meets criteria
+    output reg word_done,             // High for 1 cycle when word processing is complete
+    output reg [DATA_WIDTH-1:0] char_out, // Echo of input character for matched words
+    output reg char_out_valid         // High when char_out is valid
+);
+
+    // State encoding
+    localparam IDLE = 2'b00;
+    localparam READING = 2'b01;
+    localparam OUTPUTTING = 2'b10;
+
+    reg [1:0] state;
+    reg [5:0] current_len;            // Count of characters in current word
+    reg [DATA_WIDTH-1:0] buffer [0:MAX_WORD_LEN-1]; // Buffer for current word
+    reg [5:0] output_idx;             // Index for reading out buffered word
+
+    integer i;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            match_found <= 0;
+            word_done <= 0;
+            char_out <= 0;
+            char_out_valid <= 0;
+            current_len <= 0;
+            output_idx <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    word_done <= 0;
+                    char_out_valid <= 0;
+                    match_found <= 0;
+                    current_len <= 0;
+                    output_idx <= 0;
+                    
+                    if (start) begin
+                        // Ready for new input stream
+                        state <= IDLE; // Remain idle until first char
+                    end else if (valid_in && char_in != 8'h20) begin
+                        // First char of first word detected (if not starting with space)
+                        buffer[0] <= char_in;
+                        current_len <= 1;
+                        
+                        if (end_of_word) begin
+                            // Single char word
+                            if (1 > n) begin
+                                match_found <= 1;
+                                char_out <= char_in;
+                                char_out_valid <= 1;
+                                state <= OUTPUTTING;
+                                output_idx <= 1; // Next char index to output
+                            end else begin
+                                word_done <= 1;
+                                state <= IDLE;
+                            end
+                        end else begin
+                            state <= READING;
+                        end
+                    end
+                end
+
+                READING: begin
+                    if (valid_in) begin
+                        if (char_in == 8'h20) begin
+                            // Space detected: end of word
+                            // Check length
+                            if (current_len > n) begin
+                                match_found <= 1;
+                                // Output first char immediately
+                                char_out <= buffer[0];
+                                char_out_valid <= 1;
+                                output_idx <= 1;
+                                state <= OUTPUTTING;
+                            end else begin
+                                word_done <= 1;
+                                state <= IDLE;
+                            end
+                        end else begin
+                            // Normal char
+                            if (current_len < MAX_WORD_LEN) begin
+                                buffer[current_len] <= char_in;
+                                current_len <= current_len + 1;
+                            end
+                            
+                            if (end_of_word) begin
+                                // Last char of word
+                                if (current_len + 1 > n) begin
+                                    match_found <= 1;
+                                    char_out <= buffer[0];
+                                    char_out_valid <= 1;
+                                    output_idx <= 1;
+                                    state <= OUTPUTTING;
+                                end else begin
+                                    word_done <= 1;
+                                    state <= IDLE;
+                                end
+                            end
+                            // Else stay in READING
+                        end
+                    end
+                end
+
+                OUTPUTTING: begin
+                    if (output_idx < current_len) begin
+                        // Stream out remaining characters
+                        char_out <= buffer[output_idx];
+                        char_out_valid <= 1;
+                        output_idx <= output_idx + 1;
+                    end else begin
+                        // Finished outputting word
+                        char_out_valid <= 0;
+                        match_found <= 0;
+                        word_done <= 1;
+                        state <= IDLE;
+                    end
+                end
+            endcase
+        end
+    end
+endmodule

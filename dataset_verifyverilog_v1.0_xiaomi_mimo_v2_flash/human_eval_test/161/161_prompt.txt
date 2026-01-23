@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'string_transform' that implements the string transformation logic.
+
+The module processes a fixed-width 16-character string (ASCII bytes). It has two modes:
+1. If the string contains any alphabetic characters (A-Z or a-z), flip the case of all letters (A<->a, B<->b, etc.). Keep non-letters unchanged.
+2. If the string contains NO letters, reverse the entire string.
+
+Interface:
+Inputs:
+  input clk: Clock signal
+  input rst_n: Active-low reset
+  input start: Start computation pulse (high for one cycle)
+  input [127:0] data_in: 16-byte input string. Index 0 (bits 7:0) is the first character of the string. Index 15 (bits 127:120) is the last character.
+
+Outputs:
+  output reg [127:0] result: Output string. 
+  output reg done: High for one cycle when result is valid.
+
+Behavior:
+Use a Finite State Machine (FSM) with states: IDLE, CHECK_LETTERS, TRANSFORM, REVERSE, DONE.
+
+1. IDLE: Wait for start signal.
+2. CHECK_LETTERS: Scan the 16 bytes to check if any byte is a letter (ASCII 'A'-'Z' or 'a'-'z'). Use a flag (has_letter).
+3. If has_letter is true:
+   State: TRANSFORM
+   Logic: Iterate through 16 bytes. If byte is a letter, flip case by XORing with 8'h20 (bit 5). Keep non-letters unchanged.
+4. If has_letter is false:
+   State: REVERSE
+   Logic: Reverse the order of the 16 bytes. Input index 0 becomes output index 15, input 1 -> output 14, etc.
+5. DONE: Assert done signal for one cycle, then return to IDLE.
+
+Constraints:
+- Use 16 character slots (fixed width).
+- Assume input bytes are valid ASCII.
+- Result must be registered.
+- Latency: Max 34 clock cycles (1 to scan, 16 to transform/reverse, 1 to finalize).
+
+Note on Array Access: The input 'data_in' is a packed 128-bit vector. Access byte i using data_in[8*i +: 8].
+
+Testbench Note: The testbench will assign values to data_in by calculating a packed integer.
+Ensure the design synthesizable with standard Verilog.

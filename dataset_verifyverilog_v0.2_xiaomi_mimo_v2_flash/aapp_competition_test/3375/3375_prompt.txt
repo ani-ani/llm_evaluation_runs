@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'count_unicyclic' that counts spanning unicyclic subgraphs in a small graph.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_vertices // number of vertices (1-8)
+input [2:0] num_edges // number of edges (0-28)
+input [5:0] edge_addr // address for edge input
+input [2:0] edge_v1 // first vertex of edge (1-8, 0=invalid)
+input [2:0] edge_v2 // second vertex of edge (1-8, 0=invalid)
+
+Outputs:
+output reg [31:0] result // count modulo 10^9+7
+output reg done // high when computation complete
+output reg busy // high when processing
+
+Specification:
+The module must count the number of spanning unicyclic subgraphs of a given graph. A spanning unicyclic subgraph is a subgraph that:
+1. Contains all V vertices
+2. Is connected (single component)
+3. Contains exactly one cycle
+
+Implementation approach:
+1. Store graph as adjacency matrix (8x8, each bit indicates edge existence)
+2. Use state machine with states: IDLE, LOAD_EDGES, GENERATE_MASKS, VERIFY, UPDATE_RESULT, DONE
+3. In LOAD_EDGES: Store edges into memory based on edge_addr, edge_v1, edge_v2
+4. In GENERATE_MASKS: Iterate through all possible edge subsets (2^E possibilities, but for E≤28 this is too large, so we must use alternative: enumerate spanning trees then add one edge)
+5. Algorithm modification for hardware: 
+   - Since 2^E is infeasible, use Kirchhoff's theorem approach or enumeration of edge combinations with pruning
+   - For small graphs (V≤8, E≤28), we can enumerate all edge subsets of size V (spanning trees require V-1 edges, unicyclic require V edges)
+   - For each subset of V edges:
+     a. Check if it connects all vertices (connectivity check)
+     b. Check if it has exactly V edges (by construction)
+     c. Count cycles (edges - vertices + 1 = 1 cycle)
+     d. If connected and has V edges, it's unicyclic spanning
+6. State machine:
+   - IDLE: Wait for start
+   - LOAD_EDGES: Store up to 28 edges in 28x6bit memory
+   - GENERATE_COMBOS: Generate all combinations of V edges from E edges
+   - CHECK_CONNECTIVITY: Use BFS/DFS on V vertices with V edges
+   - COUNT_CYCLES: Verify e - v + 1 == 1
+   - UPDATE: Add to result if valid
+   - DONE: Set done flag
+
+Special considerations:
+- Since V≤8 and E≤28, maximum combinations C(28,8) is too large for sequential enumeration
+- Alternative: Use Kirchhoff's Matrix Tree Theorem for counting spanning trees, then multiply by (E - (V-1)) for unicyclic
+- But for exact counting with verification, we'll use parallel subset generation with pruning
+- Module interface: Write edges sequentially, then trigger computation
+- Result should be computed modulo 10^9+7 = 0x3B9ACA01
+- Expected latency: ~1000-5000 cycles depending on E and V
+
+Latency: Result valid approximately E*V cycles after start for small graphs.
+Use state machine with states: IDLE, LOAD_EDGES, PREPARE_ENUM, ENUMERATE, VERIFY_SUBSET, UPDATE_RESULT, DONE.

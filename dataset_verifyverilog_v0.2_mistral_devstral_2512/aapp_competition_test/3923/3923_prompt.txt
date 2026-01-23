@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'permutation_generator' that implements a simplified version of the permutation construction problem.
+
+The problem is to find a permutation of 1..N (scaled to N=16) consisting of disjoint cycles of lengths A and B such that the total number of elements is N. If no such permutation exists, output -1 (represented as all 0s).
+
+Module Specifications:
+- Parameter N = 16 (Total elements)
+- Parameter MAX_CYCLES = 16 (Max cycles)
+- Input width: 4 bits (for A, B up to 16)
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [3:0] A // Cycle length A (1-16)
+input [3:0] B // Cycle length B (1-16)
+
+Outputs:
+output reg [3:0] result_addr // Address for the permutation array (0 to 15)
+output reg [3:0] result_val // Value at this address in the permutation
+output reg result_write // High when result_addr and result_val are valid
+output reg done // High when computation is complete
+output reg valid_solution // High if a solution exists, Low otherwise
+
+Latency: The module should take approximately 200-500 clock cycles to find a solution and construct the permutation.
+
+Behavioral Description:
+The module uses a state machine with states: IDLE, FIND_SOLUTION, CONSTRUCT_PERM, DONE.
+1. IDLE: Wait for start signal.
+2. FIND_SOLUTION: Iterate through possible counts of cycles of length A (x from 0 to N/A). For each x, check if (N - x*A) is divisible by B. If yes, store x and y = (N - x*A)/B.
+3. CONSTRUCT_PERM: If a solution (x, y) is found, construct the permutation. 
+   - For each cycle of length L (where L is A or B):
+     - Generate a shifted cycle: [start+1, start+2, ..., start+L-1, start]
+     - Example: Cycle of length 3 starting at 1: [2, 3, 1]
+   - Iterate through the array indices 0 to 15 and write the corresponding permutation value.
+   - If no solution is found, output all 0s for values and set valid_solution to 0.
+4. DONE: Set done high.
+
+Hardware Constraints:
+- Use a small lookup table or state variables to store the counts x and y.
+- Since N=16 is small, the construction logic can be unrolled or handled sequentially.
+- The module must be synthesizable and testable via cocotb.

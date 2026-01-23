@@ -1,0 +1,38 @@
+Design a sequential Verilog module named 'sound_compression' that implements a simplified version of the audio compression problem.
+
+The problem is simplified as follows:
+- Input array size: N=8 elements (instead of 400,000)
+- Max distinct values: 8 (values 0-7)
+- Disk size parameter I determines K = 2^(I*8/N) distinct values allowed (capped at 8)
+- Goal: Find the minimum number of elements to change by selecting a range of K consecutive values (sorted) that maximizes the count of elements preserved.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] data_in // Current element value (0-7)
+input [2:0] I_param // Disk size parameter (effective bits per element, scaled)
+input valid_in // High when data_in is valid
+
+Outputs:
+output reg [5:0] result // Minimum number of elements to change
+output reg done // High when computation complete
+
+Internal Behavior:
+1. Store the input array of 8 elements (3-bit values) into a buffer.
+2. Sort the array (conceptually) - in hardware, we calculate frequency counts of values 0-7.
+3. Calculate K = min(8, 2^I_param). If I_param is 3 or higher, K=8 (all values preserved).
+4. Use a sliding window of size K over the sorted distinct values (0-7) to find the window containing the maximum total frequency count.
+5. Result is N - max_count.
+
+Latency: Result is valid 150 clock cycles after start is asserted.
+
+State Machine States:
+- IDLE: Wait for start signal, initialize buffers.
+- READ: Read 8 input values into a buffer (8 cycles).
+- COUNT: Calculate frequency of each value 0-7 (8 cycles).
+- SLIDING_WINDOW: Calculate sum of frequencies for all possible K-sized windows (max 8 cycles).
+- CALCULATE_RESULT: Compute N - max_sum (1 cycle).
+- DONE: Wait for reset or new start.
+
+The module should use a state machine to coordinate these stages. For the SLIDING_WINDOW stage, unroll the loop for small N (8 values) to find the max sum of K consecutive frequency bins.

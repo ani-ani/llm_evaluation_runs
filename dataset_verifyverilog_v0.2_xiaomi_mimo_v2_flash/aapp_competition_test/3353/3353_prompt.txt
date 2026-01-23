@@ -1,0 +1,28 @@
+Design a sequential Verilog module named 'river_crossing_solver' that finds the minimum total time for P people to cross a river, represented as a graph problem. The problem simplifies to finding edge-disjoint paths from source (-2) to sink (-1) until P paths are found or no more exist.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [3:0] P // Number of people (1-10)
+input [4:0] num_nodes // Number of boulders + banks (max 8)
+input [4:0] num_edges // Number of logs (max 16)
+input [5:0] edges_src [15:0] // Source node of each edge (indices 0 to num_edges-1)
+input [5:0] edges_dst [15:0] // Destination node of each edge (indices 0 to num_edges-1)
+
+Outputs:
+output reg [15:0] total_time // The calculated total time
+output reg [4:0] people_left // Number of people left behind
+output reg done // High when computation is complete
+output reg possible // High if all P people crossed
+
+Specifications:
+- Node indexing: Map -2 (left bank) to 0, -1 (right bank) to 1, and boulders 0..R-1 to 2..R+1. We accept inputs as raw indices but convert internally. For simplicity in this module, we assume inputs `edges_src` and `edges_dst` are already mapped to 0-based indices 0 to N-1, where 0 is source and 1 is sink.
+- The module operates as a state machine with states: IDLE, INIT, FIND_PATH, UPDATE_GRAPH, CHECK_DONE, FINISHED.
+- FIND_PATH state: Performs a Breadth-First Search (BFS) to find the shortest path from node 0 (source) to node 1 (sink) in the current graph. It uses a small internal queue and visited array.
+- UPDATE_GRAPH state: Removes the edges used in the found path from the graph (marks them as used/collapsed).
+- CHECK_DONE state: Checks if P people have crossed. If yes, go to FINISHED. If no path found, go to FINISHED.
+- Total time accumulates path lengths (number of edges).
+- People left behind is P - (number of successfully crossed people).
+- The module must handle up to 8 nodes and 16 edges.
+- Latency: Result valid approximately 1000 clock cycles after start (due to iterative BFS and path removal).

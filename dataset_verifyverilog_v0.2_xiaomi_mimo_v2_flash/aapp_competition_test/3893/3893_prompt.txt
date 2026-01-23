@@ -1,0 +1,46 @@
+Design a combinational Verilog module named 'crazy_town' that calculates the minimum steps to travel between two points in a plane with line roads.
+
+The problem reduces to: Given a line defined by ax + by + c = 0 and two points (x1, y1) and (x2, y2), the points are on opposite sides of the line if (a*x1 + b*y1 + c) and (a*x2 + b*y2 + c) have different signs. Each such line requires 1 step to cross.
+
+The module will process a single line equation and two points. For a system with multiple lines, this module would be instantiated multiple times and the results summed.
+
+Inputs:
+input [15:0] x1, y1  // Coordinates of home (signed 16-bit)
+input [15:0] x2, y2  // Coordinates of university (signed 16-bit)
+input [15:0] a, b, c // Line coefficients (signed 16-bit)
+
+Outputs:
+output separation // 1 if the line separates the points, 0 otherwise
+
+The module should:
+1. Calculate L1 = a*x1 + b*y1 + c (32-bit signed multiplication and addition)
+2. Calculate L2 = a*x2 + b*y2 + c (32-bit signed multiplication and addition)
+3. Determine if signs are different: (L1[31] != L2[31])
+   (Note: This simple check assumes inputs are never exactly on the line, which is guaranteed by the problem statement).
+
+Since the input range is up to 10^6, and we are multiplying two such numbers, the result can be up to 10^12. 16 bits is insufficient (max 32767). We need to use 32-bit arithmetic to prevent overflow.
+
+Module interface:
+module crazy_town (
+    input signed [31:0] x1, y1,
+    input signed [31:0] x2, y2,
+    input signed [31:0] a, b, c,
+    output separation
+);
+
+Internal logic:
+    wire signed [63:0] term1_home = a * x1;
+    wire signed [63:0] term2_home = b * y1;
+    wire signed [63:0] val_home = term1_home + term2_home + c;
+
+    wire signed [63:0] term1_uni = a * x2;
+    wire signed [63:0] term2_uni = b * y2;
+    wire signed [63:0] val_uni = term1_uni + term2_uni + c;
+
+    // Check for different signs (one negative, one positive)
+    // If MSB of val_home != MSB of val_uni, they have different signs.
+    assign separation = (val_home[63] != val_uni[63]);
+
+endmodule
+
+To verify the full problem (summing steps), a wrapper module or testbench logic would sum the 'separation' bits for all N lines.

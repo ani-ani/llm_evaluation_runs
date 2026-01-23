@@ -1,0 +1,69 @@
+Design a sequential Verilog module named 'dial_game' that simulates Luka's analog dial game with scaled parameters.
+
+The module manages 8 dials (N=8), each with values 0-9 (4 bits). It processes up to 8 operations (M=8). The module operates in cycles: on each cycle where 'start' is asserted, it reads a range [A, B], calculates the sum of dials in that range, outputs the sum, and then increments those dials (cyclic 0->9).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High to process the next operation
+input [3:0] A // Start index of range (1-based, 1-8)
+input [3:0] B // End index of range (1-based, 1-8)
+
+Outputs:
+output reg [7:0] sum_out // The calculated sum for the current operation (max sum 8*9=72 fits in 8 bits)
+output reg done // High for one cycle when operation is complete
+
+Internal Logic:
+- Dials: Use 8 registers of 4 bits each to store dial values (initially loaded from an external source or testbench, but for module spec, assume they are initialized to 0 or managed internally). To make it self-contained, let's assume the module has an internal array initialized to a starting configuration, or we rely on the testbench to drive inputs. Let's make the module stateful, handling the increment logic internally.
+- State Machine: IDLE, CALCULATE_SUM, UPDATE_VALUES, DONE.
+- In IDLE: wait for start.
+- In CALCULATE_SUM: iterate from A to B, accumulate values. This takes several cycles (max 8 cycles).
+- In UPDATE_VALUES: iterate from A to B, increment values (handle wrap-around 9->0). Takes several cycles.
+- In DONE: assert done signal for 1 cycle.
+
+Behavior:
+1. When start is high, transition to CALCULATE_SUM.
+2. Calculate sum: sum = sum + dial[i] for i in [A, B].
+3. Output sum.
+4. Transition to UPDATE_VALUES.
+5. Update dials: dial[i] = (dial[i] + 1) % 10 for i in [A, B].
+6. Transition to DONE, assert done.
+7. Return to IDLE.
+
+Constraints:
+- N=8, M=8 (implied by internal state or testbench usage).
+- Sum fits in 8 bits (8*9=72).
+- Indices A, B are 1-based. Convert to 0-based internally (index = A-1).
+
+Detailed Specification:
+- Use parameters for N=8.
+- Internal state: `reg [3:0] dials [0:7];` (8 dials).
+- Counter for index iteration during sum/update.
+- Sum register to accumulate.
+- FSM states: IDLE (3'b001), CALC_SUM (3'b010), UPDATE (3'b100), FINISH (3'b001? No, distinct). Use 3 states actually: IDLE, OP (handling both sum and update sequentially or split), DONE. Let's split for clarity: IDLE, SUMMING, UPDATING, COMPLETE.
+- Timing: 
+  - Start -> Summing (set current index to A-1, sum=0)
+  - Summing loop: Add dials[current], increment current. Loop until current > B-1. Then transition to UPDATING.
+  - UPDATING loop: Increment dials[current], handle wrap 9->0. Increment current. Loop until current > B-1. Then transition to COMPLETE.
+  - COMPLETE: assert done, wait for start to go low, then IDLE.
+
+Testbench Note: The testbench will need to initialize the dials. Since the module spec doesn't explicitly have a 'load' input for initial config, we should probably add one or assume the testbench uses the internal register initialization (via parameter or Verilog initial block). However, a better design for a standard benchmark allows loading data. Let's add an 'init_dials' input array to load the starting configuration to make verification possible. Actually, usually, one would have a separate input for the initial dial values, but the problem statement says 'setting the dials... then writes...'. For the sake of a clean module interface, let's add an input `load_init` and `init_val` to load the array, or just document that the testbench must initialize the module's internal `dials` array via hierarchical references if no load port exists. To be robust, let's add a load port.
+
+Revised Interface:
+Inputs: clk, rst_n, start, load_init, init_val [7:0][3:0], A, B.
+
+Wait, 'init_val' is huge. Let's stick to the core requirements. The problem implies the dials are already set. In Verilog simulation, we can initialize registers. I will specify the module without a load port, but the testbench will need to handle initialization (either via Verilog `initial` blocks if I was writing Verilog, but since I am writing a spec for an LLM, I should be clear). Let's assume the dials are initially all 0, and the testbench will account for this or I should add a load mechanism. 
+
+Let's add a load mechanism to be flexible. Inputs: `load`, `load_addr` (3 bits), `load_data` (4 bits). This makes it easy to initialize 0-7.
+
+Final Spec Summary:
+- Module: `dial_game`
+- Interface: clk, rst_n, start, A[3:0], B[3:0], load, load_addr[2:0], load_data[3:0]
+- Internal: dials[0:7] (4 bits each)
+- States: IDLE, SUMMING, UPDATING, DONE
+- Logic: 
+  - IDLE: if start, go SUMMING. if load, write dials[load_addr] <= load_data.
+  - SUMMING: iterate index from A-1 to B-1, accumulate sum. 
+  - UPDATING: iterate index from A-1 to B-1, increment dials[index] (wrap 9->0).
+  - DONE: assert done.
+- Output: sum_out (8 bits), done.

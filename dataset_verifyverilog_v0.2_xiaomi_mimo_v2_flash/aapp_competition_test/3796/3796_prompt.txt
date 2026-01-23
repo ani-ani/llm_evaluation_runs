@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'beautiful_rectangle' that constructs the maximal 'beautiful' rectangle from a fixed set of input integers.
+
+**Problem Adaptation for Hardware:**
+- The input array size is fixed to a maximum of 32 integers (parameter `MAX_N = 32`).
+- Values are 8-bit integers.
+- The module implements a state machine to:
+  1. Sort and count frequencies of unique numbers (simplified bubble sort).
+  2. Determine optimal dimensions (rows `P`, columns `Q`) maximizing `P*Q` such that `P <= Q` and total usable cells (sum of `min(count, P)` for all numbers) >= `P*Q`.
+  3. Fill the `P x Q` matrix using the diagonal offset method to ensure no row/column duplicates.
+
+**Inputs:**
+- `clk`: Clock signal.
+- `rst_n`: Active-low reset.
+- `start`: Start computation (pulse).
+- `data_in [MAX_N-1:0][7:0]`: Input array of integers (values 1-255).
+- `n_valid [5:0]`: Number of valid inputs in `data_in` (1 to 32).
+
+**Outputs:**
+- `done`: High when computation is complete.
+- `rows [5:0]`: Number of rows in the output rectangle.
+- `cols [5:0]`: Number of columns in the output rectangle.
+- `matrix_out [16:0][16:0][7:0]`: Output matrix (max 16x16). Valid data is located in `rows` x `cols` area.
+
+**Behavioral Description:**
+The module uses a multi-stage FSM:
+**Stage 1 (Cycle 1):** Pass 1 Bubble Sort (shift larger values right).
+**Stage 2 (Cycle 2):** Pass 2 Bubble Sort.
+**Stage 3 (Cycle 3):** Pass 3 Bubble Sort (3 passes partially sort 32 items enough for frequency counting).
+**Stage 4 (Cycle 4):** Count frequencies of sorted values into a temporary buffer.
+**Stage 5 (Cycle 5):** Determine P and Q. Iterate `p` from 8 down to 1. Calculate `q` based on available cells using the frequency counts. Select `p*q` maximum.
+**Stage 6 (Cycle 6):** Fill Matrix. Iterate through values and place them into `matrix_out` at calculated positions. Position for the k-th occurrence of a value is `row = k % p`, `col = (k + (k / p)) % q`.
+
+**Constraints:**
+- `MAX_N` = 32.
+- Output matrix dimensions `rows` and `cols` will not exceed 16.
+- Use combinational logic for calculations within FSM states where possible, waiting for `clk` edges to advance stages.
+- Ensure `matrix_out` is cleared/reset if necessary before filling.
+
+**Clock Cycles:**
+Expect ~100-200 clock cycles for full computation on 32 inputs.

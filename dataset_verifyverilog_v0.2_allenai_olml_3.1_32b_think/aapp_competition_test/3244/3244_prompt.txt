@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'ring_reconstruct' that reconstructs the original ring from the sum ring.
+
+The module solves a system of linear equations for a ring where B[i] = A[i-1] + A[i] + A[i+1] (indices mod N).
+
+For the simplified implementation:
+- N = 8 (fixed maximum)
+- Each number is 32-bit unsigned integer (max 10^9 fits in 30 bits)
+- Only 3 valid numbers used (adjustable via parameter)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [2:0] valid_count // number of valid elements (3-8)
+input [31:0] b0, b1, b2, b3, b4, b5, b6, b7 // sum ring values
+
+Outputs:
+output reg [31:0] a0, a1, a2, a3, a4, a5, a6, a7 // original ring
+output reg done // high when computation complete
+output reg error // high if no solution found
+
+Latency: 15 clock cycles after start (computes in multiple phases).
+
+Behavioral Description:
+Phase 1 (Cycle 1-2): Initialize.
+- Set a0_temp = 0
+- Compute a1_temp = b0 - a0_temp
+- Continue forward: a[i+1] = b[i] - a[i] - a[i-1]
+
+Phase 2 (Cycle 3-5): Check constraints.
+- For N=8 (even): The last equation must close the ring: a[7] + a[0] + a[1] should equal b[7]
+- This gives constraint: a[7] + a[0] + a[1] - b[7] = 0
+- From our computations, we get: a[7] = b[6] - a[6] - a[5]
+- The difference d = (a[7] + a[0] + a[1] - b[7]) tells us the adjustment needed.
+
+Phase 3 (Cycle 6-10): Compute corrected values.
+- If N is odd: d must be 0, proceed with current values
+- If N is even: we need to add alternating +k and -k pattern
+- Compute k = d / (N/2) = d / 4 for N=8
+- Add k to indices 0,2,4,6 and subtract k from indices 1,3,5,7
+- Ensure all values stay non-negative (check and flag error if not)
+
+Phase 4 (Cycle 11-15): Output.
+- Present final values on output registers
+- Set done = 1
+
+Implementation uses:
+- A state machine with states: IDLE, INIT, CHECK, ADJUST, OUTPUT
+- Internal registers for intermediate values
+- Simple arithmetic operations (subtraction, addition)
+- For even N, the adjustment pattern ensures ring closure
+
+The solution works because:
+- For odd N: there's one constraint that forces a[0]=0
+- For even N: we have N constraints but only N-1 independent, so we can choose a[0]=0 and adjust the rest with a pattern
+
+Use parameter N=8, WIDTH=32.

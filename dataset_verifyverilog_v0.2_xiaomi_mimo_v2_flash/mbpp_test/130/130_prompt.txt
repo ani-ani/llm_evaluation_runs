@@ -1,0 +1,52 @@
+Design a combinational Verilog module named 'max_frequency' that finds the item with maximum frequency in a fixed-size array.
+
+Inputs:
+input [7:0] data_in [0:15] // 16 elements, each 8-bit unsigned integer
+
+Outputs:
+output [7:0] max_value // The value that appears most frequently
+output [3:0] max_count // The frequency count (max 16, so 4 bits suffice)
+
+Behavioral Description:
+The module should count occurrences of each unique 8-bit value in the 16-element input array. Since values are 8-bit (0-255), we cannot build a full 256-entry counter array in hardware efficiently. Instead, use a smart approach:
+
+1. Extract unique values: The input has 16 elements, but typically fewer unique values. We need to identify up to 16 unique values and count each.
+
+2. Implement a two-stage approach:
+   - Stage 1: For each position i (0 to 15), compare data_in[i] with all previously seen values. If it matches a stored unique value, increment that counter. If no match, add it as a new unique value.
+   - Stage 2: After all counts are computed, find the maximum count and corresponding value.
+
+3. For hardware efficiency with small N=16:
+   - Use an array of 16 registers to store unique values (8-bit each)
+   - Use an array of 16 counters (4-bit each) for frequencies
+   - Use a priority encoder or cascaded comparators to find the max
+
+4. Since this is combinational, we unroll the logic:
+   - Initialize all counters to 0
+   - For each element (parallel processing): Check all unique value slots for match
+   - Track the maximum using a tree of comparators
+
+5. Algorithm:
+   - Create 16 value registers V[0:15] and 16 counter registers C[0:15]
+   - Initialize all C[i] = 0 and V[i] = 0
+   - For each input element e = data_in[i]:
+     - Compare e with all V[j] in parallel
+     - If e == V[j] for some j, increment C[j]
+     - If no match, find first empty slot (C[k] == 0) and set V[k] = e, C[k] = 1
+   - After processing all 16 elements, find max in C array
+   - Output: max_value = V[argmax(C)], max_count = max(C)
+
+6. Implementation details:
+   - Use 16-bit one-hot encoding for finding matches
+   - Use a cascade of 8-bit comparators for each element comparison
+   - Use a max reduction tree for finding maximum count
+   - Resolve ties: choose the first occurrence (lowest index)
+
+7. Latency: Purely combinational, no clock needed
+
+8. Edge cases:
+   - All same values: return that value with count 16
+   - All different: return any value with count 1
+   - Multiple values with same max count: return the one appearing first in array
+
+The module must be fully synthesizable and use only combinational logic.

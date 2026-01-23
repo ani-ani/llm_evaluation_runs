@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'tram_scheduling' that computes the latest departure time from hotel (stop 0) to reach meeting (stop n-1) on time.
+
+Problem Adaptation:
+- Maximum 8 stops (n <= 8)
+- Maximum 8 tram lines (m <= 8)
+- Meeting time s <= 255 seconds
+- Departure times t0 and periods p are scaled to 8-bit values (0-255)
+- Travel durations d <= 255 seconds
+- Use BFS from destination backwards to compute latest arrival times at each stop
+- Tram lines are bidirectional for connectivity (we traverse edges backwards)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] s // meeting start time
+input [7:0] num_stops // number of stops (n)
+input [7:0] num_lines // number of tram lines (m)
+input [7:0] t0 [0:7] // first departure times for each line
+input [7:0] p [0:7] // periods for each line
+input [7:0] d [0:7] // travel durations for each line
+input [2:0] u [0:7] // departure stops (source)
+input [2:0] v [0:7] // arrival stops (destination)
+
+Outputs:
+output reg [7:0] latest_departure // latest departure time from stop 0
+output reg valid // high when result is valid
+output reg impossible // high if destination unreachable
+
+Behavior:
+The module implements a reverse BFS algorithm:
+1. Initialize: latest_arrival[n-1] = s, all other stops = 0
+2. For iterations (max 8 iterations):
+   - For each tram line (i = 0 to 7):
+     - Check if we can catch this tram going backwards: if v[i] can reach u[i]
+     - Latest tram departure from u[i] must be: departure_time <= latest_arrival[v[i]] - d[i]
+     - Find the latest valid departure: t0[i] + k*p[i] <= target_time
+     - Update latest_arrival[u[i]] = max(current_value, departure_time + d[i])
+3. After iterations, check if stop 0 has a valid arrival time
+4. The latest departure from stop 0 is latest_arrival[0] - any necessary travel time
+
+State Machine:
+- IDLE: Wait for start signal
+- INIT: Initialize latest_arrival array
+- PROCESSING: Run BFS iterations (one iteration per clock cycle)
+- UPDATE: Check each tram line and update arrival times
+- DONE: Compute final result and set valid flag
+
+Special handling for departure time calculation:
+For a tram with t0, p, d going from u to v:
+We want latest departure from u such that arrival at v <= target
+Departure must satisfy: t0 + k*p <= target - d
+Latest valid k = floor((target - d - t0) / p)
+If target - d < t0, no valid departure
+
+Output Format:
+latest_departure represents the time to leave stop 0
+If impossible flag is set, result is invalid

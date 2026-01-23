@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'chef_dinner_counter' that counts the number of valid dinner experiences.
+
+Problem Adaptation:
+- Input constraints: r <= 16 ingredients, s,m,d <= 8 dishes per course, n <= 16 incompatibilities
+- Each dish has up to 8 ingredients
+- Brand counts are 1-100 (max 0x64)
+- Output the count if <= 1,000,000 (10^6), otherwise output 0 (scaled from 10^18)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [5:0] r_num // number of ingredients (1-16)
+input [3:0] s_num, m_num, d_num // number of dishes per course (1-8)
+input [3:0] n_num // number of incompatibility pairs (0-16)
+input [6:0] brands [0:15] // brand counts for ingredients 1-16 (1-100 each)
+input [7:0] dish_ing_count [0:23] // number of ingredients per dish (max 8)
+input [3:0] dish_ingredients [0:191] // flattened array of ingredients for all dishes, max 24 dishes * 8 ingredients
+input [5:0] incompat_dish1 [0:15] // first dish index in incompatibility pair
+input [5:0] incompat_dish2 [0:15] // second dish index in incompatibility pair
+
+Outputs:
+output reg [31:0] result // final count or 0 if too many
+output reg done // high when computation complete
+output reg too_many_flag // high if count exceeded limit
+
+Behavior:
+The module should iterate through all valid triplets (starter i, main j, dessert k) where:
+1. Dishes are within bounds (i < s_num, j < m_num, k < d_num)
+2. No incompatibility exists between any pair in the triplet
+3. For each valid triplet, calculate product of brands for union of ingredients
+   - If an ingredient appears in multiple dishes, count its brand only once
+   - Multiply all unique ingredient brand counts
+4. Sum all triplet products
+5. If sum > 1,000,000 or if any product > 1,000,000, set result=0 and too_many_flag=1
+
+Use state machine with states: IDLE, CHECK_COMPAT, CALC_PRODUCT, SUM_UP, DONE.
+Allow maximum 2000 clock cycles for computation.
+Specify latency: Result valid 2000 clock cycles after start asserted.

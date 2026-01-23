@@ -1,0 +1,65 @@
+Design a sequential Verilog module named 'luggage_speed_solver' that computes the maximum speed v that prevents collisions on a circular conveyor belt.
+
+Problem Adaptation:
+- Maximum N = 8 luggage items (original: 1000)
+- Maximum L = 16 meters (original: 1000)
+- All values use Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Speed range: 0.1 to 10.0 m/s
+- Collision threshold: 1.0 meter spacing on circular belt
+
+Module Interface:
+Inputs:
+- input clk: Clock signal
+- input rst_n: Active-low reset
+- input start: Start computation
+- input [5:0] num_luggage: Number of luggage items (1-8)
+- input [7:0] belt_length: Circular belt length in meters (1-16)
+- input [31:0] positions_0 through positions_7: Array of luggage positions in Q16.16 format
+
+Outputs:
+- output reg [31:0] max_speed: Maximum valid speed in Q16.16 format
+- output reg valid: High when result is valid
+- output reg no_fika: High when no valid speed exists
+
+Algorithm Specification:
+The module implements binary search over the speed range [0.1, 10.0] m/s with Q16.16 arithmetic.
+
+State Machine:
+- IDLE: Wait for start signal
+- INIT: Initialize binary search bounds (low=0.1, high=10.0)
+- CHECK_SPEED: Test if current mid-speed is valid
+- EVALUATE: Check all luggage pairs for collision
+- UPDATE_BOUNDS: Update binary search based on collision test
+- DONE: Output result
+
+Collision Check Logic:
+For each pair of luggage (i, j):
+1. Calculate drop time difference: dt = |positions[i] - positions[j]| / v
+2. Calculate circular positions after dropping: p_i = positions[i] + v * dt, p_j = positions[j] + v * dt
+3. Normalize to circular belt: use modulo L
+4. Check distance on circle: min(|p_i - p_j|, L - |p_i - p_j|)
+5. If distance < 1.0 meter, collision occurs
+
+For sequential implementation:
+- Use nested loops to check all pairs (8 items = 28 pairs max)
+- Each speed test takes fixed cycles
+- Binary search iterations: max 40 iterations for 10^-9 precision
+
+Fixed-Point Arithmetic:
+- All operations in Q16.16 format
+- Division: use iterative approximation or pre-computed reciprocal
+- Multiplication: result >> 16 (discard lower 16 bits)
+- Comparison: direct integer comparison
+
+Implementation Details:
+- Use a state machine to control binary search flow
+- Implement a pair-checker sub-module with counters
+- Speed increment/decrement: use fixed step (0.001 * 65536 = 65)
+- Binary search termination: when high - low < epsilon (epsilon = 10^-9 * 65536)
+
+Output Format:
+- max_speed: Q16.16 format, multiply by 1/65536 to get decimal
+- Example: 2.0 m/s = 0x00020000
+- Example: 0.5 m/s = 0x00008000
+
+Latency: Result valid after approximately 1000-2000 clock cycles (depends on implementation)

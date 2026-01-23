@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'penguin_walkways' that counts the number of valid plaque configurations for the penguin walk problem.
+
+The module calculates: Result = (k^(k-1) * (n-k)^(n-k)) mod 1000000007.
+
+Constraints for hardware implementation:
+- n is scaled to 16 bits (0 to 65535)
+- k is scaled to 4 bits (1 to 8)
+- Modulus M = 1000000007 (fits in 30 bits)
+- Result fits in 32 bits
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation pulse
+input [15:0] n // Scaled number of houses (0-65535)
+input [3:0] k // Number of connected houses (1-8)
+
+Outputs:
+output reg [31:0] result // The final count modulo 1000000007
+output reg done // High when computation is complete
+
+Module Behavior:
+The module uses a state machine to perform modular exponentiation.
+It computes two factors:
+1. Factor A = k^(k-1) mod M
+2. Factor B = (n-k)^(n-k) mod M
+Final Result = (Factor A * Factor B) mod M
+
+State Machine States:
+- IDLE: Wait for start signal. Reset internal registers.
+- SETUP_A: Initialize calculation of k^(k-1). Set base = k, exponent = k-1.
+- CALC_A: Binary exponentiation loop for Factor A. Uses a counter for exponent bits.
+- SETUP_B: Initialize calculation of (n-k)^(n-k). Set base = n-k, exponent = n-k.
+- CALC_B: Binary exponentiation loop for Factor B.
+- MULTIPLY: Calculate (Factor A * Factor B) mod M.
+- DONE: Set done signal high.
+
+Latency: Result valid approximately 400 clock cycles after start asserted (worst case for binary exponentiation with 16-bit exponent). Ensure the testbench provides enough clock cycles.
+
+Internal Logic:
+- Use 32-bit registers for intermediate calculations (base, result, exponent, product).
+- Handle modulo operations: (a * b) mod M can be done by checking for overflow before subtraction, or using a larger accumulator if available, but standard 32-bit logic is preferred.
+- In CALC states: If LSB of exponent is 1, multiply result by base modulo M. Then square base modulo M and shift exponent right by 1.
+
+Note: The state machine should be robust to inputs where k=1 (exponent 0) or n=k (exponent 0 for second term). The result of x^0 should be 1.

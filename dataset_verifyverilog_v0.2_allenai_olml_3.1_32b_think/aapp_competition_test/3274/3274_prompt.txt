@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'torpedo_dodger' that implements a pathfinding algorithm to avoid obstacles (ships) on a 2D grid.
+
+The module should trace a path from (0,0) upwards for a fixed duration N=16, maintaining a range of valid x-coordinates reachable at each step. Obstacles are fixed line segments defined by start x, end x, and y-coordinate.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [5:0] ship_x1 [0:7], ship_x2 [0:7], ship_y [0:7] // 8 ships, max x=15, y=15
+input [3:0] num_ships // Number of valid ships (0 to 8)
+
+Outputs:
+output reg [15:0] path_data // Concatenated instructions (1 bit per step: 0=straight, 1=turn)
+output reg done // High when computation complete
+output reg possible // High if path found
+
+Behavior:
+1. Maintain current valid range [L, R] of x-coordinates at current time 't'.
+2. At each step, the new range is [L-1, R+1] (clamped to [-N, N]).
+3. If a ship exists at height 't', intersect the range with the ship's interval complement.
+4. If range becomes empty (L > R), signal impossible.
+5. Trace back to reconstruct a single path: for each step from N-1 to 0, pick a valid predecessor x (either x, x-1, or x+1 from previous step) that stays within the valid range of that step.
+6. Output path as a 16-bit vector where bit i corresponds to move at step i (0 for straight, 1 for turn).
+
+Latency: 256 clock cycles after start.
+
+States: IDLE, BUILD_RANGES, CHECK_POSSIBLE, TRACE_PATH, COMPLETE.

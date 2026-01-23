@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'producer_routing' that solves the maximum producer selection problem for a factory network.
+
+The system has:
+- K producers (max 8) at junctions 1 to K
+- N junctions (max 8)
+- M directed conveyor belts
+- Warehouse at junction N
+
+Each producer j produces items at times t = x*K + j (integers x >= 0). Items travel along paths taking 1 minute per edge. Two producers are compatible if they can run simultaneously without any conveyor belt carrying two items at the same time.
+
+Key insight: If two producers P1 and P2 share a conveyor belt, their arrival times differ by (path_len_to_shared_edge(P2) - path_len_to_shared_edge(P1)). If this difference is ODD, they interleave (no collision). If EVEN, they collide. 
+
+We need to find the maximum subset of producers that can run simultaneously without collisions.
+
+Simplified Algorithm:
+1. For each producer (1 to K), find a path to junction N. Use BFS to find shortest path.
+2. For each producer pair (i, j), check if they are compatible:
+   - If they share any edge, calculate distance from source to that edge
+   - If distance difference is even, they collide (incompatible)
+   - If no shared edges, they are compatible
+3. Find maximum independent set in compatibility graph (max clique in complement graph).
+   Since K <= 8, use brute force bitmask checking.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] K // number of producers (1-8)
+input [2:0] N // number of junctions (1-8)
+input [5:0] M // number of conveyor belts (0-1000)
+input [2:0] edge_a // edge source for current M input
+input [2:0] edge_b // edge destination for current M input
+input edges_valid // high when edge input is valid
+input edges_done // high when all edges have been input
+
+Outputs:
+output reg [2:0] max_producers // maximum number of producers that can run
+output reg done // high when computation complete
+
+Latency: Approximately 2000 clock cycles (sufficient for K=8, N=8, M=1000).
+
+Internal Behavior:
+- State machine: IDLE -> LOAD_EDGES -> BUILD_PATHS -> CHECK_COMPATIBILITY -> FIND_MAX_SET -> DONE
+- Use BRAM-style storage for adjacency matrix (8x8 bits)
+- Use BFS for path finding (pipelined)
+- Use popcount for checking independent sets
+
+The module must handle streaming edge inputs (M may be up to 1000, but graph is small).
+Specify all internal signal widths precisely.

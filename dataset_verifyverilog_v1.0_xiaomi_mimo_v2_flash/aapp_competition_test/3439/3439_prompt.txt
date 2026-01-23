@@ -1,0 +1,77 @@
+module baltic_drain (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [127:0] grid_data, // 16 cells, each 8 bits, row-major: cell (i,j) at bits [8*(i*4+j)+7:8*(i*4+j)]
+    input wire [1:0] drain_row,
+    input wire [1:0] drain_col,
+    output reg [15:0] result,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 2'd0;
+    localparam CALC_LOOP = 2'd1;
+    localparam DONE = 2'd2;
+
+    // Registers
+    reg [1:0] state;
+    reg [3:0] idx; // 0-15
+    reg signed [7:0] grid_reg [0:15]; // stored grid values
+    reg signed [7:0] drain_alt;
+    reg [15:0] sum_reg;
+
+    integer i;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            idx <= 0;
+            sum_reg <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        // Load grid into registers
+                        for (i = 0; i < 16; i = i + 1) begin
+                            grid_reg[i] <= grid_data[8*i +: 8];
+                        end
+                        // Store drain altitude
+                        drain_alt <= grid_data[8*(drain_row * 4 + drain_col) +: 8];
+                        // Initialize
+                        sum_reg <= 0;
+                        idx <= 0;
+                        state <= CALC_LOOP;
+                    end
+                end
+
+                CALC_LOOP: begin
+                    if (idx < 16) begin
+                        if (grid_reg[idx] < 0) begin
+                            // Compute drained volume for this cell
+                            if (-grid_reg[idx] < -drain_alt)
+                                sum_reg <= sum_reg + (-grid_reg[idx]);
+                            else
+                                sum_reg <= sum_reg + (-drain_alt);
+                        end
+                        idx <= idx + 1;
+                    end else begin
+                        result <= sum_reg;
+                        done <= 1;
+                        state <= DONE;
+                    end
+                end
+
+                DONE: begin
+                    done <= 0;
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

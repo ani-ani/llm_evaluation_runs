@@ -1,0 +1,122 @@
+module knight_placement(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] n,
+    output reg [7:0] x,
+    output reg [7:0] y,
+    output reg [7:0] index,
+    output reg valid,
+    output reg done
+);
+
+// Internal registers
+reg [7:0] groups;
+reg [7:0] remainder;
+reg [7:0] group_counter;
+reg [1:0] step_counter;
+reg [7:0] count;
+reg [2:0] state;
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam OUTPUT = 3'b001;
+
+// Combinational logic for groups and remainder
+always @(*) begin
+    if (n <= 3) begin
+        groups = (n >= 1) ? 1 : 0;
+        remainder = n - (groups * 3);
+    end else if (n <= 6) begin
+        groups = 2;
+        remainder = n - 6;
+    end else if (n <= 9) begin
+        groups = 3;
+        remainder = n - 9;
+    end else if (n <= 12) begin
+        groups = 4;
+        remainder = n - 12;
+    end else if (n <= 15) begin
+        groups = 5;
+        remainder = n - 15;
+    end else if (n <= 16) begin
+        groups = 5;
+        remainder = n - 15;
+    end else begin
+        groups = 0;
+        remainder = 0;
+    end
+end
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        x <= 8'b0;
+        y <= 8'b0;
+        index <= 8'b0;
+        valid <= 1'b0;
+        done <= 1'b0;
+        count <= 8'b0;
+        group_counter <= 8'b0;
+        step_counter <= 2'b0;
+    end else begin
+        case (state)
+            IDLE: begin
+                valid <= 1'b0;
+                done <= 1'b0;
+                count <= 8'b0;
+                group_counter <= 8'b0;
+                step_counter <= 2'b0;
+                if (start && n != 0) begin
+                    state <= OUTPUT;
+                end
+            end
+
+            OUTPUT: begin
+                if (count < n) begin
+                    valid <= 1'b1;
+                    index <= count;
+                    
+                    if (group_counter < groups) begin
+                        // Group phase
+                        case (step_counter)
+                            2'b00: begin
+                                x <= 2 * group_counter;
+                                y <= 8'b0;
+                            end
+                            2'b01: begin
+                                x <= 2 * group_counter + 1;
+                                y <= 8'b0;
+                            end
+                            2'b10: begin
+                                x <= 2 * group_counter + 1;
+                                y <= 8'd3;
+                            end
+                        endcase
+                        
+                        step_counter <= step_counter + 1;
+                        if (step_counter == 2'b10) begin
+                            group_counter <= group_counter + 1;
+                            step_counter <= 2'b00;
+                        end
+                    end else begin
+                        // Remainder phase
+                        x <= 2 * groups + (count - 3 * groups);
+                        y <= 8'b0;
+                    end
+                    
+                    count <= count + 1;
+                end else begin
+                    valid <= 1'b0;
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

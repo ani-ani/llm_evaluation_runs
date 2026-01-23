@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'multi_knapsack_dp' that computes the maximum value of jewels for knapsack sizes 1 to k using dynamic programming.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] jewel_size // Size of the current jewel (scaled down)
+input [7:0] jewel_value // Value of the current jewel (scaled down)
+input valid_in // High when jewel data is valid
+output reg [7:0] current_max_value // Max value for current knapsack size
+output reg [3:0] current_size // Current knapsack size being processed (1 to k)
+output reg done // High when computation for all sizes 1 to k is complete
+output reg result_valid // High when current_max_value is valid
+
+Behavior:
+The module implements the classic 0/1 knapsack DP algorithm (dp[s] = max(dp[s], dp[s - jewel_size] + jewel_value)) for multiple capacities. Since we are in hardware, we will process items one by one. We need to maintain a DP table for sizes 1 to k. Since k is small (scaled to 16), we can store this in registers.
+
+State Machine States:
+1. IDLE: Wait for start signal. When start goes high, initialize DP array to zeros.
+2. READ_JEWELS: Wait for valid_in to receive jewel data. On valid_in, transition to UPDATE state.
+3. UPDATE: Iterate through knapsack sizes from k down to jewel_size (reverse order for 0/1 knapsack). Update dp[s] = max(dp[s], dp[s - jewel_size] + jewel_value). Since this is a loop, we can implement a counter logic. This takes k cycles.
+4. OUTPUT: After processing all jewels, we need to output dp[1], dp[2], ..., dp[k] sequentially. The module should iterate current_size from 1 to k, reading out the values.
+5. DONE: Set done flag high.
+
+Constraints:
+- k (knapsack capacity) is max 16.
+- Jewel sizes and values are 8-bit integers (scaled down from original problem).
+- Total number of jewels is max 8 (scaled down).
+
+The module should operate as a stream processor: feed jewels one by one with valid_in, then trigger output sequence.
+
+Latency: The OUTPUT state will take k cycles to serialize the results. The UPDATE state takes k cycles per jewel. Total latency depends on number of jewels.
+
+Output Format: The 'current_max_value' and 'current_size' should be valid when 'result_valid' is high during the OUTPUT phase.

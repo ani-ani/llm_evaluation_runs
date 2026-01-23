@@ -1,0 +1,106 @@
+module average_of_cube (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] n,           // n in range 1-8
+    output reg [31:0] result,     // Fixed-point Q16.16 format
+    output reg done
+);
+
+    // Internal registers
+    reg [2:0] counter;            // Current number i (1 to n)
+    reg [31:0] accumulator;       // Sum of cubes
+    reg [2:0] divisor;            // Store n for division
+    reg [1:0] state;              // State machine
+    reg [4:0] div_counter;        // Division cycle counter
+    
+    // Division shift register for Q16.16
+    reg [47:0] dividend;          // {accumulator, 16'b0} for division
+    reg [31:0] quotient;
+    
+    // State definitions
+    localparam IDLE = 2'd0;
+    localparam ACCUMULATE = 2'd1;
+    localparam DIVIDE = 2'd2;
+    localparam COMPLETE = 2'd3;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            counter <= 3'd0;
+            accumulator <= 32'd0;
+            divisor <= 3'd0;
+            state <= IDLE;
+            done <= 1'b0;
+            result <= 32'd0;
+            div_counter <= 5'd0;
+            dividend <= 48'd0;
+            quotient <= 32'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start && n >= 3'd1) begin
+                        counter <= 3'd1;           // Start from i=1
+                        accumulator <= 32'd0;
+                        divisor <= n;
+                        state <= ACCUMULATE;
+                    end
+                end
+                
+                ACCUMULATE: begin
+                    // Calculate i³ and add to accumulator
+                    if (counter <= divisor) begin
+                        // i³ = i * i * i
+                        accumulator <= accumulator + (counter * counter * counter);
+                        counter <= counter + 3'd1;
+                    end else begin
+                        // Done accumulating, prepare for division
+                        dividend <= {accumulator, 16'd0};  // Shift left 16 for Q16.16
+                        quotient <= 32'd0;
+                        div_counter <= 5'd0;
+                        state <= DIVIDE;
+                    end
+                end
+                
+                DIVIDE: begin
+                    // Simple shift-subtract division (16 cycles for precision)
+                    if (div_counter < 5'd16) begin
+                        // Shift left
+                        quotient <= quotient << 1;
+                        dividend <= dividend << 1;
+                        
+                        // Check if we can subtract divisor
+                        if (dividend[47:16] >= {29'd0, divisor}) begin
+                            dividend[47:16] <= dividend[47:16] - {29'd0, divisor};
+                            quotient <= quotient + 32'd1;
+                        end
+                        
+                        div_counter <= div_counter + 5'd1;
+                    end else begin
+                        // Division complete
+                        result <= quotient;
+                        state <= COMPLETE;
+                    end
+                end
+                
+                COMPLETE: begin
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule
+
+// Interface Specification:
+// - Clock: clk (rising edge)
+// - Reset: rst_n (active low, synchronous)
+// - Start: pulse high for 1 cycle to begin
+// - Input n: 3-bit value 1-8
+// - Output result: 32-bit Q16.16 fixed-point
+// - Done: pulses high for 1 cycle when complete
+// - Latency: ~18-20 cycles max (8 accumulations + 16 division cycles)

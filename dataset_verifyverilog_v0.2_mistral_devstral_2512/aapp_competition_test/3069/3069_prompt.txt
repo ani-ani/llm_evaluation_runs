@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'bracket_validator' that checks if a bracket sequence can be made valid by at most one segment inversion.
+
+Problem Adaptation:
+- Input string length: Fixed at 16 characters max (original up to 5000)
+- Brackets represented as byte array: '(' = 8'h28, ')' = 8'h29
+- Check all possible segment inversions [l,r] where l and r are 0-based indices from 0 to 15
+- Output 'possible' if original is valid OR any single inversion makes it valid
+
+Module Interface:
+module bracket_validator (
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0][7:0] bracket_str, // 16 characters, 8-bit ASCII each
+    input [4:0] str_len,           // Actual length (0-16)
+    output reg result,             // 1=possible, 0=impossible
+    output reg done               // High when computation complete
+);
+
+Implementation Details:
+1. Use a state machine with states: IDLE, CHECK_ORIGINAL, INVERT_SEGMENT, CHECK_VALID, EVALUATE, DONE
+2. Maintain segment indices l and r (both 5-bit counters: 0 to 15)
+3. For each segment, create inverted copy by flipping bits in bracket_str positions [l:r]
+4. Validity check: Track balance counter (5-bit signed: -16 to +16)
+   - Start at 0
+   - '(' increments balance by 1
+   - ')' decrements balance by 1
+   - Balance must never go negative during scan
+   - Final balance must be exactly 0
+5. First check original string (l=16, r=16 means no inversion)
+6. If original valid: jump to DONE with result=1
+7. If not, try all 136 possible segments (l=0..15, r=l..15, but skip if str_len constraints)
+8. For each segment: compute inverted string on fly, check validity
+9. If any valid found: set result=1 and go to DONE
+10. If all exhausted with no valid: result=0, go to DONE
+
+Latency: Worst case ~16 * (16+1) * 16 cycles ≈ 4096 cycles max (sequential scanning)
+         Optimized: ~5000 cycles for all checks
+
+State transitions:
+- IDLE: Wait for start, initialize counters
+- CHECK_ORIGINAL: Validate original string (no inversion)
+- INVERT_SEGMENT: Apply inversion to [l,r]
+- CHECK_VALID: Scan inverted string for validity
+- EVALUATE: Check result, increment l/r counters
+- DONE: Latch result
+
+Edge cases:
+- Empty string (str_len=0): always possible (result=1)
+- Single character: only possible if it's ')' after inversion or empty
+- Balance tracking must use signed arithmetic to detect negative early
+
+Output result in 1 clock cycle after DONE state.

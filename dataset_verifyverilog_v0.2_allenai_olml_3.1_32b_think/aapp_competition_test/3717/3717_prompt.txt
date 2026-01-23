@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'find_common_point' that implements a simplified rectangle intersection algorithm to find a point belonging to at least (n-1) rectangles.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] x1_in, y1_in, x2_in, y2_in // current rectangle coordinates (8-bit signed, range -128 to 127)
+input [2:0] n // number of rectangles (2 to 8)
+
+Outputs:
+output reg [7:0] result_x // x-coordinate of found point
+output reg [7:0] result_y // y-coordinate of found point
+output reg done // high when computation complete
+output reg valid // high when result is valid
+
+Specification:
+This module computes the intersection of all rectangles except one (the exclusion). The key insight is:
+1. Precompute prefix intersections: intersection of rectangles 0 to i
+2. Precompute suffix intersections: intersection of rectangles i to n-1
+3. For each rectangle i, check if prefix[i-1] ∩ suffix[i+1] is valid
+4. If valid, output any point from that intersection
+
+The module uses Q8.0 fixed-point (just integer coordinates, since inputs are integers).
+
+Algorithm steps:
+- Store all rectangles in a buffer during input phase (using start signal)
+- Compute prefix intersections: prefix[i] = intersect(rect[0], ..., rect[i])
+- Compute suffix intersections: suffix[i] = intersect(rect[i], ..., rect[n-1])
+- Iterate through each rectangle i from 0 to n-1:
+  - Compute intersection_excl = intersect(prefix[i-1], suffix[i+1])
+  - If intersection is valid (max_left <= min_right AND max_down <= min_up), output the point
+
+Implementation details:
+- Use state machine with states: IDLE, LOAD_RECTS, COMPUTE_PREFIX, COMPUTE_SUFFIX, CHECK_EXCLUSION, DONE
+- Buffer storage: 8 entries of 4 values each (x1, y1, x2, y2)
+- Prefix/suffix arrays: each entry stores [max_x1, max_y1, min_x2, min_y2]
+- For each rectangle exclusion, compute intersection of prefix[i-1] and suffix[i+1]
+- Output any integer point from valid intersection (use max_x1, max_y1)
+
+Coordinate system:
+- Input: x1 < x2, y1 < y2
+- Intersection: max_x1 = max of all x1, max_y1 = max of all y1, min_x2 = min of all x2, min_y2 = min of all y2
+- Valid if: max_x1 <= min_x2 AND max_y1 <= min_y2
+- Output point: (max_x1, max_y1)
+
+Timing:
+- When start is asserted, input rectangles are loaded over n cycles
+- Computation takes O(n) cycles after loading
+- Result appears on result_x, result_y with valid=1
+- done=1 when computation completes
+
+Note: Coordinates are signed 8-bit integers. Use two's complement representation. For intersection checks, compare signed values properly by treating them as unsigned for comparison since x1 < x2 and y1 < y2 always holds for valid rectangles.

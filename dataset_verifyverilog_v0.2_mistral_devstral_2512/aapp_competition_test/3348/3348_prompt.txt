@@ -1,0 +1,59 @@
+Design a sequential Verilog module named 'bonbon_arrangement' that implements a simplified version of the problem.
+
+Problem Specification:
+- Grid size is fixed to 4x4 (16 cells).
+- Input counts for flavors A, B, C (each <= 5).
+- Goal: Fill the 4x4 grid with A, B, C such that no two same characters are adjacent horizontally or vertically.
+- The module should perform a search to find a valid arrangement.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High for one cycle to start the search
+input [3:0] count_a // Number of A bonbons required (0-5)
+input [3:0] count_b // Number of B bonbons required (0-5)
+input [3:0] count_c // Number of C bonbons required (0-5)
+
+Outputs:
+output reg [15:0] grid // 16 characters packed into 16*8 bits? No, let's use 4 rows of 4 chars. 
+output reg valid // High if a valid arrangement is found
+output reg done // High when search is complete
+
+Behavior:
+The module uses a state machine to try filling the grid cell by cell (row-major order).
+State Machine States: IDLE, SEARCH, VALID_STATE, COMPLETE.
+
+- IDLE: Wait for start signal.
+- SEARCH: Iterate through grid positions 0 to 15. At each position, try placing 'A', 'B', 'C' if count permits and adjacent constraints are satisfied.
+  - Constraints: Check left neighbor and top neighbor (if they exist).
+  - If a placement is valid, decrement the corresponding count and proceed to next cell.
+  - If all placements fail at current cell, backtrack to previous cell.
+- VALID_STATE: If cell index reaches 15 (last cell filled), check counts (must be 0) and constraints. If valid, copy to output.
+- COMPLETE: Set 'done' high. If valid arrangement found, 'valid' is high.
+
+Latency: Result valid within ~5000 cycles (worst case for backtracking on 4x4 grid).
+
+Output Format: 'grid' should represent the 4x4 layout. We can use a 16-byte array or 4x 32-bit registers. Let's use a 16x8-bit memory interface or packed bits. Since Verilog output is often limited, let's define 'grid' as a 64-bit vector where each 4-bit nibble represents a cell (0=A, 1=B, 2=C). Wait, 4x4 grid needs 16 cells. Let's use 16 output bits for simplicity? No, that's not enough characters. Let's use 4 separate outputs of 16 bits each, representing rows.
+
+Let's stick to a flat 16-element array of 2-bit values (0=A, 1=B, 2=C).
+
+Outputs:
+output [1:0] grid_out [0:15] // Array of 16 2-bit values
+output reg valid
+output reg done
+
+Implementation Details:
+- Use 16 depth-16 stacks (or registers) to store the state during backtracking to save area vs full recursion.
+- Or, since 4x4 is tiny, just unroll the logic or use a large FSM.
+- Let's define the output 'grid_out' as a 32-bit vector [31:0] where [1:0] is cell 0, [3:2] is cell 1, etc.
+- Wait, 16 cells * 2 bits = 32 bits. Perfect.
+
+Refined Output:
+output [31:0] grid_packed // Packed 2-bit values for 16 cells
+
+Test Cases:
+1. Input: 10, 3, 3 (Total 16). Impossible in 4x4 due to adjacency constraints (max density). Module should output valid=0, done=1.
+2. Input: 6, 5, 5. Valid. Module should find a solution.
+
+Instruction:
+Design the sequential Verilog module 'bonbon_arrangement' with the interfaces and logic described above. The module must implement a backtracking algorithm capable of searching the solution space of a 4x4 grid.

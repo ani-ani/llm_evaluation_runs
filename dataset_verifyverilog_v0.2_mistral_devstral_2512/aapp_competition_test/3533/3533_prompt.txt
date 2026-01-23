@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'toll_optimizer' that computes the minimum total toll for 8 trucks after optimal ticket exchange.
+
+The problem is adapted as:
+- N = 8 trucks (fixed)
+- Entrance/exit numbers are 16-bit integers
+- Ticket exchange allows any permutation of exits to entrances
+- Constraint: No truck can use an exit matching its original entrance (no fixed points)
+- Cost = sum of |entrance - assigned_exit| for each truck
+- Goal: Find minimum cost assignment with no fixed points
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] entrance_0, exit_0 // Truck 0 entrance and exit
+input [15:0] entrance_1, exit_1 // Truck 1 entrance and exit
+input [15:0] entrance_2, exit_2 // Truck 2 entrance and exit
+input [15:0] entrance_3, exit_3 // Truck 3 entrance and exit
+input [15:0] entrance_4, exit_4 // Truck 4 entrance and exit
+input [15:0] entrance_5, exit_5 // Truck 5 entrance and exit
+input [15:0] entrance_6, exit_6 // Truck 6 entrance and exit
+input [15:0] entrance_7, exit_7 // Truck 7 entrance and exit
+
+Outputs:
+output reg [31:0] min_toll_sum // The minimum total toll (32-bit to handle sum of 8 differences)
+output reg done // High when computation complete
+
+Specification:
+The module must implement an exhaustive search over all valid permutations of exits to entrances. For 8 trucks, there are 8! = 40320 permutations, but we only consider those with no fixed points (derangements). Given the small N, the module should use a state machine to iterate through permutations.
+
+The module should:
+1. On start, load the 8 entrance and 8 exit values into internal registers
+2. Generate permutations systematically (e.g., using lexicographic ordering)
+3. For each permutation, check if any position i has entrance_i == assigned_exit_i (fixed point) - skip if so
+4. For valid permutations, compute the sum of absolute differences |entrance_i - assigned_exit_i| for all i
+5. Track the minimum sum across all valid permutations
+6. Output the minimum sum when done
+
+Use a state machine with states: IDLE, LOAD_PERMUTATION, CHECK_FIXED_POINTS, COMPUTE_COST, UPDATE_MIN, NEXT_PERMUTATION, DONE.
+
+Since 8! is large for sequential hardware, optimize by:
+- Using a pre-computed permutation generation logic
+- Parallel absolute difference computation for all 8 entries
+- Early termination on fixed points
+- 16 clock cycles for initial load, then ~40320 cycles for search (or use pipelining)
+
+Latency: Approximately 50,000 clock cycles after start asserted.
+
+Note: For 8 entries, we can use 3-bit indices to represent permutations.
+
+Implementation details:
+- Use internal registers for entrances, exits, and current permutation
+- Use a counter for permutation generation (0 to 40319)
+- Decode counter into a permutation using a deterministic algorithm (e.g., Lehmer code)
+- Compute all 8 absolute differences in parallel using combinational logic
+- Use comparator and accumulator for cost sum
+- Use a min tracker register updated each valid permutation

@@ -1,0 +1,69 @@
+Design a sequential Verilog module named 'file_name_check' that validates a filename according to specific rules.
+
+**INTERFACE SPECIFICATION:**
+Inputs:
+  input clk          // Clock signal
+  input rst_n        // Active-low reset
+  input start        // Start signal (pulse high for one cycle)
+  input [7:0] char_in // Input character stream (1 character per cycle)
+  input [3:0] char_idx // Current character index (0 to 15)
+  input valid_char   // High when char_in is valid
+
+Outputs:
+  output reg result  // 1 = Valid ('Yes'), 0 = Invalid ('No')
+  output reg done    // High for one cycle when computation is complete
+
+**Algorithm Description:**
+The module processes a filename of maximum length 16 characters. The state machine processes one character per clock cycle. 
+
+**Validation Rules:**
+1. Max 3 digit characters ('0'-'9') in the entire string
+2. Exactly one dot '.' character
+3. Substring before dot must start with a letter ('a'-'z' or 'A'-'Z') and cannot be empty
+4. Substring after dot must be exactly one of: "txt", "exe", "dll"
+
+**State Machine States:**
+- IDLE: Wait for start signal
+- PROCESSING: Process characters 0-15
+- VALIDATING: Check accumulated conditions
+- DONE: Output result
+
+**Internal Registers:**
+- digit_count[1:0]: Count of digits (0-3)
+- dot_count[0:0]: Count of dots (must be 1)
+- first_char_is_letter[0:0]: Flag if first char is letter
+- valid_extension[0:0]: Flag if extension matches txt/exe/dll
+- found_dot[0:0]: Dot encountered flag
+- extension_length[1:0]: Length of extension part (0-3)
+- ext_buffer[23:0]: Buffer for extension (3 bytes)
+- first_char_valid[0:0]: First char was letter
+
+**Logic Flow:**
+- On each cycle (0-15), capture char_in
+- Increment digit_count if char is '0'-'9'
+- Increment dot_count if char is '.'
+- If char_idx == 0, check if it's a letter (a-z, A-Z) -> set first_char_valid
+- If dot not found yet, ignore chars before dot
+- If dot found, buffer extension chars (max 3)
+- After 16 cycles, validate:
+  - digit_count <= 3
+  - dot_count == 1
+  - first_char_valid == 1
+  - extension matches "txt", "exe", or "dll"
+
+**Bit Widths:**
+- char_in: 8 bits (ASCII)
+- digit_count: 2 bits (0-3)
+- dot_count: 1 bit (0-1)
+- extension_length: 2 bits (0-3)
+- ext_buffer: 24 bits (3 bytes)
+
+**Output:**
+- result: 1-bit (1=Valid, 0=Invalid)
+- done: 1-bit, high for one cycle
+
+**Reset:**
+When rst_n is low, all registers reset to 0, state goes to IDLE.
+
+**Interface Consistency:**
+The testbench will drive start, char_in, char_idx, and valid_char. The module must capture these on clock edges and produce result and done signals.

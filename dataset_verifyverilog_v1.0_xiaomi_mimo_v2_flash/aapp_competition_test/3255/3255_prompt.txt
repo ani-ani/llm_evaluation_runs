@@ -1,0 +1,142 @@
+module hopper_exploration (
+    input clk,
+    input rst_n,
+    input start,
+    input [2:0] n,       // Number of valid elements (1-8)
+    input [2:0] D,       // Maximum jump distance (1-7)
+    input [7:0] M,       // Maximum value difference (0-255, signed)
+    input [7:0] arr_0, arr_1, arr_2, arr_3, arr_4, arr_5, arr_6, arr_7, // Array elements (8-bit signed)
+    output reg [3:0] length, // Longest sequence length (1-8)
+    output reg done           // Computation complete
+);
+
+// Parameters
+parameter MAX_N = 8;
+parameter STATE_IDLE = 2'b00;
+parameter STATE_INIT = 2'b01;
+parameter STATE_COMPUTE = 2'b10;
+parameter STATE_DONE = 2'b11;
+
+// Registers and wires
+reg [1:0] state, next_state;
+reg [2:0] i, j;              // Loop counters
+reg [7:0] dp [0:255];        // DP table: 256 states, max length 8 (stored as 8-bit)
+reg [7:0] max_len_reg;
+reg [7:0] arr_reg [0:7];     // Local storage for array
+reg [2:0] n_reg, D_reg;      // Local storage for parameters
+reg [7:0] M_reg;
+
+// Combinational signals
+wire signed [7:0] arr_val_i;
+wire signed [7:0] arr_val_j;
+wire signed [7:0] diff;
+wire [7:0] mask_bit;
+wire [7:0] new_mask;
+wire valid_jump;
+
+// Assign array values
+assign arr_val_i = arr_reg[i];
+assign arr_val_j = arr_reg[j];
+assign diff = arr_val_i - arr_val_j;
+assign mask_bit = (1 << j);
+assign new_mask = (1 << i) | (1 << j);
+assign valid_jump = (j < n_reg) && (j != i) && (|diff[7] ? -diff : diff <= M_reg) && ($signed(i) - $signed(j) >= -$signed(D_reg)) && ($signed(i) - $signed(j) <= $signed(D_reg));
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= STATE_IDLE;
+        done <= 0;
+        length <= 0;
+    end else begin
+        state <= next_state;
+    end
+end
+
+always @(*) begin
+    next_state = state;
+    case (state)
+        STATE_IDLE: if (start) next_state = STATE_INIT;
+        STATE_INIT: next_state = STATE_COMPUTE;
+        STATE_COMPUTE: if (i >= n_reg) next_state = STATE_DONE;
+        STATE_DONE: next_state = STATE_IDLE;
+    endcase
+end
+
+// Main computation logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset all registers
+        i <= 0;
+        j <= 0;
+        max_len_reg <= 0;
+        done <= 0;
+        length <= 0;
+        // Clear dp table
+        for (integer k = 0; k < 256; k = k + 1) dp[k] <= 0;
+        // Clear arr_reg
+        for (integer k = 0; k < 8; k = k + 1) arr_reg[k] <= 0;
+        n_reg <= 0;
+        D_reg <= 0;
+        M_reg <= 0;
+    end else begin
+        case (state)
+            STATE_INIT: begin
+                // Load inputs into local registers
+                arr_reg[0] <= arr_0;
+                arr_reg[1] <= arr_1;
+                arr_reg[2] <= arr_2;
+                arr_reg[3] <= arr_3;
+                arr_reg[4] <= arr_4;
+                arr_reg[5] <= arr_5;
+                arr_reg[6] <= arr_6;
+                arr_reg[7] <= arr_7;
+                n_reg <= n;
+                D_reg <= D;
+                M_reg <= M;
+                // Initialize DP table for single-element sequences
+                for (integer k = 0; k < 8; k = k + 1) begin
+                    if (k < n) dp[1 << k] <= 1;
+                    else dp[1 << k] <= 0;
+                end
+                i <= 0;
+                j <= 0;
+                max_len_reg <= 1; // Minimum length is 1
+            end
+            
+            STATE_COMPUTE: begin
+                if (i < n_reg) begin
+                    if (j < n_reg) begin
+                        // Check if j is reachable from i
+                        if (valid_jump) begin
+                            // Update DP state
+                            // dp[new_mask][j] = max(dp[new_mask][j], dp[1<<i][i] + 1)
+                            // We use flattened index: mask = (1<<i) | (1<<j)
+                            if (dp[(1<<i) | (1<<j)] < dp[1<<i] + 1) begin
+                                dp[(1<<i) | (1<<j)] <= dp[1<<i] + 1;
+                                if (dp[1<<i] + 1 > max_len_reg) max_len_reg <= dp[1<<i] + 1;
+                            end
+                        end
+                        j <= j + 1;
+                    end else begin
+                        j <= 0;
+                        i <= i + 1;
+                    end
+                end
+            end
+            
+            STATE_DONE: begin
+                done <= 1;
+                length <= max_len_reg[3:0]; // Truncate to 4 bits
+            end
+            
+            STATE_IDLE: begin
+                done <= 0;
+                i <= 0;
+                j <= 0;
+            end
+        endcase
+    end
+end
+
+endmodule

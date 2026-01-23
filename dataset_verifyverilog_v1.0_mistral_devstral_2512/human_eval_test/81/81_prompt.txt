@@ -1,0 +1,65 @@
+Design a combinational Verilog module named 'grade_converter' that implements a GPA to letter grade mapping system.
+
+The module takes 4 GPA values in Q16.16 fixed-point format (16 integer, 16 fractional bits) and maps them to 4 corresponding letter grades represented as 3-character strings.
+
+Input Specification:
+  - The module takes 4 GPA values. Since Verilog 2001 doesn't support 2D arrays with variable dimensions well in all tools, use individual inputs for simplicity:
+    input [31:0] gpa0, gpa1, gpa2, gpa3
+  - Values are in Q16.16 format. Example: 4.0 = 4.0 * 65536 = 262144 (0x00040000)
+
+Output Specification:
+  - The module outputs 4 letter grades. Each grade is a 3-character string. Since Verilog strings are tricky, output them as three 8-bit ASCII values per grade:
+    output reg [23:0] grade0, grade1, grade2, grade3
+  - Each grade output is a 24-bit value where:
+    - [23:16] = Character 1
+    - [15:8]  = Character 2
+    - [7:0]   = Character 3
+  - 'A+' should be represented as {8'h41, 8'h2b, 8'h20} (A, +, space)
+  - 'A' should be represented as {8'h41, 8'h20, 8'h20} (A, space, space)
+  - 'A-' should be represented as {8'h41, 8'h2d, 8'h20} (A, -, space)
+  - And so on for B+, B, B-, C+, C, C-, D+, D, D-, E.
+
+Algorithm:
+The module must implement the following grade boundaries:
+  GPA >= 4.0              -> A+
+  GPA >= 3.7 (< 4.0)      -> A
+  GPA >= 3.3 (< 3.7)      -> A-
+  GPA >= 3.0 (< 3.3)      -> B+
+  GPA >= 2.7 (< 3.0)      -> B
+  GPA >= 2.3 (< 2.7)      -> B-
+  GPA >= 2.0 (< 2.3)      -> C+
+  GPA >= 1.7 (< 2.0)      -> C
+  GPA >= 1.3 (< 1.7)      -> C-
+  GPA >= 1.0 (< 1.3)      -> D+
+  GPA >= 0.7 (< 1.0)      -> D
+  GPA >= 0.0 (< 0.7)      -> D-
+  GPA == 0.0              -> E
+
+For the GPA == 0.0 check, you must be careful with fixed-point representation (it will be exactly 0).
+
+Implementation Strategy:
+Use a cascaded if-else structure inside a combinational always block. Since it's combinational, no clock or reset is needed.
+
+To convert decimal to Q16.16:
+  - 4.0 = 4 * 65536 = 262144
+  - 3.7 = 3.7 * 65536 = 242483
+  - 3.3 = 3.3 * 65536 = 216268
+  - 3.0 = 3.0 * 65536 = 196608
+  - 2.7 = 2.7 * 65536 = 176947
+  - 2.3 = 2.3 * 65536 = 150732
+  - 2.0 = 2.0 * 65536 = 131072
+  - 1.7 = 1.7 * 65536 = 111411
+  - 1.3 = 1.3 * 65536 = 85196
+  - 1.0 = 1.0 * 65536 = 65536
+  - 0.7 = 0.7 * 65536 = 45875
+  - 0.0 = 0
+
+ASCII Values:
+  'A' = 0x41
+  'B' = 0x42
+  'C' = 0x43
+  'D' = 0x44
+  'E' = 0x45
+  '+' = 0x2b
+  '-' = 0x2d
+  ' ' (space) = 0x20

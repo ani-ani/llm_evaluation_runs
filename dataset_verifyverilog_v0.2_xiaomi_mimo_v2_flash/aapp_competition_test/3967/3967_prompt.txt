@@ -1,0 +1,29 @@
+Design a sequential Verilog module named 'bamboo_solver' that computes the maximum interval 'd' such that the total cut waste from growing bamboos to target heights does not exceed a given limit 'k'. 
+
+The module uses a state machine to iterate through possible values of 'd', starting from 1. For each 'd', it calculates the total waste in parallel for up to 4 bamboos. The waste for a single bamboo with target height 'a_i' and interval 'd' is defined as: (d * ceil(a_i / d) - a_i). The ceil operation is equivalent to (a_i + d - 1) / d using integer division.
+
+Inputs:
+input clk: System clock.
+input rst_n: Active-low reset.
+input start: High for one cycle to start the search.
+input stop: High to terminate the search early (useful for simulation).
+input [7:0] a_0, a_1, a_2, a_3: Target heights for 4 bamboos (valid values 1-255).
+input [11:0] k: Maximum allowed total waste (valid values 0-4095).
+
+Outputs:
+output reg [11:0] best_d: The maximum 'd' found so far satisfying the constraint.
+output reg [11:0] current_waste: The total waste for the current 'd' being checked.
+output reg searching: High while the state machine is iterating.
+output reg done: High when the search has completed (either by stop or reaching max cycles).
+
+Behavior:
+1. On reset, clear 'best_d' and 'current_waste', set state to IDLE.
+2. On 'start', transition to SEARCHING state.
+3. In SEARCHING state:
+   - Increment 'd' (internal counter, max 4095).
+   - Calculate waste for each of the 4 bamboos in parallel using combinational logic.
+     Waste_i = (d * ((a_i + d - 1) / d)) - a_i. (Note: Use integer arithmetic).
+   - Sum the 4 wastes to get 'current_waste'.
+   - If 'current_waste <= k', update 'best_d' to the current 'd'.
+   - Continue looping until 'stop' is asserted or 'd' reaches 4095.
+4. When finished, transition to DONE state, assert 'done', and stop searching.

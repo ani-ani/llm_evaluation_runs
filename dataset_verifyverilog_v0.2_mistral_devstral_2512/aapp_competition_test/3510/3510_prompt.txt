@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'game_solver' that determines the minimum number of rounds Alice needs to guarantee reaching a target position from a start position in a game against an optimal opponent.
+
+The game has N positions (labeled 'a' through 'y', max N=25). For a specific start position S and target position T, Alice wins if she can force the game piece to land on T.
+
+The module should implement an iterative solver (Value Iteration):
+1. Initialize distances: dist[S][T] = 0, all others = infinity (or max rounds).
+2. Iteratively update distances: dist[u][T] = 1 + min_{option}( max_{v in option}( dist[v][T] ) ).
+3. This update is performed for all positions u and all targets T simultaneously.
+4. Repeat until convergence or max iterations reached.
+
+Since input parsing is complex in Verilog for variable strings, we will implement the solver for a specific hardcoded configuration or support a small set of test cases controlled by inputs.
+
+Let's design a module that computes the distance matrix for the fixed test case: 3 positions (a, b, c).
+Test Case 3:
+Position a: 1 option {b}
+Position b: 2 options {b}, {a}
+Position c: 2 options {a, b}, {a, c}
+
+Inputs:
+input clk: Clock
+input rst_n: Active low reset
+input [1:0] start_pos: 0=a, 1=b, 2=c
+input [1:0] target_pos: 0=a, 1=b, 2=c
+input start: Start computation for requested pair
+
+Outputs:
+output reg [7:0] result: Minimum rounds (0-255). 255 indicates impossible (-1).
+output reg done: High when result is valid
+
+Internal Logic:
+- State Machine: IDLE, COMPUTE
+- Use a 3x3x8-bit memory (dist_buffer) to store current distances for all pairs (S, T). Initialized to 0 for S==T, 255 otherwise.
+- In COMPUTE state, iterate for max 32 cycles (since max rounds is bounded).
+- In each cycle, update the entire distance matrix based on the rule.
+- When iteration finishes, read the value for (start_pos, target_pos).
+
+For the specific test case logic:
+Neighbors:
+a -> b
+b -> b (opt 1), a (opt 2)
+c -> {a,b} (opt 1), {a,c} (opt 2)
+
+Update Rule:
+If dist[u][T] is not 0:
+  next_val = 1 + min( 
+    max( dist[neighbors_opt1] ), 
+    max( dist[neighbors_opt2] )
+  )
+
+Constraints:
+- Max positions N=3 (for this specific test case implementation)
+- Max rounds 32
+- Result width 8 bits
+
+The module should be fully synchronous.

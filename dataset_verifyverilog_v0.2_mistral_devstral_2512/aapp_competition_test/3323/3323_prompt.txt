@@ -1,0 +1,45 @@
+Design a combinational Verilog module named 'drink_satisfaction' that determines the maximum number of people (out of N) that can be simultaneously satisfied given their minimum juice requirements.
+
+The problem is adapted for hardware implementation:
+- Maximum N = 8 people (limited for combinational feasibility)
+- Fractions are in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Total fraction sum is always 1.0 (0x00010000)
+
+The module takes the requirements for 8 people as input. If fewer than 8 people exist, the unused inputs should be set to all zeros (which imposes no constraints).
+
+Inputs:
+input [7:0][15:0] req_A // Array of 8 requirements for juice A (Q16.16)
+input [7:0][15:0] req_B // Array of 8 requirements for juice B (Q16.16)
+input [7:0][15:0] req_C // Array of 8 requirements for juice C (Q16.16)
+input [2:0] num_people // Actual number of people (1 to 8)
+
+Outputs:
+output [3:0] max_satisfied // Maximum number of people that can be satisfied
+
+The module should implement a brute-force search over all possible subsets of people. Since N=8, there are 2^8 = 256 possible subsets.
+
+For each subset, it must check if there exists a valid drink mix (A, B, C) where:
+1. A + B + C = 1.0
+2. A >= subset_req_A, B >= subset_req_B, C >= subset_req_C
+
+Condition 2 simplifies to: if we assign the minimum required amounts to everyone in the subset, does the sum still allow for 1.0 total?
+Let sum_A = sum of requirements for A in subset.
+Let sum_B = sum of requirements for B in subset.
+Let sum_C = sum of requirements for C in subset.
+
+Feasibility Check: (sum_A + sum_B + sum_C) <= 1.0
+
+The module should use combinational logic to evaluate all 256 subsets in parallel (or a nested loop structure) and find the subset with the highest count that satisfies the sum constraint.
+
+Fixed-Point Details:
+- 1.0 is represented as 0x00010000 (65536)
+- Input requirements are scaled integers (e.g., 5000 = 0.5 = 32768)
+- Summation logic must handle carries for up to 8 numbers (max width ~19 bits)
+
+Implementation Strategy:
+1. Instantiate a comparator for each of the 256 subsets.
+2. Each subset comparator sums the specific req_A, req_B, req_C values.
+3. Check if total sum <= 0x00010000.
+4. A priority encoder or tree reduction finds the highest count among valid subsets.
+
+Note: This is purely combinational. Result is valid immediately.

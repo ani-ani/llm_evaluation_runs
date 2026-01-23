@@ -1,0 +1,49 @@
+Verilog HDL Module Specification for Scaled Restaurant Occupancy Problem
+
+Problem Adaptation:
+- Maximum tables (n) = 4
+- Maximum group size (g) = 4
+- Maximum hours (t) = 4
+- Table capacities: 8-bit unsigned integers
+- Expected occupancy computed by brute-forcing all possible group sequences
+
+Module Interface:
+module restaurant_expected (
+    input clk,              // Clock signal
+    input rst_n,            // Active-low reset
+    input start,            // Start pulse (assert for 1 cycle)
+    input [7:0] n,          // Number of tables (1-4)
+    input [7:0] g,          // Max group size (1-4)
+    input [7:0] t,          // Number of hours (1-4)
+    input [7:0] c0,         // Capacity of table 0
+    input [7:0] c1,         // Capacity of table 1
+    input [7:0] c2,         // Capacity of table 2
+    input [7:0] c3,         // Capacity of table 3
+    output reg [15:0] sum_occupancy, // Sum of occupancies over all sequences
+    output reg [15:0] count_sequences, // Number of sequences (g^t)
+    output reg done         // Done signal (high for 1 cycle when finished)
+);
+
+Parameters:
+- CAP_WIDTH = 8
+- DATA_WIDTH = 16
+- MAX_N = 4
+- MAX_G = 4
+- MAX_T = 4
+
+Internal Logic:
+1. Sort the table capacities in ascending order using a comparator network.
+2. Maintain a state machine with states: IDLE, INIT, NEXT_SEQ, SIM_HOUR, UPDATE, DONE.
+3. For each sequence (from 0 to g^t - 1):
+   a. Compute group sizes for all hours using base-g conversion.
+   b. Simulate the restaurant process: for each group size, find the smallest empty table with sufficient capacity.
+   c. Accumulate the total occupancy for the sequence.
+4. After all sequences, output sum_occupancy and count_sequences.
+
+Timing:
+- Reset: rst_n low for at least 2 cycles.
+- Start: pulse high for 1 cycle to initiate computation.
+- Computation: requires up to g^t * t * n cycles (max ~4096 cycles for worst-case parameters).
+- Done: asserted high for 1 cycle when computation is complete.
+
+Note: The module assumes small parameters; for larger values, the design may not meet timing or resource constraints.

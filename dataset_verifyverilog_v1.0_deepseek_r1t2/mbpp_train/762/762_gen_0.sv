@@ -1,0 +1,1 @@
+module month_has_30_days (\n    input [3:0] month_num,   // Month number 1-12 (4 bits)\n    output has_30_days        // High if month has exactly 30 days\n);\n\n    assign has_30_days = (month_num == 4'd4) || (month_num == 4'd6) || \n                         (month_num == 4'd9) || (month_num == 4'd11);\n\nendmodule

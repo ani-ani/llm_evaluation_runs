@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'composite_rank' that finds the position of a test composite string in the sorted list of all possible concatenations of k distinct strings from n initial strings.
+
+Problem constraints: n ≤ 8, k ≤ 8, string lengths ≤ 32, total length ≤ 64. All initial strings are unique and non-prefix. The test string is guaranteed to be a valid concatenation.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] n // Number of initial strings (1-8)
+input [7:0] k // Number of strings to concatenate (1-8)
+input [255:0] str_0, str_1, str_2, str_3, str_4, str_5, str_6, str_7 // Initial strings (32 chars each, ASCII)
+input [7:0] len_0, len_1, len_2, len_3, len_4, len_5, len_6, len_7 // Lengths of initial strings
+input [511:0] test_str // Test composite string (max 64 chars, ASCII)
+input [7:0] test_len // Length of test string
+
+Outputs:
+output reg [31:0] result // Position in list (1-indexed), modulo 10^9+7
+output reg done // High when computation complete
+
+Latency: Approximately 50-100 clock cycles (depends on string lengths)
+
+Behavior:
+The module should:
+1. Maintain a bitmask of used initial strings (8 bits)
+2. Iterate through the test string, matching prefixes against unused initial strings
+3. For each match found at a position, calculate the number of valid permutations that come before it:
+   - Count how many unused strings are lexicographically smaller than the matched string
+   - Multiply by P(remaining, remaining positions) = (n - used_count)! / (n - used_count - (k - position))!
+   - Add to cumulative rank
+4. Mark the used string in the bitmask and continue
+5. Return rank + 1 (1-indexed)
+
+Key formulas:
+- Permutations P(n, r) = n! / (n-r)!
+- For position i (0-indexed), if matched string S_i:
+  rank += (count of unused strings < S_i) * P(n - i - 1, k - i - 1)
+
+Use modular arithmetic with MOD = 1000000007.
+
+The module should use a state machine with states: IDLE, INIT, MATCH, CALCULATE, UPDATE, DONE.
+
+All arithmetic should be 32-bit. Precompute factorials up to 8! = 40320.

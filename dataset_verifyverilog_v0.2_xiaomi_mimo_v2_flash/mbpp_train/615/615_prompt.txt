@@ -1,0 +1,42 @@
+Design a combinational Verilog module named 'matrix_row_average' that computes the average of each row in a fixed 4x4 matrix.
+
+Inputs:
+input [3:0][3:0][15:0] matrix_data // 4 rows, 4 columns per row, each value is Q16.16 format (16 integer bits, 16 fractional bits)
+
+Outputs:
+output [3:0][15:0] averages // 4 averages, each in Q16.16 format
+
+The module should:
+1. For each of the 4 rows, sum all 4 values (width expansion: 18 bits to accommodate sum)
+2. Divide each sum by 4 using right shift by 2 (division by 4)
+3. Store the result in Q16.16 format
+4. All operations are purely combinational (no clock needed)
+
+Fixed-Point Specification:
+Use Q16.16 format for all values.
+Example: 30.5 = 30.5 * 65536 = 1999360 = 0x001E8000
+Example: -18.0 = -18.0 * 65536 = -1179648 = 0xFFED8000
+
+Sum of 4 values: Maximum sum = 4 * 0x7FFFFFFF = 0x1FFFFFFFC (33 bits)
+After division by 4: Result fits in Q16.16 format
+
+Implementation approach:
+- Use generate blocks or explicit assign statements for parallel computation
+- Each row: sum = row[0] + row[1] + row[2] + row[3]
+- Each average = sum[17:2] (shift right by 2, taking bits 17 down to 2)
+- Result is Q16.16 where integer bits are bits 15:0 of the shifted value
+
+Example:
+Input row: 0x000A0000 (10.0), 0x000A0000 (10.0), 0x000A0000 (10.0), 0x000C0000 (12.0)
+Sum: 0x00028000 (40.0) = 2621440 decimal
+After shift right 2: 0x0000A000 (10.0) → This is WRONG
+
+Correct approach:
+Sum = 10.0 + 10.0 + 10.0 + 12.0 = 42.0
+Average = 42.0 / 4 = 10.5
+In Q16.16: 10.5 * 65536 = 688128 = 0x000A8000
+
+Sum in Q16.16: 0x002A0000 (42.0)
+Shift right 2: 0x000A8000 (10.5) ✓
+
+All computation should be done with proper bit width handling to avoid overflow.

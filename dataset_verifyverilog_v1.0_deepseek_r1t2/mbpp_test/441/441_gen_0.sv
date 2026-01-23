@@ -1,0 +1,1 @@
+module surfacearea_cube (\n    input [7:0] l,\n    output [15:0] result\n);\n    \n    wire [15:0] l_squared;\n    assign l_squared = l * l;\n    \n    // 6*l_squared with 16-bit result\n    assign result = (l_squared << 2'd2) + (l_squared << 1'd1);  // 6*x = 4x + 2x\n    \nendmodule

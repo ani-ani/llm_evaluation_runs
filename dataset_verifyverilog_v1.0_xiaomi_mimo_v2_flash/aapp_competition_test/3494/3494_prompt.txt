@@ -1,0 +1,107 @@
+module apple_distance #(
+    parameter GRID_R = 8,
+    parameter GRID_S = 8,
+    parameter MAX_TREES = 24,
+    parameter COORD_BITS = 4,  // Coordinates 1-8
+    parameter DIST_BITS = 7,   // Max squared distance 98
+    parameter TREE_IDX_BITS = 5
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire load_en,        // Load initial tree (pulse high)
+    input wire process,        // Process query (pulse high)
+    input wire [COORD_BITS-1:0] r,
+    input wire [COORD_BITS-1:0] s,
+    output reg [DIST_BITS-1:0] distance,
+    output reg done,
+    output reg full
+);
+
+// Tree storage: parallel arrays for row and column
+reg [COORD_BITS-1:0] tree_r [0:MAX_TREES-1];
+reg [COORD_BITS-1:0] tree_s [0:MAX_TREES-1];
+reg [TREE_IDX_BITS-1:0] num_trees;
+
+// FSM states
+reg [1:0] state;
+localparam IDLE = 2'b00;
+localparam COMPUTE = 2'b01;
+localparam UPDATE = 2'b10;
+
+// Computation registers
+reg [TREE_IDX_BITS-1:0] tree_index;
+reg [DIST_BITS-1:0] current_min;
+reg [COORD_BITS-1:0] query_r, query_s;
+
+// Combinational distance calculation for current tree
+wire [COORD_BITS-1:0] current_tree_r = tree_r[tree_index];
+wire [COORD_BITS-1:0] current_tree_s = tree_s[tree_index];
+wire [COORD_BITS-1:0] diff_r = (query_r >= current_tree_r) ? 
+                                (query_r - current_tree_r) : 
+                                (current_tree_r - query_r);
+wire [COORD_BITS-1:0] diff_s = (query_s >= current_tree_s) ? 
+                                (query_s - current_tree_s) : 
+                                (current_tree_s - query_s);
+wire [6:0] current_dist = (diff_r * diff_r) + (diff_s * diff_s);
+
+// State machine and tree management
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        num_trees <= 0;
+        done <= 0;
+        full <= 0;
+        distance <= 0;
+        tree_index <= 0;
+        current_min <= {DIST_BITS{1'b1}};
+    end else begin
+        done <= 0;
+        full <= (num_trees >= MAX_TREES);
+        
+        case (state)
+            IDLE: begin
+                if (load_en && !full) begin
+                    // Load initial tree
+                    tree_r[num_trees] <= r;
+                    tree_s[num_trees] <= s;
+                    num_trees <= num_trees + 1;
+                end else if (process && !full && num_trees > 0) begin
+                    // Start query processing
+                    query_r <= r;
+                    query_s <= s;
+                    tree_index <= 0;
+                    current_min <= {DIST_BITS{1'b1}};
+                    state <= COMPUTE;
+                end
+            end
+            
+            COMPUTE: begin
+                if (tree_index < num_trees) begin
+                    // Update minimum distance
+                    if (current_dist < current_min) begin
+                        current_min <= current_dist;
+                    end
+                    tree_index <= tree_index + 1;
+                end else begin
+                    // All trees processed
+                    state <= UPDATE;
+                end
+            end
+            
+            UPDATE: begin
+                // Add query position as new tree
+                if (!full) begin
+                    tree_r[num_trees] <= query_r;
+                    tree_s[num_trees] <= query_s;
+                    num_trees <= num_trees + 1;
+                end
+                // Output result
+                distance <= current_min;
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

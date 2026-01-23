@@ -1,0 +1,58 @@
+Verilog module specification for the adapted problem:
+
+Module: compute_threshold
+Description: Computes the minimal threshold for 4 tasks with 4-bit power and processor counts, outputting ceil(min_average * 1000).
+
+Parameters:
+- N = 4 (number of tasks)
+- A_WIDTH = 4 (bit width for a_i)
+- B_WIDTH = 4 (bit width for b_i)
+- RESULT_WIDTH = 16 (bit width for output)
+
+Ports:
+- input clk: system clock, rising edge triggered
+- input rst_n: active-low synchronous reset
+- input start: start computation, asserted for one clock cycle
+- input [A_WIDTH-1:0] a0, a1, a2, a3: power values for tasks 0..3
+- input [B_WIDTH-1:0] b0, b1, b2, b3: processor counts for tasks 0..3
+- output reg [RESULT_WIDTH-1:0] result: minimal threshold multiplied by 1000 and rounded up
+- output reg done: asserted high for one cycle when result is valid
+
+Internal behavior:
+- The module implements a brute-force search over all 10 possible partitions of 4 tasks into computers with 1 or 2 tasks.
+- It uses a state machine with states: IDLE, S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, DONE.
+- Upon start, the state machine transitions through S0 to S9, evaluating each partition.
+- For each partition, it computes the sum of a and b for the first tasks, checks validity (for pairs, a_first > a_second), and if valid, computes scaled = ceil( sum_a * 1000 / sum_b ).
+- It maintains a register min_scaled that stores the minimum scaled value encountered.
+- After processing all partitions, the state transitions to DONE, where done is asserted and result is output.
+- The state machine returns to IDLE after DONE (or upon reset).
+
+Detailed state transitions:
+
+IDLE: When start is asserted, initialize min_scaled to 16'hFFFF, and go to S0.
+
+S0: Partition all singletons (no pairs). Compute sum_a = a0+a1+a2+a3, sum_b = b0+b1+b2+b3. scaled = (sum_a * 1000 + sum_b - 1) / sum_b. Update min_scaled = min(min_scaled, scaled). Go to S1.
+
+S1: Partition with pair (0,1) and singles 2,3. Check a0 != a1. If equal, skip. Else, determine first: if a0 > a1 then first_a = a0, first_b = b0 else first_a = a1, first_b = b1. sum_a = first_a + a2 + a3; sum_b = first_b + b2 + b3. Compute scaled and update min. Go to S2.
+
+S2: Partition with pair (0,2) and singles 1,3. Similar logic.
+
+S3: Partition with pair (0,3) and singles 1,2.
+
+S4: Partition with pair (1,2) and singles 0,3.
+
+S5: Partition with pair (1,3) and singles 0,2.
+
+S6: Partition with pair (2,3) and singles 0,1.
+
+S7: Partition with two pairs: (0,1) and (2,3). Check a0 != a1 and a2 != a3. If either invalid, skip. Else, first_a01 = (a0 > a1) ? a0 : a1; first_b01 = (a0 > a1) ? b0 : b1; similarly for 23. sum_a = first_a01 + first_a23; sum_b = first_b01 + first_b23. Compute scaled and update min.
+
+S8: Partition with two pairs: (0,2) and (1,3). Similar.
+
+S9: Partition with two pairs: (0,3) and (1,2). Similar.
+
+DONE: Set done = 1, result = min_scaled. Then return to IDLE on next clock.
+
+Reset: On rst_n=0, state <= IDLE, done <= 0, result <= 0, min_scaled <= 0.
+
+Timing: The module takes 11 cycles (10 partition states + DONE) after start. The result is available in the DONE state.

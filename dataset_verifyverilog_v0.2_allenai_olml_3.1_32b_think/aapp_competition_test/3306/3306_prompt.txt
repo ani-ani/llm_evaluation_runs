@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'min_phone_calls' that computes the minimal number of phone calls given detector data.
+
+The module processes N detectors (each with position P_i and count C_i) sorted by position. The algorithm works as follows:
+1. Sort detectors by position (ascending)
+2. Process detectors sequentially: for each detector, compute cumulative_max = max(cumulative_max, C_i)
+3. Track overlapping regions: accumulate non-overlapping portions of C_i values
+4. The result is the maximum of cumulative_max and the sum of non-overlapping call counts
+
+Since N can be large in the original problem but hardware requires fixed limits, we scale to:
+- N_max = 32 detectors
+- Positions: 16-bit values (0 to 65535)
+- Call counts: 32-bit values (0 to 4,294,967,295)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] detector_index // current detector index for data input (0 to 31)
+input [15:0] position // position P_i of current detector
+input [31:0] call_count // call count C_i of current detector
+input [4:0] num_detectors // actual number of detectors N (1 to 32)
+input data_valid // high when position and call_count are valid for current detector_index
+
+Outputs:
+output reg [31:0] min_calls // minimal number of phone calls
+output reg done // high when computation complete
+output reg error // high if invalid input (e.g., unsorted positions)
+
+Specify latency: Result valid 32 + N clock cycles after start asserted (allowing for data loading and processing).
+
+Use state machine with states: IDLE, LOAD_DATA, SORT_CHECK, PROCESS_DATA, COMPUTE_RESULT, DONE.
+
+Behavior:
+- In IDLE: wait for start signal
+- In LOAD_DATA: capture detector data when data_valid is high, increment detector_index internally
+- In SORT_CHECK: verify positions are strictly increasing (P_i < P_{i+1}); set error flag if not
+- In PROCESS_DATA: iterate through detectors, maintaining cumulative_max and accumulating non-overlapping portions
+- In COMPUTE_RESULT: compute final answer as max(cumulative_max, accumulated_sum)
+- In DONE: hold result on min_calls and assert done
+
+Note: This module assumes detectors are provided in sorted order. The SORT_CHECK state verifies this constraint.

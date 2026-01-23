@@ -1,0 +1,52 @@
+MODULE SPECIFICATION: moving_walkways
+
+FUNCTIONALITY:
+Compute minimum travel time from A to B using up to 3 conveyor belts. Conveyors are line segments that double walking speed when moving in their direction. The algorithm enumerates all possible sequences of conveyors (length 0 to 3) with entry/exit points discretized into 5 points per conveyor. For each sequence, it computes the total time as sum of ground segments (speed 1) and conveyor segments (speed 2), then takes the minimum.
+
+PARAMETERS:
+- DATA_WIDTH = 32: Total bit width for fixed-point numbers (Q16.16)
+- FRAC_BITS = 16: Fractional bits for fixed-point
+- MAX_CONVEYORS = 3: Maximum number of conveyors
+- K = 5: Discretization points per conveyor (including endpoints)
+- NODES = 2 + MAX_CONVEYORS * K: Total nodes (A, B, conveyor points)
+
+INPUTS (all 32-bit fixed-point, Q16.16):
+- clk: Clock, rising edge active
+- rst_n: Active-low synchronous reset
+- start: Pulse high for one cycle to start computation
+- a_x, a_y: Coordinates of point A
+- b_x, b_y: Coordinates of point B
+- For each conveyor i (0 to 2):
+  - c_i_x1, c_i_y1, c_i_x2, c_i_y2: Endpoints of conveyor i
+  - c_i_valid: High if conveyor i is present
+
+OUTPUTS:
+- result: 32-bit fixed-point minimum time (Q16.16)
+- done: High for one cycle when result is valid
+
+TIMING:
+- After start pulse, computation may take many clock cycles (up to a few million). done will go high when finished.
+- Reset must be applied before first computation.
+
+RESET BEHAVIOR:
+- rst_n=0: All internal state cleared, done=0, result=0
+- Minimum 2 clock cycles of reset required
+
+IMPLEMENTATION NOTES:
+1. Discretization: For each valid conveyor, compute K points by linear interpolation between endpoints.
+2. Direction: For two points on same conveyor, travel is allowed only if the vector between them has positive dot product with conveyor direction.
+3. Path Enumeration: Consider all permutations of conveyors of length 0..3. For each sequence, iterate over all entry/exit point combinations (ensuring entry before exit on each conveyor). Compute total time.
+4. Distance: Compute Euclidean distance between two points using fixed-point square root of squared distance. Use an iterative method (e.g., Newton-Raphson) for square root.
+5. Fixed-point arithmetic: Use saturating arithmetic to prevent overflow. Multiplication results must be shifted by FRAC_BITS.
+6. State machine: Should have states for reset, idle, discretization, path enumeration, distance computation, comparison, and done.
+
+INTERFACE EXACT NAMES:
+  Inputs: clk, rst_n, start, a_x, a_y, b_x, b_y, c0_x1, c0_y1, c0_x2, c0_y2, c0_valid, c1_x1, c1_y1, c1_x2, c1_y2, c1_valid, c2_x1, c2_y1, c2_x2, c2_y2, c2_valid
+  Outputs: result, done
+
+TIMING EXAMPLE:
+  cycle 0: reset
+  cycle 2: start=1
+  cycle 3: start=0, computation starts
+  ... many cycles ...
+  cycle N: done=1, result=...

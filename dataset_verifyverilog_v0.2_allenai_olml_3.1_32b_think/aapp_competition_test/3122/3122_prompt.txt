@@ -1,0 +1,87 @@
+Design a sequential Verilog module named 'lounge_planner' that implements a simplified minimum lounge assignment solver for airport routing constraints.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] node_count // number of airports (1-8)
+input [2:0] edge_count // number of routes (0-20)
+input [4:0] edge_index // current edge index for loading (0 to edge_count-1)
+input [2:0] edge_a // airport A of current edge (1-indexed)
+input [2:0] edge_b // airport B of current edge
+input [1:0] edge_c // constraint type: 0=no lounge, 1=exactly one lounge, 2=both lounges
+input edge_load // strobe to load current edge data
+
+Outputs:
+output reg [7:0] min_lounges // minimum number of lounges needed
+output reg valid // high when result is valid
+output reg impossible // high when constraints cannot be satisfied
+output reg loading_done // high when all edges loaded
+
+Behavior:
+The module works in two phases:
+1. LOADING PHASE: Accept edge constraints via edge_load signal
+   - Store up to 20 edges, each with: nodes (a,b) and constraint (c)
+   - edge_a/edge_b are 1-indexed, convert to 0-indexed internally
+   - edges stored in block RAM or registers
+
+2. SOLVING PHASE: After loading (when edge_load goes low), search for valid lounge assignments
+   - Search space: 2^node_count possible assignments (max 256 combinations)
+   - Each assignment bit represents lounge presence at airport (1=has lounge, 0=no lounge)
+   - Validate each assignment against all constraints:
+     * c=0: lounge[a]==0 AND lounge[b]==0
+     * c=1: lounge[a] XOR lounge[b] == 1
+     * c=2: lounge[a]==1 AND lounge[b]==1
+   - Track minimum lounge count among valid assignments
+
+3. OUTPUT PHASE: Set valid=1 and update min_lounges/impossible
+
+Specification details:
+- Use state machine: IDLE -> LOADING -> SOLVING -> DONE
+- Maximum 8 airports (nodes 1-8)
+- Maximum 20 edges
+- Edge storage: use 24-bit entries [2:0]=a, [5:3]=b, [7:6]=c, [23:8]=next edge pointer
+- Solving: iterate assignment 0 to 2^node_count-1
+- For each assignment, check all edges in a linked list
+- Implementation uses combinational logic for constraint checking
+- Latency: approximately 2000 cycles worst case (256*20 checks + overhead)
+- Use registers for small arrays (max 8 elements)
+
+Fixed-point: Not applicable for this combinatorial problem.
+
+State encoding:
+- IDLE (0): waiting for start signal
+- LOADING (1): accepting edge data
+- SOLVING (2): iterating through assignments
+- DONE (3): result ready
+
+Constraint checking combinational block:
+For each edge during solving:
+  if c == 0: pass if (assign[a-1]==0 && assign[b-1]==0)
+  if c == 1: pass if (assign[a-1] ^ assign[b-1])
+  if c == 2: pass if (assign[a-1]==1 && assign[b-1]==1)
+
+Edge storage format:
+- Use 32-bit registers indexed by edge_index
+- Each register: [2:0]=a, [5:3]=b, [7:6]=c, [31:8]=unused
+- Or use separate arrays: edge_a[19:0], edge_b[19:0], edge_c[19:0] with 3-bit width
+
+Optimization for hardware:
+- Parallel constraint checking for all edges during assignment evaluation
+- Count set bits in assignment to get lounge count
+- Update min_lounges when valid assignment found with lower count
+- Early termination if all nodes need lounges (min = node_count)
+
+Use parameters:
+- MAX_NODES = 8
+- MAX_EDGES = 20
+- MAX_ASSIGNMENTS = 256
+
+The module should implement:
+1. Edge storage in registers
+2. State machine for workflow control
+3. Assignment generator (counter)
+4. Parallel constraint checking logic
+5. Lounge counter (population count)
+6. Minimum tracker
+7. Result output logic

@@ -1,0 +1,48 @@
+Design a combinational Verilog module named 'monster_battle' that finds the minimum bitcoins Master Yang needs to spend to defeat a monster.
+
+The battle mechanics:
+- Each second, monster HP decreases by max(0, ATK_Y - DEF_M)
+- Each second, Yang HP decreases by max(0, ATK_M - DEF_Y)
+- Both happen simultaneously
+- Yang wins if monster HP <= 0 while Yang HP > 0
+
+Yang can buy: HP (cost h), ATK (cost a), DEF (cost d)
+
+Inputs:
+input [7:0] yang_hp_initial      // Master Yang's initial HP (1-100)
+input [7:0] yang_atk_initial     // Master Yang's initial ATK (1-100)
+input [7:0] yang_def_initial     // Master Yang's initial DEF (1-100)
+input [7:0] monster_hp           // Monster's HP (1-100)
+input [7:0] monster_atk          // Monster's ATK (1-100)
+input [7:0] monster_def          // Monster's DEF (1-100)
+input [7:0] cost_hp              // Cost per HP point
+input [7:0] cost_atk             // Cost per ATK point
+input [7:0] cost_def             // Cost per DEF point
+
+Outputs:
+output [15:0] min_cost           // Minimum bitcoins needed
+
+The module should compute the result combinationally by:
+1. Considering all valid ATK purchases (0 to 100)
+2. Considering all valid DEF purchases (0 to 100)
+3. For each combination, calculating required HP and total cost
+4. Finding the minimum cost among all valid configurations
+
+Valid configurations must satisfy:
+- Yang's ATK after purchase > monster's DEF (to deal damage)
+- Yang survives the battle with at least 1 HP remaining
+
+Calculations:
+- Damage dealt to monster per second = yang_atk_initial + atk_purchased - monster_def
+- Seconds to kill monster = ceil(monster_hp / damage_per_second)
+- Damage taken per second = max(0, monster_atk - (yang_def_initial + def_purchased))
+- Total damage taken = seconds_to_kill * damage_taken_per_second
+- Required HP = max(0, yang_hp_initial - total_damage_taken) + 1
+- Total cost = (atk_purchased * cost_atk) + (def_purchased * cost_def) + (required_hp * cost_hp)
+
+Edge cases:
+- If monster_def >= yang_atk + atk_purchased, damage is 0 (invalid configuration)
+- If monster_atk <= yang_def + def_purchased, damage taken is 0
+- Use ceiling division for seconds calculation
+
+Note: Due to combinational complexity, this module will synthesize into parallel comparator trees and arithmetic units. The search space is bounded (ATK: 0-100, DEF: 0-100) so the logic depth is manageable.

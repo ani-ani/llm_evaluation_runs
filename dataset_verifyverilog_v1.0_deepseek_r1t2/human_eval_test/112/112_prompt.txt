@@ -1,0 +1,65 @@
+Design a sequential Verilog module named 'reverse_delete' that implements character deletion and palindrome checking on fixed-width strings.
+
+**Interface Specification:**
+
+Inputs:
+  input clk               // Clock signal
+  input rst_n             // Active-low reset
+  input start             // Start pulse (high for 1 cycle to initiate operation)
+  input [7:0] s [0:7]     // Input string s (8 characters, each 8 bits)
+  input [7:0] c [0:7]     // Characters to delete c (8 characters, each 8 bits)
+  input [3:0] s_len       // Actual length of string s (0-8)
+  input [3:0] c_len       // Actual length of string c (0-8)
+
+Outputs:
+  output reg [7:0] result [0:7] // Result string after deletion
+  output reg [3:0] result_len   // Length of result string
+  output reg palindrome         // 1 if result is palindrome, 0 otherwise
+  output reg done              // High for 1 cycle when computation is complete
+
+**Behavioral Description:**
+
+The module operates in the following stages:
+1. IDLE: Wait for start signal
+2. DELETION: Iterate through s, copy character to result if not in c
+3. PALINDROME: Check if result string is palindrome
+4. DONE: Latch outputs and assert done
+
+**Implementation Details:**
+- Use a state machine with states: IDLE, DELETE, CHECK, DONE
+- For deletion: Compare each character of s with all characters in c
+- For palindrome: Compare result[0] with result[result_len-1], result[1] with result[result_len-2], etc.
+- Maximum latency: 16 cycles (8 for deletion + 8 for check)
+- String format: ASCII characters, 8-bit each
+- Result array elements beyond result_len are unused (don't care)
+
+**State Machine Description:**
+- IDLE: When start=1, initialize indices, go to DELETE
+- DELETE: 
+  - For each character in s (idx_s from 0 to s_len-1):
+    - Compare with all characters in c (idx_c from 0 to c_len-1)
+    - If no match found, add to result array, increment result_len
+  - After processing all s, go to CHECK
+- CHECK:
+  - If result_len <= 1, palindrome = 1, go to DONE
+  - Else, compare symmetric positions in result array
+  - If any mismatch, palindrome = 0
+  - If all match, palindrome = 1
+  - Go to DONE
+- DONE: Assert done for 1 cycle, then return to IDLE
+
+**Output Sampling:**
+- Assert start high for 1 clock cycle when in IDLE state
+- Wait for done signal to go high
+- Sample result, result_len, and palindrome when done=1
+- Result is valid only in the same cycle when done=1
+
+**Array Access Pattern:**
+Input arrays s and c are accessed using indices: s[i] and c[i] where i from 0 to 7
+Output array result is written using: result[i] = value where i from 0 to result_len-1
+
+**Timing:**
+- Start asserted at cycle N
+- First valid outputs available at cycle N+9 (worst case for 8 chars)
+- Done asserted at cycle N+9
+- Module returns to IDLE at cycle N+10

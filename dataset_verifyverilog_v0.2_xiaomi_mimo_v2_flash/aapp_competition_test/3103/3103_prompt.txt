@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'ship_routes' that counts distinct paths for a ship moving on a grid.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [3:0] grid_row_idx // Current row index for grid loading
+input [7:0] grid_char // Character input for current cell (ASCII)
+
+Outputs:
+output reg [23:0] result // Result count modulo 1000003
+output reg valid // High when result is valid
+output reg done // High when computation complete
+output reg [3:0] load_row // Request to load this row index
+
+The grid size is fixed at 16 rows x 16 columns. Characters are: '~' (open), '#' (block), '>' (right current), '<' (left current), '@' (castle).
+
+Behavior:
+The ship starts at the bottom row (row 15) and a specified initial column (loaded from input stream). It can move 'North' (up) to the previous row, or follow a current '<' or '>' if present.
+
+Algorithm:
+1. Initialize state at row 15, column x_init.
+2. Process rows from bottom to top (row 15 down to 0).
+3. Use dynamic programming: maintain reachability and count arrays for each row.
+   - Reachability: bit vector indicating which columns can be reached.
+   - Count: number of ways to reach each column.
+4. Transition: 
+   - If a cell has '<' or '>', the ship moves horizontally in that direction to the adjacent cell in the SAME row (only if valid and not blocked).
+   - From any reachable cell in the current row, the ship can move North to the cell directly above in the next row.
+   - If a cell is '#', it is blocked.
+   - If a cell is '@', it is the target (valid path ends here).
+
+Implementation Strategy:
+- Use a state machine: IDLE, LOAD_ROW, CALCULATE, CHECK_DONE.
+- Since the grid is small (16x16), we can process one row per clock cycle after loading.
+- The 'grid_char' input is valid when 'load_row' indicates the current row being requested by the module. The external testbench will provide the characters.
+- To handle horizontal currents: In the LOAD_ROW state, the module reads 16 characters. It should pre-calculate the horizontal mapping for that row (where does '<' or '>' lead?) and store it in a small internal table (e.g., 16 registers storing the destination column for each cell, or -1 if none).
+- To handle vertical movement: The state machine tracks the set of reachable columns for the current row. It iterates through columns. If column c is reachable:
+  - Check the horizontal destination: if it exists, update the reachability of the destination column.
+  - Check the cell above (row-1): if it is not '#', mark the column as reachable in the next row's state.
+- The calculation must be done modulo 1000003.
+- The module should output 'valid' and 'done' when the count for reaching '@' is finalized (processed all rows or found no paths).
+
+Constraints:
+- Use Q16.16 fixed-point is not applicable here, standard integer arithmetic is used.
+- Result width: 24 bits (sufficient for < 1.2 million).
+- Grid width: 16 bits (8 bits for char * 16 columns).
+- Latency: Result valid ~300 cycles after start (one per row + overhead).
+
+State Definitions:
+- IDLE: Wait for start. Clear internal arrays.
+- LOAD_ROW: Assert 'load_row' for the current processing row. Wait for 'grid_char' input. Store char and calculate horizontal link.
+- CALCULATE: Process the row logic. Update reachability for current row (horizontal moves) and next row (vertical moves).
+- DONE: Assert 'done' and 'valid'. Result holds the count.

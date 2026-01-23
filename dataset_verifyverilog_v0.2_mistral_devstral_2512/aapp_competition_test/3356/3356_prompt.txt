@@ -1,0 +1,112 @@
+Design a sequential Verilog module named 'mole_residence' that implements a simplified tree diameter and reconstruction algorithm for a fixed 8-node tree.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] node_a_i // Node A for edge input (1-8)
+input [2:0] node_b_i // Node B for edge input (1-8)
+input input_valid // High when edge data is valid
+input input_done // High when all N-1 edges are input
+
+Outputs:
+output reg [7:0] diameter_result // Resulting diameter distance
+output reg [2:0] close_node_a // Node A of tunnel to close
+output reg [2:0] close_node_b // Node B of tunnel to close
+output reg [2:0] open_node_a // Node A of new tunnel
+output reg [2:0] open_node_b // Node B of new tunnel
+output reg computation_done // High when reconstruction is complete
+
+Constraints:
+- The tree has at most 8 nodes (values 1-8)
+- Node 0 represents null/unconnected
+- Maximum N=8 (fixed for hardware)
+- The adjacency matrix is 8x8
+
+Algorithm Description:
+1. Build adjacency matrix from edge inputs (state INPUT_EDGES)
+2. Find diameter path using BFS/DFS from arbitrary node (state FIND_DIA_START)
+3. Find furthest node from start (state FIND_DIA_END)
+4. Trace diameter path to find middle node(s) and longest edge (state TRACE_PATH)
+5. The "center" is the middle node of the diameter (or one of the two middle nodes)
+6. The reconstruction rule: 
+   - Identify the edge on the diameter path that is closest to the center.
+   - Close that edge.
+   - Open a new edge connecting the disconnected component to the center.
+   - For the simplified 8-node case, we will:
+     a. Find the diameter path list
+     b. Identify the longest distance edge on the path (or closest to center)
+     c. Remove that edge from the tree
+     d. Reconnect the two resulting components by connecting the center of the original tree to the end of one component
+
+Detailed States:
+- IDLE: Wait for start
+- INPUT_EDGES: Store edges in adjacency matrix. Count edges. When input_done is high, proceed.
+- INIT_BFS: Prepare for first BFS
+- BFS_DEPTH_1: Run BFS level 1 (edges from start)
+- ... BFS_DEPTH_N: Run BFS up to 7 levels (max distance)
+- FIND_DIA_END: Identify furthest node
+- TRACE_PATH: Trace back from end to start to build path list
+- ANALYZE_PATH: Find the edge to cut and the center node
+- RECONNECT: Define new edge
+- DONE: Output results and wait for reset
+
+Module Specification:
+The module should use a 8x8 adjacency matrix stored in a 2D array or 1D array with 64 entries.
+Use a state machine to control the flow.
+Use a stack or queue for BFS traversal (bounded to 8 nodes).
+Store the diameter path in a register array (max 8 hops).
+
+Signal Widths:
+- Nodes: 3 bits (1-8)
+- Distance: 3 bits (max distance in 8-node tree is 7)
+- Adjacency Matrix: 64 bits (8x8)
+- Path Array: 5 elements of 3 bits each (max diameter length 7, so 8 nodes in path)
+
+Test cases:
+1. Line graph 1-2-3-4: Diameter 3. Close edge 3-4 or 1-2? No, standard solution is to cut the middle edge (2-3) and connect ends? 
+   Actually, the problem says minimize diameter. For 1-2-3-4, cutting 3-4 (or 1-2) and reconnecting to center (2 or 3) is optimal if we keep it a tree.
+   Wait, the problem allows closing and opening a new tunnel. 
+   If we cut 3-4 and open 4-2 (as in example), the tree becomes 1-2-3 and 2-4. Diameter is 2 (1-2-3 or 1-2-4).
+   So the strategy is: Find diameter path. Pick an edge near the center of the diameter. 
+   Specifically, pick the edge that connects the center node to the rest of the tree.
+   Let's implement: 
+   - Find Diameter.
+   - Identify the two middle nodes of the diameter (if even length) or middle node (if odd).
+   - Let's say we pick the node at distance L/2 from the start.
+   - This node is the "center".
+   - Find an edge incident to the center that lies on the diameter path.
+   - Cut that edge.
+   - The component containing the center remains. The other component is reconnected to the center.
+   Wait, that keeps it connected. 
+   Actually, we just need to cut ANY edge on the diameter path, preferably one that breaks the diameter, and connect the two components to minimize the new diameter.
+   
+   Simplified Logic for Module:
+   1. Find diameter endpoints A and B.
+   2. Trace path A->B. Let nodes be P[0]...P[L] (A=P[0], B=P[L]).
+   3. The "center" is P[L/2].
+   4. The edge to close is (P[L/2], P[L/2+1]).
+   5. The new edge to open is (P[L/2+1], P[L/2]). No, that's the same.
+   6. Let's follow the example 1-2-3-4. Diameter 1-2-3-4. L=3. Path [1,2,3,4]. L/2=1 (index). Center=2.
+   7. Edge to cut: (2,3). Example says cut (3,4). 
+   8. Let's try the other strategy: Cut the edge at the end of the path (3,4). Open (4,2).
+   9. New path: 1-2-4 and 2-3. Max distance is 2 (1-2-3 or 1-2-4).
+   10. So the rule is: Cut the edge at one end of the diameter. Connect the leaf to the center.
+   11. Center of 1-2-3-4 is 2 or 3. Let's pick 2.
+   12. Cut (3,4). Open (4,2).
+   
+   Let's refine the algorithm for the module:
+   - Find Diameter endpoints A, B.
+   - Trace path A->B to get node list.
+   - Identify Center Node C = P[L/2].
+   - Identify Leaf Node L = B.
+   - Identify Parent of Leaf = P[L-1].
+   - Close edge (P[L-1], L).
+   - Open edge (L, C).
+
+   Output format:
+   - Diameter distance.
+   - Close pair (u, v).
+   - Open pair (u, v).
+
+   Note: Input nodes are 1-based. Internal processing can be 0-based or 1-based. Output must be 1-based.

@@ -1,0 +1,39 @@
+Verilog Module Specification: Count Almost Palindromic Substrings
+
+The module counts the number of nonempty almost palindromic substrings in a fixed-length string of 4 characters. It is a sequential module that enumerates all 10 substrings and checks each for being almost palindromic.
+
+Interface Signals:
+
+Inputs:
+- clk         : Clock signal (rising edge triggered)
+- rst_n       : Active-low synchronous reset
+- start       : Start pulse (assert for 1 cycle to begin computation)
+- char_in[0:3]: 4-element array, each element is a 5-bit unsigned integer representing a lowercase letter ('a' = 0, 'b' = 1, ..., 'z' = 25). The string is composed of these 4 characters.
+
+Outputs:
+- count[3:0]  : 4-bit unsigned integer (0-10) indicating the number of almost palindromic substrings in the input string.
+- done        : Asserted high for 1 cycle when computation is complete and count is valid.
+
+Behavior:
+
+1. Reset (rst_n = 0): The module returns to the idle state. count = 0, done = 0.
+2. When start is asserted for one clock cycle, the module begins processing the input string.
+3. The module enumerates all nonempty substrings of the 4-character string. For each substring, it checks whether it is almost palindromic:
+   - A substring is almost palindromic if it is already a palindrome, OR it can be turned into a palindrome by swapping exactly two characters.
+4. For each substring that satisfies the condition, the module increments an internal counter.
+5. After all substrings have been processed, the module asserts done for one clock cycle, and the final count is presented on the count output.
+6. The computation should complete within a fixed number of cycles (e.g., 100 cycles) after start.
+
+Implementation Notes:
+
+- The design can use a finite state machine (FSM) with states: IDLE, EXTRACT, CHECK, NEXT, DONE.
+- The FSM should iterate over start index (0 to 3) and length (1 to 4-start). For each substring, extract the relevant characters into a temporary array (max length 4).
+- The almost-palindrome check can be implemented as a combinational block that takes a vector of characters and its length. Since the maximum length is 4, the check can be fully unrolled:
+   * For length 1: always true.
+   * For length 2: true if both characters are equal.
+   * For length 3 and 4: first check if palindrome; if not, try all possible swaps (C(L,2) swaps) and check if the swapped string is palindrome. If any swap works, the substring is almost palindromic.
+- The combinational check should not contain loops with variable bounds; instead, use fixed comparators for each possible swap (e.g., for length 4, check 6 swaps explicitly).
+- The module must use only bounded resources; no dynamic memory allocation.
+- The output count fits in 4 bits because the maximum number of substrings for length 4 is 10.
+
+Testbench will provide the string via char_in, pulse start, wait for done, and read count.

@@ -1,0 +1,45 @@
+Design a Verilog module that solves the "Toy Train" problem for up to 100 stations and 200 candies.
+
+### Interface Specification
+
+**Inputs:**
+- `clk`: Clock signal, rising‑edge triggered.
+- `rst_n`: Active‑low synchronous reset.
+- `start`: Start pulse (assert for 1 clock cycle to begin computation).
+- `n`: Number of stations, 7‑bit unsigned (2 ≤ n ≤ 100).
+- `m`: Number of candies, 8‑bit unsigned (1 ≤ m ≤ 200).
+- `a_i`: Array of 200 elements, each 7‑bit unsigned (1‑indexed station numbers).
+- `b_i`: Array of 200 elements, each 7‑bit unsigned (1‑indexed station numbers).
+
+**Outputs:**
+- `ans_i`: Array of 100 elements, each 32‑bit unsigned. `ans_i[i]` is the minimum time (in seconds) when the train starts at station `i+1`.
+- `done`: Asserted high for 1 clock cycle when computation is complete; the `ans_i` array is valid on the same cycle.
+
+### Functional Specification
+
+The module must internally:
+1. Convert all 1‑indexed inputs to 0‑indexed for easier arithmetic.
+2. For each candy `(a, b)`, compute the distance `d = (b - a) mod n` (i.e., `d = (b >= a) ? (b - a) : (n + b - a)`).
+3. Maintain two arrays for stations `0 … n-1`:
+   - `count[j]`: number of candies initially at station `j`.
+   - `min_dist[j]`: minimum distance `d` among candies at station `j` (initialize to a large value, e.g., 127).
+4. After processing all candies, compute the answer for each starting station `i` (0‑indexed):
+   - For every station `j` with `count[j] > 0`, calculate:
+     `value = ((j - i + n) % n) + (count[j] - 1) * n + min_dist[j]`
+   - `ans_i[i] = max(value over all j)`.
+5. Assert `done` for one cycle when all answers are ready.
+
+### Timing & Resource Constraints
+- The module must complete within ~10,000 clock cycles for worst‑case inputs (n=100, m=200).
+- Use a finite‑state machine (FSM) to sequence the operations.
+- All internal registers must be sized appropriately (e.g., `count` needs 8 bits, `min_dist` needs 7 bits, intermediate calculations need 16–32 bits).
+
+### Reset Behavior
+- On `rst_n = 0`, all internal state (counters, arrays, FSM state) is cleared; `done = 0` and `ans_i` outputs are zero.
+
+### Implementation Notes
+- The module should be synthesizable and avoid combinational loops.
+- The input arrays `a_i` and `b_i` are valid only for indices `0 … m-1`; other entries are ignored.
+- The output `ans_i` is indexed starting at 0 for station 1.
+
+The testbench will provide the inputs, pulse `start`, wait for `done`, and verify `ans_i` against expected values.

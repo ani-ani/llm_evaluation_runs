@@ -1,0 +1,147 @@
+module min_transmission_cost (
+    input [2:0] N,
+    input [2:0] M,
+    input [7:0] adj_A_0, adj_A_1, adj_A_2, adj_A_3,
+    input [7:0] adj_A_4, adj_A_5, adj_A_6, adj_A_7,
+    input [7:0] adj_B_0, adj_B_1, adj_B_2, adj_B_3,
+    input [7:0] adj_B_4, adj_B_5, adj_B_6, adj_B_7,
+    output reg [31:0] min_cost
+);
+
+localparam MAX_N = 8;
+localparam MAX_M = 8;
+
+reg [7:0] adj_A [MAX_N-1:0];
+reg [7:0] adj_B [MAX_M-1:0];
+reg [3:0] dist_A [MAX_N-1:0][MAX_N-1:0];
+reg [3:0] dist_B [MAX_M-1:0][MAX_M-1:0];
+
+reg [15:0] cost_A, cost_B;
+reg [15:0] S_A [MAX_N-1:0];
+reg [15:0] S_A2 [MAX_N-1:0];
+reg [15:0] S_B [MAX_M-1:0];
+reg [15:0] S_B2 [MAX_M-1:0];
+
+integer i, j, k, u, v, a, b;
+reg [15:0] cross_cost;
+reg [31:0] total_cost;
+reg [31:0] best_total;
+
+always @(*) begin
+    adj_A[0] = adj_A_0;
+    adj_A[1] = adj_A_1;
+    adj_A[2] = adj_A_2;
+    adj_A[3] = adj_A_3;
+    adj_A[4] = adj_A_4;
+    adj_A[5] = adj_A_5;
+    adj_A[6] = adj_A_6;
+    adj_A[7] = adj_A_7;
+    adj_B[0] = adj_B_0;
+    adj_B[1] = adj_B_1;
+    adj_B[2] = adj_B_2;
+    adj_B[3] = adj_B_3;
+    adj_B[4] = adj_B_4;
+    adj_B[5] = adj_B_5;
+    adj_B[6] = adj_B_6;
+    adj_B[7] = adj_B_7;
+
+    for (i = 0; i < MAX_N; i = i + 1) begin
+        for (j = 0; j < MAX_N; j = j + 1) begin
+            if (i == j) dist_A[i][j] = 0;
+            else if (i < N && j < N && adj_A[i][j]) dist_A[i][j] = 1;
+            else dist_A[i][j] = 4'hF;
+        end
+    end
+
+    for (k = 0; k < MAX_N; k = k + 1) begin
+        for (i = 0; i < MAX_N; i = i + 1) begin
+            for (j = 0; j < MAX_N; j = j + 1) begin
+                if (i < N && j < N && k < N) begin
+                    if (dist_A[i][k] + dist_A[k][j] < dist_A[i][j])
+                        dist_A[i][j] = dist_A[i][k] + dist_A[k][j];
+                end
+            end
+        end
+    end
+
+    for (i = 0; i < MAX_M; i = i + 1) begin
+        for (j = 0; j < MAX_M; j = j + 1) begin
+            if (i == j) dist_B[i][j] = 0;
+            else if (i < M && j < M && adj_B[i][j]) dist_B[i][j] = 1;
+            else dist_B[i][j] = 4'hF;
+        end
+    end
+
+    for (k = 0; k < MAX_M; k = k + 1) begin
+        for (i = 0; i < MAX_M; i = i + 1) begin
+            for (j = 0; j < MAX_M; j = j + 1) begin
+                if (i < M && j < M && k < M) begin
+                    if (dist_B[i][k] + dist_B[k][j] < dist_B[i][j])
+                        dist_B[i][j] = dist_B[i][k] + dist_B[k][j];
+                end
+            end
+        end
+    end
+
+    cost_A = 0;
+    for (i = 0; i < MAX_N; i = i + 1) begin
+        for (j = i + 1; j < MAX_N; j = j + 1) begin
+            if (i < N && j < N) begin
+                cost_A = cost_A + (dist_A[i][j] * dist_A[i][j]);
+            end
+        end
+    end
+
+    cost_B = 0;
+    for (i = 0; i < MAX_M; i = i + 1) begin
+        for (j = i + 1; j < MAX_M; j = j + 1) begin
+            if (i < M && j < M) begin
+                cost_B = cost_B + (dist_B[i][j] * dist_B[i][j]);
+            end
+        end
+    end
+
+    for (u = 0; u < MAX_N; u = u + 1) begin
+        S_A[u] = 0;
+        S_A2[u] = 0;
+        if (u < N) begin
+            for (a = 0; a < MAX_N; a = a + 1) begin
+                if (a < N) begin
+                    S_A[u] = S_A[u] + dist_A[a][u];
+                    S_A2[u] = S_A2[u] + (dist_A[a][u] * dist_A[a][u]);
+                end
+            end
+        end
+    end
+
+    for (v = 0; v < MAX_M; v = v + 1) begin
+        S_B[v] = 0;
+        S_B2[v] = 0;
+        if (v < M) begin
+            for (b = 0; b < MAX_M; b = b + 1) begin
+                if (b < M) begin
+                    S_B[v] = S_B[v] + dist_B[b][v];
+                    S_B2[v] = S_B2[v] + (dist_B[b][v] * dist_B[b][v]);
+                end
+            end
+        end
+    end
+
+    best_total = 32'hFFFFFFFF;
+    for (u = 0; u < MAX_N; u = u + 1) begin
+        if (u < N) begin
+            for (v = 0; v < MAX_M; v = v + 1) begin
+                if (v < M) begin
+                    cross_cost = M * S_A2[u] + N * S_B2[v] + N * M + 2 * S_A[u] * S_B[v] + 2 * M * S_A[u] + 2 * N * S_B[v];
+                    total_cost = cost_A + cost_B + cross_cost;
+                    if (total_cost < best_total)
+                        best_total = total_cost;
+                end
+            end
+        end
+    end
+
+    min_cost = best_total;
+end
+
+endmodule

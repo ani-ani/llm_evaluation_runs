@@ -1,0 +1,51 @@
+Design a combinational Verilog module named 'pickle_packing' that computes the maximum number of pickles that can be placed on a circular sandwich.
+
+Problem Adaptation:
+- Use Q16.16 fixed-point format for all calculations
+- Input sandwich radius s (cm) and pickle radius r (cm) in Q16.16 format
+- Maximum n = 7 pickles, maximum z = 100% area coverage
+- Compute if k pickles (for k=0 to 7) can fit without overlap AND under area limit
+- Return the maximum k that satisfies both conditions
+
+The module needs to check for each k (0 to 7):
+1. Area condition: k * π * r² ≤ (z/100) * π * s²  →  k * r² ≤ (z/100) * s²
+2. Packing condition: k circles of radius r can fit inside circle of radius s without overlap
+   - For k=0: always true (0 pickles)
+   - For k=1: always true (1 pickle at center)
+   - For k=2: true if 2*r ≤ s (pickles side by side)
+   - For k=3: true if the enclosing circle radius ≤ s
+   - For k=4 to 7: use geometric constraints
+
+Geometric packing constraints (circles of radius r inside radius s):
+- k=0: valid
+- k=1: valid (centered)
+- k=2: valid if 2r ≤ s
+- k=3: valid if triangle of 3 circles fits: enclosing radius = r * (1 + 2/√3) ≈ r * 2.1547
+- k=4: valid if 4 circles in square pattern fit: enclosing radius = r * (1 + √2) ≈ r * 2.4142
+- k=5: valid if 5 circles fit: enclosing radius ≈ r * 2.701
+- k=6: valid if 6 circles around center: enclosing radius = 3r
+- k=7: valid if 6 around center + 1 in middle: enclosing radius = 3r
+
+Inputs:
+input [31:0] s_ridge // sandwich radius in Q16.16 format
+input [31:0] r_ridge // pickle radius in Q16.16 format  
+input [6:0] n_available // binary: number of available pickles (max 7)
+input [6:0] z_percent // area coverage percentage (0-100)
+
+Outputs:
+output reg [3:0] max_pickles // maximum number that can be placed (0-7)
+
+The module should:
+1. Compute area constraint: k * r² ≤ (z/100) * s² for each k
+2. For each k, compute the required minimum sandwich radius
+3. Compare required radius with actual s
+4. Return the largest k that satisfies both conditions AND ≤ n_available
+
+All calculations use Q16.16 fixed-point arithmetic.
+Multiplication of Q16.16 values produces Q32.32, take upper 32 bits (bits 47:16) for Q16.16 result.
+
+Use combinational logic with case statements or if-else chains for k=0 to 7.
+
+Example values:
+- Sample 1: s=3, r=1, n=4, z=40 → output 3
+- Sample 2: s=3, r=1, n=4, z=100 → output 4

@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'wonderland_decoder' that solves the Wonderland shortest path problem for small graphs.
+
+### Problem Adaptation
+- **Max Locations (N)**: 16 (scaled from 200)
+- **Max Trips (T)**: 16 (scaled from 500)
+- **Max Locations per Trip**: 32 (scaled from 800)
+- **Data Widths**: 8 bits (enough for node IDs 1-16, weights 1-12)
+
+### Algorithm
+1. **Decoding (3 phases)**:
+   - **Phase 1: Discovery**: Read trip logs to build an adjacency map. Maintain a list of unique edges (max 128 edges) and a count of how many times each edge is traversed.
+   - **Phase 2: Weight Estimation**: Iterate through the edges. For each edge, check all trip logs again. If a trip traverses this edge with known neighbors and known edge weights, calculate the candidate weight. Average the candidates (sum and divide by count). Store in a weight table.
+   - **Phase 3: Verification**: Validate that all trip durations match the calculated edge weights. If a mismatch occurs, mark the edge as 'invalid' (requires re-evaluation in a real scenario, but for this hardware constraint, we assume consistency or skip).
+
+2. **Shortest Path (Dijkstra)**:
+   - Run Dijkstra's algorithm from source `A` to destination `R`.
+   - Use a state machine to handle the iteration.
+   - Priority queue simulated by iterating over unvisited nodes to find minimum distance node (brute force for small N).
+
+### Interface
+Inputs:
+- `clk`, `rst_n`: Standard synchronous logic.
+- `start`: High for one cycle to start processing.
+- `din`: 8-bit data input. Feed the entire input stream (metadata + trips) sequentially.
+- `din_valid`: High when `din` contains valid data.
+- `din_end`: High on the last cycle of input data.
+
+Outputs:
+- `result`: 16-bit output for the shortest distance.
+- `result_valid`: High when the result is valid.
+- `ready`: High when the module is ready for a new input stream.
+
+### Internal Logic
+- **Input Buffer**: Store trips in BRAM (Block RAM) or register arrays. Since N is small, we use registers for trips: `reg [7:0] trip_data [0:31][0:255]`. Max 256 bytes total.
+- **FSM States**: IDLE, READ_INPUT, DECODE_PHASE1, DECODE_PHASE2, DECODE_PHASE3, DIJKSTRA_INIT, DIJKSTRA_LOOP, DONE.
+- **Control Signals**: Manage iteration counters for trips, edges, and nodes.
+
+### Timing
+- Latency: Highly dependent on data size, but expect completion within ~10,000 cycles for max inputs.
+
+### Constraints
+- Use 8-bit logic for node indices and weights.
+- Dijkstra uses a `dist` array of size 16x8 bits.
+- The priority queue is implicit: scan all nodes to find the one with min distance among unvisited ones.

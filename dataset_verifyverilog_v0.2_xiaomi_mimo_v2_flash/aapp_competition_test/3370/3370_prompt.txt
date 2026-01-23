@@ -1,0 +1,46 @@
+Design a combinational Verilog module named 'eagleton_solver' that computes the final stable heights of houses in Eagleton.
+
+The problem states that houses converge to a state where h[i] = (h[i-1] + h[i+1])/2 + k. This rearranges to h[i] = h[i-1] + k, meaning the heights form a linear progression: h[i] = h[0] + i*k. The maximum height will be at house N (or house 1 if k < 0, but k >= 0 in constraints).
+
+We simplify by using:
+- N = 8 houses (maximum)
+- Q16.16 fixed-point format for all values (16 integer bits, 16 fractional bits)
+- k is scaled: input_k represents k * 65536
+- Initial heights h[i] are scaled: input_h[i] represents h[i] * 65536
+- Output is in Q16.16 format
+
+The module should compute the final height of the rightmost house (index N-1).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] k // k value in Q16.16 format
+input [31:0] h_0 // Initial height of house 0 in Q16.16 format
+
+Outputs:
+output reg [31:0] max_height // Final height of tallest house (house N-1) in Q16.16
+output reg done // High when computation complete
+
+Behavior:
+Since h[i] = h[0] + i*k, and we have N=8, the final height of house 7 is h[0] + 7*k.
+The module should compute: max_height = h_0 + 7*k
+This is a simple multiply-add operation.
+
+State Machine (if using sequential implementation):
+- IDLE: Wait for start signal
+- CALC: Compute h_0 + 7*k using addition (k is added 7 times to avoid multiplier)
+- DONE: Assert done signal
+
+Alternatively, for a pure combinational approach (simpler):
+Implement a combinational module that continuously computes h_0 + 7*k.
+
+Let's specify a sequential module for generality:
+Latency: 8 clock cycles after start (one cycle per addition of k)
+Use state machine: IDLE, ADD_LOOP (7 iterations), DONE
+
+Signals:
+- Counter to track iterations (0 to 7)
+- Accumulator for result
+
+Output: max_height = h_0 + 7*k

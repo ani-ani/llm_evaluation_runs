@@ -1,0 +1,29 @@
+Design a Verilog module named 'min_moves' that computes the minimum number of file icons to move to enable deleting all target files in one operation while avoiding kept files.
+
+The problem is simplified to handle at most 10 total files (n+m <= 10).
+Files are represented by their center coordinates (row, col). Input coordinates are pixel coordinates. Icons are 15x9, so center is (r+7, c+4).
+
+Inputs:
+input clk: Clock signal.
+input rst_n: Active-low reset.
+input start: Start computation.
+input [5:0] total_files: Number of total files (n+m).
+input [9:0] file_coords [0:9]: Array of 10 file coordinates. Each coordinate is {row[9:0], col[9:0]}. Only first 'total_files' are valid.
+input [9:0] num_delete: Number of files to delete (n). The first 'num_delete' entries in file_coords are targets to delete.
+
+Outputs:
+output reg [3:0] min_moves: Minimum number of files to move (0-10).
+output reg done: High when computation is complete.
+
+Behavior:
+The module should use a state machine to iterate through all possible subsets of files to move (from size 0 to 'num_delete').
+For a given subset size K, iterate through all combinations of K files from the target list.
+For each subset (set of files to move), check if the remaining target files (those not moved) can be enclosed in a rectangle that contains NO kept files.
+  - To check this: Find the bounding box of remaining targets (min/max row/col).
+  - Check if any kept file center falls strictly inside this box (or on boundary). If yes, invalid.
+  - Note: To be safe, the rectangle should effectively be the bounding box of the targets. If a keep-file is on the boundary, it's intersecting.
+If valid, update 'min_moves' to K and stop (since we iterate K from 0 up).
+
+Latency: Allow up to ~1000 cycles to traverse combinations sequentially (or unroll if logic size permits). Use a sequential state machine.
+
+States: IDLE, INIT_SUBSET, CHECK_SUBSET, UPDATE_RESULT, DONE.

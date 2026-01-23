@@ -1,0 +1,42 @@
+Module: arcaea_diversity
+
+Parameters:
+  N_MAX = 4  (maximum number of partners)
+
+Inputs:
+  clk        : clock, rising edge
+  rst_n      : active-low reset
+  start      : start computation pulse (1 cycle)
+  n[3:0]     : number of partners (1 to N_MAX)
+  k[3:0]     : maximum number of awakenings allowed (1 to N_MAX)
+  g_0[7:0], g_1[7:0], g_2[7:0], g_3[7:0] : unawakened Frag values
+  p_0[7:0], p_1[7:0], p_2[7:0], p_3[7:0] : unawakened Step values
+  ga_0[7:0], ga_1[7:0], ga_2[7:0], ga_3[7:0] : awakened Frag values (0 if not awakenable)
+  pa_0[7:0], pa_1[7:0], pa_2[7:0], pa_3[7:0] : awakened Step values (0 if not awakenable)
+
+Outputs:
+  result[3:0] : maximum diversity achievable
+  done        : asserted high for 1 cycle when result is valid
+
+Functionality:
+  The module computes the maximum diversity d(S) achievable by awakening at most k partners.
+
+  Steps:
+  1. On start, capture inputs into internal registers.
+  2. Determine awakenable partners: partner i is awakenable if (ga_i != 0 or pa_i != 0).
+  3. Iterate over all subsets of awakenable partners with size <= k.
+  4. For each subset B:
+        For each partner i (0 to n-1):
+            if i in B and partner i is awakenable: use (ga_i, pa_i)
+            else: use (g_i, p_i)
+        Let this set be P.
+        Compute maximum antichain size of P:
+            Enumerate all subsets S of P (by bitmask 0..(1<<n)-1).
+            For each S, check antichain condition: for all i != j in S, not (Frag_i > Frag_j and Step_i > Step_j) and not (Frag_i < Frag_j and Step_i < Step_j).
+            If valid, record size.
+        Record maximum size for this B.
+  5. Track maximum diversity across all B.
+  6. Output result and pulse done.
+
+  Timing: Sequential; may take many cycles (up to a few thousand). Done asserted when finished.
+  Reset: rst_n low clears state; minimum 2 cycles reset.

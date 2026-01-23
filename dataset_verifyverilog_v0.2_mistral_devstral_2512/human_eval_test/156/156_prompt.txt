@@ -1,0 +1,47 @@
+Design a sequential Verilog module named 'roman_converter' that converts a 10-bit integer (1-1000) to its lowercase Roman numeral string representation.
+
+The module should use a state machine to decompose the input number using the greedy algorithm:
+- Values: M=1000, CM=900, D=500, CD=400, C=100, XC=90, L=50, XL=40, X=10, IX=9, V=5, IV=4, I=1
+- For each threshold, check if input >= value, append corresponding Roman symbols, and subtract value
+
+Outputs must be a fixed-width 8-byte array (max Roman numeral length is 8 chars for 1000='mmmm' but actually 'm' is 1, 'dcccxcviii' is 9 chars... let's use 10 chars to be safe: output [9:0][7:0] for 10 characters).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [9:0] number // integer 1-1000
+
+Outputs:
+output reg [9:0][7:0] roman_chars // 10-character byte array, each char is ASCII
+output reg done // high when computation complete
+output reg error // high if input is 0 or >1000
+
+Specify latency: Result valid ~20 clock cycles after start asserted (one cycle per threshold check).
+
+Use state machine with states: IDLE, CHECK_M, CHECK_CM, CHECK_D, CHECK_CD, CHECK_C, CHECK_XC, CHECK_L, CHECK_XL, CHECK_X, CHECK_IX, CHECK_V, CHECK_IV, CHECK_I, APPEND, DONE.
+
+The APPEND state should handle writing characters and updating the remaining value.
+
+Each threshold check state should:
+1. Compare current remaining value with threshold
+2. If >=, append Roman symbols to output buffer and subtract
+3. Move to next threshold state
+4. Track current output position (0-9)
+
+For Roman symbols:
+- M: output 'm' (0x6D)
+- CM: output 'c' (0x63) then 'm' (0x6D)
+- D: output 'd' (0x64)
+- CD: output 'c' (0x63) then 'd' (0x64)
+- C: output 'c' (0x63)
+- XC: output 'x' (0x78) then 'c' (0x63)
+- L: output 'l' (0x6C)
+- XL: output 'x' (0x78) then 'l' (0x6C)
+- X: output 'x' (0x78)
+- IX: output 'i' (0x69) then 'x' (0x78)
+- V: output 'v' (0x76)
+- IV: output 'i' (0x69) then 'v' (0x76)
+- I: output 'i' (0x69)
+
+The output buffer should be cleared at start. Remaining value should be initialized with input number.

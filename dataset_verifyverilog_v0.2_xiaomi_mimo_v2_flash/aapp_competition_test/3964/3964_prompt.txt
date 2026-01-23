@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'good_plans' that counts the number of ways to distribute exactly m lines of code among n programmers such that the total bugs do not exceed b. This is a dynamic programming problem adapted for hardware.
+
+Problem Adaptation:
+- Maximum n (programmers) = 8
+- Maximum m (lines) = 16
+- Maximum b (bugs) = 16
+- a_i (bugs per line) is scaled to fit 0-15 range
+- We use a 3D DP approach flattened into sequential updates
+- DP state: dp[j][k] = number of ways to write j lines with exactly k bugs
+- Formula: dp[i][j][k] = dp[i-1][j][k] + dp[i-1][j-1][k-a_i] (if k >= a_i)
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [3:0] n // Number of programmers (max 8)
+input [4:0] m // Total lines of code (max 16)
+input [4:0] b // Maximum bugs (max 16)
+input [31:0] mod_val // Modulo value (up to 10^9+7)
+input [3:0] a_val // Current programmer's bugs per line
+input a_val_valid // High when a_val is valid input
+input a_val_done // High when all programmer values have been input
+
+Outputs:
+output reg [31:0] result // Final count modulo mod_val
+output reg done // High when computation is complete
+output reg wait_for_a // High when waiting for next a_val input
+
+Behavior:
+The module operates in two phases:
+1. LOAD phase: When start is high, wait_for_a goes high. The module accepts n programmer values sequentially via a_val. Assert a_val_valid for each value. After n values, assert a_val_done.
+2. COMPUTE phase: Once a_val_done is received, the module computes the DP table iteratively.
+   - DP array size: 17 x 17 (lines 0-16, bugs 0-16)
+   - Use state machine: IDLE, LOAD_PARAMS, LOAD_A, COMPUTE, FINISHED
+   - For each programmer, update the DP table.
+   - Result is sum of dp[m][0...b].
+   - All arithmetic operations must use 32-bit values and modulo mod_val.
+
+Latency: Approximately 2000 clock cycles after computation starts.
+
+State Machine:
+- IDLE: Wait for start signal. Reset internal state.
+- LOAD_PARAMS: Capture n, m, b, mod_val.
+- LOAD_A: Wait for a_val_valid and a_val_done signals to load programmer bugs. Store a_i in a small ROM.
+- COMPUTE: Iterate through n programmers. For each programmer, iterate through lines (1 to m) and bugs (a_i to b). Update DP table. Use a sequential multiplier for modulo operations.
+- FINISHED: Output result, assert done.
+
+Internal Logic:
+Use 2D registers for DP: reg [31:0] dp [0:15][0:15] (lines 0-15, bugs 0-15). Initialize dp[0][0] = 1, others 0.
+Update rule: For current programmer with bugs 'a', update dp[j][k] = dp[j][k] + dp[j-1][k-a].
+Since we need modulo, use: dp[j][k] = (dp[j][k] + dp[j-1][k-a]) % mod_val.
+Accumulate result in final step.

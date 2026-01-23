@@ -1,0 +1,110 @@
+Design a sequential Verilog module named 'count_nums' that counts elements in an array whose sum of digits is greater than 0.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [4:0] array_size // number of elements in array (max 16)
+input signed [7:0] arr [0:15] // array of 16 signed 8-bit integers
+
+Outputs:
+output reg [4:0] result // count of elements with digit sum > 0
+output reg done // high when computation complete
+
+Specification:
+- Module processes array elements sequentially using a state machine
+- For each element, compute sum of digits:
+  - If element is negative, use absolute value for digit sum (e.g., -123 -> 1+2+3=6)
+  - If element is 0, sum is 0
+- Count elements where digit sum > 0
+- Latency: approximately 16 * 8 = 128 clock cycles worst case (one cycle per digit)
+- Use state machine with states: IDLE, LOAD_NUM, SUM_DIGITS, CHECK_COUNT, DONE
+- In IDLE: wait for start signal
+- In LOAD_NUM: load current element and prepare for digit extraction
+- In SUM_DIGITS: extract digits one by one and accumulate sum
+- In CHECK_COUNT: if sum > 0, increment result counter
+- In DONE: assert done signal
+
+Implementation details:
+- Use temporary registers: current_num, digit_sum, digit_count, array_index
+- Digit extraction: repeatedly divide by 10 and take remainder (or use subtraction method)
+- Handle sign: if current_num < 0, negate it before digit extraction
+- Array index ranges from 0 to array_size-1
+- Result initialized to 0
+
+Example:
+Input: [-1, 11, -11] with array_size=3
+- -1: abs=1, sum=1 > 0, count=1
+- 11: sum=1+1=2 > 0, count=2  
+- -11: abs=11, sum=1+1=2 > 0, count=3
+But wait: problem says returns 1 for [-1, 11, -11]
+Let me re-read: "-123 has signed digits -1, 2, and 3"
+
+Ah! Signed digits means: for negative numbers, the most significant digit is negative.
+So -123: digits are -1, 2, 3, sum = -1 + 2 + 3 = 4 > 0
+-1: digits are -1, sum = -1 <= 0, NOT counted
+11: digits 1, 1, sum = 2 > 0, counted
+-11: digits -1, 1, sum = 0, NOT counted
+Result = 1 (only 11 counted)
+
+Revised logic:
+- Positive numbers: sum all positive digits
+- Negative numbers: first digit is negative, rest positive
+- -123: -1 + 2 + 3 = 4
+- -1: -1 = -1
+- -11: -1 + 1 = 0
+- -45: -4 + 5 = 1
+
+Algorithm for digit extraction of signed negative numbers:
+1. If number >= 0: normal digit sum
+2. If number < 0: 
+   a. Convert to positive (e.g., -123 -> 123)
+   b. Get number of digits (3 for 123)
+   c. Extract most significant digit: 1, but make it negative: -1
+   d. Remaining digits: 2, 3, sum = -1 + 2 + 3 = 4
+
+This is complex in hardware. Alternative interpretation: sum of absolute digits, but sign matters for the result count only.
+Actually re-reading: "If a number is negative, then its first signed digit will be negative"
+This means treat the sign bit as affecting the first digit's sign.
+
+Let me implement it as: sum = (number < 0 ? -1 : 1) * first_digit + sum_of_remaining_digits
+But this is still complex. 
+
+Simpler hardware-friendly approach:
+For each number:
+1. Take absolute value |n|
+2. Compute digit sum of |n| normally
+3. If n < 0: result = -digit[0] + digit[1:] = -digit[0] + (sum(|n|) - digit[0]) = sum(|n|) - 2*digit[0]
+4. Check if this > 0
+
+Actually, even simpler: just compute sum of signed digits directly:
+- Extract digits of absolute value
+- If original was negative, negate the most significant digit
+- Sum them all
+
+For hardware: we need to track if we're on the first digit of a negative number.
+
+State machine states:
+IDLE: wait for start
+LOAD: load current element, index++, check if done
+GET_SIGN: if element != 0, record sign, prepare abs value
+EXTRACT_DIGIT: get next digit (starting from most significant)
+  - First digit extracted for negative numbers gets negated
+SUM_UP: accumulate digit to sum
+LOOP: check if more digits, back to EXTRACT_DIGIT
+CHECK: if sum > 0, increment result
+NEXT: move to next array element
+DONE: assert done
+
+For digit extraction, we can use a simple loop: divide by 10, remainder is last digit. But we need most significant first for signed digit logic. Alternative: extract all digits first (storing them), then process with sign.
+
+Better: iterative subtraction method to find digits from MSB to LSB:
+- Find largest power of 10 <= abs value
+- Extract digit, subtract, repeat
+
+Given max 8-bit signed (-128 to 127), max digits is 3 (127).
+This is manageable with unrolled logic or small loop.
+
+Let's use a simpler method: extract digits in reverse (LSB to MSB), store in small register array (3 digits max), then sum with sign logic.
+
+Module interface fixed to match problem requirements.

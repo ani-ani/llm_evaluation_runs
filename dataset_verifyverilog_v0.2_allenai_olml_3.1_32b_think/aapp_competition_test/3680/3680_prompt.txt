@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'fence_cuts' that computes the minimum number of cuts needed to obtain N fence posts of equal length from K poles, such that the post length is maximized and leftover pieces are not longer than the posts.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] k // number of poles (max 4)
+input [7:0] n // number of posts needed (max 8)
+input [7:0] p0, p1, p2, p3 // lengths of poles
+
+Outputs:
+output reg [7:0] min_cuts // minimum number of cuts required
+output reg done // high when computation complete
+
+Specification:
+The module should use a binary search approach to find the maximum post length L (1 to max pole length).
+For each candidate L, calculate:
+- Total posts that can be cut: sum(floor(p_i / L) for all poles)
+- Cuts required: For each pole i: if p_i % L == 0, cuts = (p_i/L) - 1 if (p_i/L) > 0 else 0; else cuts = floor(p_i/L). This counts cuts needed to extract integer multiples of L from each pole.
+- Leftover check: For each pole, leftover = p_i % L. If leftover > 0 and leftover > L, invalid (but with L <= p_i, leftover < L always, so valid).
+
+Valid L must satisfy: sum(floor(p_i / L)) >= N.
+Among valid L, choose maximum L. Then output the cuts needed for that L.
+
+Use binary search on L from 1 to max(p_i). The state machine should iterate through L values and track the best solution.
+Latency: Result valid within 5000 clock cycles after start asserted.
+
+Behavior:
+- State IDLE: Wait for start
+- State SEARCH: Binary search loop
+- State CALC: Compute cuts for current L
+- State UPDATE: Update best L and cuts
+- State DONE: Set done=1
+
+All arithmetic on 8-bit unsigned integers. No floating point.

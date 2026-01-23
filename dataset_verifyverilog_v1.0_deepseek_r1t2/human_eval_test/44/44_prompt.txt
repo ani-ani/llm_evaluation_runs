@@ -1,0 +1,85 @@
+Design a sequential Verilog module named 'change_base' that converts an integer 'x' to a string representation in the specified base.
+
+**Interface Specification:**
+Inputs:
+  input clk: System clock
+  input rst_n: Active-low reset
+  input start: Start signal (pulse high for one cycle)
+  input [11:0] x: The integer to convert (max 4095)
+  input [2:0] base: The target base (2 to 7)
+
+Outputs:
+  output reg [127:0] result_str: The resulting string represented as 16 ASCII bytes. The string is left-aligned and padded with spaces (0x20) on the right. Least significant byte (result_str[7:0]) corresponds to the last character of the string (LSB of conversion).
+  output reg [3:0] str_len: Length of the resulting string (number of valid ASCII characters).
+  output reg done: High for one cycle when conversion is complete.
+
+**Behavior:**
+The module implements the standard repeated division algorithm:
+1. Idle state waits for 'start' signal.
+2. When started, repeatedly divide 'x' by 'base'.
+3. Store remainders as ASCII digits.
+4. Since remainders are generated LSB-first, store them in a temporary buffer.
+5. Reverse the buffer to form the final string.
+6. Output 'done' high for 1 cycle.
+
+**Output Format:**
+- 'result_str' is 128 bits = 16 bytes.
+- Valid characters are packed starting from byte 15 (MSB) down to byte 0 (LSB) or vice versa. Let's use: byte 15 is the first character, byte 0 is the last character.
+- Example: "22" (base 3 for 8). ASCII: '2' = 0x32.
+- result_str[127:120] = 0x32, result_str[119:112] = 0x32, remaining bytes = 0x20.
+- 'str_len' indicates the number of valid characters (e.g., 2).
+
+**Constraints:**
+- x fits in 12 bits (max 4095). This ensures max 12 digits in base 2.
+- base is 3 to 7.
+- Use a state machine with states: IDLE, CALCULATE, REVERSE, DONE.
+- Use a counter to track division steps.
+- Use a temporary register to store computed digits (stack behavior).
+- For Icarus Verilog compatibility, avoid complex array operations; use behavioral logic.
+
+**Timing:**
+- Latency depends on the value of x, roughly 12-14 clock cycles.
+- 'done' signals when the 'result_str' and 'str_len' are valid.
+
+**Division Logic:**
+- To avoid integer division (which is complex in Verilog), perform binary long division or repeated subtraction.
+- Given the small scale, we can use repeated subtraction.
+- However, since the inputs are small, a lookup table or simpler logic might be possible, but let's stick to the iterative subtraction algorithm for general x.
+- Actually, let's use repeated subtraction for the 'divide' step.
+- Division: Count how many times 'base' fits into 'x' (quotient) and remainder.
+- Loop: While x >= base, subtract base from x, increment quotient. Remainder is what's left.
+
+**State Machine:**
+- `IDLE`: Wait for start. Reset internal pointers.
+- `CALC_LOOP`: Perform division. If x < base, the remainder is the final digit. Push remainder to stack. Update x to quotient. Repeat until x == 0.
+- `REVERSE`: Move digits from stack buffer to result_str in reverse order.
+- `DONE`: Assert done signal.
+
+**Stack Buffer Implementation:**
+- Since max digits is 12, we can use a 12x4 bit register file or a single wide register shifted.
+- Let's use `reg [3:0] digit_buffer [0:11];` to store remainders.
+- A pointer `reg [3:0] stack_ptr` tracks how many digits we have.
+- Another pointer `reg [3:0] output_ptr` for the reverse copy.
+
+**ASCII Conversion:**
+- Remainder 'r' (0-6). ASCII = r + 0x30.
+
+**Division Optimization:**
+- To make it hardware friendly and faster, let's assume the division is performed by a separate combinational block (defined within the module) or iterative subtraction.
+- Since the prompt asks for a single module, implement iterative subtraction in the FSM.
+
+**Revised Prompt for Implementation:**
+Design a sequential Verilog module `change_base`.
+- Inputs: `clk`, `rst_n`, `start`, `x` [11:0], `base` [2:0].
+- Outputs: `result_str` [127:0], `str_len` [3:0], `done`.
+- State Machine: IDLE, DIVIDE, REVERSE, DONE.
+- Internal: `current_x` [11:0], `quotient` [11:0], `remainder` [2:0], `digit_count` [3:0], `temp_digits` [0:11][3:0].
+- Logic:
+  - In DIVIDE state: Repeatedly subtract `base` from `current_x` until `current_x` < `base`. The number of subtractions is the quotient, the remaining `current_x` is the remainder. Store remainder in `temp_digits`. Update `current_x` to quotient. Repeat until `current_x` == 0.
+  - In REVERSE state: Copy `temp_digits` to `result_str` bytes (converting to ASCII) in reverse order.
+  - Right-pad remaining bytes with 0x20 (space).
+  - Set `str_len`.
+
+**Test Case Support:**
+- x up to 4095 (enough for 234 -> 11101010).
+- Base 2 to 7.

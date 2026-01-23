@@ -1,0 +1,74 @@
+Design a sequential Verilog module named 'make_a_pile' that implements a stone pile generator.
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] n // number of levels (max 8)
+Outputs:
+output reg [7:0] result_data // stones in current level
+output reg [3:0] result_index // current level index (1 to n)
+output reg result_valid // high when result_data is valid
+output reg done // high when all levels computed
+
+Specify latency: The module takes n clock cycles after start is asserted to complete.
+
+Behavioral Description:
+The module generates a sequence of stone counts starting with n stones at level 1.
+For each subsequent level:
+- If previous count was odd, next count is previous + 2
+- If previous count was even, next count is previous + 2
+Wait - actually reading the problem again:
+- If n (the input parameter) is odd, then each level increments by 2 (next odd number)
+- If n (the input parameter) is even, then each level increments by 2 (next even number)
+
+Actually the problem states: "The number of stones in the next level is: the next odd number if n is odd. the next even number if n is even."
+This means:
+- If input n is odd: sequence is n, n+2, n+4, n+6... (all odd)
+- If input n is even: sequence is n, n+2, n+4, n+6... (all even)
+
+So in both cases, increment is 2. But the meaning is the sequence preserves parity of n.
+
+Implementation:
+- Use a state machine: IDLE, PROCESSING, DONE
+- IDLE: wait for start signal
+- PROCESSING: count from 1 to n, output current stone count
+- DONE: assert done signal
+
+Internal registers:
+- current_level: counts 0 to n-1
+- current_stones: holds the current stone count
+- parity: stores whether n is odd or even
+
+When start is asserted:
+- Store n
+- Set current_stones = n
+- Set current_level = 0
+- Go to PROCESSING
+
+In PROCESSING:
+- Each clock cycle: output current_stones and current_level+1
+- Increment current_level
+- If current_level < n: current_stones <= current_stones + 2
+- If current_level == n-1: prepare for DONE state
+
+Edge case: if n=0, go directly to DONE.
+
+Example: n=3 (odd)
+Level 1: current_stones=3, output valid, index=1
+Level 2: current_stones=5, output valid, index=2
+Level 3: current_stones=7, output valid, index=3
+Then done.
+
+Example: n=4 (even)
+Level 1: current_stones=4, output valid, index=1
+Level 2: current_stones=6, output valid, index=2
+Level 3: current_stones=8, output valid, index=3
+Level 4: current_stones=10, output valid, index=4
+Then done.
+
+State machine states:
+- IDLE: Wait for start
+- PROCESSING: Generate levels
+- DONE: Complete
+
+The module outputs one result per clock cycle while in PROCESSING state.

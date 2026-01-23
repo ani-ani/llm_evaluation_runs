@@ -1,0 +1,202 @@
+// Primonimo Solver for 2x2 board, prime p <= 7
+// Module computes move counts that win the game.
+// Interface:
+//   clk, rst_n, start: standard control
+//   p: prime number (2,3,5,7)
+//   board_0 .. board_3: initial values (row-major)
+//   count_0 .. count_3: move counts for each square (0..p-1)
+//   solution_exists: 1 if solution found
+//   done: 1 when computation finished
+// Algorithm:
+//   1. Compute target increments d = (p - board) mod p.
+//   2. Build matrix A (4x4) where A[row][col] = 1 if variable's row equals equation's row or variable's column equals equation's column, else 0.
+//   3. Perform Gaussian elimination over GF(p):
+//        - For each column col from 0 to 3:
+//            - Find pivot row with A[row][col] != 0.
+//            - If none, set x[col]=0 (free variable) and continue.
+//            - Swap pivot row to current row.
+//            - Normalize pivot row: multiply by inverse of pivot.
+//            - For all other rows, subtract multiple of pivot row to zero out column.
+//   4. Back-substitute to solve for x.
+//   5. If inconsistent (row with all zero A but non-zero d), set solution_exists=0.
+//   6. Output x as move counts.
+// Implementation notes:
+//   - Use state machine with states: IDLE, INIT, FIND_PIVOT, SWAP, NORMALIZE, ELIMINATE, BACK_SUBST, OUTPUT, NO_SOLUTION.
+//   - Store matrix and vectors in registers.
+//   - Modular arithmetic functions: mod_add, mod_sub, mod_mul, mod_inv.
+//   - Since p <= 7, mod_inv can be brute-force.
+//   - All operations are combinational within states; use multiple cycles for loops.
+
+module PrimonimoSolver #(
+    parameter N = 2,
+    parameter M = 2,
+    parameter DATA_WIDTH = 3
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [DATA_WIDTH-1:0] p,
+    // Board inputs (row-major)
+    input wire [DATA_WIDTH-1:0] board_0,
+    input wire [DATA_WIDTH-1:0] board_1,
+    input wire [DATA_WIDTH-1:0] board_2,
+    input wire [DATA_WIDTH-1:0] board_3,
+    // Move counts outputs
+    output reg [DATA_WIDTH-1:0] count_0,
+    output reg [DATA_WIDTH-1:0] count_1,
+    output reg [DATA_WIDTH-1:0] count_2,
+    output reg [DATA_WIDTH-1:0] count_3,
+    output reg solution_exists,
+    output reg done
+);
+
+    localparam SIZE = N * M; // 4
+    localparam MAX_ROWS = SIZE;
+    localparam MAX_COLS = SIZE;
+    
+    // State definitions
+    localparam IDLE = 4'd0;
+    localparam INIT = 4'd1;
+    localparam FIND_PIVOT = 4'd2;
+    localparam SWAP = 4'd3;
+    localparam NORMALIZE = 4'd4;
+    localparam ELIMINATE = 4'd5;
+    localparam BACK_SUBST = 4'd6;
+    localparam OUTPUT = 4'd7;
+    localparam NO_SOLUTION = 4'd8;
+    
+    reg [3:0] state, next_state;
+    
+    // Matrix and vectors
+    reg [DATA_WIDTH-1:0] A [0:MAX_ROWS-1][0:MAX_COLS-1];
+    reg [DATA_WIDTH-1:0] d [0:MAX_ROWS-1];
+    reg [DATA_WIDTH-1:0] x [0:MAX_COLS-1];
+    
+    // Working registers for elimination
+    reg [3:0] row, col, pivot;
+    reg [DATA_WIDTH-1:0] pivot_val;
+    reg [DATA_WIDTH-1:0] factor;
+    reg [3:0] r, c; // loop indices
+    
+    // Modular arithmetic functions
+    function [DATA_WIDTH-1:0] mod_add;
+        input [DATA_WIDTH-1:0] a, b, p;
+        begin
+            mod_add = (a + b) % p;
+        end
+    endfunction
+    
+    function [DATA_WIDTH-1:0] mod_sub;
+        input [DATA_WIDTH-1:0] a, b, p;
+        begin
+            mod_sub = (a + p - b) % p;
+        end
+    endfunction
+    
+    function [DATA_WIDTH-1:0] mod_mul;
+        input [DATA_WIDTH-1:0] a, b, p;
+        integer temp;
+        begin
+            temp = (a * b) % p;
+            mod_mul = temp[DATA_WIDTH-1:0];
+        end
+    endfunction
+    
+    function [DATA_WIDTH-1:0] mod_inv;
+        input [DATA_WIDTH-1:0] a;
+        input [DATA_WIDTH-1:0] p;
+        integer i;
+        begin
+            mod_inv = 0;
+            // a != 0 assumed
+            for (i = 1; i < p; i = i + 1) begin
+                if ((a * i) % p == 1) begin
+                    mod_inv = i;
+                end
+            end
+        end
+    endfunction
+    
+    // State transition and output logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            solution_exists <= 0;
+            count_0 <= 0; count_1 <= 0; count_2 <= 0; count_3 <= 0;
+            row <= 0; col <= 0; pivot <= 0;
+        end else begin
+            state <= next_state;
+            done <= 0;
+            solution_exists <= 0;
+            
+            case (state)
+                INIT: begin
+                    // Initialize board registers and compute d
+                    // Initialize matrix A
+                    // For simplicity, we show the assignments; actual implementation should fill A.
+                    // After initialization, go to FIND_PIVOT.
+                end
+                
+                FIND_PIVOT: begin
+                    // Search for a pivot in column 'col' starting from row 'row'
+                    // If found, set pivot to that row, go to SWAP
+                    // If not found, set x[col]=0, increment col, if col==SIZE go to BACK_SUBST else stay in FIND_PIVOT
+                end
+                
+                SWAP: begin
+                    // Swap current row with pivot row in A and d
+                    // Then go to NORMALIZE
+                end
+                
+                NORMALIZE: begin
+                    // Pivot value is A[row][col]
+                    // Multiply the entire row (A[row][*] and d[row]) by inverse of pivot
+                    // Then go to ELIMINATE
+                end
+                
+                ELIMINATE: begin
+                    // For all rows r != row, subtract A[r][col] * pivot_row from row r
+                    // Use a loop counter c to iterate columns, and r to iterate rows
+                    // After eliminating, increment col and row, go to FIND_PIVOT
+                end
+                
+                BACK_SUBST: begin
+                    // After elimination, back-substitute to solve x
+                    // Start from last column and go upwards
+                    // For each column col from SIZE-1 down to 0:
+                    //   x[col] = d[row] (since pivot rows are in order)
+                    //   For each column j > col, subtract A[row][j] * x[j] from d[row]
+                    //   Then d[row] is the value for x[col]
+                    // After solving, go to OUTPUT
+                end
+                
+                OUTPUT: begin
+                    // Set move counts from x
+                    count_0 <= x[0]; count_1 <= x[1]; count_2 <= x[2]; count_3 <= x[3];
+                    solution_exists <= 1;
+                    done <= 1;
+                    next_state <= IDLE;
+                end
+                
+                NO_SOLUTION: begin
+                    solution_exists <= 0;
+                    done <= 1;
+                    next_state <= IDLE;
+                end
+            endcase
+        end
+    end
+    
+    // Next state logic (simplified - LLM should complete)
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: if (start) next_state = INIT;
+            INIT: next_state = FIND_PIVOT;
+            // ... additional transitions based on counters and conditions
+            // For a complete implementation, manage row, col, and pivot registers.
+        endcase
+    end
+
+endmodule

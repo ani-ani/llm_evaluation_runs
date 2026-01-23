@@ -1,0 +1,46 @@
+module substitution_decoder #(
+    parameter MAX_LEN = 32
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] encrypted_text [0:MAX_LEN-1],
+    input wire [7:0] mapping [0:25],
+    output reg [7:0] decrypted_text [0:MAX_LEN-1],
+    output reg done
+);
+    // Internal state
+    reg [7:0] counter;
+    reg processing;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            counter <= 8'b0;
+            done <= 1'b0;
+            processing <= 1'b0;
+        end else begin
+            if (start && !processing) begin
+                processing <= 1'b1;
+                counter <= 8'b0;
+                done <= 1'b0;
+            end else if (processing) begin
+                if (counter < MAX_LEN) begin
+                    // Decrypt current character
+                    if (encrypted_text[counter] == 8'h20) begin
+                        decrypted_text[counter] <= 8'h20;
+                    end else if (encrypted_text[counter] >= 8'h61 && encrypted_text[counter] <= 8'h7a) begin
+                        decrypted_text[counter] <= mapping[encrypted_text[counter] - 8'h61];
+                    end else begin
+                        decrypted_text[counter] <= 8'h20; // replace invalid with space
+                    end
+                    counter <= counter + 1;
+                end else begin
+                    done <= 1'b1;
+                    processing <= 1'b0;
+                end
+            end else begin
+                done <= 1'b0;
+            end
+        end
+    end
+endmodule

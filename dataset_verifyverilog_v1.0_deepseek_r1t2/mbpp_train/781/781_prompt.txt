@@ -1,0 +1,115 @@
+module divisor_parity_check (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] n,  // Input number (scaled to 16-bit)
+    output reg [15:0] divisor_count,  // Count of divisors found
+    output reg is_even,  // 1 if divisor count is even
+    output reg done,
+    output reg error  // 1 if input is 0
+);
+
+    // Parameters for scaling
+    parameter MAX_ITER = 16'd256;  // Limit iterations for hardware
+    
+    // State machine states
+    parameter IDLE = 3'b000;
+    parameter COUNTING = 3'b001;
+    parameter CALCULATING = 3'b010;
+    parameter COMPLETE = 3'b011;
+    
+    // Internal registers
+    reg [2:0] state;
+    reg [15:0] i;  // Current divisor candidate
+    reg [15:0] count_reg;  // Accumulated divisor count
+    reg [15:0] sqrt_n;  // Approximate sqrt bound
+    reg [15:0] n_reg;  // Stored input
+    
+    // Combinational logic
+    wire [15:0] i_squared;
+    assign i_squared = i * i;
+    
+    // Main state machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            divisor_count <= 16'd0;
+            is_even <= 1'b0;
+            done <= 1'b0;
+            error <= 1'b0;
+            i <= 16'd1;
+            count_reg <= 16'd0;
+            n_reg <= 16'd0;
+            sqrt_n <= 16'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    error <= 1'b0;
+                    divisor_count <= 16'd0;
+                    i <= 16'd1;
+                    count_reg <= 16'd0;
+                    
+                    if (start) begin
+                        if (n == 16'd0) begin
+                            error <= 1'b1;
+                            done <= 1'b1;
+                            state <= IDLE;
+                        end else if (n == 16'd1) begin
+                            // 1 has 1 divisor (odd)
+                            divisor_count <= 16'd1;
+                            is_even <= 1'b0;
+                            done <= 1'b1;
+                            state <= IDLE;
+                        end else begin
+                            n_reg <= n;
+                            // Calculate sqrt(n) approximately
+                            sqrt_n <= (n > 16'd16383) ? 16'd128 :
+                                      (n > 16'd4095) ? 16'd64 :
+                                      (n > 16'd1023) ? 16'd32 :
+                                      (n > 16'd255) ? 16'd16 :
+                                      (n > 16'd63) ? 16'd8 : 16'd4;
+                            state <= COUNTING;
+                        end
+                    end
+                end
+                
+                COUNTING: begin
+                    // Check if i divides n
+                    if (n_reg % i == 0) begin
+                        // Check if i equals n/i (perfect square case)
+                        if (n_reg / i == i) begin
+                            count_reg <= count_reg + 16'd1;
+                        end else begin
+                            count_reg <= count_reg + 16'd2;
+                        end
+                    end
+                    
+                    // Increment i and check bounds
+                    i <= i + 16'd1;
+                    
+                    if (i >= sqrt_n || i > MAX_ITER) begin
+                        state <= CALCULATING;
+                    end else begin
+                        state <= COUNTING;
+                    end
+                end
+                
+                CALCULATING: begin
+                    divisor_count <= count_reg;
+                    is_even <= (count_reg % 2 == 0);
+                    done <= 1'b1;
+                    state <= COMPLETE;
+                end
+                
+                COMPLETE: begin
+                    done <= 1'b0;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

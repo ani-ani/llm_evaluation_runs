@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'safe_network' that computes the minimum edges to add to a tree such that removing any single edge still allows all nodes to reach root h.
+
+Adapted Algorithm for Small Trees (N <= 16):
+1. The optimal solution requires adding edges to connect all leaves (nodes with degree 1) to the root (or a common point). 
+2. In a tree, the critical points are the leaves. To ensure connectivity after one edge removal, all leaves must have an independent path to root or be connected to each other in a way that bypasses the cut edge.
+3. For small N, we can implement a greedy approach:
+   - Identify all nodes with degree 1 (leaves) excluding the root if it has degree 1.
+   - If the root itself is a leaf (tree of 2 nodes), we must add at least 1 edge (root to root is invalid, so connect to some other node? Actually root with degree 1 needs a partner). 
+   - Strategy: Count leaves. The answer is `(count + 1) // 2` if root is leaf? No, standard solution: Root the tree at h. Identify nodes that are 'vulnerable' (subtrees that need redundancy). A common adaptation for small N is to count 'problematic' branches.
+   - Specifically, if root h has degree K, and we want to protect the tree, we need to make sure that for any child branch, there is a backup. 
+   - Simplified Logic: Let leaves = list of nodes with degree 1. If root is not a leaf, root acts as a hub. We pair up leaves. If root is a leaf (only happens if N=2), we need 1 edge.
+   - For N > 2: Leaves = nodes with degree 1. Answer = ceil(leaves / 2). 
+   - Edges: Connect leaves[0]-leaves[1], leaves[2]-leaves[3], etc. If odd number, the last leaf connects to the root (or leaves[0]).
+
+Inputs:
+  input clk, rst_n, start
+  input [3:0] n_minus_1_edges_count // Number of edges (N-1), max 15 edges for N=16
+  input [3:0] edge_index // Index for feeding edges sequentially
+  input [3:0] u, v // Current edge nodes
+
+Outputs:
+  output reg [3:0] m // Number of edges to add
+  output reg [3:0] out_u, out_v // Output edge pair
+  output reg done // High when computation complete
+
+Behavior:
+  - On start, reset adjacency matrix (16x16 bits) and degree counters (16x4 bits).
+  - Accept edges sequentially over several cycles using 'edge_index' or valid signal (assume edges are fed in a stream, use 'write_enable').
+  - After edges are loaded, compute degrees.
+  - Identify leaves: nodes with degree == 1. Store indices in a small list.
+  - Count leaves.
+  - Calculate m = (leaf_count + 1) / 2.
+  - Output edges: Pair leaves[0] with leaves[1], leaves[2] with leaves[3], etc. If odd, the last leaf pairs with the root (h), or leaves[0] (let's pair with leaves[0] to avoid dependency on root value unless available). Actually, to maintain structure, pairing odd leaf with root is better. We need to know root 'h'. Add input 'h'.
+
+States:
+  IDLE
+  LOAD_EDGES (wait for all n-1 edges)
+  CALC_DEGREES
+  FIND_LEAVES
+  OUTPUT_EDGES (stream out m edges)
+  DONE
+
+Timing: Latency depends on edges loaded, roughly 20-30 cycles for N=16.

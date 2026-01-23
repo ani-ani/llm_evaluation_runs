@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'bacteria_game' that simulates the movement of K bacteria on an N x M grid until they all step on a trap cell in the same second. 
+
+Parameters:
+- N = 4 (Rows)
+- M = 4 (Columns)
+- K = 3 (Number of bacteria)
+- MAX_CYCLES = 1048576 (Maximum simulation time limit)
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start simulation
+input [4:0] trap_row, trap_col // Trap coordinates (1-based)
+input [4:0] start_row [K-1:0], start_col [K-1:0] // Starting positions for each bacterium (1-based)
+input [1:0] start_dir [K-1:0] // Starting direction (0:Up, 1:Right, 2:Down, 3:Left)
+input [3:0] grid [K-1:0][N-1:0][M-1:0] // Dedicated grids for each bacterium (digits 0-9)
+
+Outputs:
+output reg [19:0] duration // Resulting duration in seconds (cycles)
+output reg done // High when computation complete
+output reg error // High if MAX_CYCLES exceeded (game never ends)
+
+Behavior:
+The module should use a state machine to manage the simulation. 
+1. State IDLE: Wait for start signal.
+2. State LOAD: Initialize bacteria positions and directions.
+3. State CHECK: At each cycle (second), check if all K bacteria are at (trap_row, trap_col). If yes, go to DONE.
+4. State UPDATE: For each bacterium, perform the movement logic:
+   - Read value X from grid at current position.
+   - Update direction: dir = (dir + X) % 4.
+   - Check if new direction faces outside board. If so, dir = (dir + 2) % 4.
+   - Move bacterium 1 step in updated direction.
+   - Ensure positions remain within 1..N and 1..M.
+5. State DONE: Set done high and output duration.
+6. State TIMEOUT: Set error high if cycle count exceeds MAX_CYCLES.
+
+The module should be combinational in logic per cycle, sequential in state transitions. 
+Use 1-based indexing for coordinates internally (or adjust logic accordingly). 
+Update logic must handle boundary checks and direction changes accurately.

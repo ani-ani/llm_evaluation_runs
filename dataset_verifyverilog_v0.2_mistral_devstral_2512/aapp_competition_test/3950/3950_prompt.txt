@@ -1,0 +1,47 @@
+Design a sequential Verilog module named 'array_reconstructor' that determines if an array with some zeroed elements could result from Q sequential range-fill queries.
+
+Problem Adaptation:
+- Maximum array size N = 16 (parameter N)
+- Maximum query count Q = 32 (requires 5 bits, parameter Q_W)
+- Array values range 1 to 32 (or 0 for unknown)
+- The module processes the array in reverse order (index N-1 down to 0)
+- It maintains a 'current_max' value which represents the query index currently active
+- It uses a stack (parameter MAX_STACK = 8) to track peaks and valleys
+
+Inputs:
+input clk
+input rst_n
+input start // Start processing
+input [4:0] data_in // Current array element (0 or 1-32)
+input valid_in // High when data_in is valid
+
+Outputs:
+output reg [4:0] result_out // Restored value for current position
+output reg valid_out // High when result_out is valid
+output reg done // High when all N elements processed
+output reg error // High if configuration is impossible
+
+Behavior:
+1. On start, reset index to N-1, clear stack, reset current_max to 0.
+2. In each cycle (valid_in high):
+   a. If data_in == 0: Set current_val = max(current_max, 1).
+   b. If data_in != 0:
+      - If data_in > current_max AND data_in is not the last occurrence of current_max (tracked via pre-scan or implicit): Push current_max to stack, update current_max = data_in.
+      - If current_max != 0 AND this is the last occurrence of current_max: Pop from stack.
+      - If data_in < current_max: This is a violation, set error = 1.
+   c. Output current_val.
+   d. Decrement index. When index reaches 0, set done.
+3. Finally, check if Q (passed as a constant or input) is satisfied: if Q > max(result array), error = 1 unless there was a 0 (which we can set to Q). Since we process in reverse, we need to know if any zeros existed. Simplified: if Q > global_max_seen, and we haven't set any zero to Q yet, set the first zero encountered to Q.
+
+Limitations:
+- N = 16
+- Q = 32 (max)
+- Stack depth = 8
+
+State Machine States:
+- IDLE
+- READ_SCAN (iterate through input to find last positions of each value)
+- PROCESS (iterate reverse to reconstruct)
+- DONE
+
+Since true recursion/stack is hard in one cycle, we assume a pipelined approach where 'data_in' provides the array values sequentially over multiple cycles, and the module processes them internally.

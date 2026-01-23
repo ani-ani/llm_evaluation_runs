@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'coke_mix' that implements a simplified version of the Coke mixing problem.
+
+Problem Adaptation:
+- Target concentration: n (scaled by 1000, range 0-1000)
+- Number of Coke types: k (scaled to max 16 types)
+- Concentrations: a_i (scaled by 1000, range 0-1000)
+- Goal: Find minimal number of liters to achieve concentration n/1000.
+
+Algorithm:
+This is a shortest path problem on a graph where nodes are concentration values (0-1000) and edges represent adding a Coke type.
+We use BFS starting from 0 (relative difference from target) and try to reach 0 again (making a cycle back to target).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [9:0] n // Target concentration (0-1000)
+input [3:0] k // Number of Coke types (1-16)
+input [15:0] types_data // Packed types data: types_data[3:0] = type 0, types_data[7:4] = type 1, etc.
+
+Outputs:
+output reg [9:0] result // Minimal liters needed (0-1000), or 1023 for impossible
+output reg done // High when computation complete
+
+Specification:
+- Use a BFS approach with state machine
+- Represent graph nodes as concentration differences (0-1000)
+- Since types_data is 16 bits, we support max 4 types (4 bits each)
+- The module should compute in bounded cycles (max 1024 cycles)
+- Use a visited array of size 1024 (10 bits)
+- Use a queue of size 16 (max depth)
+- Latency: Result valid approximately 100-200 clock cycles after start
+- State machine states: IDLE, INIT, PROCESSING, CALCULATE, DONE
+
+Behavioral Description:
+1. IDLE: Wait for start signal
+2. INIT: Initialize visited array and queue
+3. PROCESSING: Run BFS - extract from queue, check neighbors, mark visited
+4. CALCULATE: Check if target reached
+5. DONE: Output result
+
+Note: The types_data input packs 4-bit concentration values. For example, if types are [5, 10, 15], they are packed as types_data = {4'b1111, 4'b1010, 4'b0101, 4'b0000} (padded).
+
+For concentration mixing:
+If we have types with relative differences d_i = a_i - n, we are looking for a combination such that sum(d_i * liters_i) = 0, minimizing sum(liters_i).
+
+The module should use BFS on the graph of possible sums (range -1000 to 1000, mapped to 0-2000 internally).
+
+Implementation details:
+- Use a visited array of 2048 bits (for range -1000 to 1000, offset by 1000)
+- Use a distance array of 2048 entries, each 10 bits
+- Use a queue that stores current positions (10 bits each, 16 entries max)
+- Process in rounds to avoid combinational loops

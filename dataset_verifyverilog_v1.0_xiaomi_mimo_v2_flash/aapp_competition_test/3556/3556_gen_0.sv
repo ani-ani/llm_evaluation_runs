@@ -1,0 +1,191 @@
+module tall_enterprises (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] num_employees,
+    
+    input wire [19:0] id_0, id_1, id_2, id_3,
+    input wire [23:0] salary_0, salary_1, salary_2, salary_3,
+    input wire [23:0] height_0, height_1, height_2, height_3,
+    
+    input wire [19:0] query_id,
+    input wire query_valid,
+    
+    output reg [19:0] boss_id,
+    output reg [7:0] num_subordinates,
+    output reg done,
+    output reg valid,
+    output reg ready
+);
+
+// State definitions
+localparam [2:0] IDLE = 3'b000;
+localparam [2:0] SORT = 3'b001;
+localparam [2:0] FIND_BOSS = 3'b010;
+localparam [2:0] COMPUTE_SUB = 3'b011;
+localparam [2:0] COMPUTE_BOSS_ORIG = 3'b100;
+localparam [2:0] WAIT_QUERY = 3'b101;
+localparam [2:0] QUERY = 3'b110;
+
+reg [2:0] state;
+
+// Internal storage
+reg [19:0] id_reg [0:3];
+reg [23:0] salary_reg [0:3];
+reg [23:0] height_reg [0:3];
+
+// Working arrays for computation
+reg [1:0] sorted_idx [0:3];
+reg [1:0] boss_sorted [0:3];
+reg [7:0] sub_count [0:3];
+reg [19:0] boss_original [0:3];
+reg [7:0] sub_count_original [0:3];
+
+// Counters for loops
+reg [1:0] i, j, k;
+reg [1:0] original_index;
+reg found;
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 1'b0;
+        valid <= 1'b0;
+        ready <= 1'b0;
+        boss_id <= 20'd0;
+        num_subordinates <= 8'd0;
+        i <= 2'd0;
+        j <= 2'd0;
+        k <= 2'd0;
+        original_index <= 2'd0;
+        found <= 1'b0;
+        // Initialize all arrays
+        sorted_idx[0] <= 2'd0; sorted_idx[1] <= 2'd0; sorted_idx[2] <= 2'd0; sorted_idx[3] <= 2'd0;
+        boss_sorted[0] <= 2'd0; boss_sorted[1] <= 2'd0; boss_sorted[2] <= 2'd0; boss_sorted[3] <= 2'd0;
+        sub_count[0] <= 8'd0; sub_count[1] <= 8'd0; sub_count[2] <= 8'd0; sub_count[3] <= 8'd0;
+        boss_original[0] <= 20'd0; boss_original[1] <= 20'd0; boss_original[2] <= 20'd0; boss_original[3] <= 20'd0;
+        sub_count_original[0] <= 8'd0; sub_count_original[1] <= 8'd0; sub_count_original[2] <= 8'd0; sub_count_original[3] <= 8'd0;
+        id_reg[0] <= 20'd0; id_reg[1] <= 20'd0; id_reg[2] <= 20'd0; id_reg[3] <= 20'd0;
+        salary_reg[0] <= 24'd0; salary_reg[1] <= 24'd0; salary_reg[2] <= 24'd0; salary_reg[3] <= 24'd0;
+        height_reg[0] <= 24'd0; height_reg[1] <= 24'd0; height_reg[2] <= 24'd0; height_reg[3] <= 24'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                valid <= 1'b0;
+                ready <= 1'b0;
+                if (start) begin
+                    id_reg[0] <= id_0; id_reg[1] <= id_1; id_reg[2] <= id_2; id_reg[3] <= id_3;
+                    salary_reg[0] <= salary_0; salary_reg[1] <= salary_1; salary_reg[2] <= salary_2; salary_reg[3] <= salary_3;
+                    height_reg[0] <= height_0; height_reg[1] <= height_1; height_reg[2] <= height_2; height_reg[3] <= height_3;
+                    sorted_idx[0] <= 2'd0; sorted_idx[1] <= 2'd1; sorted_idx[2] <= 2'd2; sorted_idx[3] <= 2'd3;
+                    i <= 2'd0; j <= 2'd0; k <= 2'd0;
+                    found <= 1'b0;
+                    // Initialize sub_count
+                    sub_count[0] <= 8'd0; sub_count[1] <= 8'd0; sub_count[2] <= 8'd0; sub_count[3] <= 8'd0;
+                    state <= SORT;
+                end
+            end
+            
+            SORT: begin
+                if (j < num_employees[1:0] - i - 2'd1) begin
+                    if (salary_reg[sorted_idx[j]] > salary_reg[sorted_idx[j+2'd1]]) begin
+                        sorted_idx[j] <= sorted_idx[j+2'd1];
+                        sorted_idx[j+2'd1] <= sorted_idx[j];
+                    end
+                    j <= j + 2'd1;
+                end else begin
+                    j <= 2'd0;
+                    i <= i + 2'd1;
+                    if (i == num_employees[1:0] - 2'd1) begin
+                        i <= 2'd0;
+                        state <= FIND_BOSS;
+                    end
+                end
+            end
+            
+            FIND_BOSS: begin
+                if (k < num_employees[1:0]) begin
+                    if (k > 2'd0 && height_reg[sorted_idx[k]] >= height_reg[sorted_idx[k-2'd1]]) begin
+                        boss_sorted[k] <= k - 2'd1;
+                        k <= k + 2'd1;
+                    end else if (k == 2'd0) begin
+                        boss_sorted[k] <= 2'b11;
+                        k <= k + 2'd1;
+                    end else begin
+                        boss_sorted[k] <= 2'b11;
+                        k <= k + 2'd1;
+                    end
+                end else begin
+                    k <= 2'd0;
+                    state <= COMPUTE_SUB;
+                end
+            end
+            
+            COMPUTE_SUB: begin
+                if (k < num_employees[1:0]) begin
+                    if (boss_sorted[k] != 2'b11) begin
+                        if (boss_sorted[k] < 2'd4) begin
+                            sub_count[boss_sorted[k]] <= sub_count[boss_sorted[k]] + 8'd1 + sub_count[k];
+                        end
+                    end
+                    k <= k + 2'd1;
+                end else begin
+                    k <= 2'd0;
+                    state <= COMPUTE_BOSS_ORIG;
+                end
+            end
+            
+            COMPUTE_BOSS_ORIG: begin
+                if (k < num_employees[1:0]) begin
+                    original_index <= sorted_idx[k];
+                    if (boss_sorted[k] != 2'b11 && boss_sorted[k] < 2'd4) begin
+                        boss_original[sorted_idx[k]] <= id_reg[sorted_idx[boss_sorted[k]]];
+                    end else begin
+                        boss_original[sorted_idx[k]] <= 20'd0;
+                    end
+                    sub_count_original[sorted_idx[k]] <= sub_count[k];
+                    k <= k + 2'd1;
+                end else begin
+                    state <= WAIT_QUERY;
+                end
+            end
+            
+            WAIT_QUERY: begin
+                ready <= 1'b1;
+                done <= 1'b0;
+                valid <= 1'b0;
+                if (query_valid) begin
+                    state <= QUERY;
+                    ready <= 1'b0;
+                    found <= 1'b0;
+                    k <= 2'd0;
+                end
+            end
+            
+            QUERY: begin
+                if (k < num_employees[1:0]) begin
+                    if (id_reg[k] == query_id) begin
+                        boss_id <= boss_original[k];
+                        num_subordinates <= sub_count_original[k];
+                        found <= 1'b1;
+                    end
+                    k <= k + 2'd1;
+                end else begin
+                    if (!found) begin
+                        boss_id <= 20'd0;
+                        num_subordinates <= 8'd0;
+                    end
+                    done <= 1'b1;
+                    valid <= 1'b1;
+                    state <= WAIT_QUERY;
+                end
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

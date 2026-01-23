@@ -1,0 +1,193 @@
+module TravelCardOptimizer (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] a,      // Regular trip cost
+    input wire [7:0] b,      // Transshipment cost
+    input wire [3:0] k,      // Max travel cards (0-8)
+    input wire [15:0] f,     // Travel card cost
+    input wire [2:0] n,      // Number of trips (1-8)
+    input wire [31:0] stop1, // Start stop hash
+    input wire [31:0] stop2, // End stop hash
+    output reg [15:0] total_cost,
+    output reg done
+);
+
+// Internal memory for route table (max 8 routes)
+reg [31:0] route_start [0:7];  // Sorted start (min)
+reg [31:0] route_end [0:7];    // Sorted end (max)
+reg [15:0] route_cost [0:7];   // Accumulated cost
+reg [2:0] route_count;          // Number of routes
+
+// State machine states
+localparam IDLE = 4'd0;
+localparam PROCESS_TRIP = 4'd1;
+localparam UPDATE_ROUTES = 4'd2;
+localparam SORT_INIT = 4'd3;
+localparam SORT_COMPARE = 4'd4;
+localparam SORT_SWAP = 4'd5;
+localparam SORT_NEXT = 4'd6;
+localparam APPLY_CARDS = 4'd7;
+localparam CALC_TOTAL = 4'd8;
+localparam FINISH = 4'd9;
+
+reg [3:0] state;
+reg [2:0] trip_idx;
+reg [31:0] last_end_stop;
+reg [31:0] curr_start, curr_end;
+reg [15:0] current_cost;
+reg [2:0] sort_i, sort_j;
+reg [2:0] card_idx;
+reg [15:0] temp_cost;
+
+integer i;
+
+// Helper: Find or create route
+function [2:0] find_route;
+    input [31:0] s1, s2;
+    reg [31:0] min_stop, max_stop;
+    integer r;
+    begin
+        min_stop = (s1 < s2) ? s1 : s2;
+        max_stop = (s1 < s2) ? s2 : s1;
+        find_route = 4'hF;
+        for (r = 0; r < route_count; r = r + 1) begin
+            if (route_start[r] == min_stop && route_end[r] == max_stop)
+                find_route = r;
+        end
+    end
+endfunction
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        total_cost <= 0;
+        route_count <= 0;
+        trip_idx <= 0;
+        last_end_stop <= 0;
+        for (i = 0; i < 8; i = i + 1) begin
+            route_cost[i] <= 0;
+            route_start[i] <= 0;
+            route_end[i] <= 0;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start && n > 0) begin
+                    state <= PROCESS_TRIP;
+                    trip_idx <= 0;
+                    route_count <= 0;
+                    last_end_stop <= 0;
+                    total_cost <= 0;
+                end
+            end
+            
+            PROCESS_TRIP: begin
+                curr_start <= stop1;
+                curr_end <= stop2;
+                // Calculate trip cost
+                current_cost <= (stop1 == last_end_stop) ? {8'd0, b} : {8'd0, a};
+                state <= UPDATE_ROUTES;
+            end
+            
+            UPDATE_ROUTES: begin
+                // Update total cost
+                total_cost <= total_cost + current_cost;
+                
+                // Find existing route or create new
+                reg [2:0] route_idx;
+                route_idx = find_route(curr_start, curr_end);
+                
+                if (route_idx < 4'hF) begin
+                    // Existing route
+                    route_cost[route_idx] <= route_cost[route_idx] + current_cost;
+                end else if (route_count < 8) begin
+                    // New route
+                    if (curr_start < curr_end) begin
+                        route_start[route_count] <= curr_start;
+                        route_end[route_count] <= curr_end;
+                    end else begin
+                        route_start[route_count] <= curr_end;
+                        route_end[route_count] <= curr_start;
+                    end
+                    route_cost[route_count] <= current_cost;
+                    route_count <= route_count + 1;
+                end
+                
+                last_end_stop <= curr_end;
+                
+                if (trip_idx + 1 >= n) begin
+                    state <= SORT_INIT;
+                    sort_i <= 0;
+                    sort_j <= 0;
+                end else begin
+                    state <= PROCESS_TRIP;
+                    trip_idx <= trip_idx + 1;
+                end
+            end
+            
+            SORT_INIT: begin
+                sort_i <= 0;
+                sort_j <= 0;
+                state <= SORT_COMPARE;
+            end
+            
+            SORT_COMPARE: begin
+                if (sort_j < route_count - sort_i - 1) begin
+                    if (route_cost[sort_j] < route_cost[sort_j + 1]) begin
+                        state <= SORT_SWAP;
+                    end else begin
+                        state <= SORT_NEXT;
+                    end
+                end else begin
+                    sort_i <= sort_i + 1;
+                    sort_j <= 0;
+                    if (sort_i >= route_count - 2) begin
+                        state <= APPLY_CARDS;
+                        card_idx <= 0;
+                    end else begin
+                        state <= SORT_COMPARE;
+                    end
+                end
+            end
+            
+            SORT_SWAP: begin
+                // Swap cost
+                temp_cost <= route_cost[sort_j];
+                route_cost[sort_j] <= route_cost[sort_j + 1];
+                route_cost[sort_j + 1] <= temp_cost;
+                // Swap start/end too
+                route_start[sort_j] <= route_start[sort_j + 1];
+                route_start[sort_j + 1] <= route_start[sort_j];
+                route_end[sort_j] <= route_end[sort_j + 1];
+                route_end[sort_j + 1] <= route_end[sort_j];
+                state <= SORT_NEXT;
+            end
+            
+            SORT_NEXT: begin
+                sort_j <= sort_j + 1;
+                state <= SORT_COMPARE;
+            end
+            
+            APPLY_CARDS: begin
+                if (card_idx < route_count && card_idx < k) begin
+                    if (route_cost[card_idx] > f) begin
+                        total_cost <= total_cost - (route_cost[card_idx] - f);
+                    end
+                    card_idx <= card_idx + 1;
+                end else begin
+                    state <= FINISH;
+                end
+            end
+            
+            FINISH: begin
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

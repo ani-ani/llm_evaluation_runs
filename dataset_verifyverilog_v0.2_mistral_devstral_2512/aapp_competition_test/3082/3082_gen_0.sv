@@ -1,0 +1,274 @@
+module buffet_optimizer(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] dish_count,
+    input [7:0] total_weight,
+    input [7:0] dish_info_index,
+    input [47:0] dish_data,
+    input dish_data_valid,
+    output reg [31:0] result,
+    output reg done,
+    output reg error
+);
+
+// State encoding
+reg [2:0] state;
+localparam IDLE = 3'd0;
+localparam LOAD_DISCRETE = 3'd1;
+localparam LOAD_CONTINUOUS = 3'd2;
+localparam COMPUTE = 3'd3;
+localparam DONE = 3'd4;
+
+// Internal arrays (flattened for synthesis)
+reg [15:0] dp_tastiness [0:128];  // DP table for tastiness
+reg dp_valid [0:128];             // Valid flag for each state
+
+// Dish storage
+reg [15:0] d_weight [0:7];        // Discrete weights
+reg [31:0] d_t [0:7];             // Discrete initial tastiness (Q16.16)
+reg [31:0] d_dt [0:7];            // Discrete decay (Q16.16)
+reg [7:0] d_count;                // Number of discrete dishes
+
+reg [31:0] c_t [0:7];             // Continuous initial tastiness (Q16.16)
+reg [31:0] c_dt [0:7];            // Continuous decay (Q16.16)
+reg [7:0] c_count;                // Number of continuous dishes
+
+// Compute state variables
+reg [7:0] current_weight;
+reg [7:0] dish_idx;
+reg [31:0] current_max;
+reg [31:0] fractional_tastiness;  // Accumulated from continuous dishes
+
+// Fixed-point arithmetic helpers
+function [31:0] mul_fixed;
+    input [31:0] a, b;
+    begin
+        // Multiply Q16.16 * Q16.16, result is Q32.32, take upper 32 bits
+        mul_fixed = ($signed(a) * $signed(b)) >>> 16;
+    end
+endfunction
+
+function [31:0] add_fixed;
+    input [31:0] a, b;
+    begin
+        add_fixed = a + b;
+    end
+endfunction
+
+function [31:0] sub_fixed;
+    input [31:0] a, b;
+    begin
+        sub_fixed = a - b;
+    end
+endfunction
+
+function [31:0] div_fixed;
+    input [31:0] a, b;
+    begin
+        // Divide by integer (b is integer, not fixed-point)
+        div_fixed = a / b;
+    end
+endfunction
+
+function [31:0] int_to_fixed;
+    input [15:0] int_val;
+    begin
+        int_to_fixed = {int_val, 16'h0000};
+    end
+endfunction
+
+function [31:0] max_fixed;
+    input [31:0] a, b;
+    begin
+        max_fixed = ($signed(a) > $signed(b)) ? a : b;
+    end
+endfunction
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 1'b0;
+        error <= 1'b0;
+        result <= 32'h00000000;
+        d_count <= 8'd0;
+        c_count <= 8'd0;
+        dish_idx <= 8'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                error <= 1'b0;
+                if (start) begin
+                    state <= LOAD_DISCRETE;
+                    dish_idx <= 8'd0;
+                    d_count <= 8'd0;
+                    c_count <= 8'd0;
+                end
+            end
+            
+            LOAD_DISCRETE: begin
+                if (dish_data_valid && dish_idx < dish_count) begin
+                    if (dish_data[47]) begin
+                        // Continuous dish, move to continuous loading
+                        c_t[c_count] <= {16'h0000, dish_data[31:16]};
+                        c_dt[c_count] <= {16'h0000, dish_data[15:0]};
+                        c_count <= c_count + 1;
+                    end else begin
+                        // Discrete dish
+                        d_weight[d_count] <= dish_data[47:32];
+                        d_t[d_count] <= {16'h0000, dish_data[31:16]};
+                        d_dt[d_count] <= {16'h0000, dish_data[15:0]};
+                        d_count <= d_count + 1;
+                    end
+                    dish_idx <= dish_idx + 1;
+                end else if (dish_idx >= dish_count) begin
+                    state <= COMPUTE;
+                    // Initialize DP
+                    for (integer i = 0; i < 129; i = i + 1) begin
+                        dp_tastiness[i] <= 32'h80000000; // -inf
+                        dp_valid[i] <= 1'b0;
+                    end
+                    dp_tastiness[0] <= 32'h00000000;
+                    dp_valid[0] <= 1'b1;
+                    current_weight <= 8'd0;
+                    dish_idx <= 8'd0;
+                    fractional_tastiness <= 32'h00000000;
+                end
+            end
+            
+            COMPUTE: begin
+                // Process discrete dishes first (unbounded knapsack)
+                if (dish_idx < d_count) begin
+                    if (current_weight <= total_weight) begin
+                        // Try adding items of this discrete dish
+                        reg [7:0] w = d_weight[dish_idx];
+                        reg [31:0] t = d_t[dish_idx];
+                        reg [31:0] dt = d_dt[dish_idx];
+                        
+                        if (w > 0 && current_weight + w <= total_weight) begin
+                            // Compute tastiness for next item
+                            // Count how many already taken at this weight
+                            reg [7:0] count = 0;
+                            reg [7:0] rem = current_weight;
+                            while (rem >= w) begin
+                                rem = rem - w;
+                                count = count + 1;
+                            end
+                            // Tastiness = t - count*dt
+                            reg [31:0] item_tastiness = sub_fixed(t, mul_fixed(int_to_fixed(count), dt));
+                            
+                            // Update DP
+                            reg [31:0] new_tastiness = add_fixed(dp_tastiness[current_weight], item_tastiness);
+                            reg [7:0] new_weight = current_weight + w;
+                            
+                            if ($signed(new_tastiness) > $signed(dp_tastiness[new_weight]) || !dp_valid[new_weight]) begin
+                                dp_tastiness[new_weight] <= new_tastiness;
+                                dp_valid[new_weight] <= 1'b1;
+                            end
+                        end
+                        
+                        current_weight <= current_weight + 1;
+                        if (current_weight == total_weight) begin
+                            current_weight <= 8'd0;
+                            dish_idx <= dish_idx + 1;
+                        end
+                    end else begin
+                        current_weight <= 8'd0;
+                        dish_idx <= dish_idx + 1;
+                    end
+                end else begin
+                    // Handle continuous dishes
+                    // After discrete DP, compute continuous contribution for remaining weight
+                    // Continuous dishes can be added fractionally to any state
+                    
+                    // Find best continuous contribution for remaining weight
+                    // This is simplified: compute optimal for each possible remaining weight
+                    
+                    reg [31:0] best_result = 32'h80000000;
+                    reg found = 1'b0;
+                    
+                    for (integer i = 0; i <= total_weight; i = i + 1) begin
+                        if (dp_valid[i]) begin
+                            reg [7:0] remaining = total_weight - i;
+                            reg [31:0] cont_val = compute_continuous(remaining);
+                            reg [31:0] total = add_fixed(dp_tastiness[i], cont_val);
+                            
+                            if ($signed(total) > $signed(best_result)) begin
+                                best_result = total;
+                                found = 1'b1;
+                            end
+                        end
+                    end
+                    
+                    if (found && $signed(best_result) >= 0) begin
+                        result <= best_result;
+                        state <= DONE;
+                    end else begin
+                        result <= 32'hFFFFFFFF; // Impossible
+                        state <= DONE;
+                    end
+                end
+            end
+            
+            DONE: begin
+                done <= 1'b1;
+                if (result == 32'hFFFFFFFF)
+                    error <= 1'b1;
+            end
+        endcase
+    end
+end
+
+// Helper function for continuous dishes
+function [31:0] compute_continuous;
+    input [7:0] remaining_weight;
+    begin
+        // For continuous dishes, we can take fractions
+        // Sort by tastiness per unit, but tastiness decays
+        // Simplified: compute optimal amount from each continuous dish
+        
+        reg [31:0] total = 32'h00000000;
+        reg [7:0] weight_left = remaining_weight;
+        
+        // For simplicity, assume we can take optimal amount from best dish
+        // Real implementation would need sorting and fractional optimization
+        
+        // Find max possible from any single continuous dish
+        reg [31:0] max_cont = 32'h00000000;
+        
+        for (integer j = 0; j < c_count; j = j + 1) begin
+            reg [31:0] t = c_t[j];
+            reg [31:0] dt = c_dt[j];
+            
+            if ($signed(dt) > 0) begin
+                // Linear decay: tastiness = t*x - dt*x^2/2
+                // Maximum at x = t/dt
+                reg [31:0] optimal_x = div_fixed(t, dt);
+                reg [31:0] optimal_x_int = optimal_x >>> 16; // Convert to integer
+                
+                if (optimal_x_int > weight_left) begin
+                    optimal_x_int = weight_left;
+                end
+                
+                reg [31:0] x_fixed = {optimal_x_int, 16'h0000};
+                reg [31:0] tastiness = sub_fixed(mul_fixed(t, x_fixed), mul_fixed(mul_fixed(dt, x_fixed), x_fixed) >>> 1);
+                
+                if ($signed(tastiness) > $signed(max_cont)) begin
+                    max_cont = tastiness;
+                end
+            end else begin
+                // Constant tastiness
+                reg [31:0] tastiness = mul_fixed(t, {weight_left, 16'h0000});
+                if ($signed(tastiness) > $signed(max_cont)) begin
+                    max_cont = tastiness;
+                end
+            end
+        end
+        
+        compute_continuous = max_cont;
+    end
+endfunction
+
+endmodule

@@ -1,0 +1,160 @@
+module max_frequency (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] arr_0,
+    input [7:0] arr_1,
+    input [7:0] arr_2,
+    input [7:0] arr_3,
+    input [7:0] arr_4,
+    input [7:0] arr_5,
+    input [7:0] arr_6,
+    input [7:0] arr_7,
+    input [7:0] arr_8,
+    input [7:0] arr_9,
+    input [7:0] arr_10,
+    input [7:0] arr_11,
+    input [7:0] arr_12,
+    input [7:0] arr_13,
+    input [7:0] arr_14,
+    input [7:0] arr_15,
+    input [7:0] arr_16,
+    input [7:0] arr_17,
+    input [7:0] arr_18,
+    input [7:0] arr_19,
+    input [7:0] arr_20,
+    output reg [7:0] result,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 3'b000;
+    localparam COUNT = 3'b001;
+    localparam FIND_MAX = 3'b010;
+    localparam FINISH = 3'b011;
+
+    // Constants
+    localparam INPUT_SIZE = 21;
+    localparam MAX_VAL = 255; // 8-bit max
+
+    // Registers
+    reg [2:0] state, next_state;
+    reg [7:0] idx; // Index for input array
+    reg [7:0] search_val; // Value being counted
+    reg [3:0] freq_count; // Current frequency count (max 21)
+    reg [3:0] max_freq; // Maximum frequency found so far
+    reg [7:0] max_val; // Value with maximum frequency
+    reg [7:0] check_val; // Value being compared
+    reg [7:0] val_lookup [0:255]; // Frequency lookup table
+    reg [7:0] i; // General purpose index
+    reg [7:0] j; // Secondary index
+
+    // Input array storage (to enable sequential access)
+    reg [7:0] stored_arr [0:INPUT_SIZE-1];
+
+    // Next state logic
+    always @(state, start, idx, j, i) begin
+        case (state)
+            IDLE: begin
+                if (start)
+                    next_state = COUNT;
+                else
+                    next_state = IDLE;
+            end
+            COUNT: begin
+                if (idx >= INPUT_SIZE)
+                    next_state = FIND_MAX;
+                else
+                    next_state = COUNT;
+            end
+            FIND_MAX: begin
+                if (j > MAX_VAL)
+                    next_state = FINISH;
+                else
+                    next_state = FIND_MAX;
+            end
+            FINISH: next_state = IDLE;
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // State machine sequential logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            idx <= 0;
+            j <= 0;
+            i <= 0;
+            freq_count <= 0;
+            max_freq <= 0;
+            max_val <= 0;
+            result <= 0;
+            done <= 0;
+            // Reset lookup table (optional, but good for clean state)
+            // Synthesis tools may not support loop in reset, handled in COUNT state
+        end else begin
+            state <= next_state;
+            
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    idx <= 0;
+                    j <= 0;
+                    i <= 0;
+                    max_freq <= 0;
+                    max_val <= 0;
+                    freq_count <= 0;
+                    // Store inputs sequentially on start (or assume inputs are stable)
+                    if (start) begin
+                        stored_arr[0] <= arr_0;
+                        stored_arr[1] <= arr_1;
+                        stored_arr[2] <= arr_2;
+                        stored_arr[3] <= arr_3;
+                        stored_arr[4] <= arr_4;
+                        stored_arr[5] <= arr_5;
+                        stored_arr[6] <= arr_6;
+                        stored_arr[7] <= arr_7;
+                        stored_arr[8] <= arr_8;
+                        stored_arr[9] <= arr_9;
+                        stored_arr[10] <= arr_10;
+                        stored_arr[11] <= arr_11;
+                        stored_arr[12] <= arr_12;
+                        stored_arr[13] <= arr_13;
+                        stored_arr[14] <= arr_14;
+                        stored_arr[15] <= arr_15;
+                        stored_arr[16] <= arr_16;
+                        stored_arr[17] <= arr_17;
+                        stored_arr[18] <= arr_18;
+                        stored_arr[19] <= arr_19;
+                        stored_arr[20] <= arr_20;
+                    end
+                end
+
+                COUNT: begin
+                    if (idx < INPUT_SIZE) begin
+                        // Increment frequency count for current value
+                        // val_lookup[stored_arr[idx]] is the count
+                        val_lookup[stored_arr[idx]] <= val_lookup[stored_arr[idx]] + 1;
+                        idx <= idx + 1;
+                    end
+                end
+
+                FIND_MAX: begin
+                    if (j <= MAX_VAL) begin
+                        if (val_lookup[j] > max_freq) begin
+                            max_freq <= val_lookup[j];
+                            max_val <= j;
+                        end
+                        j <= j + 1;
+                    end
+                end
+
+                FINISH: begin
+                    result <= max_val;
+                    done <= 1;
+                end
+            endcase
+        end
+    end
+
+endmodule

@@ -1,0 +1,53 @@
+Design a combinational Verilog module named 'filter_by_substring' that filters an array of strings based on whether they contain a given substring.
+
+Problem Adaptation:
+- Input array: 4 strings, each 8 characters (ASCII bytes)
+- Substring: up to 4 characters to search for
+- Output: packed 4-bit mask indicating which strings contain the substring
+- Each character is represented as an 8-bit ASCII value
+- Empty strings/characters represented as 0x00
+
+Interface Specification:
+  Inputs:
+    input [7:0] strings [0:3]  // 4 strings, each 8 characters
+    input [7:0] substring [0:3]  // 4-char substring (terminated by 0x00 if shorter)
+    input [2:0] substring_len  // actual length of substring (1-4)
+  
+  Outputs:
+    output [3:0] mask  // bitmask: string i contains substring if mask[i]=1
+
+Implementation Strategy:
+For each of the 4 strings, check if substring appears anywhere in the 8-character string:
+1. For each string, perform parallel substring matching
+2. Use sliding window: check positions 0-7 for match with substring
+3. For each position, compare substring_len characters
+4. If any position matches, set corresponding bit in mask
+5. All checks done combinationally without clock
+
+Matching Logic:
+- Position j in string is a match if: substring[0:substring_len-1] == string[j:j+substring_len-1]
+- Need to handle boundary: j+substring_len-1 <= 7
+- Use byte-level comparators for each character position
+- OR-reduce all position matches for final mask bit
+
+Edge Cases:
+- substring_len = 0: mask should be 0 (no match)
+- Empty string (all zeros): only matches empty substring
+- Partial matches: substring 'ab' matches 'abcde' at position 0
+
+Example:
+strings = ["abc", "bacd", "cde", "array"] -> [0x61626300, 0x62616364, 0x63646500, 0x61727261]
+substring = "a" (len=1) -> [0x61000000]
+mask = 0b1101 (strings 0,1,3 contain 'a')
+
+Implementation Details:
+- Use combinational logic only (no clock)
+- For each string (i in 0-3):
+  - For each starting position (j in 0-7):
+    - Check if substring_len characters match
+    - Use generate blocks or explicit comparators
+- Final mask is OR of all position matches per string
+
+Note: Characters are ASCII. 'a' = 0x61, 'b' = 0x62, etc.
+All comparisons are byte-wise equality checks.
+Result is available combinationally after logic propagation.

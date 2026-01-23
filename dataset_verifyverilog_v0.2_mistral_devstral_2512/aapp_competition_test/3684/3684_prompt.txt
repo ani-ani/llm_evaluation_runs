@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'p2p_streaming' that implements a simplified peer-to-peer streaming optimization algorithm.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] p_i [0:3] // playback position for 4 users (scaled 0-255)
+input [7:0] b_i [0:3] // buffered bytes for 4 users (scaled 0-255)
+input [7:0] u_i [0:3] // upload bandwidth for 4 users (scaled 0-255)
+input [4:0] C // playback advance (scaled 0-31)
+
+Outputs:
+output reg [7:0] result // maximum possible minimum buffer (scaled Q8.8 format)
+output reg done // high when computation complete
+
+Specify latency: Result valid 100 clock cycles after start asserted.
+
+Behavioral Description:
+The module should compute the maximum possible minimum buffer size after one second for 4 users in a peer-to-peer streaming system.
+
+Algorithm:
+1. For each possible target buffer B (from -128 to +127 in steps of 1):
+   - For each user i, required upload = max(0, B + C + p_i - b_i)
+   - Sum required uploads across all users
+   - If sum of all user uploads <= sum of all user bandwidths, B is achievable
+2. Return the maximum achievable B
+
+Since Q8.8 format is used, B represents actual value divided by 256.
+
+Use Q8.8 fixed-point format throughout (8 integer bits, 8 fractional bits).
+Input values represent raw integers; output B should also be in Q8.8 format.
+
+The implementation should use a state machine with these states:
+- IDLE: Wait for start signal
+- INIT: Initialize loop variables
+- CHECK_BUFFER: Test if current B is achievable
+- UPLOAD_CALC: Calculate required upload for each user
+- VALIDATE: Check if total required <= total bandwidth
+- UPDATE_RESULT: Update maximum B if valid
+- INCREMENT: Try next B value
+- DONE: Signal completion
+
+Latency: Approximately 100 cycles for complete computation.

@@ -1,0 +1,50 @@
+Implement a Verilog module named 'chemical_table' that computes the minimal number of elements to purchase to obtain all elements in an n x m grid using nuclear fusion. The module uses a DSU (Disjoint Set Union) algorithm on rows and columns.
+
+**Module Parameters:**
+- N = 8: Maximum number of rows
+- M = 8: Maximum number of columns
+- NM = N*M: Total cells in the grid (64)
+- NODES = N+M: Total nodes in the bipartite graph (16)
+
+**Input Signals:**
+- clk: Clock signal (rising edge triggered)
+- rst_n: Active-low synchronous reset
+- start: Start pulse (assert for 1 cycle to begin computation)
+- n [3:0]: Actual number of rows (1 to 8)
+- m [3:0]: Actual number of columns (1 to 8)
+- grid [63:0]: Flattened grid of size N*M. Bit at position (i*M + j) corresponds to cell (i,j). Only cells with i < n and j < m are considered.
+
+**Output Signals:**
+- answer [7:0]: Minimal number of elements to purchase
+- done: Asserted high for 1 cycle when computation is complete and answer is valid
+
+**Functionality:**
+1. When start is asserted, the module initializes a DSU structure for all nodes (rows 0..N-1 and columns N..N+M-1).
+2. It iterates over all cells (i,j) where i < n and j < m. For each cell with grid[i*M+j] == 1, it performs a union between node i (row) and node N+j (column).
+3. After processing all cells, it counts the number of connected components among the relevant nodes (rows 0..n-1 and columns N..N+m-1).
+4. The answer is max(0, components - 1).
+5. The module asserts done for one cycle when the answer is ready.
+
+**State Machine:**
+- IDLE: Wait for start signal. On start, go to INIT_DSU.
+- INIT_DSU: Initialize parent and rank arrays for all NODES. Set current_cell to 0. Go to PROCESS_CELLS.
+- PROCESS_CELLS: If current_cell >= NM, go to COUNT_COMPONENTS. Else, check if i < n and j < m and grid[current_cell] is set. If yes, perform union (see sub-states). If no, increment current_cell and stay in PROCESS_CELLS.
+- Sub-states for union:
+  - FIND_ROW: Find root of row node i. Use iterative find (follow parent until root). Store root in row_root. Go to FIND_COL.
+  - FIND_COL: Find root of column node N+j. Store root in col_root. Go to MERGE.
+  - MERGE: If row_root != col_root, merge by rank (set parent of lower rank root to higher rank root). Increment current_cell and return to PROCESS_CELLS. If roots equal, just increment current_cell.
+- COUNT_COMPONENTS: Iterate over all rows 0..n-1 and columns N..N+m-1. Count how many nodes have parent[i] == i. Store count in answer. Go to DONE.
+- DONE: Assert done for one cycle, then go back to IDLE.
+
+**DSU Implementation Details:**
+- Parent array: 16 registers of 4 bits each (indexed 0..15). Initialized to identity.
+- Rank array: 16 registers of 2 bits each, initialized to 0.
+- Find operation: Iterative. For a given node, set temp_node = node. While parent[temp_node] != temp_node, set temp_node = parent[temp_node]. Return temp_node.
+- Union operation: Find roots of both nodes. If different, attach root with smaller rank to root with larger rank. If ranks equal, increment rank of new root.
+
+**Timing:**
+- The computation takes multiple cycles due to sequential processing. Maximum expected cycles: ~ (NM * max_find_depth) + overhead.
+- The module must be ready for a new start only after done is asserted.
+- On reset, all internal state is cleared and done is 0.
+
+**Note:** The module uses fixed sizes (N=8, M=8). Inputs n and m must be within 1..8. The grid vector should only have bits set for valid cells (i < n, j < m). Extra bits are ignored.

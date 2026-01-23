@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'graph_planner' that computes reachability in a small graph with mixed directed and undirected edges.
+
+The module operates in two phases triggered by 'start_max' and 'start_min' inputs. It performs a graph traversal (DFS-like) to find reachable vertices from a source 's'.
+
+**Adaptation Details:**
+- Graph size: Max 8 vertices (indexed 0-7).
+- Total edges: Max 16 edges.
+- Undirected edges: Max 8 edges.
+- Directed edges: Treated as one-way traversal only.
+- Undirected edges (Maximization): Traversed in BOTH directions (like bidirectional).
+- Undirected edges (Minimization): Traversed only in the FORWARD direction (as defined by 'u' to 'v' in input).
+
+**Inputs (All 8-bit unless specified):**
+input clk
+input rst_n
+input start_max // Start maximization computation
+input start_min // Start minimization computation
+input [2:0] s // Source vertex (0-7)
+input [2:0] num_vertices // Actual number of vertices in this graph (2-8)
+input [3:0] num_undirected // Number of undirected edges (1-8)
+
+// Adjacency definition (Direct input to logic, simplified)
+// To keep interface manageable for LLM, we pass edges directly:
+// We support up to 16 edges total. We use 16 parallel inputs to define them.
+// Each input is valid only if edge_index < num_edges.
+input [15:0] edge_valid // Bitmask for which edges are active
+input [2:0] edge_from [15:0] // Source vertex for edge i
+input [2:0] edge_to [15:0]   // Destination vertex for edge i
+input edge_type [15:0] // 0 = Directed, 1 = Undirected
+
+**Outputs:**
+output reg [3:0] reachable_count // Number of reachable vertices
+output reg [7:0] undirected_orientation // Bitmask: 1=+, 0=-
+output reg busy // High when computing
+output reg valid // High when results are valid
+
+**Behavior:**
+1. **IDLE State**: Wait for start_max or start_min.
+2. **MAX State (Start when start_max asserted)**:
+   - Initialize reachable set {s}.
+   - Initialize orientation bits to 0.
+   - Perform traversal: From current vertex 'u', check all edges.
+     - If edge is 'u->v' (Directed): Add 'v' to reachable set.
+     - If edge is undirected connecting 'u' and 'v':
+       - Always add 'v' to reachable set (bidirectional logic).
+       - If visited 'v' from 'u': Set orientation bit to 1 ('+').
+       - If visited 'u' from 'v': Set orientation bit to 0 ('-').
+   - Stop when no new vertices can be reached (max 8 cycles).
+   - Output count and orientation mask.
+3. **MIN State (Start when start_min asserted)**:
+   - Initialize reachable set {s}.
+   - Initialize orientation bits to 0.
+   - Perform traversal: From current vertex 'u', check all edges.
+     - If edge is 'u->v' (Directed): Add 'v' to reachable set.
+     - If edge is undirected connecting 'u' and 'v':
+       - Consider it as directed 'u -> v' (Orientation +).
+       - If 'u' is reachable: Add 'v' to reachable set.
+   - Stop when no new vertices can be reached.
+   - Output count and orientation mask.
+
+**Constraint**: Since true iterative DFS requires dynamic stacks, implement a breadth-first approach or unrolled recursion for the max 8 nodes. A simple 3-stage pipeline is acceptable: 1. Mark source, 2. Check neighbors (repeat 8 times), 3. Count.
+
+**Latency**: Max 64 clock cycles after start.

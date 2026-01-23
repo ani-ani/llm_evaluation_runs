@@ -1,0 +1,51 @@
+Design a combinational Verilog module named 'decimal_to_binary' that converts an 8-bit decimal number to binary string format with 'db' markers.
+
+The module should output a fixed-width 40-bit string representing 'db' + 8-bit binary + 'db' (2+8+2=12 characters, each 8 bits = 96 bits, but we'll simplify to a more compact representation).
+
+Actually, let's simplify further for hardware: output a 16-bit result where the upper 8 bits represent the binary conversion, and we'll verify the conversion logic.
+
+Wait, rethinking: The problem requires string output "dbXXXXXdb". In hardware, we'll implement the core conversion logic and output the binary bits. For verification, we'll check the conversion is correct.
+
+SIMPLIFIED HARDWARE IMPLEMENTATION:
+- Input: 8-bit decimal number (0-255)
+- Output: 8-bit binary representation as individual bits
+- Additional outputs: 2-bit markers for 'db' prefix/suffix validation
+
+Actually, let's be more faithful: We'll output a 96-bit wide signal (12 bytes × 8 bits) representing the full string.
+
+Module Specification:
+- Input: clk, rst_n, start (sequential for safety)
+- Input: decimal [7:0] - the 8-bit input number
+- Output: result_str [95:0] - 12-byte string representation
+- Output: done - indicates computation complete
+
+The string format 'db' + 'binary' + 'db' where binary is 8-bit representation:
+- Position 0-1: 'd' (0x64), 'b' (0x62) or 'd' (0x64)? Actually 'd'=0x64, 'b'=0x62
+- Position 2-9: 8 binary digits, each as '0' (0x30) or '1' (0x31)
+- Position 10-11: 'd', 'b'
+
+Sequential implementation with state machine:
+- IDLE: wait for start
+- CONVERT: compute binary representation
+- BUILD_STRING: construct the 96-bit output
+- DONE: assert done
+
+Latency: 3 clock cycles after start.
+
+Interface:
+  Inputs:
+    - clk: clock signal
+    - rst_n: active-low reset
+    - start: start pulse (1 cycle high)
+    - decimal [7:0]: input number 0-255
+  
+  Outputs:
+    - result [95:0]: 12-byte string in little-endian byte order (result[7:0] = first char)
+    - done: high for 1 cycle when result is ready
+
+Implementation details:
+- First convert decimal to 8-bit binary
+- Then map each bit to ASCII '0' (0x30) or '1' (0x31)
+- Prepend 'd'(0x64) and 'b'(0x62) at start
+- Append 'd'(0x64) and 'b'(0x62) at end
+- Use sequential states to build the string

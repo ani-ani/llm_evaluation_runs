@@ -1,0 +1,70 @@
+Design a sequential Verilog module named 'bandit_gold_max' that computes the maximum gold stolen on shortest paths from home to castle with safe return.
+
+Problem Adaptation:
+- Graph size: 8 nodes maximum (villages 1-8)
+- Gold values: 8-bit unsigned (0-255) stored at nodes 3-8
+- Node 1 is home, Node 2 is castle
+- Graph represented as 8x8 adjacency matrix (8-bit input)
+- Need to find shortest path from 1 to 2, then maximize gold theft along such paths
+- Constraint: Return path (2→1) cannot pass through any robbed node
+- Output: Maximum gold value that satisfies both constraints
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] gold_i // gold value for village i (i = 3 to 8), pulsed for each
+input [2:0] gold_idx // index for gold input (0=none, 1=village3, ..., 6=village8)
+input [7:0] adj_matrix [8:0][8:0] // 9x9 adjacency matrix (ignore index 0, nodes 1-8)
+
+Outputs:
+output reg [15:0] max_gold // Q16.0 format, maximum stealable gold
+output reg done // high when computation complete
+output reg valid // high when result is valid
+
+Latency: Approximately 800-1000 clock cycles for complete search.
+
+Internal Logic:
+1. Store gold values in array for nodes 3-8
+2. Build adjacency matrix from inputs
+3. Find all shortest paths from 1 to 2 using BFS (track distances)
+4. For each shortest path:
+   - Calculate total gold by summing nodes 3-8 on path
+   - Check if return path exists from 2 to 1 avoiding robbed nodes
+   - Track maximum valid gold
+5. Return maximum
+
+Algorithm States:
+- IDLE: Wait for start
+- INIT_GOLD: Store gold values
+- BUILD_MATRIX: Build adjacency structure
+- BFS_DIST: Compute shortest distances from node 1
+- FIND_PATHS: Enumerate shortest paths from 1 to 2
+- CHECK_RETURN: For each path, verify return path exists
+- UPDATE_MAX: Track maximum gold
+- DONE: Complete
+
+Since the graph is small (≤8 nodes), we can:
+- Use 3-bit node indices
+- Unroll BFS for fixed iterations
+- Use combinational return path check
+- Parallelize where possible
+
+Output format: max_gold is the maximum gold value (0-20480 if max 8 nodes × 2550 gold, but we use 16-bit for safety).
+
+Implementation Notes:
+- Use state machine with explicit states
+- The testbench will provide gold_i sequentially with proper gold_idx
+- The adj_matrix is provided as a complete 9x9 matrix (index 0 unused)
+- All nodes are numbered 1-8 in the adjacency matrix
+- Gold is only stored at nodes 3-8 (nodes 1 and 2 have 0 gold)
+
+The module should:
+1. Store gold values indexed by node number
+2. Perform BFS from node 1 to find shortest distance to node 2
+3. Enumerate paths of that length
+4. For each path, sum gold at nodes 3-8
+5. Check if node 2 can reach node 1 without passing through any robbed node (nodes with gold)
+6. Track maximum gold among valid paths
+
+For the return path check: The bandits cannot travel through villages they robbed. So if they steal from village V, they cannot use V on return. They can still use villages 1,2, and unrobbed villages.

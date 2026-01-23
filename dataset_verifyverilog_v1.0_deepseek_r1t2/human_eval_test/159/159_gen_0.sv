@@ -1,0 +1,1 @@
+module eat(\n    input [7:0] number,\n    input [7:0] need,\n    input [7:0] remaining,\n    output [7:0] total,\n    output [7:0] left\n);\n    \n    wire [7:0] min_val = (need <= remaining) ? need : remaining;\n    wire [8:0] total_temp = {1'b0, number} + {1'b0, min_val};\n    \n    assign total = total_temp[7:0];\n    assign left = remaining - min_val;\n\nendmodule

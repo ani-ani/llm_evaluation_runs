@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'nds_turbo' that computes the length of the longest non-decreasing subsequence of a repeated sequence.
+
+Problem Adaptation:
+- Input sequence length N is fixed to 8.
+- Input values are 8-bit integers (range 0-255).
+- Number of repetitions T is up to 1024.
+- The module computes the result in two phases: processing the base sequence to find 'left', 'right', and 'total' NDS lengths, then calculating the final answer based on T.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation pulse
+input [7:0] seq_in // Current element of the base sequence (0-7)
+input [9:0] T_in // Number of repetitions (1-1024)
+
+Outputs:
+output reg [31:0] result // Final NDS length
+output reg done // High when computation is done
+
+Algorithm Behavior:
+1. State Machine (IDLE, READING, CALCULATING, FINISHED):
+   - IDLE: Wait for start.
+   - READING: Read 8 values (seq_in valid at each cycle) and store in registers.
+   - CALCULATING: 
+     - Pass 1: Compute LIS of full sequence (store as 'total'), and LIS of the prefix (store as 'left').
+     - Pass 2: Compute LIS of the suffix (store as 'right').
+     - Calculate 'gap': Find max value in sequence (max_val) and min value (min_val). If max_val <= min_val, gap=1, else gap = 2.
+   - FINISHED: Compute result = left + right + (T-2)*gap + (total - left - right) if T >= 2. If T==1, result = total.
+
+Latency: Approx 20 cycles (10 for reading, 8 for calculations, 2 for final logic).
+
+Details:
+- Implement a simple LIS algorithm (iterative) using local registers.
+- The module must handle T=1 correctly.
+- The 'gap' is an approximation of the 'critical value' in the original solution, simplified to 1 or 2 based on monotonicity.
+
+Note: The inputs T and sequence are provided sequentially via the seq_in and T_in ports during the READING phase.

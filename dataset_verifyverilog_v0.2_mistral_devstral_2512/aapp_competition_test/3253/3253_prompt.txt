@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'election_winner' that implements a simplified election strategy algorithm to determine minimum undecided voters to convince.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] total_delegates // total delegates needed to win (scaled: half+1)
+input [7:0] state_delegates_0, state_delegates_1, state_delegates_2 // delegates per state (3 states max)
+input [15:0] state_c_0, state_c_1, state_c_2 // votes for Constituents (Q16.16 format)
+input [15:0] state_f_0, state_f_1, state_f_2 // votes for Federals (Q16.16 format)
+input [15:0] state_u_0, state_u_1, state_u_2 // undecided voters (Q16.16 format)
+
+Outputs:
+output reg [31:0] result // minimum voters to convince (Q16.16 format, scaled by 256)
+output reg done // high when computation complete
+output reg impossible // high if winning is impossible
+
+Latency: Maximum 256 clock cycles (bounded iteration count).
+
+Behavioral Description:
+1. Convert all values to Q16.16 format (multiply by 65536). Since inputs are already in Q16.16, no conversion needed.
+2. Calculate total delegates needed: total_delegates = (sum_of_all_delegates / 2) + 1
+3. For each state, determine cost to win that state:
+   - To win a state: C + convinced_undecided > F + remaining_undecided
+   - Simplified: Need to convince >= floor((F - C + U + 2) / 2) voters
+   - Minimum convinced = max(0, (F - C + U + 2) / 2)
+   - Cost = minimum convinced (in Q16.16 format)
+4. Sort states by cost to win (ascending) using bubble sort (3 states, max 9 comparisons)
+5. Greedy selection: Pick cheapest states until delegates >= total_delegates
+6. Sum costs of selected states
+7. Handle edge cases: If C >= F + U, state is won with 0 cost
+8. If cannot reach required delegates even after winning all states, set impossible=1
+9. Result in Q16.16 format, divide by 256 for final answer scaling
+
+State Machine: IDLE -> PARSE -> CALCULATE_COSTS -> SORT -> SELECT -> DONE
+
+Use bounded counters for all loops. Implement sorting and selection as combinational logic inside the state machine.

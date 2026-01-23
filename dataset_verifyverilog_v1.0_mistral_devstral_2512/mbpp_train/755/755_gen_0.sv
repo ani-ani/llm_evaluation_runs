@@ -1,0 +1,110 @@
+module second_smallest_finder(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [7:0] arr_5,
+    input wire [7:0] arr_6,
+    input wire [7:0] arr_7,
+    input wire [3:0] len,
+    output reg [15:0] result,
+    output reg done
+);
+
+    reg [2:0] state;
+    reg [7:0] min1, min2;
+    reg [3:0] idx;
+    reg [7:0] current_val;
+    reg found_valid;
+    
+    localparam [2:0] IDLE = 3'd0;
+    localparam [2:0] INIT = 3'd1;
+    localparam [2:0] FIND_MIN1 = 3'd2;
+    localparam [2:0] FIND_MIN2 = 3'd3;
+    localparam [2:0] DONE_STATE = 3'd4;
+    
+    always @(*) begin
+        case(idx)
+            4'd0: current_val = arr_0;
+            4'd1: current_val = arr_1;
+            4'd2: current_val = arr_2;
+            4'd3: current_val = arr_3;
+            4'd4: current_val = arr_4;
+            4'd5: current_val = arr_5;
+            4'd6: current_val = arr_6;
+            4'd7: current_val = arr_7;
+            default: current_val = 8'hFF;
+        endcase
+    end
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            min1 <= 8'h7F;
+            min2 <= 8'h7F;
+            idx <= 4'd0;
+            done <= 1'b0;
+            result <= 16'd0;
+            found_valid <= 1'b0;
+        end else begin
+            case(state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= INIT;
+                        idx <= 4'd0;
+                    end
+                end
+                INIT: begin
+                    if (len > 4'd0) begin
+                        min1 <= current_val;
+                        min2 <= 8'h7F;
+                        idx <= 4'd1;
+                        state <= FIND_MIN1;
+                        found_valid <= 1'b0;
+                    end else begin
+                        state <= DONE_STATE;
+                        result <= 16'hFFFF;
+                    end
+                end
+                FIND_MIN1: begin
+                    if (idx < len) begin
+                        if (current_val < min1) begin
+                            min1 <= current_val;
+                        end
+                        idx <= idx + 1'b1;
+                    end else begin
+                        idx <= 4'd0;
+                        state <= FIND_MIN2;
+                    end
+                end
+                FIND_MIN2: begin
+                    if (idx < len) begin
+                        if (current_val > min1 && (current_val < min2 || !found_valid)) begin
+                            min2 <= current_val;
+                            found_valid <= 1'b1;
+                        end
+                        idx <= idx + 1'b1;
+                    end else begin
+                        state <= DONE_STATE;
+                        if (found_valid) begin
+                            result <= {8'd0, min2};
+                        end else begin
+                            result <= 16'hFFFF;
+                        end
+                    end
+                end
+                DONE_STATE: begin
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

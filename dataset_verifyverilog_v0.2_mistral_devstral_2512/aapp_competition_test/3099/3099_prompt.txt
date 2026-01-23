@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'spy_network' that computes the minimum number of messages needed to inform all non-enemy spies without reaching enemies.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_spies // number of spies (1-8)
+input [7:0] enemy_mask // bit i=1 if spy i is enemy
+input [7:0] adj_matrix [0:7] // 8x8 adjacency matrix, adj_matrix[i][j] = connection from i to j
+
+Outputs:
+output reg [3:0] min_messages // result: minimum messages needed
+output reg done // high when computation complete
+
+Specification:
+The module implements the following algorithm:
+1. On start, compute safe nodes: safe[i] = ~enemy_mask[i] for i < num_spies
+2. Compute reachability matrix using Floyd-Warshall on safe subgraph
+3. Greedy selection: repeatedly pick the safe node that can reach the most uncovered safe nodes
+4. Count how many nodes are selected
+
+Use state machine with states:
+- IDLE: wait for start
+- INIT: initialize matrices and safe nodes
+- REACHABILITY: compute transitive closure (iterative)
+- GREEDY: select nodes to minimize messages
+- DONE: present result
+
+Latency: up to 500 clock cycles (worst case for 8-node graph)
+All matrices use 8x8 bit arrays. Compute using sequential iterations.
+
+Fixed-point: Not needed - all operations on bits and small integers.
+
+Important: The adjacency matrix is given, but we must compute reachability considering that messages propagate through safe nodes only. Enemies block propagation.
+
+Implementation hints:
+- Use internal registers for reachability matrix
+- Use loop counters (up to 8)
+- For greedy selection, compute coverage count for each candidate
+- The answer is the number of iterations in greedy phase

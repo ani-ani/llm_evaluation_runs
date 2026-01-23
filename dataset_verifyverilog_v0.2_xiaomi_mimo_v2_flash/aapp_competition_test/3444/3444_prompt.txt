@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'skiing_probability' that computes maximum probability of reaching cabin N-1 from cabin 0 with at most k walks for k=0 to N-1.
+
+Module Specifications:
+- N = 4 (fixed parameter for 4 cabins)
+- MAX_WALKS = 3 (k from 0 to 3)
+- Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Probability of falling 'w' is converted to probability of success (1-w)
+- Walking guarantees success (probability = 1.0 = 0x00010000)
+- Skiing uses probability of success (1-w)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] edge_valid // bit mask for which edges are present (max 4 edges)
+input [3:0][3:0] edge_src // source cabin for each edge (0-3)
+input [3:0][3:0] edge_dst // destination cabin for each edge (0-3)
+input [3:0][15:0] edge_prob // Q16.16 probability of success for each edge (skiing)
+input [2:0] max_k // maximum k value to compute (0-3)
+
+Outputs:
+output reg [15:0] result_p0 // probability for k=0
+output reg [15:0] result_p1 // probability for k=1
+output reg [15:0] result_p2 // probability for k=2
+output reg [15:0] result_p3 // probability for k=3
+output reg done // high when all results computed
+output reg impossible // high when impossible for all k
+
+Behavior:
+Module computes probabilities using dynamic programming approach:
+- State: dp[cabin][walks_used] = max probability to reach cabin with walks_used walks
+- Initialize: dp[0][0] = 1.0 (0x00010000), all others = 0
+- For each edge (a,b) with probability p:
+  - Skiing: can go a->b if a < b, update dp[b][w] = max(dp[b][w], dp[a][w] * p)
+  - Walking: can go a->b or b->a in either direction with probability 1.0, update dp[dst][w+1] = max(dp[dst][w+1], dp[src][w] * 1.0)
+- Iterate until convergence or max_k reached
+- Output dp[N-1][k] for each k, or -1 (0xFFFF) if unreachable
+
+Latency: Approximately 200 clock cycles after start asserted.
+Use state machine with states: IDLE, INIT, PROCESS_EDGES, UPDATE_DP, CHECK_DONE, OUTPUT, DONE.
+
+Note: Since this is sequential and complex, implement as follows:
+- IDLE: wait for start
+- INIT: initialize dp array (set all to 0, dp[0][0]=1.0)
+- PROCESS_EDGES: for each edge, calculate both skiing and walking updates
+- UPDATE_DP: apply updates to dp array
+- CHECK_DONE: check if we need more iterations
+- OUTPUT: transfer results to output registers
+- DONE: set done signal high
+
+Use a 4D array for dp: dp[4][4] (cabin 0-3, walks 0-3)
+Each entry is 16-bit Q16.16 format.
+
+For fixed-point multiplication: result = (a * b) >> 16
+For comparison: compare 16-bit integers directly
+
+Output -1 for impossible paths as 16'hFFFF (which is -1 in signed, but treat as special marker)
+When a path is impossible, dp[N-1][k] should remain 0 or be marked specially.

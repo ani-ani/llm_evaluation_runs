@@ -1,0 +1,99 @@
+module max_sub_array_sum (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire signed [7:0] arr_0,
+    input wire signed [7:0] arr_1,
+    input wire signed [7:0] arr_2,
+    input wire signed [7:0] arr_3,
+    input wire signed [7:0] arr_4,
+    input wire signed [7:0] arr_5,
+    input wire signed [7:0] arr_6,
+    input wire signed [7:0] arr_7,
+    input wire [3:0] len,
+    output reg signed [15:0] result,
+    output reg done
+);
+
+    // State definitions
+    localparam [1:0] IDLE = 2'd0;
+    localparam [1:0] COMPUTE = 2'd1;
+    localparam [1:0] FINISH = 2'd2;
+
+    // Internal registers
+    reg [1:0] state;
+    reg [3:0] index;
+    reg signed [15:0] max_ending_here;
+    reg signed [15:0] max_so_far;
+    reg signed [7:0] current_val;
+
+    // Combinational logic for array access
+    always @(*) begin
+        case(index)
+            4'd0: current_val = arr_0;
+            4'd1: current_val = arr_1;
+            4'd2: current_val = arr_2;
+            4'd3: current_val = arr_3;
+            4'd4: current_val = arr_4;
+            4'd5: current_val = arr_5;
+            4'd6: current_val = arr_6;
+            4'd7: current_val = arr_7;
+            default: current_val = 8'sd0;
+        endcase
+    end
+
+    // Sequential logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            state <= IDLE;
+            result <= 16'sd0;
+            done <= 1'b0;
+            index <= 4'd0;
+            max_ending_here <= 16'sd0;
+            max_so_far <= 16'sd0;
+        end else begin
+            case(state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= COMPUTE;
+                        index <= 4'd0;
+                        max_ending_here <= 16'sd0;
+                        max_so_far <= 16'sd0;
+                    end
+                end
+
+                COMPUTE: begin
+                    if (index < len) begin
+                        // Add current element
+                        max_ending_here <= max_ending_here + {8'd0, current_val};
+                        
+                        // Check if negative (reset to 0)
+                        if (max_ending_here < 16'sd0) begin
+                            max_ending_here <= 16'sd0;
+                        end
+                        
+                        // Update max_so_far if needed
+                        if (max_ending_here > max_so_far) begin
+                            max_so_far <= max_ending_here;
+                        end
+                        
+                        index <= index + 1'b1;
+                    end else begin
+                        state <= FINISH;
+                    end
+                end
+
+                FINISH: begin
+                    result <= max_so_far;
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

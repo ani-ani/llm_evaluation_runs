@@ -1,0 +1,126 @@
+module harmonic_sum (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] n,           // Input n (max 255)
+    output reg [15:0] result,     // Q8.8 fixed-point result
+    output reg done
+);
+
+// Parameters
+parameter MAX_ITER = 255;
+parameter CLK_DELAY = 120;       // Cycles for division approximation
+
+// State machine
+reg [2:0] state;
+reg [7:0] counter;              // Current iteration (i)
+reg [15:0] accumulator;         // Q8.8 fixed-point accumulator
+reg [15:0] divisor;             // Q8.8 divisor (1/n)
+reg [7:0] iterations_remaining; // Counter for division delay
+reg division_done;              // Division completion flag
+
+// States
+localparam IDLE = 3'd0;
+localparam CALC_START = 3'd1;
+localparam DIVIDE = 3'd2;
+localparam ACCUMULATE = 3'd3;
+localparam COMPLETE = 3'd4;
+
+// Division approximation: 1/n in Q8.8
+// Uses lookup table for n=1..255
+reg [15:0] reciprocal_lut [0:255];
+
+// Initialize LUT (combinational)
+integer i;
+initial begin
+    // Precompute 1/n in Q8.8 format
+    // Q8.8 = integer * 256
+    reciprocal_lut[0] = 16'hFFFF;  // Undefined, max
+    reciprocal_lut[1] = 16'h0100;  // 1.0 * 256 = 256
+    reciprocal_lut[2] = 16'h0080;  // 0.5 * 256 = 128
+    reciprocal_lut[3] = 16'h0055;  // 0.333 * 256 ≈ 85
+    reciprocal_lut[4] = 16'h0040;  // 0.25 * 256 = 64
+    reciprocal_lut[5] = 16'h0033;  // 0.2 * 256 ≈ 51
+    reciprocal_lut[6] = 16'h002A;  // 0.166 * 256 ≈ 42
+    reciprocal_lut[7] = 16'h0024;  // 0.1428 * 256 ≈ 36
+    reciprocal_lut[8] = 16'h0020;  // 0.125 * 256 = 32
+    reciprocal_lut[9] = 16'h001C;  // 0.111 * 256 ≈ 28
+    reciprocal_lut[10] = 16'h0019; // 0.1 * 256 = 25
+    // Values 11-255: scale down by factor of 256/n
+    for (i = 11; i <= 255; i = i + 1) begin
+        reciprocal_lut[i] = (256 * 256) / i;  // (256/ i) * 256 in Q8.8
+    end
+end
+
+// State register and next state logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 16'd0;
+        done <= 1'b0;
+        accumulator <= 16'd0;
+        counter <= 8'd0;
+        divisor <= 16'd0;
+        iterations_remaining <= 8'd0;
+        division_done <= 1'b0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    // Initialize: accumulator = 0, counter = n
+                    accumulator <= 16'd0;
+                    counter <= n;
+                    state <= CALC_START;
+                end
+            end
+            
+            CALC_START: begin
+                // Check if counter >= 2 (harmonic sum of n-1)
+                if (counter >= 8'd2) begin
+                    // Get reciprocal of counter
+                    divisor <= reciprocal_lut[counter];
+                    iterations_remaining <= CLK_DELAY;
+                    division_done <= 1'b0;
+                    state <= DIVIDE;
+                end else begin
+                    // Base case: harmonic_sum(1) = 1, add final value
+                    accumulator <= accumulator + 16'h0100; // Add 1.0 in Q8.8
+                    state <= COMPLETE;
+                end
+            end
+            
+            DIVIDE: begin
+                // Simulate division delay
+                if (iterations_remaining > 8'd0) begin
+                    iterations_remaining <= iterations_remaining - 8'd1;
+                    division_done <= 1'b0;
+                end else begin
+                    division_done <= 1'b1;
+                end
+                
+                if (division_done) begin
+                    state <= ACCUMULATE;
+                end
+            end
+            
+            ACCUMULATE: begin
+                // Add 1/n to accumulator
+                accumulator <= accumulator + divisor;
+                // Decrement counter and continue
+                counter <= counter - 8'd1;
+                state <= CALC_START;
+            end
+            
+            COMPLETE: begin
+                result <= accumulator;
+                done <= 1'b1;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

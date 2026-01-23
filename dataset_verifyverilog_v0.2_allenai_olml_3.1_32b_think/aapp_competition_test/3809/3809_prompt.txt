@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'boat_crossing_solver' that solves the boat crossing problem with scaled constraints.
+
+Problem Description:
+- Given n people (scaled to max 8) with weights either 50 or 100 kg
+- Boat capacity k (scaled to max 100)
+- Find minimum crossings and number of ways using BFS
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [3:0] n // Number of people (1-8)
+input [6:0] k // Boat capacity in kg (1-100)
+input [7:0] weight_encoded // Bitmask: bit i=1 means person i is 100kg, bit i=0 means 50kg
+
+Outputs:
+output reg [7:0] min_rides // Minimum number of rides (0-255, 255 indicates impossible)
+output reg [31:0] num_ways // Number of ways modulo 10^9+7
+output reg done // High when computation complete
+
+Internal Design:
+1. Parse weights: count number of 50kg and 100kg people from weight_encoded
+2. State machine states: IDLE, PARSE, INIT_BFS, BFS_PROCESS, CHECK_NEXT, UPDATE_STATE, COUNT_WAYS, DONE
+3. Use BRAM for visited[51][51][2] storing {min_rides, ways}
+4. Use FIFO queue for BFS: store (c50, c100, side)
+5. For each state, try all valid boat loads:
+   - 1-2 persons of 50kg if capacity allows
+   - 1 person of 100kg if capacity allows
+   - Combinations: (1x50), (2x50), (1x100), (1x50+1x100) within k
+6. Compute combinations using lookup tables (c[9][9] for nCr)
+7. BFS continues until queue empty or target reached
+8. Output min_rides and num_ways
+
+Latency: Approximately 5000-10000 clock cycles worst case
+Use state machine with proper sequencing.
+
+Module Interface:
+- All inputs synchronized to clock
+- done goes high when finished
+- min_rides = 255 means impossible (print -1 in software)
+- num_ways = 0 when impossible
+
+Implementation Details:
+- Use 9x9x2 BRAM for visited states
+- Each entry: [7:0] min_rides, [31:0] ways
+- Queue size: 512 entries (8-bit index)
+- Combinational logic for state transitions
+- Sequential logic for BFS iteration

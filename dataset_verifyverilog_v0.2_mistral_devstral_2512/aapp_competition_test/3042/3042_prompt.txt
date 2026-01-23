@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'lcm_tree_counter' that counts the number of ways to arrange n nodes into an LCM tree.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [31:0] values [0:7] // Node values (max 8 nodes for synthesis)
+input [3:0] node_count // Actual number of nodes (must be odd, max 8)
+
+Outputs:
+output reg [31:0] result // Result modulo 1000000007
+output reg done // High when computation complete
+output reg valid // High if result is valid
+
+Specifications:
+- The module implements a dynamic programming solution for counting valid LCM trees.
+- Scaled constraint: n <= 8 nodes (original n <= 25).
+- Values are 32-bit integers (original up to 10^9).
+- Algorithm: Iterate through all subsets S (2^n states). For each S, if |S| is odd, compute dp[S] = number of valid tree configurations using nodes in S.
+- State Transition: dp[S] = sum over all valid ways to partition S into {root} U LeftChildSet U RightChildSet.
+- Valid partition criteria: 1. |S| = 1 + |Left| + |Right|. 2. LCM(values[LeftSet], values[RightSet]) == values[root].
+- Optimization: Since n=8, 2^8=256 states. This fits in sequential processing.
+- Use state machine: IDLE -> GENERATE_SUBSETS -> CHECK_PARTITION -> ACCUMULATE -> DONE.
+- LCM(a,b) = (a * b) / GCD(a,b). Implement GCD using Euclidean algorithm in a sub-module or combinational block.
+- Modulo arithmetic: All additions and multiplications must be modulo 1000000007.
+- Latency: Result valid approx 10,000 clock cycles after start (due to subset/partition iteration).
+
+Behavioral Description:
+1. On start, load values into internal registers.
+2. Iterate through mask from 1 to 2^n - 1.
+3. If popcount(mask) is odd:
+   a. Iterate submask L of mask (excluding 0 and mask).
+   b. Let R = mask ^ (L | single_bit_for_root).
+   c. Check if LCM(values[root], values[LeftSet]) == values[root] (where root is chosen from remaining bits).
+   d. If valid, accumulate dp[mask] += dp[L] * dp[R].
+4. Output dp[2^n - 1].
+5. Handle modulo 1000000007.
+
+Example Test Case Mapping (for n=3): Values {7,7,7}.
+Possible trees: Root(7), Left(7), Right(7). Root must be 7. LCM(7,7)=7. Valid.
+If values are identical, permutations of children count.

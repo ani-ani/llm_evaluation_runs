@@ -1,0 +1,55 @@
+module top(
+    input clk,
+    input rst_n,
+    input start,
+    input [5:0] R,  // max 50
+    input [5:0] C,  // max 50
+    input [31:0] K, // number of parts
+    input [7:0] grid_row [0:49], // flattened grid rows, one row at a time
+    input [31:0] score [0:49],   // scores at bottom row
+    output reg [63:0] result,
+    output reg done
+);
+    // This is a high-level specification.
+    // Implementation would require a complex control FSM to read the grid row by row
+    // and compute the DP states.
+    // We assume the grid is provided row by row and processed internally.
+    // Since K is large (10^9), we use cycle detection in the score sequence.
+    // States: IDLE, READ_GRID, SIMULATE_PART, CHECK_CYCLE, COMPUTE_RESULT
+endmodule
+module part_simulator(
+    input clk,
+    input rst_n,
+    input [5:0] R,
+    input [5:0] C,
+    input [7:0] grid_cell, // current cell being loaded
+    input [31:0] cell_score, // score for current column at bottom
+    input valid_in,
+    output reg [63:0] max_score_out,
+    output reg valid_out
+);
+    // This module computes the maximum score after one part.
+    // It needs to handle the grid loading and DP computation.
+    // Input grid is streamed row by row.
+    // State machine tracks current row and column.
+    // DP table size: (R+1) x C.
+    // Since R,C <= 50, we can store DP states in BRAM or Registers.
+    // For each cell (r, c), calculate the probability distribution or max score from (r, c).
+    // Actually, we want to maximize score. We can work backwards from bottom.
+    // Let dist[c] be the max score starting at column c in the current part (excluding entry score).
+    // Wait, the score is accumulated. We need to propagate max score.
+    // Let's model it as: score_next_part[c] = max_score_entering(c) + score(c) + max_score_from_lower_parts.
+    // Since we only need to find periodicity of 'gain' per part.
+    // Let DP[r][c] = max score (including bottom row score) reaching bottom from (r, c).
+    // Initialize bottom row: DP[R][c] = score[c].
+    // Iterate row by row upwards.
+    // Update rules:
+    // Empty ('.'): DP[r][c] = DP[r+1][c]
+    // Obstacle ('X'): DP[r][c] = 0 (or -inf)
+    // Conveyor ('L'/'R'/'?'): DP[r][c] = DP[r][dest] where dest depends on belt type.
+    // For '?', we choose L or R to maximize DP[r][c].
+    // The output of this module for one part is 'gain[c]' = DP[0][c] (max score starting at col c).
+    // Note: Input to next part is col c, output is gain[c].
+    // We need to simulate this for K parts.
+    // Since K is large, we detect when gain sequence repeats.
+endmodule

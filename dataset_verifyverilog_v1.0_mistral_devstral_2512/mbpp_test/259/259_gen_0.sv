@@ -1,0 +1,69 @@
+module max_tuple_elements (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0_0, arr_0_1,
+    input wire [7:0] arr_1_0, arr_1_1,
+    input wire [7:0] arr_2_0, arr_2_1,
+    input wire [7:0] arr_3_0, arr_3_1,
+    input wire [7:0] brr_0_0, brr_0_1,
+    input wire [7:0] brr_1_0, brr_1_1,
+    input wire [7:0] brr_2_0, brr_2_1,
+    input wire [7:0] brr_3_0, brr_3_1,
+    output reg [7:0] result_0_0, result_0_1,
+    output reg [7:0] result_1_0, result_1_1,
+    output reg [7:0] result_2_0, result_2_1,
+    output reg [7:0] result_3_0, result_3_1,
+    output reg done
+);
+
+    localparam [1:0] IDLE = 2'd0;
+    localparam [1:0] COMPUTE = 2'd1;
+    localparam [1:0] COMPLETE = 2'd2;
+
+    reg [1:0] state, next_state;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result_0_0 <= 8'd0; result_0_1 <= 8'd0;
+            result_1_0 <= 8'd0; result_1_1 <= 8'd0;
+            result_2_0 <= 8'd0; result_2_1 <= 8'd0;
+            result_3_0 <= 8'd0; result_3_1 <= 8'd0;
+            done <= 1'b0;
+        end else begin
+            state <= next_state;
+        end
+    end
+
+    always @(*) begin
+        case (state)
+            IDLE: next_state = start ? COMPUTE : IDLE;
+            COMPUTE: next_state = COMPLETE;
+            COMPLETE: next_state = IDLE;
+            default: next_state = IDLE;
+        endcase
+    end
+
+    always @(*) begin
+        if (state == COMPUTE) begin
+            result_0_0 = (arr_0_0 > brr_0_0) ? arr_0_0 : brr_0_0;
+            result_0_1 = (arr_0_1 > brr_0_1) ? arr_0_1 : brr_0_1;
+            result_1_0 = (arr_1_0 > brr_1_0) ? arr_1_0 : brr_1_0;
+            result_1_1 = (arr_1_1 > brr_1_1) ? arr_1_1 : brr_1_1;
+            result_2_0 = (arr_2_0 > brr_2_0) ? arr_2_0 : brr_2_0;
+            result_2_1 = (arr_2_1 > brr_2_1) ? arr_2_1 : brr_2_1;
+            result_3_0 = (arr_3_0 > brr_3_0) ? arr_3_0 : brr_3_0;
+            result_3_1 = (arr_3_1 > brr_3_1) ? arr_3_1 : brr_3_1;
+        end
+    end
+
+    always @(*) begin
+        if (state == COMPLETE) begin
+            done = 1'b1;
+        end else begin
+            done = 1'b0;
+        end
+    end
+
+endmodule

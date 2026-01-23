@@ -1,0 +1,111 @@
+module find_first_missing (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [7:0] arr_5,
+    input wire [7:0] arr_6,
+    input wire [7:0] arr_7,
+    input wire [2:0] len,  // Number of valid elements (1-8)
+    output reg [7:0] result,
+    output reg done
+);
+
+    // Internal state definitions
+    reg [2:0] start_idx;
+    reg [2:0] end_idx;
+    reg [2:0] mid_idx;
+    reg searching;
+    reg [2:0] shift_count; // For reading array values
+    
+    // Combinational array access (MUX for arr[mid_idx])
+    reg [7:0] arr_mid;
+    always @(*) begin
+        case (mid_idx)
+            3'd0: arr_mid = arr_0;
+            3'd1: arr_mid = arr_1;
+            3'd2: arr_mid = arr_2;
+            3'd3: arr_mid = arr_3;
+            3'd4: arr_mid = arr_4;
+            3'd5: arr_mid = arr_5;
+            3'd6: arr_mid = arr_6;
+            3'd7: arr_mid = arr_7;
+            default: arr_mid = 8'hFF;
+        endcase
+    end
+    
+    // Combinational array access for start_idx
+    reg [7:0] arr_start;
+    always @(*) begin
+        case (start_idx)
+            3'd0: arr_start = arr_0;
+            3'd1: arr_start = arr_1;
+            3'd2: arr_start = arr_2;
+            3'd3: arr_start = arr_3;
+            3'd4: arr_start = arr_4;
+            3'd5: arr_start = arr_5;
+            3'd6: arr_start = arr_6;
+            3'd7: arr_start = arr_7;
+            default: arr_start = 8'hFF;
+        endcase
+    end
+    
+    // State machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            done <= 1'b0;
+            result <= 8'b0;
+            searching <= 1'b0;
+            start_idx <= 3'b0;
+            end_idx <= 3'b0;
+            shift_count <= 3'b0;
+        end else begin
+            if (start && !searching && !done) begin
+                // Initialize: use len for end, but cap at 8
+                start_idx <= 3'b0;
+                end_idx <= (len > 3'd7) ? 3'd7 : len - 1'b1;
+                searching <= 1'b1;
+                done <= 1'b0;
+                shift_count <= 3'b0;
+            end else if (searching) begin
+                // Binary search state machine
+                if (shift_count < 3'd3) begin
+                    // Wait 3 cycles for combinational reads to settle
+                    shift_count <= shift_count + 1'b1;
+                end else begin
+                    shift_count <= 3'b0;
+                    
+                    if (start_idx > end_idx) begin
+                        // Found: end_idx + 1
+                        result <= end_idx + 1'b1;
+                        searching <= 1'b0;
+                        done <= 1'b1;
+                    end else if (start_idx != arr_start) begin
+                        // Found: start_idx
+                        result <= start_idx;
+                        searching <= 1'b0;
+                        done <= 1'b1;
+                    end else if (arr_mid == mid_idx) begin
+                        // Search right half
+                        start_idx <= mid_idx + 1'b1;
+                        shift_count <= 3'b0;
+                    end else begin
+                        // Search left half
+                        end_idx <= mid_idx - 1'b1;
+                        shift_count <= 3'b0;
+                    end
+                end
+                
+                // Calculate mid (combinationally, but captured in state)
+                mid_idx <= (start_idx + end_idx) >> 1;
+            end else begin
+                done <= 1'b0;
+            end
+        end
+    end
+
+endmodule

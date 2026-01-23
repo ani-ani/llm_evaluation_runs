@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'card_game_solver' that solves a simplified card game problem for n=8.
+
+The problem: Nauuo has n numbered cards (1 to n) and n empty cards (0). She holds n cards, and n cards are in a pile. In one operation, she plays a card from hand to the bottom of the pile and draws the top card. Goal: Arrange the pile as [1, 2, ..., n] (top to bottom) in minimum operations.
+
+Simplified Algorithm for n=8:
+1. Check for a 'direct win' condition:
+   - If card '1' is in the pile, verify if the pile contains a sequence '1, 2, ...' starting from '1' until the end of the pile.
+   - If valid, check if the remaining required cards (from sequence end + 1 to n) can be played from hand in time (i.e., they must not appear in the pile too early).
+   - If valid, the cost is (index of '1' in pile).
+
+2. If not a direct win:
+   - The cost is calculated as `max_over_all_cards( (pile_position - card_value + 1) + n )`.
+   - Note: `pile_position` is 0-based index in pile array. If a card is in hand, its `pile_position` is effectively 0 (handled by the max calculation logic).
+   - Specifically, for each card `v` (1 to n), let `pos[v]` be its index in pile (or 0 if in hand). The cost candidate is `max(0, pos[v] - v + 1 + n)`.
+   - Take the maximum over all cards.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] hand [0:7] // Array of 8 cards in hand (values 0-8)
+input [7:0] pile [0:7] // Array of 8 cards in pile (values 0-8, index 0 is top)
+
+Outputs:
+output reg [7:0] result // Minimum operations (0-255)
+output reg done // high when computation complete
+
+Latency: Result valid 20 clock cycles after start asserted.
+Use state machine with states: IDLE, LOAD, CHECK_SEQ, CALCULATE_COST, DONE.
+
+Details:
+- `hand` and `pile` are inputs containing values 0 (empty) or 1-8 (numbered).
+- In IDLE: wait for start.
+- In LOAD: Register inputs.
+- In CHECK_SEQ: Iterate from pile[0] to pile[7] to see if sequence 1, 2... continues. Handle cases where 1 is not in pile.
+- In CALCULATE_COST: Iterate 1 to 8 to find `max(pos[v] - v + 1 + n)` and compare with special result.
+- In DONE: Output result.

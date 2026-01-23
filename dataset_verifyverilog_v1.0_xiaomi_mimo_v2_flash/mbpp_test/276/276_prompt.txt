@@ -1,0 +1,93 @@
+module cylinder_volume (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] radius,      // Fixed-point Q8.8 format (8 integer, 8 fractional)
+    input wire [15:0] height,      // Fixed-point Q8.8 format
+    output reg [31:0] volume,      // Fixed-point Q16.16 format
+    output reg done
+);
+
+    // Constants: π * 65536 for Q16.16 fixed-point
+    // π = 3.14159265 * 65536 = 205887
+    localparam PI_FIXED = 205887;
+    
+    // State machine states
+    localparam IDLE = 2'b00;
+    localparam CALC_R_SQ = 2'b01;
+    localparam CALC_VOL = 2'b10;
+    localparam FINISH = 2'b11;
+    
+    reg [1:0] state;
+    reg [1:0] next_state;
+    
+    // Intermediate registers for multiplication
+    reg [31:0] r_squared;      // r * r in Q16.16
+    reg [31:0] r_squared_h;    // r² * h in Q16.16
+    
+    // Multiplier stage registers
+    reg [31:0] mult_a;
+    reg [31:0] mult_b;
+    wire [63:0] mult_result;
+    
+    // Sequential multiplication (2 cycles)
+    // Input Q8.8, Output Q16.16
+    // (a * b) >> 8 = (a * b) / 256
+    assign mult_result = mult_a * mult_b;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            volume <= 0;
+            r_squared <= 0;
+            r_squared_h <= 0;
+            mult_a <= 0;
+            mult_b <= 0;
+        end else begin
+            state <= next_state;
+            
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        // Start r_squared = radius * radius
+                        mult_a <= {16'b0, radius};  // Q8.8 to Q16.16
+                        mult_b <= {16'b0, radius};
+                    end
+                end
+                
+                CALC_R_SQ: begin
+                    // r_squared = (mult_result >> 8) for Q8.8 * Q8.8 -> Q16.16
+                    r_squared <= mult_result[47:16];
+                    // Start r_squared_h = r_squared * height
+                    mult_a <= mult_result[47:16];
+                    mult_b <= {16'b0, height};
+                end
+                
+                CALC_VOL: begin
+                    // r_squared_h = (mult_result >> 8)
+                    r_squared_h <= mult_result[47:16];
+                end
+                
+                FINISH: begin
+                    // volume = r_squared_h * PI >> 16 for Q16.16 * Q16.16 -> Q16.16
+                    // Actually: (r_squared_h * PI) >> 16
+                    volume <= (r_squared_h * PI_FIXED) >> 16;
+                    done <= 1;
+                end
+            endcase
+        end
+    end
+    
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: if (start) next_state = CALC_R_SQ;
+            CALC_R_SQ: next_state = CALC_VOL;
+            CALC_VOL: next_state = FINISH;
+            FINISH: next_state = IDLE;
+        endcase
+    end
+
+endmodule

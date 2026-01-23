@@ -1,0 +1,3 @@
+module is_multiply_prime(input [6:0] number, output is_product);
+always @(*) begin case (number) 8: is_product = 1; 12: is_product = 1; 18: is_product = 1; 20: is_product = 1; 27: is_product = 1; 28: is_product = 1; 30: is_product = 1; 42: is_product = 1; 44: is_product = 1; 45: is_product = 1; 50: is_product = 1; 52: is_product = 1; 63: is_product = 1; 66: is_product = 1; 68: is_product = 1; 70: is_product = 1; 75: is_product = 1; 76: is_product = 1; 78: is_product = 1; 92: is_product = 1; 98: is_product = 1; 99: is_product = 1; 102: is_product = 1; 105: is_product = 1; 110: is_product = 1; 114: is_product = 1; 116: is_product = 1; 124: is_product = 1; 125: is_product = 1; default: is_product = 0; endcase end
+endmodule

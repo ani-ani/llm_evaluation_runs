@@ -1,0 +1,77 @@
+Design a Verilog module that checks if a string expression containing parentheses '()', '{}', '[]' is balanced.
+
+## Problem Adaptation for Hardware
+- Input string: Fixed length of 16 characters (ASCII bytes)
+- Supported characters: '(', ')', '{', '}', '[', ']' only
+- Stack depth: Maximum 8 elements
+- Character encoding: Single ASCII byte per character
+- Empty positions in string: filled with null (0x00)
+
+## Module Interface
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start pulse (assert for 1 cycle to begin checking)
+- `char_in[7:0]`: Input character port (16 consecutive writes)
+- `write_en`: Write enable (assert when providing each character)
+- `check_start`: Assert to indicate all characters have been written and checking should begin
+
+**Outputs:**
+- `result`: 1-bit output (1 = balanced, 0 = unbalanced)
+- `done`: Asserted high for 1 cycle when checking is complete
+- `error_code[2:0]`: Error code: 0=success, 1=stack underflow, 2=unmatched closing, 3=stack overflow, 4=invalid char
+
+## Module Behavior
+
+1. **Input Phase (after start):**
+   - Accept up to 16 characters via `char_in` with `write_en`
+   - Store characters in internal buffer
+   - Track character count (max 16)
+
+2. **Check Phase (after check_start):**
+   - Process each character sequentially
+   - Push opening brackets: '(', '{', '[' onto stack
+   - Pop and validate closing brackets: ')', '}', ']'
+   - Must match top of stack
+   - Stack underflow (closing with empty stack) = unbalanced
+
+3. **Stack Implementation:**
+   - Depth: 8 elements
+   - Each element: 8-bit ASCII character
+   - Overflow (pushing beyond 8) = unbalanced
+
+4. **Completion:**
+   - After processing all characters
+   - Stack must be empty for balanced
+   - Assert `done` for 1 cycle
+   - Set `result` accordingly
+
+## Timing
+- `start` asserted for 1 cycle initiates input phase
+- Characters written sequentially on `char_in` with `write_en`
+- `check_start` pulse (1 cycle) begins verification
+- Computation completes within 50 cycles
+- `done` asserted for 1 cycle when complete
+
+## Reset Behavior
+- `rst_n=0`: Clears stack, buffer, counters, sets result=0, done=0
+- Minimum 2 clock cycles of reset required
+
+## Example Operation
+
+Input: "{()}" (4 characters)
+1. Start = 1, then write characters: '{', '(', ')', '}'
+2. Check_start = 1
+3. Cycle 1: '{' -> push stack
+4. Cycle 2: '(' -> push stack
+5. Cycle 3: ')' -> pop '(', matches ✓
+6. Cycle 4: '}' -> pop '{', matches ✓
+7. Cycle 5: Stack empty, result=1, done=1
+
+## Test Cases (from original problem)
+- "{()}[{}]" -> balanced (1)
+- "{()}[{]" -> unbalanced (0)
+- "{()}[{}][]({})" -> balanced (1)
+
+Use a state machine approach with states: IDLE, WRITE_CHARS, CHECKING, COMPLETE.

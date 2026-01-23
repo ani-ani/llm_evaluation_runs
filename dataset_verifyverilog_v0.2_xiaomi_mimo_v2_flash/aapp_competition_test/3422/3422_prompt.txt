@@ -1,0 +1,125 @@
+Design a sequential Verilog module named 'treasure_map_assembler' that assembles a 4x4 map from four 2x2 pieces.
+
+The module takes four 2x2 pieces as input. Each piece is a 2x2 grid of 2-bit values (0-3). The module must try different arrangements (permutations) and rotations of the pieces to fill a 4x4 grid. Since the grid is 4x4 and pieces are 2x2, exactly 4 pieces are needed.
+
+However, searching all permutations and rotations is complex. To make it implementable, the module will receive the pieces and a 'mode' input that selects which permutation/rotation to try. The module will then place the pieces according to that mode and verify if the placed pieces form a valid treasure map.
+
+For the purpose of this task, we will design a module that computes the reconstructed map for a specific arrangement (provided via a 'config' input) and calculates a 'validity' score based on distance constraints.
+
+Let's simplify the goal to: 
+1. Accept four 2x2 pieces (8 bits each: [1:0] p1_00, p1_01, p1_10, p1_11, etc.)
+2. Accept a configuration index (3 bits, 0-7) representing a specific placement/rotation scheme.
+3. Output the assembled 4x4 map (16*2 = 32 bits).
+4. Output a 'valid' flag if the map satisfies the distance property (i.e., there is a single '0' treasure and the digits match rectilinear distances modulo 4).
+
+Actually, let's stick closer to the original puzzle but with aggressive constraints:
+- 4 pieces total.
+- 2x2 size each.
+- Reconstruct a 4x4 grid.
+- No rotation allowed (simplification) but pieces can be permuted.
+- 4! = 24 permutations. This is too much for a single Verilog module if done naively.
+
+Let's pivot to a purely combinational problem for simplicity:
+
+Module: `map_assembler`
+Inputs:
+- `piece_1`, `piece_2`, `piece_3`, `piece_4`: Each 8 bits (2x2 grid, 2 bits per cell).
+- `placement_mode`: 4 bits (0-15). Selects a specific fixed arrangement of the 4 pieces.
+  - Mode 0: P1, P2, P3, P4 in row-major order.
+  - Mode 1: P1, P3, P2, P4 ...
+  - (We will support 4 modes for demonstration).
+
+Outputs:
+- `map_data`: 32 bits representing the 4x4 map (2 bits per cell).
+- `valid`: 1 bit. Asserted if the map has a single '0' and all other cells are correct distances mod 4.
+
+Detailed Behavior:
+The module places the 4 pieces into a 4x4 grid based on `placement_mode`. 
+Let's assume the grid coordinates are (0,0) to (3,3). 
+Rows 0-1, Cols 0-1 -> Piece 1
+Rows 0-1, Cols 2-3 -> Piece 2
+Rows 2-3, Cols 0-1 -> Piece 3
+Rows 2-3, Cols 2-3 -> Piece 4
+
+Actually, the `placement_mode` will swap the pieces in these slots.
+- Mode 0: Slot(0,0)=P1, Slot(0,2)=P2, Slot(2,0)=P3, Slot(2,2)=P4
+- Mode 1: Slot(0,0)=P1, Slot(0,2)=P3, Slot(2,0)=P2, Slot(2,2)=P4
+- Mode 2: Slot(0,0)=P2, Slot(0,2)=P1, Slot(2,0)=P3, Slot(2,2)=P4
+- Mode 3: Slot(0,0)=P2, Slot(0,2)=P4, Slot(2,0)=P1, Slot(2,2)=P3
+
+Wait, the prompt asks for a complete Verilog specification. 
+Let's design a module that takes 4 pieces and 16 configuration bits (4 modes) and outputs the map and validity. 
+To keep it reasonable, we will implement the logic for 4 fixed configurations (2 bits mode). 
+
+Let's refine the `valid` logic. 
+1. Find the position of the treasure (value 0). 
+2. For every other cell, the value must be `abs(row - treasure_row) + abs(col - treasure_col)`. Since values are modulo 4, this is `(dist) % 4`. 
+
+Edge case: If there are multiple 0s, it's invalid. If no 0, invalid.
+
+Verilog Module Specification:
+
+Module Name: `treasure_map_solver`
+Inputs:
+  - `p1_data` [7:0]: Piece 1 (2x2, row major, 2 bits per pixel)
+  - `p2_data` [7:0]: Piece 2
+  - `p3_data` [7:0]: Piece 3
+  - `p4_data` [7:0]: Piece 4
+  - `config` [1:0]: Selects arrangement (0 to 3)
+
+Outputs:
+  - `map_out` [31:0]: The assembled 4x4 map (2 bits per pixel, row major)
+  - `valid` [0:0]: 1 if the map is valid according to treasure rules, else 0
+
+Internal Logic:
+  1. Define 4 fixed arrangements (permutations) of the pieces based on `config`. 
+     Example Arrangement 0:
+     Top-Left: P1
+     Top-Right: P2
+     Bottom-Left: P3
+     Bottom-Right: P4
+     
+     Arrangement 1:
+     Top-Left: P1
+     Top-Right: P3
+     Bottom-Left: P2
+     Bottom-Right: P4
+     
+     ... etc.
+  2. Assemble the 4x4 grid. 
+     The grid is 4 rows x 4 cols. Each cell is 2 bits.
+     Let's map the 8-bit piece data to 2x2 grid:
+     Piece[1:0] -> (0,0)
+     Piece[3:2] -> (0,1)
+     Piece[5:4] -> (1,0)
+     Piece[7:6] -> (1,1)
+     
+     When placing, we map to the 4x4 grid:
+     If Piece A is at Top-Left (0,0):
+       (0,0) -> A[1:0]
+       (0,1) -> A[3:2]
+       (1,0) -> A[5:4]
+       (1,1) -> A[7:6]
+     
+     If Piece A is at Top-Right (0,2):
+       (0,2) -> A[1:0]
+       (0,3) -> A[3:2]
+       (1,2) -> A[5:4]
+       (1,3) -> A[7:6]
+     
+     And so on.
+  3. Validation Logic:
+     - Scan the 4x4 grid to find the position (tx, ty) of the '0' value. 
+     - If no '0' or multiple '0's: `valid = 0`.
+     - If found, iterate all cells (r, c):
+       - Calculate distance = |r - ty| + |c - tx|.
+       - Expected value = distance % 4.
+       - If grid(r,c) != Expected, `valid = 0`.
+     - If all match, `valid = 1`.
+
+Constraints:
+- Inputs are 2-bit digits (0-3).
+- Grid size is fixed 4x4.
+- Only 4 permutations selected by `config`.
+
+This seems feasible. It requires a fair bit of combinational logic but avoids loops over large ranges.

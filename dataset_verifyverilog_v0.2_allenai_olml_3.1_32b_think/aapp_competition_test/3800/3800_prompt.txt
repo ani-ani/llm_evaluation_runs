@@ -1,0 +1,38 @@
+Design a sequential Verilog module named 'rectangular_sum' that counts the number of rectangular submatrices in a derived matrix B that sum to a target value 'a'. 
+
+Problem Context:
+Given a string of digits s, define matrix B where B[i][j] = s[i] * s[j]. We need to find the number of rectangles defined by indices (x, y) for rows and (z, t) for columns such that sum_{i=x..y, j=z..t} B[i][j] == a.
+
+Mathematical Insight:
+The sum of the rectangle is (sum_{i=x..y} s[i]) * (sum_{j=z..t} s[j]). Let R be the set of all subarray sums of s. The problem is to count pairs (u, v) in R x R such that u * v = a.
+
+Adapted Module Specs:
+- Limit string length N to 16.
+- Use 32-bit arithmetic (sufficient for products of sums of up to 16*9 = 144).
+- Input 'a' is a 32-bit value.
+- Input 's' is provided as a 16-element vector of 4-bit digits (0-9).
+- Input 'length' specifies the actual number of digits in s (1 to 16).
+- The module should iterate through all possible subarrays to compute sums, store frequencies, and finally compute the count.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] a // Target sum value
+input [3:0] length // Number of digits in the string (1-16)
+input [15:0][3:0] digits // The string of digits (max 16), MSB first
+
+Outputs:
+output reg [31:0] result // The number of matching rectangles
+output reg done // High when computation is finished
+
+Behavioral Description:
+The module operates in three phases:
+1.  **Subarray Sum Computation (Phase 1):** Iterate through all valid subarrays of 'digits' (up to length 'length'). Calculate the sum of digits for each subarray. Since the number of subarrays is small (max 136), use a small internal buffer (e.g., a 136x32-bit BRAM or registers) to store these sums. Use a state machine to generate indices (start, end) and accumulate sums.
+2.  **Frequency Counting (Phase 2):** Iterate through the buffer of subarray sums. Maintain a histogram of frequencies for each unique sum encountered. Since the maximum subarray sum is 144, we can use a lookup table (array of 145 registers, each 8-bit wide) to store frequencies.
+3.  **Rectangle Counting (Phase 3):
+    - If 'a' == 0: The answer is (freq[0] * freq[0]) + 2 * freq[0] * (TotalSubarrays - freq[0]).
+    - If 'a' != 0: Iterate through all unique sums 's' (1 to 144). If 'a' is divisible by 's', calculate 'target = a / s'. If 'target' is within the valid range (1-144) and 's <= target' (to avoid double counting), add freq[s] * freq[target] to the result. If 's == target', add freq[s] * freq[s]; if 's < target', add 2 * freq[s] * freq[target].
+
+Latency: Result valid approximately 200 clock cycles after start asserted.
+Use state machine states: IDLE, PHASE1_GEN_SUBARRAYS, PHASE1_STORE, PHASE2_COUNT, PHASE3_CALC, DONE.

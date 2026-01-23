@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'binary_town_voting' that computes the optimal number of ballots to cast for Yraglac.
+
+Problem Summary (Adapted):
+- Fixed k = 4 positions (bits), so ballot values range 0-15.
+- Max v = 10 voters (1 self + 9 others).
+- We need to find b_self (0-15) that maximizes expected Yraglac wins.
+- Expected wins = sum over bits (probability bit is 1).
+- Probability of a bit being 1 is computed from the probability distribution of the sum of OTHER voters' ballots.
+
+Inputs:
+input clk // Clock
+input rst_n // Active-low reset
+input start // High to start computation
+input [3:0] voter_id // Current voter index (0 to 8 for 9 voters)
+input voter_valid // High if this voter exists (for the 9 voters)
+input [15:0] voter_prob // Q16.16 probability of voting
+input [3:0] voter_ballot // Ballot value (0-15)
+
+Outputs:
+output reg [3:0] optimal_b_self // The optimal ballot for self (0-15)
+output reg done // High when computation complete
+
+Behavioral Description:
+The module operates in two phases controlled by internal state machine:
+1. **Data Loading & Accumulation Phase**: 
+   - Accept voter data sequentially.
+   - Maintain a Probability Distribution Table (PDT) of size 16 (indices 0-15) representing the probability of the sum of ballots.
+   - Initialize PDT[0] = 1.0 (Q16.16 0x10000), others 0.
+   - For each voter (ID 0 to 8): 
+     - If voter_valid is high: Update PDT.
+       - NewPDT[s] = OldPDT[s] * (1 - p) + OldPDT[s - b] * p (if s >= b).
+     - If voter_valid is low: Skip.
+   - Use a sequential process: Iterate through the 16 sum values, read old PDT, calculate new values, and write back. This takes several clock cycles per voter.
+2. **Evaluation Phase**:
+   - Once all voters are processed, we have the distribution of 'sum_other'.
+   - Loop through all possible values of self_ballot (0 to 15).
+     - For each self_ballot, calculate the expected wins:
+       - ExpectedWins = 0.
+       - For bit_pos 0 to 3:
+         - Accumulate probability that the total sum (sum_other + self_ballot) has this bit set.
+         - Prob_bit_1 = sum_{s=0}^{15} (PDT[s] * [ ((s + self_ballot) >> bit_pos) & 1 ]). 
+   - Keep track of the self_ballot that gives the maximum expected wins.
+   - Store result in 'optimal_b_self'.
+   - Set 'done' high.
+
+Note: Use Q16.16 fixed-point for probabilities.
+Spec: State machine states: IDLE, READ_VOTER, UPDATE_PDT, EVAL_LOOP, DONE.
+Latency: High latency (many cycles), approximately O(v * 16 + 16 * 16 * 4) cycles.

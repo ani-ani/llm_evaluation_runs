@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'max_flow_solver' that computes maximum flow using Edmonds-Karp algorithm.
+
+module max_flow_solver (
+    input clk,
+    input rst_n,
+    input start,
+    input [1:0] source,         // source node (0-3)
+    input [1:0] sink,           // sink node (0-3)
+    input [1:0] num_nodes,      // number of nodes (1-4)
+    input [5:0] edge_count,     // number of edges (0-63)
+    input [15:0] capacity [0:3][0:3], // capacity matrix
+    output reg [15:0] max_flow, // maximum flow value
+    output reg [5:0] used_edges,// number of edges with flow > 0
+    output reg [1:0] out_u,     // output edge source
+    output reg [1:0] out_v,     // output edge destination
+    output reg [15:0] out_flow, // flow on current edge
+    output reg out_valid,       // high when output edge is valid
+    output reg done            // high when computation complete
+);
+
+Specify latency: approximately 5000 clock cycles worst case.
+
+The module implements:
+1. Maintains residual capacity matrix (source-to-sink)
+2. Uses BFS to find augmenting paths (state machine)
+3. Updates residual capacities after each path
+4. Accumulates total flow
+5. Generates edge outputs after completion
+
+States:
+- IDLE: Wait for start
+- INIT: Initialize residual graph
+- BFS_SEARCH: Find augmenting path using breadth-first search
+- AUGMENT: Update flows along found path
+- OUTPUT: Generate edge list with positive flow
+- DONE: Completion state
+
+Internal structures:
+- Residual capacity matrix (4x4, 16-bit elements)
+- Parent array for BFS path reconstruction (4x2-bit)
+- Visited array for BFS (4-bit)
+- Queue for BFS (up to 4 elements)
+- Current path buffer (max 4 nodes)
+
+Each augmenting path iteration takes ~50 cycles.
+Maximum flow is bounded by sum of capacities (tested up to 100000).
+Result is valid when done=1 and out_valid cycles through all edges with flow > 0.
+
+Behavioral description:
+The module maintains a residual capacity matrix initialized from input capacity matrix.
+In BFS_SEARCH state, it explores the graph level-by-level to find a path from source to sink.
+Parent pointers track the path. When sink is reached, augmentation calculates bottleneck capacity.
+AUGMENT state updates residual capacities by subtracting flow along forward edges and adding to backward edges.
+This process repeats until no augmenting path exists.
+Finally, OUTPUT state iterates through original edges and outputs flow = original_capacity - residual_capacity.

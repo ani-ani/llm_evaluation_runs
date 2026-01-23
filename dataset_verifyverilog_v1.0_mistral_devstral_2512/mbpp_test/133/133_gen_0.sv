@@ -1,0 +1,63 @@
+module sum_negative_numbers (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] len,  // Number of elements (0-15)
+    input wire signed [7:0] arr [0:7],  // 8-element array, 8-bit signed
+    output reg signed [15:0] result,
+    output reg done
+);
+
+    // State definitions
+    localparam [1:0] IDLE = 2'd0;
+    localparam [1:0] CALC = 2'd1;
+    localparam [1:0] FINISH = 2'd2;
+    
+    // Internal registers
+    reg [1:0] state;
+    reg [3:0] index;
+    reg signed [15:0] sum;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            index <= 4'd0;
+            sum <= 16'sd0;
+            result <= 16'sd0;
+            done <= 1'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= CALC;
+                        index <= 4'd0;
+                        sum <= 16'sd0;
+                    end
+                end
+                
+                CALC: begin
+                    if (index < len && index < 4'd8) begin
+                        // Check if negative
+                        if (arr[index] < 8'sd0) begin
+                            // Sign-extend 8-bit to 16-bit and add
+                            sum <= sum + {{8{arr[index][7]}}, arr[index]};
+                        end
+                        index <= index + 1'b1;
+                    end else begin
+                        state <= FINISH;
+                        result <= sum;
+                    end
+                end
+                
+                FINISH: begin
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

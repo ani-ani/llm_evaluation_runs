@@ -1,0 +1,96 @@
+module bus_time_calculator (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // All values in Q16.16 fixed-point format
+    input wire [31:0] n,   // Number of pupils (integer part only)
+    input wire [31:0] l,   // Distance
+    input wire [31:0] v1,  // Walking speed
+    input wire [31:0] v2,  // Bus speed
+    input wire [31:0] k,   // Bus capacity (integer part only)
+    
+    output reg [31:0] time,
+    output reg done
+);
+
+// Internal state
+reg [2:0] state;
+reg [7:0] iter;
+reg [31:0] m, L, R, M, S, T;
+
+// Fixed-point multiplication (Q16.16 * Q16.16)
+function [31:0] q_mul;
+    input [31:0] a, b;
+    begin
+        q_mul = (a * b) >> 16;
+    end
+endfunction
+
+localparam [2:0] IDLE = 3'd0;
+localparam [2:0] INIT = 3'd1;
+localparam [2:0] LOOP = 3'd2;
+localparam [2:0] CALC = 3'd3;
+localparam [2:0] UPDATE = 3'd4;
+localparam [2:0] FINISH = 3'd5;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 1'b0;
+        time <= 32'd0;
+        iter <= 8'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    state <= INIT;
+                end
+            end
+            
+            INIT: begin
+                m <= (n + k - 1) / k;  // ceil(n/k)
+                L <= 32'd0;
+                R <= l;
+                iter <= 8'd0;
+                state <= LOOP;
+            end
+            
+            LOOP: begin
+                if (iter >= 8'd16) begin
+                    time <= M;
+                    state <= FINISH;
+                end else begin
+                    M <= (L + R) >> 1;  // Binary search midpoint
+                    state <= CALC;
+                end
+            end
+            
+            CALC: begin
+                S <= l - M;
+                T <= q_mul(M, (m << 1) - 1) - l;
+                state <= UPDATE;
+            end
+            
+            UPDATE: begin
+                if (q_mul(T, v1) > q_mul(S, v2)) begin
+                    R <= M;
+                end else begin
+                    L <= M;
+                end
+                iter <= iter + 8'd1;
+                state <= LOOP;
+            end
+            
+            FINISH: begin
+                done <= 1'b1;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'find_zero' that implements binary search to find a root of a polynomial with integer coefficients.
+
+The module uses fixed-point arithmetic (Q16.16 format) where values represent (signed_int * 65536).
+
+Polynomial evaluation: f(x) = c0 + c1*x + c2*x^2 + ... + c7*x^7
+
+Coefficients array: 8 elements, each 16-bit signed integers.
+
+Binary search parameters:
+- Search range: [-10.0, 10.0] in Q16.16 format
+- Iterations: 8 cycles (sufficient for convergence)
+- Initial high: 10.0 * 65536 = 655360 (0x000A0000)
+- Initial low: -10.0 * 65536 = -655360 (0xFFF60000)
+
+Module interface:
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start computation (high for 1 cycle)
+  input signed [15:0] coeffs [0:7]  // Polynomial coefficients (signed 16-bit)
+  input [2:0] num_coeffs  // Number of valid coefficients (1-8)
+
+Outputs:
+  output reg signed [31:0] result  // Root in Q16.16 format
+  output reg done                  // High for 1 cycle when result valid
+
+Latency: 10 clock cycles (1 for reset/initialization + 8 for search iterations + 1 for completion)
+
+Internal behavior:
+1. When start goes high, initialize binary search bounds:
+   - low = -655360 (0xFFF60000)
+   - high = 655360 (0x000A0000)
+2. For 8 iterations:
+   - mid = (low + high) / 2
+   - evaluate polynomial at mid
+   - if f(mid) > 0: high = mid
+   - else: low = mid
+3. After 8 iterations, result = mid
+
+Polynomial evaluation in hardware:
+- Use iterative multiplication and accumulation
+- Horner's method: result = c7; result = result*x + c6; ...
+- Handle overflow by using 64-bit intermediate accumulation, truncate to 32-bit
+- All math is signed arithmetic
+
+State machine states:
+- IDLE: Wait for start
+- EVAL: Evaluate polynomial at current mid
+- UPDATE: Update search bounds based on sign
+- DONE: Set done signal
+
+Design constraints:
+- Use Icarus Verilog compatible syntax (no array slices, no break statements)
+- All signals must be explicitly sized
+- Use non-blocking assignments for sequential logic
+- Implement polynomial evaluation as combinational block or state machine
+- Handle signed arithmetic correctly

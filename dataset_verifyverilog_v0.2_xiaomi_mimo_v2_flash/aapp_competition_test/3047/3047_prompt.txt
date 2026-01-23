@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'lure_of_the_labyrinth' that solves the proportional monster plate puzzle. The module iterates through possible integer factors to find distinct solutions consistent with the partial plate information.
+
+**Interface:**
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] data_in // 8-bit input for the sequence of plate values (streamed one by one)
+input valid_in // High when data_in is valid
+
+Outputs:
+output reg [31:0] solution_count // Number of distinct solutions
+output reg many // High if infinitely many solutions
+output reg done // High when computation complete
+
+**Logic Description:**
+The module processes 20 plate entries (5 monsters * 4 items) provided sequentially via `data_in`. Items order is: Row 1 (Burger, Slop) for Salamander, Yeti, Golem, Imp, Kraken; Row 2 (Sushi, Drumstick) for Salamander, Yeti, Golem, Imp, Kraken.
+Known values are positive integers (1-200). Unknowns are represented as 0 in the input stream.
+
+The goal is to find the number of distinct rational factors `k = p/q` (reduced form, p,q > 0) such that for every item `a` in a plate, `a = base_item * k` (or `base_item = a / k`), maintaining consistency across all monsters. Since we must output positive integers, `k` must map valid inputs to integer outputs.
+
+**Algorithm:**
+1. **Initialization**: Reset state, clear counters. Wait for `start`.
+2. **Input Collection**: Use a state machine to receive 20 values via `data_in` when `valid_in` is high. Store in a small internal array. Count known values.
+3. **Base Selection & Iteration**:
+   - Identify potential 'base' items (known values). Let's iterate through each known value as the reference '1.0'.
+   - For each reference, iterate through possible rational factors `k` (e.g., `p` from 1 to 200, `q` from 1 to 200). 
+   - For each `k`, check if all other known items `v` satisfy the relation: `v * q` must be divisible by `p` (since `v = base * p/q` implies `base = v*q/p` must be integer). 
+   - Also check if inferred values (for unknowns) would be integers.
+   - Calculate the count of distinct valid factors.
+4. **Result Calculation**:
+   - If multiple factors produce valid, distinct plate configurations (different values for unknowns), increment `solution_count`.
+   - If `solution_count` is non-zero after checking all possibilities, output count.
+   - If no constraints exist (e.g., all inputs are unknown), output 'many'.
+
+**Simplification for Hardware**:
+- Limit p and q to 1 to 200. This covers all integer ratios possible with inputs up to 200.
+- Use a nested loop state machine (Outer loop: p, Inner loop: q).
+- A configuration is valid if for all known inputs `val`, `val * q` is divisible by `p` (if `val` is scaled by p/q) or `val * p` is divisible by `q` (if `val` is the base). To simplify, assume `val` corresponds to `base * (p/q)`. Check `val * q % p == 0`.
+- We must ensure all inferred values are positive integers.
+- We must track distinct configurations. Since we only need the count, we can count valid (p, q) pairs that satisfy all constraints.
+- Special case: If no known values exist, output 'many'.
+
+**State Machine States**:
+- IDLE: Wait for start
+- COLLECT: Read 20 inputs
+- CHECK: Iterate p (1..200), q (1..200). Check consistency for each pair.
+- DONE: Set `done` high.
+
+**Latency**: Result valid approx 200*200 cycles after start (approx 40k cycles).
+
+**Testbench Strategy**: 
+- Provide inputs via `data_in` stream.
+- Verify `solution_count` and `many` flag.

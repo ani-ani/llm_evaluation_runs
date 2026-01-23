@@ -1,0 +1,59 @@
+Design a sequential Verilog module named 'pizza_solver' that solves a simplified constraint satisfaction problem.
+
+The problem is adapted as follows:
+- Maximum 4 friends (N=4)
+- Maximum 4 wishes per friend (W=4)
+- Maximum 8 unique toppings (T=8)
+- Each wish is encoded as: [Top_idx (3 bits), Type (1 bit)] where Type=1 for '+' (wants), 0 for '-' (doesn't want).
+- Goal: Find a subset of toppings (selection mask) such that every friend has strictly more than 1/3 of their wishes satisfied.
+- Since 1/3 of 4 wishes is 1.33, 'strictly more' means >= 2 wishes satisfied.
+
+Module Interface:
+module pizza_solver (
+    input clk,
+    input rst_n,
+    input start,
+    input [2:0] num_friends,   // Number of friends (1-4)
+    input [2:0] num_toppings,  // Number of unique toppings (1-8)
+    input [31:0] wishes [0:3], // Wishes for 4 friends, 4 wishes each. Flattened: [Friend0_W0..3, Friend1_W0..3, ...]
+    output reg found,
+    output reg [7:0] selection  // Bitmask of selected toppings (1 = include, 0 = exclude)
+);
+
+Behavior:
+1. Reset state: IDLE.
+2. On start signal, begin iterating through all possible topping subsets (0 to 2^8 - 1 = 0 to 255).
+3. For each subset, check validity against all friends' wishes.
+   - Iterate through friends (0 to num_friends-1).
+   - For each friend, count satisfied wishes.
+   - A wish is satisfied if: 
+        (Type==1 AND topping is in subset) OR (Type==0 AND topping is NOT in subset)
+   - If satisfied_count * 3 > num_wishes_for_friend (which is constant 4), the friend is happy.
+   - If all friends are happy, output the subset and stop.
+4. Assume a solution exists within the first 256 iterations.
+5. Latency: Variable, up to 256 cycles + processing overhead. 'found' goes high when solution is found.
+
+Wish Encoding Details (passed via 'wishes' input):
+Each 32-bit wish vector contains 4 wishes (8 bits each).
+Format: [Topping_Index (3 bits), Type (1 bit)] followed by 4 unused bits.
+Topping_Index: 0 to 7.
+Type: 1 for '+', 0 for '-'.
+
+Example Input:
+N=1, W=4, Toppings: zucchini(0), mozzarella(1), mushrooms(2), artichoke(3).
+Wishes: +0, +1, +2, -3.
+Wish 0: Type=1, Top=0 -> 0x08 (00001000)
+Wish 1: Type=1, Top=1 -> 0x18 (00011000)
+Wish 2: Type=1, Top=2 -> 0x28 (00101000)
+Wish 3: Type=0, Top=3 -> 0x30 (00110000)
+Input 'wishes[0]' = {Friend0_W0, Friend0_W1, Friend0_W2, Friend0_W3} = 0x30281808.
+
+Internal Logic Requirements:
+- Use a state machine: IDLE -> CHECK_SUBSET -> UPDATE -> DONE (or similar).
+- Use a loop counter for the subset iteration (0-255).
+- Use combinational logic to calculate satisfied wishes for a specific friend/subset combination.
+- Registers to store intermediate counts and state.
+
+Output:
+- 'found': High when valid selection is found.
+- 'selection': The bitmask corresponding to the valid selection.

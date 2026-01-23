@@ -1,0 +1,46 @@
+Design a combinational Verilog module named 'move_one_ball' that checks if an array can be sorted by right-shift operations.
+
+Problem Analysis:
+- An array can be sorted by right shifts if and only if it is already sorted OR has exactly one position where arr[i] > arr[i+1] (cyclically, including arr[N-1] > arr[0])
+- With unique elements, there is at most one such drop position
+- After N shifts, array returns to original, so we need to check all cyclic rotations
+
+Implementation Strategy:
+- Use N=8 fixed-size array (scale down from arbitrary length)
+- Check two conditions:
+  1. Array is already sorted (non-decreasing)
+  2. Array has exactly one 'drop' (element > next element)
+- For condition 2: count drops. If exactly 1 drop, check if rotating around that drop yields sorted array
+- With unique elements: if exactly 1 drop, the array after rotation around that drop is sorted
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0][7:0] arr // 8 elements, each 8 bits (0-255 range)
+
+Outputs:
+output reg result // 1 if can be sorted by right shifts, 0 otherwise
+output reg done // high when computation complete
+
+Latency: Result valid 9 clock cycles after start asserted (1 cycle per element + 1 for final logic)
+
+States:
+- IDLE: Wait for start signal
+- CHECK_SORTED: Check if array is already sorted (0-7)
+- COUNT_DROPS: Count drops in circular array (0-7, with wrap-around check)
+- VALIDATE: Verify exactly 1 drop exists
+- DONE: Set result and done signals
+
+Behavior:
+1. On IDLE -> CHECK_SORTED when start=1
+2. CHECK_SORTED: Iterate through indices 0-7, check arr[i] <= arr[i+1] for i<7, and arr[7] <= arr[0] (for circular check). If any violation, mark as not sorted.
+3. COUNT_DROPS: Iterate through 0-7, count positions where arr[i] > arr[i+1] (with arr[7] compared to arr[0]).
+4. VALIDATE: If already sorted (from step 2) -> result=1. Else if exactly 1 drop -> result=1. Otherwise -> result=0.
+5. DONE: Set done=1, hold result.
+
+Note: For simplicity, we'll implement a streamlined version:
+- First, check if already sorted (including circular wrap)
+- Then count drops, if exactly 1 drop, result=1, else result=0
+
+Implementation uses sequential logic with state machine and counter.

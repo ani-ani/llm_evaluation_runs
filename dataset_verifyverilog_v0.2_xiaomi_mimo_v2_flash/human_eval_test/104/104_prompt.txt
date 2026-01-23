@@ -1,0 +1,56 @@
+Design a sequential Verilog module named 'unique_digits' that filters positive integers containing only odd digits (1,3,5,7,9) and returns them sorted.
+
+**Problem Adaptation**:
+- Input: Fixed array of 4 numbers, each 0-9999 (14-bit decimal digits)
+- Output: Up to 4 numbers, sorted ascending
+- Algorithm: Extract decimal digits using repeated division by 10, check if each digit is odd (bit[0]=1), filter and sort using insertion sort
+
+**Interface**:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [13:0] in0, in1, in2, in3 // 4 input numbers (0-9999)
+output reg [13:0] out0, out1, out2, out3 // sorted filtered output
+output reg [2:0] count // number of valid outputs
+output reg done // high when computation complete
+
+**Specification**:
+- Latency: Maximum 200 clock cycles after start
+- State Machine: IDLE -> PARSE_0 -> PARSE_1 -> PARSE_2 -> PARSE_3 -> FILTER -> SORT -> DONE
+- Digit Extraction: For each number, repeatedly divide by 10 to extract digits (max 4 digits)
+- Odd Check: A digit d is odd if (d % 2) == 1, equivalently if d[0] == 1
+- Sorting: Insertion sort on filtered numbers (max 4 elements)
+- Output Format: Numbers packed into out0, out1, out2, out3 in ascending order, with count indicating valid entries
+
+**Implementation Details**:
+- Use a temporary buffer to store filtered numbers
+- During PARSE states: extract digits, verify all digits are odd, mark number as valid/invalid
+- During FILTER state: collect all valid numbers into buffer
+- During SORT state: perform insertion sort on buffer
+- During DONE state: copy sorted results to outputs and set count
+- All arithmetic is decimal-based (no binary bit manipulation needed for digit extraction)
+- Use loops with explicit counters (max 4 iterations per number, max 4 numbers)
+
+**Example**:
+Input: [15, 33, 1422, 1]
+- 15: digits 1,5 both odd → valid
+- 33: digits 3,3 both odd → valid  
+- 1422: contains 2,4 (even) → invalid
+- 1: digit 1 is odd → valid
+Output: out0=1, out1=15, out2=33, out3=0, count=3
+
+**Reset Behavior**:
+- On rst_n=0: All outputs 0, count=0, done=0, state=IDLE
+
+**State Definitions**:
+- IDLE: Wait for start signal, initialize internal state
+- PARSE_0-3: Process each input number (extract digits, validate)
+- FILTER: Collect valid numbers into temporary buffer
+- SORT: Perform insertion sort on valid numbers
+- DONE: Present final results on outputs
+
+**Design Constraints**:
+- No recursion, use iterative digit extraction
+- No dynamic arrays, use fixed buffers (size 4)
+- All states must complete within bounded time
+- Use combinational logic for digit checking and comparisons

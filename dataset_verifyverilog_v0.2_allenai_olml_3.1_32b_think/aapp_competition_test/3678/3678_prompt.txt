@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'loop_validator' that determines if a set of up to 8 points on an 8x8 grid can form a valid non-self-intersecting axis-aligned loop (Hamiltonian cycle). 
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start validation
+input [2:0] n_in // Number of points (1 to 8)
+input [7:0] point_x [0:7] // Array of x-coordinates (0-15)
+input [7:0] point_y [0:7] // Array of y-coordinates (0-15)
+
+Outputs:
+output reg valid // High if valid loop exists
+output reg done // High when computation complete
+
+Behavior:
+The module must check if the input points can form a loop satisfying:
+1. Loop connects all n points.
+2. Segments are axis-aligned (horizontal or vertical).
+3. Segments connect exactly two given points (no intermediate points on the segment).
+4. Consecutive segments are perpendicular (90 degree angle).
+5. Loop is closed (start == end).
+6. Loop does not self-intersect.
+
+Implementation Strategy:
+Since n <= 8, use a state machine to generate all permutations of the points (8! = 40320 max, but we can prune or use a sequential search). 
+For each permutation, validate the loop properties cycle-by-cycle:
+- Adjacency Check: Ensure consecutive points are either same-x or same-y (axis aligned).
+- Perpendicularity: Check direction changes (H->V or V->H).
+- Segment Integrity: Check that no other points lie strictly between two connected points on the segment.
+- Intersection Check: Use a bitmap to track grid cells visited. Since grid is 8x8, use a 64-bit signal. If a cell is visited twice (except start/end), it's invalid.
+
+State Machine:
+IDLE -> LOAD_POINTS -> GENERATE_PERMUTATION -> VALIDATE_PATH -> CHECK_RESULT -> DONE
+
+Note: To fit in hardware, implement a pseudo-random permutation generator (like LFSR-based) or a counter-based sequential search rather than generating all permutations at once. Validate one permutation per cycle or block of cycles.
+
+Output valid should be high only if a valid loop is found. If all attempts fail, valid stays low.

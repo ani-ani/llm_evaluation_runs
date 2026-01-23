@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'virus_spread' that simulates the spread of a virus in a room over D days.
+
+**Module Specifications:**
+- **People**: 8 people (indexed 0 to 7).
+- **Time**: Discrete time slots 0 to 15.
+- **Logic**: Infection spreads if an infected person overlaps with an uninfected person in time. Infection takes effect the next day.
+
+**Inputs:**
+- `clk`: Clock signal
+- `rst_n`: Active-low reset
+- `start`: High for one cycle to start the simulation
+- `init_infected`: 8-bit vector. Bit `i` is 1 if person `i` is initially infected.
+- `D`: Number of days to simulate (2-4 bits, e.g., 4 bits for 0-15 days).
+- `p_start_t[7:0][3:0]`: 8x4-bit array. Entry `i` is the start time of person `i`.
+- `p_end_t[7:0][3:0]`: 8x4-bit array. Entry `i` is the end time of person `i` (inclusive).
+
+**Outputs:**
+- `infected_status`: 8-bit vector. Bit `i` is 1 if person `i` is infected after `D` days.
+- `done`: High when simulation is complete (after `D` cycles).
+
+**Behavioral Description:**
+1.  **Time Mask Calculation (Combinational):** For each person `i`, create a 16-bit `time_mask` where bit `t` is set if `p_start_t[i] <= t <= p_end_t[i]`. Note: If `start == end`, the person is present only at that time.
+2.  **Contact Graph (Combinational):** Calculate an adjacency matrix `contact[7:0][7:0]`. `contact[i][j]` is 1 if `(time_mask[i] & time_mask[j]) != 0` (i.e., they overlap at any time).
+3.  **Day Simulation (Sequential):**
+    - Use a state machine with states `IDLE`, `SIMULATING`, and `DONE`.
+    - When `start` is high, initialize `current_infected = init_infected`, `days_count = 0`, state = `SIMULATING`.
+    - In state `SIMULATING` (on rising clock edge):
+        - Check if `days_count >= D`. If yes, go to `DONE`.
+        - Calculate `new_infections` (8-bit vector):
+          For each person `j` (0 to 7):
+            If `current_infected[j]` is 1:
+              For each person `k` (0 to 7):
+                If `contact[j][k]` is 1 and `current_infected[k]` is 0:
+                  `new_infections[k] = 1`.
+        - Update `current_infected = current_infected | new_infections`.
+        - Increment `days_count`.
+    - When in `DONE`, `infected_status` reflects `current_infected`.
+
+**Constraints:**
+- Ensure logic handles zero-length intervals (start==end).
+- Use non-blocking assignments for sequential logic.
+
+Example timing: Result valid D cycles after `start` is asserted.

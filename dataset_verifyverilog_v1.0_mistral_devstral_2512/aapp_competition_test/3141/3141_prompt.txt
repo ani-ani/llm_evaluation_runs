@@ -1,0 +1,54 @@
+Design a sequential Verilog module that computes the smallest drill bit diameter to remove all flaws in one operation. The drill enters perpendicular to one of the coordinate axes (x, y, or z). The module should take up to 8 3D points (each in Q16.16 fixed-point format) and output the minimal diameter (Q16.16).
+
+**Interface Specification:**
+
+- **Inputs:**
+  - `clk`: Clock signal (rising edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: Start pulse (assert for 1 cycle to begin computation)
+  - `N`: 4-bit number of valid points (1..8)
+  - `x[0:7]`, `y[0:7]`, `z[0:7]`: 32-bit Q16.16 coordinates for each point (only first N are valid)
+
+- **Outputs:**
+  - `diameter`: 32-bit Q16.16 result (smallest drill bit diameter)
+  - `done`: Asserted high for 1 cycle when computation is complete
+
+**Behavior:**
+
+1. On reset (rst_n=0), all internal state is cleared, done=0, diameter=0.
+2. On start=1, load the N points into internal registers on next clock edge.
+3. After loading, compute the minimal diameter by:
+   a. For each axis projection (yz, xz, xy):
+      - Compute the maximum squared distance between any pair of points in that projection.
+      - Compute the square root of that maximum to get the diameter for that projection.
+   b. Take the minimum of the three diameters.
+4. Assert done for 1 cycle when the final result is ready.
+
+**Implementation Notes:**
+- Use fixed-point arithmetic with Q16.16 format for coordinates and intermediate results.
+- Intermediate squared distances use Q32.32 format (64-bit).
+- A state machine should iterate over all pairs of points (for N=8, there are 28 pairs per projection).
+- Use a 64-bit square root module (non-restoring algorithm) to compute diameter from squared distance.
+- The computation should complete within 2000 clock cycles.
+
+**Module Declaration:**
+```verilog
+module drill_bit (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] N,
+    input wire [31:0] x0, y0, z0,
+    input wire [31:0] x1, y1, z1,
+    input wire [31:0] x2, y2, z2,
+    input wire [31:0] x3, y3, z3,
+    input wire [31:0] x4, y4, z4,
+    input wire [31:0] x5, y5, z5,
+    input wire [31:0] x6, y6, z6,
+    input wire [31:0] x7, y7, z7,
+    output reg [31:0] diameter,
+    output reg done
+);
+// Internal registers and state machine here
+endmodule
+```

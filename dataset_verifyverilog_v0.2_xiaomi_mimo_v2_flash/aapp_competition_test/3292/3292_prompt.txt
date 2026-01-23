@@ -1,0 +1,110 @@
+Design a sequential Verilog module named 'name_ranking_counter' that computes the number of valid ranking lists satisfying the prefix contiguity rule for a small set of names.
+
+Problem Context: Given N distinct names, count permutations where all names sharing a common prefix appear contiguously. This is solved using a Trie data structure: for each node, if it has C children with values V1, V2, ..., Vc, and the node has K names ending at it, the total valid permutations is multinomial(V1, V2, ..., Vc) * K! * product(Vi). Multinomial coefficient is (sum(Vi))! / (V1! * V2! * ... * Vc!).
+
+Constraints (scaled down):
+- N = 8 names (input via 8 parallel 8-char strings)
+- Max name length = 8 characters
+- Result modulo 1,000,000,007
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] names [0:7] // Array of 8 names, each 8 chars (represented as 8-byte arrays, passed as 8x64bit signals or similar, here we use 8 separate inputs for simplicity in spec: 8x8bit chars per name, but for Verilog spec we'll use 8 names of 8 chars each passed as 8bit per clock cycle or stored in memory. Let's simplify: provide 64-bit per name as input over 8 cycles or parallel. To be implementable, let's say 8 names, each 8 chars, provided as 8-bit wide input 'char_in' with 'name_idx' and 'char_idx' to load data sequentially.)
+
+Actually, for a standard Verilog module interface, let's assume the names are pre-loaded into an internal ROM or provided via a simple interface. Let's make it a combinational logic block for the core calculation once data is loaded, but wrapped in a sequential FSM for the calculation process.
+
+Inputs:
+input clk
+input rst_n
+input start
+
+// Data loading interface (simplified for 8 names, 8 chars each)
+input [7:0] char_in // Character input
+input [2:0] name_idx // Index of name (0-7)
+input [2:0] char_idx // Character position (0-7)
+input load_char // Pulse to load char
+
+Outputs:
+output reg [31:0] result // Result modulo 1,000,000,007
+output reg done // High when computation is finished
+
+Latency: Approx 5000 clock cycles (to build trie and process nodes).
+
+Algorithm Steps:
+1. **Load Phase**: Accept names char by char. Store in a buffer.
+2. **Trie Construction Phase**: Build a trie. Since N=8 and length=8, max nodes is 64. Each node needs: children pointers (max 26), flags (is_end), count of valid permutations for subtree.
+3. **Computation Phase**: Traverse trie post-order. At each node, compute multinomial coefficient of children and multiply by factorial of ending names.
+   - Need factorial lookups for 0..8.
+   - Need modular inverse for division.
+   - Need large number arithmetic (mod 1e9+7).
+4. **Result**: The root node's computed value is the answer.
+
+**Detailed Module Description**:
+The module should have an FSM with states: IDLE, LOAD, BUILD_TRIE, COMPUTE, DONE.
+
+- **IDLE**: Wait for start.
+- **LOAD**: Accept 8 characters per name for 8 names. Store in 'names_buffer' [8][8][7:0].
+- **BUILD_TRIE**: Construct the trie nodes. A node can be represented as an array of structs in logic. Since Verilog doesn't easily support dynamic structures, we use static arrays. Max nodes 64. Each node has: valid_mask (26 bits), end_count (3 bits), child_indices (26 x 6 bits).
+- **COMPUTE**: Perform a post-order traversal. We need a stack (depth up to 8). For each node, we wait for children to finish, then combine results.
+  - Combinations: We need to calculate (total_children)! / (prod child_counts!). We can use precomputed factorials (0..8) and modular inverses.
+  - Multiplication: result = (factorial[total_children] * modular_inverse(product_of_child_factorials)) % MOD.
+  - Then multiply by factorial[end_count].
+- **DONE**: Set done=1.
+
+**Simplified Logic for Verilog**:
+Since full trie logic is complex, we will implement a specialized solver for the specific case of N=8 strings.
+We need to identify prefixes. We can iterate through all pairs of strings to find shared prefixes, but the Trie is the correct way.
+
+**State Machine**:
+- IDLE
+- LOAD_DATA
+- BUILD_TREE (convert strings to tree structure)
+- SOLVE (recursive DP on tree)
+- FINISHED
+
+**Interfaces**:
+Inputs:
+  clk, rst_n, start
+  load_char, char_in, name_idx, char_idx
+Outputs:
+  result[31:0], done
+
+**Implementation Details**:
+- **Factorials**: Precompute 0! to 8! (0, 1, 2, 6, 24, 120, 720, 5040, 40320). Modulo 1e9+7.
+- **Modular Inverse**: Use Fermat's Little Theorem: a^(MOD-2) mod MOD. Since MOD is large, we need a power module. Or since inputs are small (factorials up to 40320), we can use extended Euclidean or precompute inverses for small numbers.
+- **Arithmetic**: All ops mod 1e9+7.
+
+**Node Structure** (Verilog representation):
+- `nodes_count` (6 bits): current number of nodes used.
+- `node_children` [64][26]: indices of children (6 bits each).
+- `node_end_count` [64]: number of strings ending at this node (3 bits).
+- `node_valid` [64]: bit mask of valid children (26 bits).
+- `node_dp_result` [64]: 32-bit DP value for the subtree.
+
+**FSM Transitions**:
+1. IDLE -> LOAD on start.
+2. LOAD -> BUILD_TRIE after all chars loaded.
+3. BUILD_TRIE -> SOLVE after constructing nodes.
+4. SOLVE -> FINISHED after root is computed.
+5. FINISHED -> IDLE (optional reset).
+
+**SOLVE State Logic**:
+- Use a stack (max depth 8). Traverse tree to collect children results.
+- Wait for children to be computed.
+- Calculate multinomial: 
+  Total = sum(node_dp_result[child_idx]) ... wait, node_dp_result stores the *count* of permutations for that subtree. 
+  Actually, the formula is: 
+  Multinomial = (Sum_of_children_counts)! / (Product of (Child_Counts)!) 
+  But wait, the child_count is the *number of items* in that subtree, not the permutation count.
+  Let `size(v)` be number of strings in subtree v.
+  Let `ways(v)` be number of valid permutations for subtree v.
+  `size(v) = sum(size(child)) + end_count`
+  `ways(v) = multinomial(size(child_1), ..., size(child_k)) * factorial(end_count) * product(ways(child_i))`
+  `multinomial = factorial(sum(size(child_i))) / product(factorial(size(child_i)))`
+
+So we need `size` (count of strings) and `ways` (permutations).
+Node storage: `node_size[64]` (3 bits, since max 8 strings), `node_ways[64]` (32 bits).
+
+**Testbench**: Will generate 3-5 test cases with small strings (e.g., "A", "B", "AA", "AB") and verify the output matches known results.

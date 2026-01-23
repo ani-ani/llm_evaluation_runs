@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'min_perm_deviation' that calculates the cyclic shift of a permutation with minimum deviation.
+
+Problem:
+Given a permutation p of length n, find the cyclic shift k (0 <= k < n) that minimizes sum(|p[i] - i|) for the shifted permutation.
+
+Adaptation for n=8:
+- Input size fixed to 8 elements
+- Permutation values range 1..8
+- Shifts range 0..7
+- Use 16-bit signed arithmetic (int16) to handle intermediate calculations
+
+Module Specification:
+module min_perm_deviation (
+    input clk,              // Clock signal
+    input rst_n,            // Active-low reset
+    input start,            // Start computation
+    input [2:0] n,          // Number of elements (fixed to 8, but input 3 bits)
+    input [63:0] p_in,      // Packed permutation: p[7:0] = {p7,p6,...,p0}, each 8 bits
+    output reg [15:0] min_deviation,  // Minimum deviation found
+    output reg [2:0] best_shift,      // Shift id with minimum deviation
+    output reg done          // Computation complete
+);
+
+Behavior:
+1. Receive 8-element permutation p packed into 64-bit input (8 bits per element)
+2. Calculate initial deviation for shift k=0: sum(|p[i] - (i+1)|) for i=0..7
+3. Use a state machine to iterate through shifts k=1..7
+4. Update deviation incrementally for each shift using the formula:
+   dev(k) = dev(k-1) + (p[n-k] - n) - (count_greater - count_less)
+   where count_greater is count of elements where p[i] > expected_position
+5. Track minimum deviation and corresponding shift
+6. Output the result when done
+
+State Machine:
+- IDLE: Wait for start signal
+- INIT: Calculate initial deviation for k=0
+- ITERATE: Compute deviation for subsequent shifts
+- DONE: Output results
+
+Timing: Latency approximately 20 clock cycles after start (8 for init, 7 for shifts, 5 for control)
+
+Include internal registers for:
+- Current shift count
+- Current deviation value
+- Minimum deviation seen
+- Best shift found
+- Temporary counters for positive/negative differences
+
+All arithmetic must use signed 16-bit vectors to prevent overflow.

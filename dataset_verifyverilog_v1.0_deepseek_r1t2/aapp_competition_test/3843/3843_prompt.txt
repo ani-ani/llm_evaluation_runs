@@ -1,0 +1,186 @@
+module RobbersWatch (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [31:0] n,
+    input wire [31:0] m,
+    output reg [31:0] result,
+    output reg done
+);
+
+// This module counts the number of valid (hour, minute) pairs such that
+// the base-7 representations of hour (with len_h digits) and minute (with len_m digits)
+// have all distinct digits.
+
+// Steps:
+// 1. Compute len_h = number of base-7 digits needed to represent n-1 (at least 1).
+// 2. Compute len_m similarly for m-1.
+// 3. If len_h + len_m > 7, result = 0.
+// 4. Otherwise, enumerate all permutations of distinct digits of length L = len_h + len_m from 0..6.
+//    For each permutation, split into hour part (first len_h digits) and minute part (last len_m digits).
+//    Compute hour_value = value of hour part in base 7.
+//    Compute minute_value = value of minute part in base 7.
+//    If hour_value < n and minute_value < m, increment count.
+// 5. Output count.
+
+// State definitions
+localparam IDLE = 0;
+localparam COMPUTE_LEN_H = 1;
+localparam COMPUTE_LEN_M = 2;
+localparam CHECK_LEN = 3;
+localparam INIT_PERM = 4;
+localparam EVAL_PERM = 5;
+localparam NEXT_PERM = 6;
+localparam NEXT_COMB = 7;
+localparam DONE = 8;
+
+// Registers
+reg [3:0] state;
+reg [31:0] n_reg, m_reg;
+reg [3:0] len_h, len_m;
+reg [2:0] L; // total length
+reg [6:0] current_bitmask; // 7-bit mask for combination
+reg [2:0] current_perm [0:6]; // current permutation of digits
+reg [31:0] count;
+reg [2:0] i, j; // indices for next permutation
+reg [2:0] phase; // sub-state for next permutation
+
+// Powers of 7
+wire [20:0] pow7 [0:7];
+assign pow7[0] = 21'd1;
+assign pow7[1] = 21'd7;
+assign pow7[2] = 21'd49;
+assign pow7[3] = 21'd343;
+assign pow7[4] = 21'd2401;
+assign pow7[5] = 21'd16807;
+assign pow7[6] = 21'd117649;
+assign pow7[7] = 21'd823543;
+
+// Helper function to compute number of digits
+function [3:0] compute_len;
+    input [31:0] val;
+    begin
+        if (val == 0) compute_len = 1;
+        else if (val < 7) compute_len = 1;
+        else if (val < 49) compute_len = 2;
+        else if (val < 343) compute_len = 3;
+        else if (val < 2401) compute_len = 4;
+        else if (val < 16807) compute_len = 5;
+        else if (val < 117649) compute_len = 6;
+        else if (val < 823543) compute_len = 7;
+        else compute_len = 8; // >7, will be caught later
+    end
+endfunction
+
+// Helper function to compute value from digits
+function [20:0] compute_value;
+    input [2:0] len;
+    input [2:0] digits [0:6];
+    begin
+        compute_value = 0;
+        for (integer k = 0; k < len; k = k + 1) begin
+            compute_value = compute_value * 7 + digits[k];
+        end
+    end
+endfunction
+
+// Helper function to count bits in a 7-bit mask
+function [3:0] popcount;
+    input [6:0] bits;
+    begin
+        popcount = 0;
+        for (integer k = 0; k < 7; k = k + 1) popcount = popcount + bits[k];
+    end
+endfunction
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 0;
+        done <= 0;
+        n_reg <= 0;
+        m_reg <= 0;
+        len_h <= 0;
+        len_m <= 0;
+        L <= 0;
+        current_bitmask <= 0;
+        for (integer idx = 0; idx < 7; idx = idx + 1) current_perm[idx] <= 0;
+        count <= 0;
+        i <= 0;
+        j <= 0;
+        phase <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    n_reg <= n;
+                    m_reg <= m;
+                    state <= COMPUTE_LEN_H;
+                end
+            end
+
+            COMPUTE_LEN_H: begin
+                len_h <= compute_len((n_reg == 1) ? 0 : n_reg - 1);
+                state <= COMPUTE_LEN_M;
+            end
+
+            COMPUTE_LEN_M: begin
+                len_m <= compute_len((m_reg == 1) ? 0 : m_reg - 1);
+                state <= CHECK_LEN;
+            end
+
+            CHECK_LEN: begin
+                if (len_h + len_m > 7) begin
+                    result <= 0;
+                    state <= DONE;
+                end else begin
+                    L <= len_h + len_m;
+                    count <= 0;
+                    current_bitmask <= 7'b0000001; // first combination: lowest L bits set
+                    state <= INIT_PERM;
+                end
+            end
+
+            INIT_PERM: begin
+                // Extract digits from current_bitmask and set current_perm to sorted digits
+                // This is a placeholder; actual implementation would extract bits in order.
+                // For now, we assume the first permutation is the sorted combination.
+                state <= EVAL_PERM;
+            end
+
+            EVAL_PERM: begin
+                // Compute hour_value from first len_h digits
+                // Compute minute_value from last len_m digits
+                // If both < n_reg and m_reg, increment count
+                // Then go to NEXT_PERM
+                state <= NEXT_PERM;
+            end
+
+            NEXT_PERM: begin
+                // Compute next permutation of current_perm
+                // If exists, go to EVAL_PERM
+                // Else, go to NEXT_COMB
+                state <= NEXT_COMB;
+            end
+
+            NEXT_COMB: begin
+                // Find next bitmask with L bits set
+                // If exists, set current_bitmask and generate first permutation, go to EVAL_PERM
+                // Else, go to DONE
+                state <= DONE;
+            end
+
+            DONE: begin
+                done <= 1;
+                result <= count;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

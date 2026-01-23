@@ -1,0 +1,50 @@
+module max_ranks (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [31:0] a_0, a_1,
+    input wire [31:0] b_0, b_1,
+    input wire [31:0] K,
+    output reg [1:0] result,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 2'd0;
+localparam COMPUTE = 2'd1;
+localparam DONE = 2'd2;
+
+reg [1:0] state;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 2'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    state <= COMPUTE;
+                end
+            end
+            COMPUTE: begin
+                // Compute conditions
+                if ((a_0 + K < a_1 && b_1 + K < b_0) || (a_1 + K < a_0 && b_0 + K < b_1))
+                    result <= 2'd1;
+                else
+                    result <= 2'd2;
+                state <= DONE;
+            end
+            DONE: begin
+                done <= 1;
+                if (!start) begin
+                    state <= IDLE;
+                end
+            end
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

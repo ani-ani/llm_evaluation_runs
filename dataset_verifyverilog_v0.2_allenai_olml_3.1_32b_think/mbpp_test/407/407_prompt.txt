@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'rearrange_bigger' that computes the next bigger number by rearranging digits of a given 3-digit decimal number.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [11:0] number_in // input decimal number (0-999, each digit 0-9)
+
+Outputs:
+output reg [11:0] result // result number or 0xFFF if no bigger number exists
+output reg done // high when computation complete
+output reg valid // high when result is valid (not 0xFFF)
+
+Latency: Result valid 18 clock cycles after start asserted.
+
+Specification:
+The module should implement the next permutation algorithm for 3-digit decimal numbers:
+1. Extract digits from input number (hundreds, tens, units)
+2. Find the rightmost digit that is smaller than the digit on its right
+3. Find the smallest digit on the right side that is greater than this digit
+4. Swap these two digits
+5. Sort the digits after the swapped position in ascending order
+6. Return the new number or return 0xFFF (4095) if no rearrangement is possible
+
+Behavioral Description:
+Use a state machine with states: IDLE, EXTRACT_DIGITS, FIND_PIVOT, FIND_MIN_GREATER, SWAP_DIGITS, SORT_REMAINING, COMPOSE_RESULT, DONE
+
+- IDLE: Wait for start signal
+- EXTRACT_DIGITS: Parse number into 3 digits d[2], d[1], d[0] (hundreds, tens, units)
+- FIND_PIVOT: Scan from right to left to find position i where d[i] < d[i+1]. Use 3 cycle parallel search.
+- FIND_MIN_GREATER: Find smallest digit > d[i] among positions i+1 to 2. Use 2 cycle comparison.
+- SWAP_DIGITS: Swap d[i] and the found digit
+- SORT_REMAINING: Sort digits from position i+1 to end using bubble sort (max 3 cycles)
+- COMPOSE_RESULT: Combine digits back to decimal number
+- DONE: Set done signal and result
+
+Implementation Notes:
+- Use 8-bit registers for each digit (though only 4 bits needed for 0-9)
+- For pivot finding: check d[1] < d[2], then d[0] < d[1] in sequence
+- For finding min greater: compare candidates with current minimum
+- For sorting: use simple bubble sort network (2 passes for 3 elements)
+- If no pivot found, result = 0xFFF, valid = 0
+- If pivot found, result = new number, valid = 1

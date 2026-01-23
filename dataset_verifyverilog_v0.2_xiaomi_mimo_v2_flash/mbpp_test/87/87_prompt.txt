@@ -1,0 +1,85 @@
+Design a sequential Verilog module named 'merge_dictionaries_three' that merges three dictionaries into a single dictionary with conflict resolution (later dictionaries override earlier ones).
+
+Constraints:
+- Maximum 6 entries per dictionary (total 18 potential key-value pairs)
+- Keys and values are single ASCII characters (8 bits each)
+- Input dictionaries are represented as parallel arrays
+- Output merged dictionary has max 6 unique key-value pairs
+- Latency: 12 clock cycles (4 cycles per dictionary processing)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start merge operation
+input [7:0] dict1_keys [5:0] // 6 keys for dict1, 0x00 indicates empty
+input [7:0] dict1_vals [5:0] // 6 values for dict1
+input [7:0] dict2_keys [5:0] // 6 keys for dict2
+input [7:0] dict2_vals [5:0] // 6 values for dict2
+input [7:0] dict3_keys [5:0] // 6 keys for dict3
+input [7:0] dict3_vals [5:0] // 6 values for dict3
+
+Outputs:
+output reg [7:0] merged_keys [5:0] // merged keys, 0x00 if empty
+output reg [7:0] merged_vals [5:0] // merged values
+output reg done // high when merge complete
+
+Behavior:
+The module processes dictionaries in order (dict1 -> dict2 -> dict3). For each dictionary:
+1. Iterate through its 6 entries
+2. If key is non-zero (0x00), check if key already exists in merged result
+3. If key exists, update value (later dict overrides)
+4. If key doesn't exist, add to next available slot in merged arrays
+5. Track number of unique keys (max 6)
+
+State Machine:
+- IDLE: Wait for start signal
+- PROC_DICT1: Process dict1 entries (4 cycles)
+- PROC_DICT2: Process dict2 entries (4 cycles)
+- PROC_DICT3: Process dict3 entries (4 cycles)
+- DONE: Assert done signal
+
+Internal Registers:
+- merged_keys_reg [5:0][7:0], merged_vals_reg [5:0][7:0]
+- unique_count: number of unique keys stored (0-6)
+- entry_index: current entry being processed (0-5)
+- dict_index: which dictionary is being processed (0-2)
+
+Initialization:
+- Reset all merged arrays to 0x00
+- Reset unique_count to 0
+- Reset entry_index to 0
+- Reset dict_index to 0
+
+Conflict Resolution:
+- When adding dict2 entry: if key exists in merged from dict1, update value
+- When adding dict3 entry: if key exists in merged from dict1 or dict2, update value
+
+Output Assignment:
+- Only assign non-zero keys from merged_keys_reg to merged_keys output
+- merged_vals matches corresponding keys
+- If less than 6 unique keys, remaining slots are 0x00
+
+Timing:
+- start asserted in IDLE state
+- Each dictionary takes 4 cycles: 1 cycle check, 1 cycle search, 1 cycle add/update, 1 cycle increment
+- Total 12 cycles + 1 cycle DONE = 13 cycles latency
+- Result valid 12 cycles after start (done asserts at cycle 13)
+
+Test cases:
+Test 1: dict1={"R":"Red","B":"Black","P":"Pink"}, dict2={"G":"Green","W":"White"}, dict3={"O":"Orange","W":"White","B":"Black"}
+Expected merged: {"B":"Black","R":"Red","P":"Pink","G":"Green","W":"White","O":"Orange"}
+Note: 'B' from dict3 overrides dict1, 'W' from dict2 is kept (dict3 has same value)
+
+Test 2: dict1={"R":"Red","B":"Black","P":"Pink"}, dict2={"G":"Green","W":"White"}, dict3={"L":"lavender","B":"Blue"}
+Expected merged: {"W":"White","P":"Pink","B":"Black","R":"Red","G":"Green","L":"lavender"}
+Note: 'B' from dict3 overrides dict1 to "Blue" (not "Black")
+
+Test 3: dict1={"R":"Red","B":"Black","P":"Pink"}, dict2={"L":"lavender","B":"Blue"}, dict3={"G":"Green","W":"White"}
+Expected merged: {"B":"Black","P":"Pink","R":"Red","G":"Green","L":"lavender","W":"White"}
+Note: 'B' from dict2 becomes "Blue", then dict3 has no 'B', so "Blue" should remain
+
+Edge Cases:
+- Empty dictionary (all 0x00)
+- Duplicate keys within same dictionary (first occurrence wins for that dict)
+- Full 6 unique keys
+- Partial entries (some 0x00 slots)

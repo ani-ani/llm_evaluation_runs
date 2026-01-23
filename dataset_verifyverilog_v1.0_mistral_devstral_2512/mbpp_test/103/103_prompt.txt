@@ -1,0 +1,62 @@
+Design a sequential Verilog module to compute Eulerian numbers a(n, m) using dynamic programming.
+
+BACKGROUND:
+Eulerian number a(n, m) counts permutations of {1..n} with exactly m ascents.
+Recurrence: a(n, m) = (n-m) * a(n-1, m-1) + (m+1) * a(n-1, m)
+Base cases: a(n, 0) = 1, a(0, m) = 0, a(n, m) = 0 if m >= n
+
+SCALED REQUIREMENTS:
+- Support n in range 0-8 (4-bit input)
+- Support m in range 0-7 (4-bit input)
+- Result fits in 16 bits (max value a(8,4) = 1764)
+- Use iterative DP approach with state machine
+- Compute table row-by-row: n=0 to n=target
+- Internal storage: 8 rows x 8 columns of 16-bit values
+
+MODULE INTERFACE:
+
+Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low reset
+  - start: Start computation pulse (1 cycle)
+  - n_in [3:0]: Input n (0-8)
+  - m_in [3:0]: Input m (0-7)
+
+Outputs:
+  - result [15:0]: Computed Eulerian number a(n, m)
+  - done: Asserted high when computation complete (1 cycle)
+
+TIMING:
+  - Assert start for 1 clock cycle to initiate computation
+  - Computation takes approximately (n+1) * 10 clock cycles
+  - done pulses high for 1 cycle when result is ready
+  - Sample result on same cycle done is high
+
+RESET BEHAVIOR:
+  - On rst_n=0: done=0, result=0, all internal state cleared
+  - Minimum 2 clock cycles of reset required
+
+IMPLEMENTATION DETAILS:
+  - Use DP table approach: compute rows from n=0 up to n=n_in
+  - Store previous row (n-1) and compute current row (n)
+  - Use case statements for base cases
+  - Result is value at column m_in of final row
+  - Must handle valid range checking: if m_in >= n_in, return 0
+
+STATE MACHINE STATES:
+  - IDLE: Wait for start
+  - CHECK: Validate n_in, m_in; handle edge cases
+  - INIT: Initialize DP row for n=0
+  - NEXT_ROW: Compute current row from previous row
+  - COMPLETE: Present final result and pulse done
+
+OUTPUTS:
+  - result [15:0]: Final computed value
+  - done: High for 1 cycle when valid result ready
+
+Example test cases:
+  n=3, m=1: result = 4
+  n=4, m=1: result = 11  
+  n=5, m=3: result = 26
+
+NOTE: This is a sequential module requiring clock and reset. The computation should be done iteratively inside the module, not using external recursion.

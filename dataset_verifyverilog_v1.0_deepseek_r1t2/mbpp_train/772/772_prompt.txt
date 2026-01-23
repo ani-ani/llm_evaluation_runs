@@ -1,0 +1,206 @@
+module word_k_remover (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] char_in,  // Current character from string buffer (ASCII)
+    input wire [3:0] k_len,     // Target length to remove (1-8)
+    input wire [3:0] str_len,   // Total length of string (1-16)
+    output reg [7:0] char_out,  // Output character
+    output reg [3:0] out_idx,   // Output index
+    output reg out_valid,       // High when char_out is valid
+    output reg done             // High when processing complete
+);
+
+    // Internal state
+    reg [3:0] state;
+    reg [3:0] in_idx;           // Input index
+    reg [3:0] word_len;         // Current word length
+    reg [7:0] temp_chars [0:7]; // Buffer for up to 8 chars of current word
+    reg [3:0] temp_idx;         // Index in temp buffer
+    reg remove_flag;            // Flag if current word should be removed
+
+    // State definitions
+    localparam IDLE = 4'd0;
+    localparam READ_CHAR = 4'd1;
+    localparam CHECK_SPACE = 4'd2;
+    localparam STORE_CHAR = 4'd3;
+    localparam CALC_LEN = 4'd4;
+    localparam DECIDE = 4'd5;
+    localparam OUTPUT_WORD = 4'd6;
+    localparam OUTPUT_SPACE = 4'd7;
+    localparam FINISH = 4'd8;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            out_valid <= 0;
+            out_idx <= 0;
+            in_idx <= 0;
+            word_len <= 0;
+            temp_idx <= 0;
+            remove_flag <= 0;
+            char_out <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    out_valid <= 0;
+                    out_idx <= 0;
+                    in_idx <= 0;
+                    word_len <= 0;
+                    temp_idx <= 0;
+                    if (start && str_len > 0) begin
+                        state <= READ_CHAR;
+                    end else begin
+                        state <= IDLE;
+                    end
+                end
+
+                READ_CHAR: begin
+                    // In a real system, char_in would be a memory read
+                    // Here we assume char_in is driven by external logic based on in_idx
+                    // For this testbench compatibility, we act as a state machine
+                    // Assume input stream comes in
+                    // To make it synthesizable and testable, we need a standard interface
+                    // Let's treat it as: state machine waits for input, processes it
+                    // Since Verilog modules need defined ports, we assume external memory
+                    // drives char_in based on in_idx.
+                    // We need to wait for input to be valid.
+                    // Simplification: Process 1 char per cycle.
+                    // Check if it's space
+                    if (char_in == 8'h20 || in_idx == str_len) begin
+                        state <= CHECK_SPACE;
+                    end else begin
+                        state <= STORE_CHAR;
+                    end
+                end
+
+                STORE_CHAR: begin
+                    if (temp_idx < 8) begin
+                        temp_chars[temp_idx] <= char_in;
+                        temp_idx <= temp_idx + 1;
+                        word_len <= word_len + 1;
+                    end
+                    in_idx <= in_idx + 1;
+                    state <= READ_CHAR;
+                end
+
+                CHECK_SPACE: begin
+                    // End of word or end of string
+                    state <= CALC_LEN;
+                end
+
+                CALC_LEN: begin
+                    // Compare word_len with k_len
+                    if (word_len == k_len && word_len > 0) begin
+                        remove_flag <= 1;
+                    end else begin
+                        remove_flag <= 0;
+                    end
+                    // Reset word_len for next word
+                    word_len <= 0;
+                    // Prepare to output
+                    temp_idx <= 0;
+                    if (in_idx == str_len && char_in != 8'h20 && temp_idx == 0) begin
+                         // Edge case: end of string without space handled in READ_CHAR
+                    end
+                    state <= DECIDE;
+                end
+
+                DECIDE: begin
+                    if (remove_flag) begin
+                        // Skip outputting this word
+                        temp_idx <= 0;
+                        if (in_idx < str_len) begin
+                            // Output space if not the first word and not removed
+                            // Actually, logic is tricky. 
+                            // We need to output space *between* kept words.
+                            // Let's rely on a simpler flow:
+                            // Just loop. If remove_flag, do nothing. 
+                            // Output space only if previous word was kept.
+                            // We'll use 'out_idx' to track if we have output anything yet.
+                            state <= NEXT_STEP;
+                        end else begin
+                            state <= FINISH;
+                        end
+                    end else begin
+                        state <= OUTPUT_WORD;
+                    end
+                end
+                
+                // Helper state to clean up
+                NEXT_STEP: begin
+                     temp_idx <= 0;
+                     if (in_idx < str_len) begin
+                         // We need to skip the space that triggered this word
+                         // In this architecture, the space character triggered CHECK_SPACE
+                         // We need to consume it or handle it.
+                         // Let's assume input stream includes the space.
+                         // We consumed the space? No, READ_CHAR triggered on space.
+                         // So we need to advance input index past the space (if not end).
+                         // Actually, in_idx increments only on STORE_CHAR.
+                         // If we were at a space, in_idx hasn't incremented past it yet (unless logic changes).
+                         // Let's re-verify READ_CHAR.
+                         // If space -> CHECK_SPACE. in_idx not incremented.
+                         // So we must increment in_idx here to skip the space.
+                         in_idx <= in_idx + 1;
+                         state <= READ_CHAR;
+                     end else begin
+                         state <= FINISH;
+                     end
+                end
+
+                OUTPUT_WORD: begin
+                    if (temp_idx < word_len) begin
+                        char_out <= temp_chars[temp_idx];
+                        out_valid <= 1;
+                        temp_idx <= temp_idx + 1;
+                        out_idx <= out_idx + 1;
+                        state <= OUTPUT_WORD;
+                    end else begin
+                        out_valid <= 0;
+                        // Output space if there are more words coming
+                        if (in_idx < str_len) begin
+                            state <= OUTPUT_SPACE;
+                        end else begin
+                            state <= FINISH;
+                        end
+                    end
+                end
+
+                OUTPUT_SPACE: begin
+                    char_out <= 8'h20;
+                    out_valid <= 1;
+                    out_idx <= out_idx + 1;
+                    // Skip the space in input stream (in_idx is already at the space? 
+                    // No, in_idx is at the character AFTER the word. 
+                    // The space was read. We need to move in_idx past it.
+                    // In READ_CHAR, space triggers CHECK_SPACE. in_idx not incremented.
+                    // So we increment here.
+                    in_idx <= in_idx + 1;
+                    state <= IDLE; // Go back to idle to process next word
+                    // Wait, IDLE resets things. We want to continue.
+                    // State should go to READ_CHAR to process next word.
+                    // But we must preserve 'out_idx' and 'in_idx'.
+                    // Let's create a CONTINUE state.
+                    state <= CONTINUE;
+                end
+
+                CONTINUE: begin
+                    out_valid <= 0;
+                    state <= READ_CHAR;
+                end
+
+                FINISH: begin
+                    done <= 1;
+                    out_valid <= 0;
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

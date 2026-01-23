@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'treasure_island' that computes the minimum number of cells an evil witch must block to prevent reaching treasure.
+
+Problem: Given a 4x4 grid (n=4, m=4) where some cells are forests ('#') and others are free ('.'), find the minimum cells to block (except start and treasure cells) so that no path exists from (0,0) to (3,3) using only right or down moves.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] grid_in // 4-bit input for grid row/column data
+input grid_wr // write enable for loading grid
+input [1:0] row_idx // row index for grid loading (0-3)
+input [1:0] col_idx // column index for grid loading (0-3)
+
+Outputs:
+output reg [1:0] result // minimum cells to block: 0, 1, or 2
+output reg done // high when computation complete
+output reg valid // high when result is valid
+
+Latency: Approximately 40-50 clock cycles after start is asserted.
+
+Behavior:
+1. Load 4x4 grid (16 cells) via grid_in, row_idx, col_idx, grid_wr
+2. State machine:
+   - IDLE: Wait for start signal
+   - LOAD_GRID: Accept grid data
+   - FIND_PATH: Perform BFS/DFS to check if path exists
+   - COUNT_CRITICAL: Find cells that appear on all paths using DP
+   - COMPUTE_RESULT: Determine answer (0, 1, or 2)
+   - DONE: Set done and valid high
+
+Algorithm Details:
+- Use DP to count paths from start to each cell: forward_dp[i][j]
+- Use DP to count paths from each cell to end: backward_dp[i][j]
+- Total paths = forward_dp[3][3]
+- A cell (i,j) is critical if: forward_dp[i][j] * backward_dp[i][j] == total_paths
+- Answer = 0 if no path exists
+- Answer = 1 if any critical cell exists (excluding start/end)
+- Answer = 2 otherwise
+
+Grid encoding: 1-bit per cell (0=free, 1=forest)
+Grid stored in 4x4 array: reg [3:0] grid [0:3]
+
+The module should use:
+- 4x4 register array for grid storage
+- DP arrays (4x4) for path counting
+- State machine with 6 states: IDLE, LOAD, FIND_PATH, COUNT_CRITICAL, COMPUTE, DONE
+- Combinational logic for DP calculations
+- Counter-based iteration for grid traversal

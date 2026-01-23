@@ -1,0 +1,49 @@
+## Module: Element Frequency Counter (Combinational with State Machine)
+
+### Problem Adaptation
+This module computes frequency counts of elements in a fixed-size input array. The original problem used arbitrary dictionaries; this implementation uses a fixed-size lookup table (16 entries max) with 8-bit keys and 8-bit counts.
+
+### Interface Specification
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start pulse (assert for 1 cycle to begin counting)
+- `data_in[7:0]`: 8-bit data input for each array element
+- `valid_in`: High when data_in contains valid element
+- `done_in`: High when all input elements have been provided
+
+**Outputs:**
+- `key_out[7:0]`: 8-bit key from lookup table
+- `count_out[7:0]`: 8-bit count for current key
+- `valid_out`: High when key_out and count_out are valid
+- `done`: High when all frequencies have been output
+
+### Functional Behavior
+1. **Initialization**: On start, clear all 16 lookup table entries
+2. **Counting Phase**: When valid_in is high, increment count for matching key in lookup table
+3. **Output Phase**: When done_in is high, iterate through lookup table and output all non-zero entries
+
+### Implementation Constraints
+- Maximum 16 unique elements (lookup table size)
+- Each element is 8-bit value (0-255)
+- Each count is 8-bit (max 255 occurrences)
+- Output format: Stream of (key, count) pairs
+- Use 16-entry dual-port RAM or register file for lookup table
+- State machine with states: IDLE, CLEAR, COUNT, OUTPUT, COMPLETE
+
+### Timing Requirements
+- Clear phase: 16 cycles (one per lookup table entry)
+- Counting phase: Variable, one cycle per input element
+- Output phase: 16 cycles (scan entire table)
+- done goes high after output phase completes
+- When valid_out is high, data is ready on same cycle
+
+### Test Cases
+See testbench for concrete examples:
+- Test 1: [10,10,10,10,20,20,20,20,40,40,50,50,30] → 5 distinct keys
+- Test 2: [1,2,3,4,3,2,4,1,3,1,4] → 4 distinct keys  
+- Test 3: [5,6,7,4,9,10,4,5,6,7,9,5] → 6 distinct keys
+
+### Verification
+Output stream must contain all non-zero frequency entries. Order of output is not specified (depends on lookup table scan order).

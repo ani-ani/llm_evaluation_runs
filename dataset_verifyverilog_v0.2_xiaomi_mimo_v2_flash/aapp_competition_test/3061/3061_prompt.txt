@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'graph_race_solver' that implements the core logic of finding the minimum longest path after blocking at most one edge in a directed acyclic graph.
+
+The module operates on a fixed 8-node graph represented by an adjacency matrix. It computes the longest path lengths from each node (forward pass) and to each node (backward pass). Then it calculates the effect of removing each edge on the global maximum path length.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] adj_matrix_flat // Flattened 8x8 adjacency matrix (bit i = edge from row(i/8) to col(i%8), only lower 8 bits used per cycle, loaded over 8 cycles)
+
+Outputs:
+output reg [7:0] result // The minimum longest path length achievable after blocking one road
+output reg done // high when computation complete
+
+Latency: Result valid 60 clock cycles after start asserted.
+
+Internal Logic:
+1. Input Stage: Accept flattened adjacency matrix over 8 cycles to build full 8x8 matrix.
+2. Forward DP: Compute longest path starting from each node `i` to any reachable node. Use DP over topological order (simplified: iterate 8 times for convergence since max path < 8). Store in `forward_dist[i]`.
+3. Backward DP: Compute longest path ending at each node `i` from any node. Store in `backward_dist[i]`.
+4. Edge Evaluation: For each edge (u -> v) in the adjacency matrix:
+   - If edge exists, calculate the longest path that *must* use this edge: `path_len = backward_dist[u] + 1 + forward_dist[v]`.
+   - If this path length equals the global maximum, the result of blocking this edge is `max(forward_dist[u] - 1, backward_dist[v] - 1, or other parallel paths)`.
+   - Simplified for hardware: Assume parallel paths exist. If blocking edge (u,v) removes the only longest path, the new length is `backward_dist[u]` (path ending at u) or `forward_dist[v]` (path starting at v) if they form a disjoint segment, or simply `max_global - 1` for a linear chain.
+   - To be robust, we calculate `max_possible_without_edge = max( backward_dist[u] , forward_dist[v] , max_over_all_other_paths )`.
+   - Since we can't compute arbitrary connectivity easily, we use the heuristic: The drop in length is usually 1 for a critical edge in a linear path, or 0 if parallel paths exist. We will compute the global max path `L_max`. If `L_max` is formed by edge (u,v), and `backward_dist[u] + 1 + forward_dist[v] == L_max`, then `new_len = max(backward_dist[u], forward_dist[v])`. If no edge is critical (multiple paths of length L_max), answer is `L_max`. If no path of length L_max uses an edge (e.g. single node), answer is `L_max`.
+5. Result: Output the minimum value found across all edge removals (or L_max if no edge removal reduces length).
+
+Specification Constraints:
+- N = 8 (max 8 stations)
+- Path lengths fit in 8 bits (max path 7 edges).
+- Use state machine with states: IDLE, LOAD_MATRIX, COMPUTE_FW, COMPUTE_BW, EVAL_EDGES, DONE.
+- The module should handle the graph being disconnected (multiple sources/sinks).
+
+Fixed-Point/Scaling Note: No floating point used, pure integer arithmetic.

@@ -1,0 +1,283 @@
+module composite_rank (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] n,
+    input [3:0] k,
+    input [7:0] initial_strings [0:7] [0:7],
+    input [3:0] initial_lengths [0:7],
+    input [7:0] composite_string [0:63],
+    output reg [31:0] result,
+    output reg done
+);
+
+// Parameters
+localparam [3:0] MAX_N = 4'd8;
+localparam [3:0] MAX_STRING_LEN = 4'd8;
+localparam [6:0] MAX_COMPOSITE_LEN = 7'd64;
+
+// States
+localparam [3:0] IDLE = 4'd0;
+localparam [3:0] SORT = 4'd1;
+localparam [3:0] BREAK = 4'd2;
+localparam [3:0] COMPUTE_RANK = 4'd3;
+localparam [3:0] PERM_COMPUTE = 4'd4;
+localparam [3:0] DONE_STATE = 4'd5;
+
+reg [3:0] state;
+
+// Sorting registers
+reg [3:0] i, j;
+reg [7:0] temp_string [0:7];
+reg [3:0] temp_length;
+reg [3:0] temp_original_index;
+reg compare_gt;
+
+// Breaking registers
+reg [3:0] current_segment;
+reg [3:0] current_try;
+reg [6:0] current_position;
+reg [3:0] seg_indices [0:7];
+reg match_current_try;
+
+// Compute rank registers
+reg [3:0] current_check_index;
+reg [31:0] rank;
+reg [7:0] used;
+reg [31:0] perm_value;
+reg [3:0] perm_i;
+reg [3:0] count;
+
+// Sorted array storage
+reg [7:0] sorted_strings [0:7] [0:7];
+reg [3:0] sorted_lengths [0:7];
+reg [3:0] sorted_original_index [0:7];
+
+// Current segment for compare
+reg [3:0] current_segment_index;
+reg [7:0] current_segment_string [0:7];
+reg [3:0] current_segment_length;
+
+// Combinational compare for sorting
+always @(*) begin
+    compare_gt = 0;
+    if (j < MAX_N-1 && state == SORT) begin
+        // Compare sorted_strings[j] and sorted_strings[j+1]
+        for (integer idx=0; idx<MAX_STRING_LEN; idx=idx+1) begin
+            if (idx < sorted_lengths[j] && idx < sorted_lengths[j+1]) begin
+                if (sorted_strings[j][idx] > sorted_strings[j+1][idx]) begin
+                    compare_gt = 1;
+                end else if (sorted_strings[j][idx] < sorted_strings[j+1][idx]) begin
+                    compare_gt = 0;
+                end
+            end else if (idx < sorted_lengths[j]) begin
+                // j is longer, so j > j+1
+                compare_gt = 1;
+            end else if (idx < sorted_lengths[j+1]) begin
+                // j+1 is longer, so j < j+1
+                compare_gt = 0;
+            end
+        end
+    end
+end
+
+// Combinational match for breaking
+always @(*) begin
+    match_current_try = 0;
+    if (state == BREAK && current_try < MAX_N) begin
+        match_current_try = 1;
+        for (integer idx=0; idx<MAX_STRING_LEN; idx=idx+1) begin
+            if (idx < initial_lengths[current_try]) begin
+                if (composite_string[current_position + idx] != initial_strings[current_try][idx]) begin
+                    match_current_try = 0;
+                end
+            end
+        end
+    end
+end
+
+// Combinational compare for compute rank
+reg is_smaller;
+always @(*) begin
+    is_smaller = 0;
+    if (state == COMPUTE_RANK && current_check_index < MAX_N) begin
+        for (integer idx=0; idx<MAX_STRING_LEN; idx=idx+1) begin
+            if (idx < sorted_lengths[current_check_index] && idx < current_segment_length) begin
+                if (sorted_strings[current_check_index][idx] < current_segment_string[idx]) begin
+                    is_smaller = 1;
+                end else if (sorted_strings[current_check_index][idx] > current_segment_string[idx]) begin
+                    is_smaller = 0;
+                end
+            end else if (idx < sorted_lengths[current_check_index]) begin
+                // Sorted string is longer, so it's greater
+                is_smaller = 0;
+            end else if (idx < current_segment_length) begin
+                // Current segment is longer, so sorted string is smaller
+                is_smaller = 1;
+            end
+        end
+    end
+end
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        i <= 0;
+        j <= 0;
+        current_segment <= 0;
+        current_try <= 0;
+        current_position <= 0;
+        current_check_index <= 0;
+        rank <= 0;
+        used <= 0;
+        perm_value <= 0;
+        perm_i <= 0;
+        count <= 0;
+        current_segment_index <= 0;
+        current_segment_length <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Initialize sorted array
+                    for (integer idx=0; idx<MAX_N; idx=idx+1) begin
+                        if (idx < n) begin
+                            for (integer s=0; s<MAX_STRING_LEN; s=s+1) begin
+                                sorted_strings[idx][s] <= initial_strings[idx][s];
+                            end
+                            sorted_lengths[idx] <= initial_lengths[idx];
+                            sorted_original_index[idx] <= idx;
+                        end else begin
+                            sorted_lengths[idx] <= 0;
+                        end
+                    end
+                    state <= SORT;
+                    i <= 0;
+                    j <= 0;
+                end
+            end
+
+            SORT: begin
+                if (i < n-1) begin
+                    if (j < n-1-i) begin
+                        if (compare_gt) begin
+                            // Swap strings
+                            for (integer s=0; s<MAX_STRING_LEN; s=s+1) begin
+                                temp_string[s] <= sorted_strings[j][s];
+                                sorted_strings[j][s] <= sorted_strings[j+1][s];
+                                sorted_strings[j+1][s] <= temp_string[s];
+                            end
+                            // Swap lengths
+                            temp_length <= sorted_lengths[j];
+                            sorted_lengths[j] <= sorted_lengths[j+1];
+                            sorted_lengths[j+1] <= temp_length;
+                            // Swap original indices
+                            temp_original_index <= sorted_original_index[j];
+                            sorted_original_index[j] <= sorted_original_index[j+1];
+                            sorted_original_index[j+1] <= temp_original_index;
+                        end
+                        j <= j + 1;
+                    end else begin
+                        i <= i + 1;
+                        j <= 0;
+                    end
+                end else begin
+                    state <= BREAK;
+                    current_segment <= 0;
+                    current_try <= 0;
+                    current_position <= 0;
+                end
+            end
+
+            BREAK: begin
+                if (current_segment < k) begin
+                    if (current_try < n) begin
+                        if (match_current_try) begin
+                            seg_indices[current_segment] <= current_try;
+                            current_position <= current_position + initial_lengths[current_try];
+                            current_segment <= current_segment + 1;
+                            current_try <= 0;
+                        end else begin
+                            current_try <= current_try + 1;
+                        end
+                    end else begin
+                        // Error: no match found - should not happen
+                        state <= DONE_STATE;
+                        result <= 32'hFFFFFFFF;
+                        done <= 1;
+                    end
+                end else begin
+                    state <= COMPUTE_RANK;
+                    current_segment <= 0;
+                    current_check_index <= 0;
+                    used <= 0;
+                    rank <= 1;
+                    count <= 0;
+                end
+            end
+
+            COMPUTE_RANK: begin
+                if (current_segment < k) begin
+                    // Get current segment info
+                    current_segment_index <= seg_indices[current_segment];
+                    for (integer s=0; s<MAX_STRING_LEN; s=s+1) begin
+                        current_segment_string[s] <= initial_strings[seg_indices[current_segment]][s];
+                    end
+                    current_segment_length <= initial_lengths[seg_indices[current_segment]];
+                    
+                    if (current_check_index < n) begin
+                        // Check if this sorted string is not used and smaller
+                        if (used[sorted_original_index[current_check_index]] == 0 && is_smaller) begin
+                            count <= count + 1;
+                        end
+                        current_check_index <= current_check_index + 1;
+                    end else begin
+                        // Compute permutation value
+                        if (current_segment < k - 1) begin
+                            perm_value <= 1;
+                            perm_i <= 0;
+                            state <= PERM_COMPUTE;
+                        end else begin
+                            // Last segment, permutation value is 1
+                            rank <= rank + count;
+                            used[current_segment_index] <= 1;
+                            current_segment <= current_segment + 1;
+                            current_check_index <= 0;
+                            count <= 0;
+                        end
+                    end
+                end else begin
+                    state <= DONE_STATE;
+                    result <= rank;
+                    done <= 1;
+                end
+            end
+
+            PERM_COMPUTE: begin
+                if (perm_i < (k - current_segment - 1)) begin
+                    perm_value <= perm_value * (n - current_segment - 1 - perm_i);
+                    perm_i <= perm_i + 1;
+                end else begin
+                    rank <= rank + count * perm_value;
+                    used[current_segment_index] <= 1;
+                    current_segment <= current_segment + 1;
+                    current_check_index <= 0;
+                    count <= 0;
+                    state <= COMPUTE_RANK;
+                end
+            end
+
+            DONE_STATE: begin
+                // Stay done
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

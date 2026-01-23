@@ -1,0 +1,64 @@
+Design a sequential Verilog module named 'fence_painter' that finds the minimum number of offers to paint a fence with at most 3 colors.
+
+Problem Adaptation:
+- Fence sections: 1-16 (scaled from 1-10000)
+- Maximum offers: 4 (scaled from 300)
+- Colors: Limited to 4 types encoded as 2-bit values (00=BLUE, 01=RED, 10=WHITE, 11=ORANGE)
+- Algorithm: Sort offers by start position, then greedy selection
+
+Module Interface:
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [1:0] offer_color // Current offer color (2-bit encoding)
+input [4:0] offer_start // Start section (1-16, encoded as 5-bit)
+input [4:0] offer_end // End section (1-16, encoded as 5-bit)
+input [1:0] offer_index // Index of current offer (0-3)
+input offer_valid // High when offer data is valid
+
+Outputs:
+output reg [2:0] result // Minimum number of offers (0-7)
+output reg done // High when computation complete
+output reg possible // High if solution found with ≤3 colors
+
+Behavior:
+1. IDLE state: Wait for start signal
+2. LOAD state: Accept 4 offers sequentially via offer_index (0-3)
+3. SORT state: Sort offers by start position (bubble sort, 4 elements)
+4. PROCESS state: Greedy interval covering algorithm
+   - Keep track of current position (start at 1)
+   - Track used colors (max 3)
+   - Select offer that covers current position and extends furthest
+   - Update current position and color set
+   - Count offers used
+5. DONE state: Output result and done signal
+
+Greedy Algorithm Implementation:
+- Use state machine to iterate through sorted offers
+- For each position, find best offer that:
+  - Starts at or before current position
+  - Has a color not exceeding 3 unique colors
+  - Extends furthest
+- Update: current_position = best_offer_end + 1
+- Increment offer count
+- Repeat until position > 16 or no valid offer found
+
+If no offer can cover current position or more than 3 colors needed, set possible=0.
+
+Latency: Maximum 64 clock cycles after start (4 load + 6 sort + 54 process max).
+
+Example: Offers [(1,5,BLUE), (6,10,RED)] -> result=2, possible=1
+Example: Offers [(1,4,BLUE), (6,10,RED)] with gap -> possible=0
+
+Signal widths:
+- offer_start, offer_end: 5 bits (0-31 range, only 1-16 used)
+- result: 3 bits (0-7 offers)
+- Color encoding: 2 bits (4 colors max)
+
+Use internal registers for:
+- Offers array: 4x11 bits (2 color + 5 start + 5 end)
+- Sorted offers: 4x11 bits
+- Current position: 5 bits
+- Used colors bitmap: 4 bits
+- Offer count: 3 bits

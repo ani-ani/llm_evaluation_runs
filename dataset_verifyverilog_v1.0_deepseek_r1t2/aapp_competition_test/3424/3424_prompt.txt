@@ -1,0 +1,173 @@
+module find_base (
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] y,        // Scaled age (16-bit)
+    input [15:0] l,        // Scaled lower bound (16-bit)
+    output reg [15:0] b,   // Largest valid base
+    output reg done,       // Computation complete
+    output reg valid       // 1 if valid base found
+);
+
+// Parameters
+parameter MAX_B = 16'd256;      // Maximum base to search
+parameter DATA_WIDTH = 16;
+parameter CLK_DELAY = 4'd10;    // Timeout for division
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam START_SEARCH = 3'b001;
+localparam COMPUTE_REP = 3'b010;
+localparam CHECK_DIGITS = 3'b011;
+localparam CHECK_VALUE = 3'b100;
+localparam UPDATE_B = 3'b101;
+localparam DONE = 3'b110;
+
+// Internal registers
+reg [2:0] state;
+reg [15:0] current_b;
+reg [31:0] temp_y;        // 32-bit for division
+reg [31:0] temp_b;
+reg [15:0] digits[0:15];  // Store up to 16 digits
+reg [3:0] digit_count;
+reg [15:0] base10_value;
+reg [15:0] best_b;
+reg found_valid;
+reg [3:0] loop_counter;   // For division timeout
+
+// Computation registers
+reg [31:0] quotient;
+reg [31:0] remainder;
+reg [31:0] divisor;
+reg div_done;
+reg [3:0] digit_idx;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        b <= 16'd0;
+        done <= 1'b0;
+        valid <= 1'b0;
+        current_b <= 16'd0;
+        best_b <= 16'd0;
+        found_valid <= 1'b0;
+        digit_count <= 4'd0;
+        base10_value <= 16'd0;
+        temp_y <= 32'd0;
+        temp_b <= 32'd0;
+        loop_counter <= 4'd0;
+        div_done <= 1'b0;
+        digit_idx <= 4'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                valid <= 1'b0;
+                if (start) begin
+                    state <= START_SEARCH;
+                    found_valid <= 1'b0;
+                    best_b <= 16'd0;
+                    // Start with min(y, MAX_B)
+                    current_b <= (y < MAX_B) ? y : MAX_B;
+                end
+            end
+
+            START_SEARCH: begin
+                if (current_b < 16'd2) begin
+                    // No valid base found
+                    state <= DONE;
+                end else begin
+                    // Initialize for digit computation
+                    temp_y <= {16'd0, y};  // Extend to 32-bit
+                    temp_b <= {16'd0, current_b};
+                    digit_count <= 4'd0;
+                    state <= COMPUTE_REP;
+                    loop_counter <= 4'd0;
+                    div_done <= 1'b0;
+                end
+            end
+
+            COMPUTE_REP: begin
+                // Compute representation by repeated division
+                // This is a simplified division loop
+                if (temp_y == 32'd0 || loop_counter >= 4'd15) begin
+                    // Done computing representation
+                    state <= CHECK_DIGITS;
+                    digit_idx <= 4'd0;
+                end else if (!div_done) begin
+                    // Perform one division step
+                    if (temp_y >= temp_b) begin
+                        quotient <= temp_y / temp_b;
+                        remainder <= temp_y % temp_b;
+                        temp_y <= temp_y / temp_b;
+                        digits[digit_count] <= temp_y % temp_b;
+                        digit_count <= digit_count + 1'b1;
+                    end else begin
+                        // Last digit
+                        digits[digit_count] <= temp_y[15:0];
+                        digit_count <= digit_count + 1'b1;
+                        temp_y <= 32'd0;
+                    end
+                    loop_counter <= loop_counter + 1'b1;
+                end
+            end
+
+            CHECK_DIGITS: begin
+                // Check if all digits are ≤ 9
+                if (digit_idx >= digit_count) begin
+                    // All digits checked, valid
+                    state <= CHECK_VALUE;
+                    digit_idx <= 4'd0;
+                    base10_value <= 16'd0;
+                end else if (digits[digit_idx] > 9) begin
+                    // Invalid digit, try next b
+                    state <= UPDATE_B;
+                end else begin
+                    digit_idx <= digit_idx + 1'b1;
+                end
+            end
+
+            CHECK_VALUE: begin
+                // Compute base-10 value of digits
+                if (digit_idx >= digit_count) begin
+                    // Value computed, compare with l
+                    if (base10_value >= l) begin
+                        // Valid base found
+                        found_valid <= 1'b1;
+                        best_b <= current_b;
+                        // Since we search descending, this is largest
+                        state <= DONE;
+                    end else begin
+                        state <= UPDATE_B;
+                    end
+                end else begin
+                    // base10_value = base10_value * 10 + digits[digit_idx]
+                    base10_value <= base10_value * 10 + digits[digit_idx];
+                    digit_idx <= digit_idx + 1'b1;
+                end
+            end
+
+            UPDATE_B: begin
+                // Decrement b and continue search
+                current_b <= current_b - 16'd1;
+                state <= START_SEARCH;
+            end
+
+            DONE: begin
+                done <= 1'b1;
+                if (found_valid) begin
+                    b <= best_b;
+                    valid <= 1'b1;
+                end else begin
+                    b <= 16'd0;
+                    valid <= 1'b0;
+                end
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

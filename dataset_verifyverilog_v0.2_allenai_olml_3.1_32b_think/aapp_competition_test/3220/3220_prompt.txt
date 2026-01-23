@@ -1,0 +1,115 @@
+Design a sequential Verilog module named 'circle_dance_solver' that solves the circle dancing problem for N=8 wizards.
+
+The problem: Given N wizards in a circle (0 to N-1), each with a step value p[i]. Each wizard i must move either clockwise (R) by p[i] or counterclockwise (L) by p[i]. All wizards must move to distinct positions. Find the lexicographically smallest assignment of 'L'/'R' (where 'L' < 'R') such that no collisions occur.
+
+Lexicographical order applies to the output string of L/R characters, corresponding to wizards 0 to N-1.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] wizard_index // Index of wizard to query p value (0 to 7)
+input [2:0] p_val // p value for wizard at wizard_index
+
+Outputs:
+output reg [7:0] result // 8-bit vector: bit i=0 for L, bit i=1 for R (or similar encoding)
+output reg valid // High when a valid assignment is found
+output reg no_solution // High when no solution exists
+output reg done // High when computation is finished
+
+Behavior:
+The module should internally store p values for 8 wizards. On start, it should iterate through possible L/R combinations. Since N=8, there are 256 combinations. It should check each combination by calculating the new positions:
+- If direction is L: new_pos = (i - p[i]) mod 8
+- If direction is R: new_pos = (i + p[i]) mod 8
+
+If a combination results in all 8 positions being unique, it is a valid solution. Among all valid solutions, pick the one with the lexicographically smallest string (where L=0, R=1).
+
+The module should use a state machine:
+1. IDLE: Wait for start. Initialize storage.
+2. LOAD_P: Accept p values sequentially (controlled by external logic or testbench driving wizard_index/p_val). For this spec, assume p values are loaded via the inputs over several cycles before 'done' signals readiness for computation, or define that the testbench will populate the internal register file first.
+   *Revised Interface*: Let's use a simpler interface where the testbench writes p values to a specific address range. Or, even simpler, since N=8 is small, let's assume the p values are provided on a bus or we use a single cycle to load if N is very small. 
+   *Refined Interface*:
+   `input [2:0] addr` (0-7 for p values)
+   `input [2:0] data_in`
+   `input write_en`
+   `input solve_start`
+
+   Outputs remain as requested.
+
+3. SOLVE: Iterate through 0..255 (representing L/R choices). For each combination, check validity.
+4. RESULT: Store the best combination.
+5. DONE: Assert done.
+
+Latency: Result valid 500-1000 clock cycles after start (depending on implementation, fully combinational checking per cycle or sequential checking). 
+
+Let's make it fully combinational check per clock cycle to speed it up, or sequential over 256 cycles. Sequential is safer for area.
+
+State Machine States:
+- IDLE
+- LOAD (waiting for p values to be written)
+- CHECKING (iterating 0-255)
+- FOUND (store result)
+- NO_SOLUTION (set flag)
+
+Output Encoding:
+Return an 8-bit vector where bit 0 corresponds to wizard 0, bit 1 to wizard 1, etc. However, the prompt says 'output string'. Let's map it to bits: 0 = L, 1 = R. So `result[i]` is 0 for L, 1 for R.
+
+Wait, the prompt says `output [7:0] result`. This is too small for N=8 string if we mean to return the whole string. A string of 8 chars would be 64 bits if ASCII, or we need to stream it. But the problem asks for a module spec. Let's output `output [7:0] best_mask` where bit i is 0 (L) or 1 (R). Or `output [7:0] directions` where `directions[i]` is 0 for L, 1 for R. 
+
+Let's use `output reg [7:0] lexicographical_result` where bit i is 0 if L, 1 if R. This represents the lexicographically smallest valid mask. 
+
+Wait, lexicographical order on the string 'L' and 'R'. 'L' corresponds to 0, 'R' to 1. The integer value of the mask (binary representation) matches the lexicographical order if we map L=0, R=1. 
+
+So, we need to find the smallest integer mask (from 0 to 255) that represents a valid assignment. 
+
+Implementation Detail:
+- Store p[7:0] in an array [7:0][2:0] internally.
+- In CHECKING state, iterate mask from 0 to 255.
+- For each mask, compute 8 destination positions:
+  For i in 0 to 7:
+    If mask[i] == 0: dest = (i - p[i]) mod 8
+    Else: dest = (i + p[i]) mod 8
+  Check if all 8 dest values are unique. 
+- First valid mask found is the answer (since we iterate from 0).
+
+Limitations:
+- N=8 fixed.
+- P values < 8.
+
+Module Definition:
+module circle_dance_solver (
+    input clk,
+    input rst_n,
+    input start_load, // Pulse to start loading or indicate we are in load phase
+    input [2:0] addr, // Address 0-7
+    input [2:0] p_in,
+    input write_en,
+    output reg [7:0] solution_mask, // Bit i=0(L), 1(R)
+    output reg valid,
+    output reg done
+);
+
+    // Internal memory for p values
+    reg [2:0] p_mem [0:7];
+    
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam CHECKING = 2'b01;
+    localparam DONE = 2'b10;
+    
+    reg [1:0] state;
+    reg [7:0] mask_iter; // Iterates 0 to 255
+    reg [3:0] i_idx; // Inner loop index 0 to 7
+    reg [2:0] dests [0:7]; // Computed destinations
+    reg collision;
+    
+    // ... logic to load p_mem when write_en is high ...
+    // ... logic for state transition ...
+    // ... logic for checking validity ...
+
+    // Note: The inner checking logic might need to be pipelined or unrolled.
+    // For N=8, a single cycle check per mask is feasible if unrolled, or multiple cycles.
+    // Let's do it in multiple cycles: In CHECKING state, for each mask, compute all dests and check.
+    // This might take 8-16 cycles per mask. Total 256*16 = 4096 cycles. 
+    // To be faster, we can do fully parallel dest computation.
+}

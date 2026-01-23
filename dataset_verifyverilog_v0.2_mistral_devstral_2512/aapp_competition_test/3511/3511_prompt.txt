@@ -1,0 +1,82 @@
+Design a sequential Verilog module named 'pokenom_go' that computes the expected value of the sum of squares of stone counts in N boxes after a series of queries.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start processing current query
+input [1:0] query_type // 01: add stone, 10: calculate output
+input [3:0] u // starting box index (1-based)
+input [3:0] v // ending box index (1-based)
+
+Outputs:
+output reg [63:0] result // The expected value E(A) modulo 10^9+7
+output reg done // High when computation complete
+
+Specifications:
+- Supports N=8 boxes (indices 1-8)
+- Supports Q=16 queries maximum
+- Use modular arithmetic with modulus = 1000000007
+- Maintain expected values for each box:
+  Let E[i] be expected count in box i
+  Let E2[i] be expected count squared in box i
+- Initially all values are 0
+- Type 1 query (1 u v): 
+  With probability 1/(v-u+1), a stone is added to each box in [u,v]
+  Update rules:
+  For box k in [u,v]:
+    E2[k] = E2[k] + 2*E[k] + 1
+    E[k] = E[k] + 1
+  All other boxes unchanged
+  These updates represent the effect of adding a stone with probability 1/len
+  Actually, since we track expectations:
+  Let len = v-u+1
+  For k in [u,v]:
+    E[k] += 1/len
+    E2[k] += 2*E[k] + 1/len (wait, need correct formula)
+  
+  Correct expectation update for box k in range:
+  Probability stone added = 1/len
+  Let c = E[k], c2 = E2[k]
+  New E[k] = c + (1/len)
+  New E2[k] = c2 + 2*c*(1/len) + (1/len) (since (c+1)^2 = c^2 + 2c + 1, scaled by prob)
+  
+  We need to track fractions. Use integers modulo M.
+  Let inv_len = modular inverse of length.
+  Update: 
+  E[k] = E[k] + inv_len
+  E2[k] = E2[k] + 2*E[k] + inv_len
+  
+  Wait, the E[k] used in the second term must be the OLD E[k].
+  So: 
+  temp = E[k]
+  E[k] = temp + inv_len
+  E2[k] = E2[k] + 2*temp + inv_len
+  
+- Type 2 query (2):
+  Calculate sum of E2[i] for i=1 to N.
+  Output result modulo M.
+
+Behavior:
+- State machine: IDLE, READ_OP, CALCULATE, OUTPUT
+- When start is high:
+  If query_type == 1: Process update for boxes u to v
+  If query_type == 2: Compute sum of E2 array
+- Latency: Calculate state takes multiple cycles to loop through range or compute sum.
+- Use 32-bit arithmetic for indices, 64-bit for accumulators.
+- Implement modular inverse for lengths 1 to 8 (pre-calculated constants or small LUT).
+  Inverses modulo 10^9+7:
+  1: 1
+  2: 500000004
+  3: 333333336
+  4: 250000002
+  5: 400000003
+  6: 166666668
+  7: 142857144
+  8: 125000001
+  9: 111111112
+
+Output State Machine:
+IDLE: Wait for start
+UPDATE: Loop from u to v, update E[i] and E2[i] (cycle per box)
+SUM: Loop from 1 to N, accumulate E2[i] into result
+DONE: Set done high, wait for start low

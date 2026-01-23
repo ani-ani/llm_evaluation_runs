@@ -1,0 +1,40 @@
+Module escape_speed computes the minimal speed required for the brothers to escape. It handles graphs with up to 8 nodes, 8 edges, and 8 exits. All distances are in hundred meters. The algorithm uses integer arithmetic and fractions to avoid floating-point.
+
+INTERFACE:
+Inputs:
+  clk, rst_n, start: standard synchronous control.
+  n[2:0]: number of nodes (2-8).
+  m[2:0]: number of edges (0-8).
+  e[2:0]: number of exits (1-8).
+  b[2:0], p[2:0]: zero-indexed node IDs for brothers and police.
+  exit0..exit7[2:0]: exit node IDs (only first e used).
+  edge_a0..edge_a7[2:0], edge_b0..edge_b7[2:0], edge_l0..edge_l7[7:0], edge_valid0..edge_valid7: edge definitions (undirected). Unused edges must have edge_valid=0.
+Outputs:
+  speed_q16[31:0]: Q16.16 representation of minimal speed (0 if impossible).
+  impossible: 1 when no escape possible.
+  done: 1 when computation finishes (asserted for one cycle).
+
+INTERNAL ARCHITECTURE:
+- Use a finite state machine with these states: IDLE, RESET_DIST, FLOYD_K_LOOP, FLOYD_I_LOOP, FLOYD_J_LOOP, FLOYD_UPDATE, COMPUTE_W, DIJKSTRA_INIT, DIJKSTRA_SELECT, DIJKSTRA_RELAX, DIJKSTRA_UPDATE, FIND_MIN_EXIT, COMPUTE_SPEED, DONE.
+- Store 8x8 distance matrix (16-bit, INF=16'hFFFF). Initialize dist[i][i]=0, others INF, then apply edge lengths.
+- Floyd-Warshall: triple nested loops over k, i, j (0..n-1).
+- Compute w values: for each node i, if dist[p][i]==0 set w_num[i]=32'h7FFFFFFF, w_den[i]=1 (infinite). Else w_num[i]=160*dist[b][i], w_den[i]=dist[p][i].
+- Dijkstra minimax: store best_num[i], best_den[i] (32/16 bit). Initialize best_num[b]=0, best_den[b]=1, others INF. Use visited flags. In DIJKSTRA_SELECT, find unvisited node with smallest best (compare fractions via cross-multiplication). Then relax all edges (adjacency matrix) by computing candidate = max(best[u], w[v]), compare with best[v], update if smaller.
+- After Dijkstra, for each exit (first e nodes) find the minimal best among them (again fraction comparison). Let M_num, M_den be that minimal fraction. If M_num is INF, set impossible=1, speed_q16=0. Else compute speed = 160 / (M_num/M_den) = (160 * M_den * 65536) / M_num. Use a 32-bit divider (non-restoring, 32 cycles) to obtain Q16.16 result.
+- When done, assert done for one cycle.
+
+TIMING:
+- Reset: active-low, at least 2 cycles.
+- Start: pulse for one cycle when inputs are stable.
+- Computation: up to ~600 cycles for n=8.
+- Outputs are valid when done=1.
+
+NOTES:
+- All node IDs are zero-indexed.
+- Edge lengths are unsigned 8-bit (0-255).
+- Distances are in hundred meters; conversion cancels in ratio.
+- Fraction comparisons use 32-bit multiplication to avoid overflow.
+- The divider should be implemented as a sequential state machine.
+- The module must be synthesizable; avoid recursive logic.
+
+This specification provides a complete hardware algorithm that mirrors the Python solution while respecting HDL constraints.

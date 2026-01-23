@@ -1,0 +1,40 @@
+MODULE SPECIFICATION:
+
+Design a Verilog module that implements the Martian decryption protocol with fixed 8x8 grid and 8-character message.
+
+INTERFACE:
+  Inputs:
+    - clk: Clock signal (rising edge)
+    - rst_n: Active-low reset
+    - start: Start computation (1 cycle pulse)
+    - encrypted_msg[7:0][4:0]: 8-character encrypted message (A=0,...,Z=25, SPACE=26)
+  
+  Outputs:
+    - decrypted_msg[7:0][4:0]: 8-character decrypted message
+    - done: Asserted when computation complete
+
+FUNCTIONALITY:
+1. Compute f(x) = (33*x + 1) mod 2^20 iteratively for 64 values
+2. Fill 8x8 grid with f^k(0) values
+3. Compute 8 column sums mod 2^20
+4. Convert each sum to 6-digit decimal string (leading zeros)
+5. Concatenate 8 sums = 48-digit base-10 number
+6. Convert to base-27 (max 29 digits)
+7. Decrypt 8 chars using first 8 base-27 digits
+
+IMPLEMENTATION NOTES:
+- Use 20-bit registers for grid values
+- Use 6x8 = 48 4-bit registers for decimal digits
+- Use 29 5-bit registers for base-27 digits
+- State machine: IDLE → GRID → SUMS → DECIMAL → BASE27 → DECRYPT → DONE
+- Maximum cycles: 64 (grid) + 8 (sums) + 48 (decimal) + 1392 (base27) + 8 (decrypt) ≈ 1520 cycles
+- Output decrypted_msg when done=1
+
+RESET:
+- rst_n=0: Clear all registers, done=0
+- Minimum 2 cycles reset required
+
+TIMING:
+- Assert start for 1 clock cycle
+- done goes high within 2000 cycles
+- Sample decrypted_msg when done=1

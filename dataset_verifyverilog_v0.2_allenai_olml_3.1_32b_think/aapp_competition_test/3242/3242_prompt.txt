@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'find_min_energy' that computes the minimum energy required to find Polly with at least probability P. The problem is adapted as a 0/1 knapsack variant where we minimize energy (cost) subject to probability constraints.
+
+Constraints Adapted:
+- Max N (boxes) = 8
+- Max Energy per box = 1023 (10 bits)
+- Probabilities are scaled to Q8.8 fixed-point format (8 integer, 8 fractional bits). P and p_i are given as 8.8 format values. 
+- Target Probability P is passed as input.
+- Total probability sum will fit in 16 bits.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] num_boxes // Number of boxes (1 to 8)
+input [15:0] target_prob // Target probability P in Q8.8 format
+input [9:0] energy_in // Energy of current box (for loading)
+input [15:0] prob_in // Probability of current box in Q8.8 format
+input load_valid // High to load current box data
+output reg load_ready // High when ready to accept next box data
+
+Outputs:
+output reg [9:0] min_energy // Result: minimum energy found
+output reg valid // High when result is valid
+
+Behavioral Description:
+The module operates in 3 phases:
+1. Reset Phase (rst_n = 0): Reset state machine and internal memory.
+2. Loading Phase (load_valid = 1, start = 0): Accept N box data pairs (energy, prob). `load_ready` goes high when ready for next box. When `num_boxes` data pairs are loaded, move to computation phase when `start` is asserted.
+3. Computation Phase (start = 1): Compute min energy. 
+   - The module should implement a Dynamic Programming approach. Since N is small (8) and max probability (sum) is around 2048 (8 * 256), we can compute `dp[energy] = max_prob` achievable with exactly `energy`.
+   - Alternatively, compute `dp[prob] = min_energy`. Given max total prob is ~2048, an array of size ~2048 is feasible.
+   - Recommended approach: Use `dp[prob_idx]` where `prob_idx` ranges 0 to 2048. Initialize `dp[0] = 0`, others to MAX. Iterate boxes: for each box (e, p), update dp array backwards.
+   - Finally, scan `dp` array starting from `target_prob` to find the smallest energy value.
+   - Note: Probabilities are in Q8.8, so scale indices accordingly (e.g., use integer part of prob * 256).
+   - Max total probability sum = 8 * 256 = 2048. DP array size 2049.
+   - Result latency: ~1000 cycles after start (safe bound).
+
+State Machine:
+- IDLE: Wait for start signal.
+- LOAD: Accepting input data. Transition to PROCESSING when load is complete.
+- PROCESSING: Run DP algorithm. 
+- DONE: Output result.
+
+Implementation Details:
+- Use `reg [9:0] dp [0:2048]` for DP table. Initialize to 10'h3FF (max).
+- `dp[0] = 0`.
+- For each box: `dp_new[p_idx + p_box] = min(dp_new[p_idx + p_box], dp[p_idx] + e_box)`.
+- Optimization: Implement inner loop with counters.
+- Latency: Since there are few boxes and small states, result will be available in hundreds of cycles.
+
+Output Timing: `valid` goes high approximately 1000 clock cycles after `start` is asserted. `min_energy` holds the result.

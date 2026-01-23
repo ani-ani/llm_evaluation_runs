@@ -1,0 +1,21 @@
+module odd_position(input [7:0][7:0] data, input [2:0] length, output reg result);
+wire [7:0] is_valid;
+wire [7:0] cond;
+assign is_valid[0] = length > 0;
+assign is_valid[1] = length > 1;
+assign is_valid[2] = length > 2;
+assign is_valid[3] = length > 3;
+assign is_valid[4] = length > 4;
+assign is_valid[5] = length > 5;
+assign is_valid[6] = length > 6;
+assign is_valid[7] = length > 7;
+assign cond[0] = ( (data[0][0] == 0) && is_valid[0] ) || !is_valid[0];
+assign cond[1] = ( (data[1][0] == 1) && is_valid[1] ) || !is_valid[1];
+assign cond[2] = ( (data[2][0] == 0) && is_valid[2] ) || !is_valid[2];
+assign cond[3] = ( (data[3][0] == 1) && is_valid[3] ) || !is_valid[3];
+assign cond[4] = ( (data[4][0] == 0) && is_valid[4] ) || !is_valid[4];
+assign cond[5] = ( (data[5][0] == 1) && is_valid[5] ) || !is_valid[5];
+assign cond[6] = ( (data[6][0] == 0) && is_valid[6] ) || !is_valid[6];
+assign cond[7] = ( (data[7][0] == 1) && is_valid[7] ) || !is_valid[7];
+assign result = cond[0] & cond[1] & cond[2] & cond[3] & cond[4] & cond[5] & cond[6] & cond[7];
+endmodule

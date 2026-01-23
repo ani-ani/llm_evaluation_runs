@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'search_frequency' that implements the frequency search algorithm.
+
+Task: Given an array of 8 positive integers (range 0-15), find the greatest integer that satisfies: frequency >= value. Return -1 (15 in our encoding) if no such value exists.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] array_size // actual number of valid elements (1-8)
+input [7:0][3:0] data // 8 elements, each 4 bits (values 0-15)
+
+Outputs:
+output reg [3:0] result // the greatest integer satisfying condition, 15 means -1
+output reg done // high when computation complete
+
+Latency: Result valid 25 clock cycles after start asserted (to handle counting and comparison for all values).
+
+Specification:
+- The module processes array elements sequentially, counting frequency of each unique value
+- A value is valid if: count >= value AND value > 0
+- Among all valid values, return the maximum
+- If no valid value exists, return 15 (which encodes -1)
+- Values are positive integers (1-15), 0 is treated as invalid/no-data
+- Result 0 should never be output (since 0 is not positive)
+
+State machine states:
+- IDLE: Wait for start signal
+- COUNT: Count frequencies of values (16 bins)
+- FIND_MAX: Find maximum value where count >= value
+- DONE: Computation complete
+
+Implementation approach:
+- Use 16 registers (4-bit each) as frequency counters for values 0-15
+- First pass: read all array elements and increment corresponding counter
+- Second pass: check values 15 down to 1, verify count >= value
+- Return first (largest) value that satisfies condition
+- If none found, return 15
+
+Test cases adapted to 8-element arrays:
+- [4, 1, 2, 2, 3, 1] -> 2 (values 4,1,2,2,3,1,0,0)
+- [1, 2, 2, 3, 3, 3, 4, 4] -> 3 (max valid where freq>=val)
+- [5, 5, 4, 4, 4] -> 15 (-1, no value satisfies)
+- [1, 2, 2, 3, 2, 0, 0, 0] -> 2
+- [8, 8, 8, 8, 8, 8, 8, 8] -> 8 (freq=8 >= 8)
+- [3, 3, 0, 0, 0, 0, 0, 0] -> 15 (freq=2 < 3)
+- [1] -> 1 (freq=1 >= 1)
+- [10, 0, 0, 0, 0, 0, 0, 0] -> 15 (freq=1 < 10)
+- [5, 5, 5, 5, 1, 0, 0, 0] -> 1 (freq of 5 is 4 < 5, freq of 1 is 1 >= 1)
+- [4, 1, 4, 1, 4, 4, 0, 0] -> 4 (freq of 4 is 4 >= 4)
+
+All values above 15 should be clamped or considered invalid; test values should stay in 1-15 range.

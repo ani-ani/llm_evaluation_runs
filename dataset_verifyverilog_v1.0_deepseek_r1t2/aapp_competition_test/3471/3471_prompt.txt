@@ -1,0 +1,125 @@
+// Verilog module for scaled-down xorbonacci problem
+// Parameters: K=4, W=8 (value width), L=16 (index width)
+// The sequence prefix XOR has period M=K+1=5.
+// Interface:
+//   clk, rst_n: clock and active-low reset
+//   start: pulse to load initial values (a0..a3)
+//   query: pulse to start query computation (l,r must be stable)
+//   a0,a1,a2,a3: 8-bit initial values
+//   l, r: 16-bit query indices
+//   result: 8-bit XOR of x_l ... x_r
+//   done: high for one cycle when result is valid
+// Operation:
+//   After reset, assert start to load a0..a3 and compute prefix table P[0..4].
+//   Then assert query to compute answer for current l,r.
+//   done goes high after a few cycles.
+//   The module stays ready for subsequent queries.
+
+module xorbonacci (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire query,
+    input wire [7:0] a0, a1, a2, a3,
+    input wire [15:0] l, r,
+    output reg [7:0] result,
+    output reg done
+);
+
+    // State encoding
+    localparam IDLE = 0;
+    localparam LOADING = 1;
+    localparam READY = 2;
+    localparam COMPUTING = 3;
+    localparam RESULT = 4;
+    localparam DONE = 5;
+
+    reg [2:0] state;
+    reg [7:0] P [0:4];          // Prefix XOR table, index 0..4
+    reg [15:0] l_reg, r_reg;    // Stored query indices
+    reg [2:0] rem_l, rem_r;     // Remainders modulo 5
+
+    // Helper function: compute 16-bit value modulo 5
+    function [2:0] mod5;
+        input [15:0] val;
+        reg [4:0] sum_low, sum_high;
+        reg [4:0] rlow, rhigh;
+        begin
+            // Low byte: split into two 4-bit parts
+            sum_low = val[7:4] + val[3:0];
+            // Compute remainder by subtracting multiples of 5
+            if (sum_low >= 25) rlow = sum_low - 25;
+            else if (sum_low >= 20) rlow = sum_low - 20;
+            else if (sum_low >= 15) rlow = sum_low - 15;
+            else if (sum_low >= 10) rlow = sum_low - 10;
+            else if (sum_low >= 5)  rlow = sum_low - 5;
+            else rlow = sum_low;
+            // High byte: split into two 4-bit parts
+            sum_high = val[15:12] + val[11:8];
+            if (sum_high >= 25) rhigh = sum_high - 25;
+            else if (sum_high >= 20) rhigh = sum_high - 20;
+            else if (sum_high >= 15) rhigh = sum_high - 15;
+            else if (sum_high >= 10) rhigh = sum_high - 10;
+            else if (sum_high >= 5)  rhigh = sum_high - 5;
+            else rhigh = sum_high;
+            // Combine
+            mod5 = rhigh + rlow;
+            if (mod5 >= 5) mod5 = mod5 - 5;
+        end
+    endfunction
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        // Compute prefix XOR table P[0..4]
+                        P[0] <= 0;
+                        P[1] <= a0;
+                        P[2] <= a0 ^ a1;
+                        P[3] <= a0 ^ a1 ^ a2;
+                        P[4] <= a0 ^ a1 ^ a2 ^ a3;
+                        state <= LOADING;
+                    end
+                end
+
+                LOADING: begin
+                    // One cycle to let P settle
+                    state <= READY;
+                end
+
+                READY: begin
+                    if (query) begin
+                        l_reg <= l;
+                        r_reg <= r;
+                        state <= COMPUTING;
+                    end
+                end
+
+                COMPUTING: begin
+                    // Compute remainders using the function
+                    rem_l <= mod5(l_reg);
+                    rem_r <= mod5(r_reg);
+                    state <= RESULT;
+                end
+
+                RESULT: begin
+                    // XOR the two prefix values
+                    result <= P[rem_r] ^ P[rem_l];
+                    done <= 1;
+                    state <= DONE;
+                end
+
+                DONE: begin
+                    done <= 0;
+                    state <= READY;  // Ready for next query
+                end
+            endcase
+        end
+    end
+
+endmodule

@@ -1,0 +1,112 @@
+Design a combinational Verilog module named 'stable_graph_max_edges' that computes the maximum number of edges that can be added to a small graph while keeping it stable.
+
+The module should handle a graph with up to 8 nodes (N=8) and up to 3 government nodes (K=3). Government nodes are identified by an 8-bit bitmask `gov_mask`. The existing edges are provided as an array of pairs. Since Verilog modules have fixed interfaces, we assume the input is provided as an adjacency matrix `adj_matrix` (8x8 bit array) or a list of up to 20 edges. To simplify the interface, let's use the adjacency matrix `adj_matrix [7:0][7:0]`.
+
+Inputs:
+input [7:0] gov_mask // Bitmask where bit i is 1 if node i is a government node
+input [7:0][7:0] adj_matrix // Adjacency matrix for the graph (symmetric, diagonal 0)
+
+Outputs:
+output [15:0] max_edges // The maximum number of edges that can be added
+
+Algorithm:
+1. Identify connected components using the adjacency matrix (for 8 nodes, we can use iterative updates or mask iteration).
+2. Calculate the size of each connected component. We need to distinguish between components containing government nodes and those that don't.
+3. For components with government nodes: Calculate `max_edges += size * (size - 1) / 2`.
+4. Sum the sizes of all non-government components into a pool `non_gov_pool`.
+5. Find the size of the largest government component, `max_gov_size`.
+6. The formula for maximum edges is:
+   `Total = sum(max_edges_per_gov_component) - existing_edges + max_gov_size * non_gov_pool`
+   However, existing edges are already included in the `max_edges` calculation if we subtract `m`. 
+   Actually, the logic is:
+   Potential edges = `C(size_1) + C(size_2) + ... + C(size_k)` where `size_i` are sizes of components (including non-gov merged into one).
+   The optimal way to maximize edges is to merge all non-gov nodes into the largest gov component.
+   So we take the sum of `C(size)` for each gov component (excluding the largest one), then add `C(size_largest + non_gov_pool)`. 
+   Wait, the Python solutions calculate: 
+   `ans = sum(C(size))` for all gov components.
+   `ans -= C(max_gov_size)`
+   `ans += C(max_gov_size + non_gov_pool)`
+   `ans -= m`
+   This computes the TOTAL edges in the maximized graph. We want the number to ADD. 
+   Number to add = (Total potential edges) - (Existing edges)
+   Total potential = sum(C(size)) for gov components (minus max) + C(max + non_gov)
+   Existing edges = m.
+   So `max_edges = [sum(C(size)) for all gov - C(max) + C(max + non_gov)] - m`.
+
+Verilog Logic:
+- Use Depth First Search (DFS) logic unrolled for 8 nodes or Union-Find.
+- Since N=8, we can iterate over nodes.
+- We need to track: `comp_size`, `is_gov`, `visited`.
+- Use a loop to find components.
+- We need to compute `x*(x-1)/2`. For small x (<=8), this is a lookup table or simple logic.
+
+Detailed Logic for Combinational Block:
+1. Iterate `i` from 0 to 7 to find unvisited nodes.
+2. If unvisited, perform a search (BFS/DFS style loop) to find all nodes in that component.
+3. Count nodes in component. Check if any node in component is a government node (AND with `gov_mask`).
+4. Store component size and whether it has government.
+5. If component has government: add `size*(size-1)/2` to `gov_sum`. Track `max_gov_size`.
+6. If no government: add to `non_gov_pool`.
+7. Calculate result: `gov_sum - max_gov_size*(max_gov_size-1)/2 + (max_gov_size + non_gov_pool)*(max_gov_size + non_gov_pool - 1)/2 - m`.
+   Wait, we don't have `m` directly in this combinational logic if we use adjacency matrix. `m` is the number of edges. We can derive `m` from `adj_matrix` (count bits and divide by 2). 
+   Or, simpler: The problem asks for the number of edges to ADD. 
+   The maximum possible edges in a graph of size `S` is `S*(S-1)/2`.
+   If we have `K` components with sizes `s_1, s_2, ... s_k`, and we can merge some.
+   Since we cannot merge gov components, we have `K_gov` gov components and `K_ng` non-gov components.
+   We merge all non-gov components into the largest gov component.
+   Total edges in final structure = `C(size_max_gov + non_gov_pool) + sum(C(s_i))` for all other gov components.
+   Current edges = `m`.
+   Edges to add = `Total - m`.
+   So `max_edges` output is `Total - m`.
+
+Verilog Implementation Details:
+- `N=8`, `K=3` (max).
+- Inputs: `gov_mask` (8 bits), `adj_matrix` (8x8 bits).
+- Output: `max_edges` (16 bits, sufficient since max edges for 8 nodes is 28).
+- Logic: 
+  1. Traverse all nodes to find connected components. 
+  2. Use a `visited` register (8 bits) or variable.
+  3. For each unvisited node `i`:
+     - Start component search.
+     - `current_size = 0`. `has_gov = 0`.
+     - `queue` or recursive traversal using `adj_matrix[i]`.
+     - Since it's combinational, we unroll the loop or use a `while` loop with a `genvar` if possible, but `while` is not strictly synthesizable for infinite loops, but bounded loops are fine.
+     - Actually, a simple iterative approach: 
+       `for i in 0 to 7`: if `!visited[i]`: 
+         `queue[0] = i`, `q_ptr = 0`, `q_size = 1`, `visited[i] = 1`.
+         `while(q_ptr < q_size)`: 
+           `u = queue[q_ptr]`.
+           `q_ptr++`.
+           `current_size++`.
+           `if (gov_mask[u]) has_gov = 1`.
+           `for v in 0 to 7`: if `adj_matrix[u][v]` and `!visited[v]`: `visited[v]=1`, `queue[q_size++]=v`.
+       This is a bit complex for pure combinational logic without state, but for N=8 it's fine if we flatten it or use a generate block. 
+       Better approach: Use Union-Find logic, but Union-Find is iterative.
+       Let's stick to the traversal. It will be a large combinational block but valid.
+       
+       We need to support up to 8 nodes. 
+       We can use a 3-stage pipeline or just a single block of logic.
+       Let's assume the user implements a simple DFS or iterative search.
+       
+       To avoid complex queue logic in combinational, we can use a bitmask approach for components.
+       Components can be found by repeatedly taking the intersection of neighbor sets.
+       
+       Let's specify a step-by-step algorithm in the prompt.
+
+Module Definition:
+`module stable_graph_max_edges(gov_mask, adj_matrix, max_edges);`
+
+Behavior:
+Calculates the connected components. 
+Sums up `C(size)` for components with government nodes.
+Identifies the largest government component size.
+Identifies the total size of non-government components.
+Calculates `total_edges` = `gov_sum - C(max_gov) + C(max_gov + non_gov)`.
+Calculates `existing_edges` = `sum(adj_matrix[i][j])/2`.
+Output = `total_edges - existing_edges`.
+
+Testbench:
+Will construct the `adj_matrix` and `gov_mask` for the provided test cases.
+Note: The input format is N, M, K, then Gov nodes, then edges. 
+The Verilog module takes the pre-processed matrix.
+So the testbench must convert the edge list to the matrix.

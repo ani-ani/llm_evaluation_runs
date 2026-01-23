@@ -1,0 +1,56 @@
+Module: find_min_T
+
+Purpose: Compute the smallest T such that N kids can be partitioned into three new classes (teachers 0,1,2) with no kid assigned to their current teacher and all classmates within each class are among each kid's top T preferred classmates.
+
+Parameters:
+  - N: Number of kids (default 6, must be ≤ 8 for feasibility).
+  - LOG_N: Bit width for kid indices = $clog2(N). For N=6, LOG_N=3.
+  - MAX_T: Maximum T = N-1.
+  - ASSIGN_COUNT = 3^N (total assignments).
+  - ASSIGN_IDX_WIDTH = $clog2(ASSIGN_COUNT+1) (e.g., 10 bits for N=6).
+
+Interface Signals:
+
+Inputs:
+  - clk: System clock, rising edge.
+  - rst_n: Active‑low synchronous reset.
+  - start: Pulse for one cycle to start computation.
+  - teacher [0:N-1] [1:0]: Original teacher for each kid (0‑indexed).
+  - pref [0:N-1][0:N-2] [LOG_N-1:0]: Preference list per kid, each entry is a 0‑indexed kid ID, ordered from most to least preferred.
+
+Outputs:
+  - T [3:0]: Minimal T (0..N-1) when done.
+  - done: Asserted for one cycle when result is ready.
+
+Behavioral Description (State Machine):
+
+1. IDLE: Wait for start. On start, capture inputs into internal registers (stored_teacher, stored_pref). Initialize T=0. Go to COMPUTE_MASKS.
+
+2. COMPUTE_MASKS: For current T, compute mask_i for each kid i: an N‑bit register where bit j = 1 if kid j appears in the first T entries of pref[i]. Initialize all masks to 0. For each i and for pos = 0 to T-1, set mask_i[ pref[i][pos] ] = 1. Transition to ENUMERATE.
+
+3. ENUMERATE: Enumerate all 3^N teacher assignments. Use a base‑3 odometer (assigned_teacher[0:N-1] each 2 bits) that increments after each check. Transition to CHECK for each assignment.
+
+4. CHECK: For the current assignment, verify:
+   a. For each kid i: assigned_teacher[i] != stored_teacher[i].
+   b. For each pair i<j with same assigned teacher: mask_i[j] == 1 and mask_j[i] == 1.
+   If valid, go to FOUND; else increment assignment and continue. If all assignments checked, go to INCREMENT_T.
+
+5. FOUND: Set T = current T, assert done for one cycle, then go to DONE.
+
+6. INCREMENT_T: Increment T. If T ≤ MAX_T, go to COMPUTE_MASKS; else go to DONE with T = MAX_T (should not happen).
+
+7. DONE: After asserting done, stay here until reset.
+
+Timing:
+- Computation takes several thousand cycles for N=6 (worst‑case T=5, 729 assignments per T).
+- done is asserted for one cycle; T is valid on that cycle.
+- Reset forces state to IDLE, done=0, T=0.
+
+Implementation Notes:
+- All arrays are stored in registers.
+- Mask computation uses counters for i and pos.
+- The base‑3 odometer can be incremented by adding 1 to the least significant digit and handling carries.
+- The validity check can be a combinational block that uses the current masks and assigned_teacher.
+
+Testbench Interface:
+The testbench will assign teacher and pref arrays element‑by‑element using loops, and will verify the output T against expected values.

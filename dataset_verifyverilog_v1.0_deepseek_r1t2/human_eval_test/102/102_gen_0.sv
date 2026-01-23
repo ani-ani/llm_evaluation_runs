@@ -1,0 +1,2 @@
+module choose_num(\n    input [15:0] x,\n    input [15:0] y,\n    output [15:0] result\n);\n    wire x_gt_y = (x > y);\n    wire [15:0] candidate = y - {15'd0, y[0]};
+    assign result = (x_gt_y | (candidate < x)) ? 16'hFFFF : candidate;\nendmodule

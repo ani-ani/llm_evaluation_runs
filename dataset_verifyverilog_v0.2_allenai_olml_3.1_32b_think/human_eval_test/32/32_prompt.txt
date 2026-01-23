@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'find_zero' that finds a root of a polynomial using Newton-Raphson iteration in Q16.16 fixed-point format.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] degree // degree of polynomial (valid values: 1 to 8, must be even)
+input [3:0][15:0] coeffs // polynomial coefficients in Q16.16 format, indexed 0 to degree
+
+Outputs:
+output reg [15:0] result // root in Q16.16 format
+output reg done // high when computation complete
+output reg error // high if computation fails to converge
+
+Behavior:
+1. Module implements Newton-Raphson method: x_{n+1} = x_n - f(x_n)/f'(x_n)
+2. Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+3. Initialize x_0 = 0 (0x00000000)
+4. Iterate for maximum 16 cycles or until |f(x)| < 2^(-8) (approx 0.0039)
+5. For degree ≤ 8, evaluation can be unrolled
+6. Derivative coefficients are: c_i' = (i+1) * c_{i+1} for i=0 to degree-1
+7. Handle division by zero by setting error flag
+8. Use signed arithmetic for all calculations
+9. Saturate intermediate values to prevent overflow
+
+Latency: Result valid 18-20 clock cycles after start asserted.
+
+Use state machine with states: IDLE, EVAL_F, EVAL_FP, COMPUTE_DELTA, UPDATE_X, DONE, ERROR.
+
+Implementation details:
+- f(x) = c_0 + c_1*x + c_2*x^2 + ... + c_n*x^n
+- f'(x) = c_1 + 2*c_2*x + ... + n*c_n*x^(n-1)
+- Division: use iterative approximation or lookup table for 1/x
+- For x^i, compute iteratively: x_i = x_{i-1} * x (with saturation)
+- Clamp final result to avoid extreme values
+
+Q16.16 Format Examples:
+1.0 = 0x00010000 (65536)
+0.5 = 0x00008000 (32768)
+-1.0 = 0xFFFF0000 (-65536)
+2.5 = 0x00028000 (163840)

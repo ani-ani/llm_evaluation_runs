@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'collinear_checker' that determines if N 2D points can be covered by at most 2 straight lines.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] point_x [0:15] // Array of 16 x-coordinates (max 16 points, values 0-255)
+input [7:0] point_y [0:15] // Array of 16 y-coordinates
+input [4:0] num_points // Actual number of points (1-16)
+
+Outputs:
+output reg success // 1 if 2 lines suffice, 0 otherwise
+output reg done // High when computation complete
+
+Latency: Done asserted approximately 10 clock cycles after start.
+
+Algorithm (simplified for hardware):
+1. Check if all points are collinear (1 line covers all) - O(N)
+2. If not, try 3 strategies based on first 3 points:
+   - Strategy A: Line through P0-P1, check remaining points collinear
+   - Strategy B: Line through P0-P2, check remaining points collinear
+   - Strategy C: Line through P1-P2, check remaining points collinear
+3. Use state machine: IDLE, CHECK_COLLINEAR, CHECK_REMAINING, DONE
+
+State Details:
+- IDLE: Wait for start. Initialize index=0.
+- CHECK_COLLINEAR: Calculate if all N points lie on same line. To avoid division, use cross-product: points (x0,y0), (x1,y1), (x2,y2) are collinear if (x1-x0)*(y2-y0) == (x2-x0)*(y1-y0). Loop through all points. If all on line, go DONE (success). If not, go to STRATEGY_A.
+- STRATEGY_A: Assume line through P0-P1. Flag points on this line. Count remaining. If 0 or 1 remaining, go DONE (success). If >1, check if remaining are collinear.
+- STRATEGY_B: If A failed, assume line through P0-P2.
+- STRATEGY_C: If B failed, assume line through P1-P2.
+- DONE: Set success/fail, assert done.
+
+Implementation notes:
+- Cross product needs 16-bit multiply: (8-bit * 8-bit = 16-bit). Use signed arithmetic.
+- Example: For points (0,0), (1,1), (2,2): (1-0)*(2-0) = 1*2 = 2. (2-0)*(1-0) = 2*1 = 2. Equal, so collinear.
+- If N < 3, automatically success (set success=1).
+- Ensure to handle bounds. Max coordinate 255, difference 510, product ~260100 < 2^18. 18 bits enough.
+- State machine should iterate carefully. For 16 points, max ~16*3 = 48 calculations.
+
+Hardware details:
+- Use 2-cycle multiply for area if needed, or combinational.
+- Store points in registers.
+- Use a counter to iterate through points.
+- Flag array (16 bits) to mark points on first line.
+
+Detailed Logic for CHECK_REMAINING (in each Strategy):
+- Identify points NOT on the initial line.
+- If 0 or 1 such point: Success.
+- Else: Take first two such points. Check if all others on that line.
+
+The module must be synthesizable.

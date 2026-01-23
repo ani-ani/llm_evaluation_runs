@@ -1,0 +1,174 @@
+Design a sequential Verilog module named 'separate_paren_groups' that implements a parenthesis group extractor.
+
+**Overview:**
+Given a fixed-width string containing parentheses and spaces, the module must identify and extract balanced groups of parentheses. The input is limited to a maximum of 16 characters to fit hardware constraints. The output is provided as multiple 8-bit ASCII characters streamed out with a 'valid' flag, which a testbench will collect into groups.
+
+**Interface Specification:**
+Inputs:
+  - clk: System clock
+  - rst_n: Active-low reset
+  - start: High for one cycle to start processing the current input string
+  - char_in [7:0]: The character data for the input string. Since Verilog interfaces can be complex, we will use a streaming approach. However, for this specific implementation, we will hardcode the input string interface to a set of 16 registers to ensure testbench compatibility.
+  - Actually, to ensure robust testbench connectivity, let's use a standard interface where the testbench writes to a memory block, and the FSM reads it.
+  
+  **Revised Interface for Robustness:**
+  We will use a simple interface where the testbench provides the string as 16 sequential characters on 'char_in' while 'load' is high. Then 'start' triggers processing.
+  
+  Inputs:
+    - clk: System clock
+    - rst_n: Active-low reset
+    - load: High to load char_in into buffer
+    - char_in [7:0]: ASCII character to load
+    - start: High to begin extraction of groups from loaded buffer
+
+Outputs:
+    - result_char [7:0]: The current character of a valid group (if result_valid is high)
+    - result_valid: High when result_char is valid
+    - done: High when processing of the entire string is complete
+
+**Behavioral Description:**
+1.  **Loading State (IDLE/LOADING):** When 'load' is high, shift characters into a buffer (16 registers). Keep track of the index.
+2.  **Processing State (PROCESSING):** When 'start' is asserted, enter processing state.
+    - Initialize a depth counter to 0.
+    - Iterate through the loaded buffer.
+    - Skip spaces (ASCII 0x20).
+    - If '(': Increment depth. If depth becomes 1, this is the start of a new group. Output this character.
+    - If ')': Decrement depth. Output this character. If depth becomes 0, the group is complete. Do not output anything else until the next group starts.
+    - The output logic should assert 'result_valid' only for characters belonging to the extracted groups.
+3.  **Completion:** Once the buffer is fully scanned, assert 'done' and return to IDLE.
+
+**Constraints:**
+- Max string length: 16 characters.
+- Valid characters: '(', ')', ' ' (space).
+- The ASCII values are: '(' = 0x28, ')' = 0x29, Space = 0x20.
+- Use a state machine with states: IDLE, LOADING, SCANNING, DONE.
+- The design should handle the input sequentially.
+
+**Verilog Module Definition:**
+```verilog
+module separate_paren_groups (
+    input wire clk,
+    input wire rst_n,
+    input wire load,
+    input wire [7:0] char_in,
+    input wire start,
+    output reg [7:0] result_char,
+    output reg result_valid,
+    output reg done
+);
+    // Internal buffer for 16 characters
+    reg [7:0] buffer [0:15];
+    reg [3:0] load_idx; // 0-15
+    reg [3:0] scan_idx; // 0-15
+    reg [3:0] depth;    // Nesting depth
+    
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam LOADING = 2'b01;
+    localparam SCANNING = 2'b10;
+    localparam DONE = 2'b11;
+    reg [1:0] state;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            load_idx <= 0;
+            scan_idx <= 0;
+            depth <= 0;
+            result_char <= 8'h00;
+            result_valid <= 1'b0;
+            done <= 1'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    result_valid <= 1'b0;
+                    done <= 1'b0;
+                    if (load) begin
+                        state <= LOADING;
+                        buffer[load_idx] <= char_in;
+                        load_idx <= load_idx + 1;
+                    end else if (start && load_idx > 0) begin
+                        state <= SCANNING;
+                        scan_idx <= 0;
+                        depth <= 0;
+                    end
+                end
+                
+                LOADING: begin
+                    if (load) begin
+                        if (load_idx < 15) begin
+                            buffer[load_idx] <= char_in;
+                            load_idx <= load_idx + 1;
+                        end else begin
+                            // Buffer full, stay in loading or go to idle? 
+                            // Let's just load and stay in loading until load goes low.
+                            // Actually, better to just load what we get.
+                            buffer[load_idx] <= char_in;
+                            // load_idx stays at 15 to prevent overflow, or wrap? Let's just stick at 15.
+                        end
+                    end else begin
+                        state <= IDLE;
+                    end
+                end
+                
+                SCANNING: begin
+                    if (scan_idx < load_idx) begin
+                        // Process character
+                        case (buffer[scan_idx])
+                            8'h28: begin // '('
+                                depth <= depth + 1;
+                                if (depth == 0) begin // First '(' of a group
+                                    result_char <= buffer[scan_idx];
+                                    result_valid <= 1'b1;
+                                end else begin
+                                    result_valid <= 1'b0;
+                                end
+                            end
+                            8'h29: begin // ')'
+                                if (depth > 0) begin
+                                    depth <= depth - 1;
+                                    result_char <= buffer[scan_idx];
+                                    result_valid <= 1'b1;
+                                    if (depth == 1) begin // Closing the group
+                                        // We output the ')', then result_valid goes low next cycle naturally 
+                                        // unless we want to output it now. 
+                                        // The spec says 'output this character'. 
+                                        // If depth becomes 0, we should output the char, then next char should be ignored.
+                                        // The logic above sets result_valid high. 
+                                        // Next cycle, depth is 0, and if next char is '(', depth becomes 1.
+                                    end
+                                end else begin
+                                    // Unmatched closing paren, ignore per typical behavior or strict parsing? 
+                                    // Let's ignore unmatched.
+                                    result_valid <= 1'b0;
+                                end
+                            end
+                            8'h20: begin // Space
+                                result_valid <= 1'b0;
+                            end
+                            default: begin
+                                result_valid <= 1'b0;
+                            end
+                        endcase
+                        scan_idx <= scan_idx + 1;
+                    end else begin
+                        // Finished scanning
+                        state <= DONE;
+                        result_valid <= 1'b0;
+                        done <= 1'b1;
+                    end
+                end
+                
+                DONE: begin
+                    // Wait for reset or new start
+                    done <= 1'b0; // Pulse done for one cycle
+                    if (!start) begin
+                        state <= IDLE;
+                        load_idx <= 0; // Reset buffer index for next string
+                    end
+                end
+            endcase
+        end
+    end
+endmodule
+```

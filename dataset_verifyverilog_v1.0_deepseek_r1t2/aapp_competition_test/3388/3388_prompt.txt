@@ -1,0 +1,197 @@
+module betting_guarantee (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [31:0] julia_score,
+    input wire [31:0] other_scores_0,
+    input wire [31:0] other_scores_1,
+    input wire [31:0] other_scores_2,
+    input wire [31:0] other_scores_3,
+    input wire [31:0] other_scores_4,
+    input wire [31:0] other_scores_5,
+    input wire [31:0] other_scores_6,
+    input wire [31:0] other_scores_7,
+    input wire [2:0] valid_count,
+    output reg [31:0] guarantee_matches,
+    output reg done
+);
+
+// Parameters
+parameter MAX_OTHERS = 8;
+
+// Internal registers
+reg [31:0] max_score;
+reg [31:0] second_max_score;
+reg [31:0] count_max;
+reg [31:0] temp_result;
+reg [2:0] stage;
+reg processing;
+
+// Sorting logic - simple comparator network for 8 elements
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        max_score <= 32'd0;
+        second_max_score <= 32'd0;
+        count_max <= 32'd0;
+        guarantee_matches <= 32'd0;
+        done <= 1'b0;
+        stage <= 3'd0;
+        processing <= 1'b0;
+    end else if (start && !processing) begin
+        // Initialize
+        stage <= 3'd0;
+        processing <= 1'b1;
+        done <= 1'b0;
+        max_score <= 32'd0;
+        second_max_score <= 32'd0;
+        count_max <= 32'd0;
+    end else if (processing) begin
+        case (stage)
+            3'd0: begin
+                // Find max and second max
+                // Stage 0: Initialize with first valid score
+                if (valid_count > 0) begin
+                    max_score <= other_scores_0;
+                    second_max_score <= 32'd0;
+                    count_max <= 32'd1;
+                end else begin
+                    max_score <= 32'd0;
+                    second_max_score <= 32'd0;
+                    count_max <= 32'd0;
+                end
+                stage <= 3'd1;
+            end
+            
+            3'd1: begin
+                // Process remaining scores
+                if (valid_count > 1 && other_scores_1 > max_score) begin
+                    second_max_score <= max_score;
+                    max_score <= other_scores_1;
+                    count_max <= 32'd1;
+                end else if (valid_count > 1 && other_scores_1 == max_score) begin
+                    count_max <= count_max + 1;
+                end else if (valid_count > 1 && other_scores_1 > second_max_score && other_scores_1 < max_score) begin
+                    second_max_score <= other_scores_1;
+                end
+                stage <= 3'd2;
+            end
+            
+            3'd2: begin
+                if (valid_count > 2 && other_scores_2 > max_score) begin
+                    second_max_score <= max_score;
+                    max_score <= other_scores_2;
+                    count_max <= 32'd1;
+                end else if (valid_count > 2 && other_scores_2 == max_score) begin
+                    count_max <= count_max + 1;
+                end else if (valid_count > 2 && other_scores_2 > second_max_score && other_scores_2 < max_score) begin
+                    second_max_score <= other_scores_2;
+                end
+                stage <= 3'd3;
+            end
+            
+            3'd3: begin
+                if (valid_count > 3 && other_scores_3 > max_score) begin
+                    second_max_score <= max_score;
+                    max_score <= other_scores_3;
+                    count_max <= 32'd1;
+                end else if (valid_count > 3 && other_scores_3 == max_score) begin
+                    count_max <= count_max + 1;
+                end else if (valid_count > 3 && other_scores_3 > second_max_score && other_scores_3 < max_score) begin
+                    second_max_score <= other_scores_3;
+                end
+                stage <= 3'd4;
+            end
+            
+            3'd4: begin
+                if (valid_count > 4 && other_scores_4 > max_score) begin
+                    second_max_score <= max_score;
+                    max_score <= other_scores_4;
+                    count_max <= 32'd1;
+                end else if (valid_count > 4 && other_scores_4 == max_score) begin
+                    count_max <= count_max + 1;
+                end else if (valid_count > 4 && other_scores_4 > second_max_score && other_scores_4 < max_score) begin
+                    second_max_score <= other_scores_4;
+                end
+                stage <= 3'd5;
+            end
+            
+            3'd5: begin
+                if (valid_count > 5 && other_scores_5 > max_score) begin
+                    second_max_score <= max_score;
+                    max_score <= other_scores_5;
+                    count_max <= 32'd1;
+                end else if (valid_count > 5 && other_scores_5 == max_score) begin
+                    count_max <= count_max + 1;
+                end else if (valid_count > 5 && other_scores_5 > second_max_score && other_scores_5 < max_score) begin
+                    second_max_score <= other_scores_5;
+                end
+                stage <= 3'd6;
+            end
+            
+            3'd6: begin
+                if (valid_count > 6 && other_scores_6 > max_score) begin
+                    second_max_score <= max_score;
+                    max_score <= other_scores_6;
+                    count_max <= 32'd1;
+                end else if (valid_count > 6 && other_scores_6 == max_score) begin
+                    count_max <= count_max + 1;
+                end else if (valid_count > 6 && other_scores_6 > second_max_score && other_scores_6 < max_score) begin
+                    second_max_score <= other_scores_6;
+                end
+                stage <= 3'd7;
+            end
+            
+            3'd7: begin
+                if (valid_count > 7 && other_scores_7 > max_score) begin
+                    second_max_score <= max_score;
+                    max_score <= other_scores_7;
+                    count_max <= 32'd1;
+                end else if (valid_count > 7 && other_scores_7 == max_score) begin
+                    count_max <= count_max + 1;
+                end else if (valid_count > 7 && other_scores_7 > second_max_score && other_scores_7 < max_score) begin
+                    second_max_score <= other_scores_7;
+                end
+                // Compute result in next stage
+                stage <= 3'd0; // Will move to next logic
+                // Actually need separate stage for calculation
+                processing <= 1'b0; // Temporarily stop, but we need calculation
+            end
+            
+            default: begin
+                stage <= 3'd0;
+                processing <= 1'b0;
+            end
+        endcase
+    end
+end
+
+// Separate calculation logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        guarantee_matches <= 32'd0;
+        done <= 1'b0;
+    end else if (start && !processing && stage == 3'd0) begin
+        done <= 1'b0;
+    end else if (!processing && stage == 3'd7 && !done) begin
+        // Calculation stage
+        if (max_score == julia_score) begin
+            if (second_max_score > 0 && julia_score >= second_max_score)
+                guarantee_matches <= (julia_score - second_max_score) + count_max - 1;
+            else
+                guarantee_matches <= count_max - 1;
+        end else begin
+            if (second_max_score > 0 && julia_score >= second_max_score)
+                guarantee_matches <= (julia_score - max_score) + (julia_score - second_max_score) + count_max - 2;
+            else if (julia_score > max_score)
+                guarantee_matches <= julia_score - max_score;
+            else
+                guarantee_matches <= 32'd0;
+        end
+        done <= 1'b1;
+        stage <= 3'd0;
+    end else if (done) begin
+        done <= 1'b0;
+    end
+end
+
+endmodule

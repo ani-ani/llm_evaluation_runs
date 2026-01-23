@@ -1,0 +1,110 @@
+module bridge_controller (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] t0, t1, t2, t3, t4, t5, t6, t7,  // Boat arrival times (scaled to 8 boats)
+    input wire [2:0] num_boats,                          // Number of valid boats (1-8)
+    output reg [31:0] total_time,
+    output reg done
+);
+    // State machine states
+    localparam IDLE = 3'b000;
+    localparam READ = 3'b001;
+    localparam CHECK_GROUP = 3'b010;
+    localparam NEXT_BOAT = 3'b011;
+    localparam FINAL_COST = 3'b100;
+    localparam DONE_STATE = 3'b101;
+    
+    reg [2:0] state;
+    reg [2:0] i;                    // Current boat index
+    reg [31:0] accum_time;          // Accumulated total time
+    reg [15:0] group_start_time;    // First boat time in current group
+    reg [2:0] group_size;           // Number of boats in current group
+    reg [15:0] current_boat_time;   // Time of current boat
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            total_time <= 0;
+            done <= 0;
+            i <= 0;
+            accum_time <= 0;
+            group_start_time <= 0;
+            group_size <= 0;
+            current_boat_time <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        state <= READ;
+                        i <= 0;
+                        accum_time <= 0;
+                        group_size <= 0;
+                    end
+                end
+                
+                READ: begin
+                    // Read current boat time based on index
+                    case (i)
+                        0: current_boat_time <= t0;
+                        1: current_boat_time <= t1;
+                        2: current_boat_time <= t2;
+                        3: current_boat_time <= t3;
+                        4: current_boat_time <= t4;
+                        5: current_boat_time <= t5;
+                        6: current_boat_time <= t6;
+                        7: current_boat_time <= t7;
+                    endcase
+                    state <= CHECK_GROUP;
+                end
+                
+                CHECK_GROUP: begin
+                    if (group_size == 0) begin
+                        // Start first group
+                        group_start_time <= current_boat_time;
+                        group_size <= 1;
+                        state <= NEXT_BOAT;
+                    end else if (current_boat_time - group_start_time > 1800) begin
+                        // Current boat too far from group start, start new group
+                        accum_time <= accum_time + 120 + (20 * group_size);
+                        group_start_time <= current_boat_time;
+                        group_size <= 1;
+                        state <= NEXT_BOAT;
+                    end else begin
+                        // Continue current group
+                        group_size <= group_size + 1;
+                        state <= NEXT_BOAT;
+                    end
+                end
+                
+                NEXT_BOAT: begin
+                    i <= i + 1;
+                    if (i + 1 < num_boats) begin
+                        state <= READ;
+                    end else begin
+                        state <= FINAL_COST;
+                    end
+                end
+                
+                FINAL_COST: begin
+                    // Add cost of last group
+                    if (group_size > 0) begin
+                        total_time <= accum_time + 120 + (20 * group_size);
+                    end else begin
+                        total_time <= accum_time;
+                    end
+                    state <= DONE_STATE;
+                    done <= 1;
+                end
+                
+                DONE_STATE: begin
+                    if (!start) begin
+                        state <= IDLE;
+                        done <= 0;
+                    end
+                end
+            endcase
+        end
+    end
+endmodule

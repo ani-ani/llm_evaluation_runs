@@ -1,0 +1,179 @@
+Design a sequential Verilog module named 'card_game_winner' that determines if Alice wins the card game for three players.
+
+Problem Adaptation:
+Original problem involves N, M, K up to 300,000 cards. We scale this down to 8 cards per player to fit in hardware logic.
+Game Rules:
+1. Three players: Alice (A), Bob (B), Charlie (C).
+2. Alice starts.
+3. Each has a deck of cards (sequences of 'a', 'b', 'c').
+4. In a turn, the player discards the top card of their deck.
+5. The letter on the discarded card determines the next player ('a' -> Alice, 'b' -> Bob, 'c' -> Charlie).
+6. If a player has no cards left when it is their turn, they win.
+
+Module Interface:
+The module takes the initial deck configurations as inputs and outputs 1 if Alice wins, 0 otherwise.
+
+Inputs:
+input clk: Clock signal
+input rst_n: Active-low reset
+input start: Start the game simulation
+input [2:0] alice_deck [0:7]: Alice's 8 cards, each 3 bits ('a'=0, 'b'=1, 'c'=2)
+input [2:0] bob_deck [0:7]: Bob's 8 cards, each 3 bits
+input [2:0] charlie_deck [0:7]: Charlie's 8 cards, each 3 bits
+input [2:0] len_a: Number of cards in Alice's deck (0-8)
+input [2:0] len_b: Number of cards in Bob's deck (0-8)
+input [2:0] len_c: Number of cards in Charlie's deck (0-8)
+
+Outputs:
+output reg result: 1 if Alice wins, 0 otherwise
+output reg done: High when the game result is determined
+
+Internal Logic:
+- Use a state machine with states: IDLE, CHECK_TURN, DISCARD, UPDATE_NEXT, WINNER_FOUND.
+- Maintain current pointers for each deck (indices).
+- Maintain current player state (2-bit register: 0=Alice, 1=Bob, 2=Charlie).
+- Latency: Allow up to 255 cycles (worst case 8+8+8 cards). Use a counter to prevent infinite loops.
+
+Behavioral Description:
+In IDLE, wait for start. In CHECK_TURN, check if current player's deck pointer equals their deck length. If so, they win. If current player is Alice (0), set result=1. If not, set result=0. Go to WINNER_FOUND.
+If deck not empty, go to DISCARD. Read card from deck[pointer]. Increment pointer.
+In UPDATE_NEXT, update current player based on card value (0->Alice, 1->Bob, 2->Charlie).
+Loop back to CHECK_TURN.
+
+Verilog Code:
+`timescale 1ns / 1ps
+
+module card_game_winner (
+    input clk,
+    input rst_n,
+    input start,
+    // Decks: 8 cards, 3 bits each. 
+    // We flatten arrays for portability if needed, but packed arrays are standard.
+    // Using packed array logic: logic [2:0] alice_deck [0:7]
+    input [2:0] alice_deck_0, alice_deck_1, alice_deck_2, alice_deck_3,
+    input [2:0] alice_deck_4, alice_deck_5, alice_deck_6, alice_deck_7,
+    input [2:0] bob_deck_0, bob_deck_1, bob_deck_2, bob_deck_3,
+    input [2:0] bob_deck_4, bob_deck_5, bob_deck_6, bob_deck_7,
+    input [2:0] charlie_deck_0, charlie_deck_1, charlie_deck_2, charlie_deck_3,
+    input [2:0] charlie_deck_4, charlie_deck_5, charlie_deck_6, charlie_deck_7,
+    input [2:0] len_a,
+    input [2:0] len_b,
+    input [2:0] len_c,
+    output reg result,
+    output reg done
+);
+
+    // Constants for players
+    localparam PL_A = 2'b00;
+    localparam PL_B = 2'b01;
+    localparam PL_C = 2'b10;
+
+    // State machine states
+    localparam IDLE = 3'b000;
+    localparam CHECK_TURN = 3'b001;
+    localparam DISCARD = 3'b010;
+    localparam UPDATE_NEXT = 3'b011;
+    localparam FINISH = 3'b100;
+
+    reg [2:0] state;
+    reg [2:0] current_player;
+    reg [2:0] ptr_a, ptr_b, ptr_c; // Pointers to next card
+    reg [2:0] current_card;
+    reg [7:0] cycle_counter; // Safety timeout
+
+    // Logic to read card values (Comb logic for current player)
+    wire [2:0] read_card_a, read_card_b, read_card_c;
+    assign read_card_a = (ptr_a == 0) ? alice_deck_0 : (ptr_a == 1) ? alice_deck_1 : (ptr_a == 2) ? alice_deck_2 : (ptr_a == 3) ? alice_deck_3 : (ptr_a == 4) ? alice_deck_4 : (ptr_a == 5) ? alice_deck_5 : (ptr_a == 6) ? alice_deck_6 : alice_deck_7;
+    assign read_card_b = (ptr_b == 0) ? bob_deck_0 : (ptr_b == 1) ? bob_deck_1 : (ptr_b == 2) ? bob_deck_2 : (ptr_b == 3) ? bob_deck_3 : (ptr_b == 4) ? bob_deck_4 : (ptr_b == 5) ? bob_deck_5 : (ptr_b == 6) ? bob_deck_6 : bob_deck_7;
+    assign read_card_c = (ptr_c == 0) ? charlie_deck_0 : (ptr_c == 1) ? charlie_deck_1 : (ptr_c == 2) ? charlie_deck_2 : (ptr_c == 3) ? charlie_deck_3 : (ptr_c == 4) ? charlie_deck_4 : (ptr_c == 5) ? charlie_deck_5 : (ptr_c == 6) ? charlie_deck_6 : charlie_deck_7;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 0;
+            done <= 0;
+            ptr_a <= 0;
+            ptr_b <= 0;
+            ptr_c <= 0;
+            current_player <= PL_A;
+            cycle_counter <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    ptr_a <= 0;
+                    ptr_b <= 0;
+                    ptr_c <= 0;
+                    current_player <= PL_A;
+                    cycle_counter <= 0;
+                    if (start) state <= CHECK_TURN;
+                end
+
+                CHECK_TURN: begin
+                    // Check if current player has run out of cards
+                    if (current_player == PL_A) begin
+                        if (ptr_a >= len_a) begin
+                            result <= 1; // Alice wins
+                            state <= FINISH;
+                        end else begin
+                            state <= DISCARD;
+                        end
+                    end else if (current_player == PL_B) begin
+                        if (ptr_b >= len_b) begin
+                            result <= 0; // Bob wins (Alice loses)
+                            state <= FINISH;
+                        end else begin
+                            state <= DISCARD;
+                        end
+                    end else if (current_player == PL_C) begin
+                        if (ptr_c >= len_c) begin
+                            result <= 0; // Charlie wins (Alice loses)
+                            state <= FINISH;
+                        end else begin
+                            state <= DISCARD;
+                        end
+                    end
+                    // Safety timeout to prevent infinite loops in simulation
+                    if (cycle_counter > 8'd200) begin
+                        state <= FINISH;
+                        result <= 0;
+                    end
+                end
+
+                DISCARD: begin
+                    cycle_counter <= cycle_counter + 1;
+                    // Read card value into current_card
+                    if (current_player == PL_A) begin
+                        current_card <= read_card_a;
+                    end else if (current_player == PL_B) begin
+                        current_card <= read_card_b;
+                    end else begin // PL_C
+                        current_card <= read_card_c;
+                    end
+                    state <= UPDATE_NEXT;
+                end
+
+                UPDATE_NEXT: begin
+                    // Increment pointer for the player who just discarded
+                    if (current_player == PL_A) ptr_a <= ptr_a + 1;
+                    else if (current_player == PL_B) ptr_b <= ptr_b + 1;
+                    else ptr_c <= ptr_c + 1;
+
+                    // Determine next player based on card read in previous state
+                    // 0 -> a -> Alice, 1 -> b -> Bob, 2 -> c -> Charlie
+                    if (current_card == 3'd0) current_player <= PL_A;
+                    else if (current_card == 3'd1) current_player <= PL_B;
+                    else current_player <= PL_C;
+
+                    state <= CHECK_TURN;
+                end
+
+                FINISH: begin
+                    done <= 1;
+                    // Wait for reset or idle
+                end
+            endcase
+        end
+    end
+
+endmodule

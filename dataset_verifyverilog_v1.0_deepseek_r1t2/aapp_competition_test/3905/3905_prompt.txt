@@ -1,0 +1,112 @@
+module minimize_shift(
+    input [1:0] n,           // Number of data centers (1-4)
+    input [1:0] m,           // Number of clients (1-4)
+    input [2:0] h,           // Hours in day (2-8)
+    input [11:0] u,          // Maintenance times: 4*3 bits
+    input [15:0] clients,    // Client pairs: 4*4 bits (4 clients, each 2 indices of 2 bits)
+    output reg [1:0] k,      // Minimum number of data centers to shift
+    output reg [7:0] list    // Output list (4*2 bits, 1-indexed data center indices)
+);
+
+    // Internal variables
+    reg [15:0] valid_mask;   // Validity for each subset mask
+    reg [1:0] size [15:0];   // Size (popcount) for each mask
+    reg [3:0] mask;          // Current subset mask
+    reg [2:0] u1, u2;        // Maintenance times for current client
+    reg [2:0] new_u1, new_u2; // New maintenance times after shift
+    integer i, j, idx, bit_count;
+    integer min_size;
+    reg [3:0] best_mask;
+    reg [2:0] count;
+    
+    // Helper function: Check if subset mask is valid
+    function automatic valid_subset;
+        input [3:0] mask;
+        input [1:0] n_val;
+        input [1:0] m_val;
+        input [2:0] h_val;
+        input [11:0] u_in;
+        input [15:0] clients_in;
+        integer c_idx;
+        reg [1:0] c1, c2;
+        reg [2:0] u1_val, u2_val;
+        reg [2:0] new1, new2;
+        begin
+            valid_subset = 1;
+            // Only consider bits up to n_val
+            for (c_idx = 0; c_idx < m_val; c_idx = c_idx + 1) begin
+                // Extract client pair indices
+                c1 = clients_in[c_idx*4 +: 2];
+                c2 = clients_in[c_idx*4+2 +: 2];
+                // Get maintenance times (each 3 bits)
+                u1_val = u_in[c1*3 +: 3];
+                u2_val = u_in[c2*3 +: 3];
+                // Apply shift if in mask
+                new1 = (mask[c1] ? (u1_val + 1) % h_val : u1_val);
+                new2 = (mask[c2] ? (u2_val + 1) % h_val : u2_val);
+                // Check constraint
+                if (new1 == new2) begin
+                    valid_subset = 0;
+                    return;
+                end
+            end
+        end
+    endfunction
+    
+    // Helper function: Count set bits
+    function automatic [1:0] popcount;
+        input [3:0] val;
+        integer b;
+        begin
+            popcount = 0;
+            for (b = 0; b < 4; b = b + 1)
+                if (val[b]) popcount = popcount + 1;
+        end
+    endfunction
+    
+    // Main combinational logic
+    always @(*) begin
+        // Initialize
+        for (i = 0; i < 16; i = i + 1) begin
+            valid_mask[i] = 0;
+            size[i] = 0;
+        end
+        min_size = 5;  // Larger than max possible (4)
+        best_mask = 0;
+        count = 0;
+        
+        // Evaluate all non-empty subsets (1-15)
+        for (mask = 1; mask < 16; mask = mask + 1) begin
+            // Skip masks with bits beyond n
+            if ((mask & ((1 << n) - 1)) != mask) continue;
+            
+            // Check validity
+            valid_mask[mask] = valid_subset(mask, n, m, h, u, clients);
+            size[mask] = popcount(mask);
+            
+            // Update best
+            if (valid_mask[mask] && size[mask] < min_size) begin
+                min_size = size[mask];
+                best_mask = mask;
+            end
+        end
+        
+        // Generate output
+        k = min_size[1:0];
+        list = 0;
+        
+        // Build list of indices (1-indexed)
+        for (i = 0; i < 4; i = i + 1) begin
+            if (best_mask[i]) begin
+                list[count*2 +: 2] = i + 1;  // 1-indexed
+                count = count + 1;
+            end
+        end
+        
+        // If no valid subset found (shouldn't happen), output 1 and first DC
+        if (min_size == 5) begin
+            k = 1;
+            list[1:0] = 1;
+        end
+    end
+endmodule

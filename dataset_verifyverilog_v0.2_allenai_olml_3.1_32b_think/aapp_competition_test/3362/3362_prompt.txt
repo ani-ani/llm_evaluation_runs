@@ -1,0 +1,64 @@
+Design a sequential Verilog module named 'lava_game' that computes if Elsa and her father can reach the goal tile simultaneously on a small map.
+
+The module implements a simplified pathfinding algorithm:
+- Map size: 8x8 grid (parameterizable)
+- Elsa can move in all directions within radius A (Euclidean distance)
+- Father can move only along axes (Manhattan distance within radius F)
+- Both start at 'S' and goal is 'G'
+- Tiles: 'W' (safe), 'B' (blocked), 'S' (start), 'G' (goal)
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] A // Elsa's step length (Q16.16 fixed-point)
+input [15:0] F // Father's step length (Q16.16 fixed-point)
+input [7:0] map_data // Map data input (8 bits per tile: 0=W, 1=B, 2=S, 3=G)
+input [2:0] map_index // Index for loading map data (0-63 for 8x8)
+
+Outputs:
+output reg [1:0] result // 0=NO WAY, 1=NO CHANCE, 2=GO FOR IT, 3=SUCCESS
+output reg done // High when computation complete
+
+Specification:
+- Use Q16.16 fixed-point format for distances
+- Load map data sequentially using map_index and map_data
+- After loading, compute path lengths using state machine
+- Elsa's reachable tiles: any tile within radius A using Euclidean distance
+- Father's reachable tiles: any tile within radius F using Manhattan distance
+- Use BFS-like state machine with bounded iterations (max 64 steps)
+- Use state machine states: IDLE, LOAD, ELSA_PROCESS, FATHER_PROCESS, COMPARE, DONE
+- Result valid 200-500 clock cycles after start (depending on map)
+
+Behavioral Description:
+1. IDLE: Wait for start signal
+2. LOAD: Read 64 map tiles (8x8 grid) into internal RAM using map_index
+3. ELSA_PROCESS: Compute Elsa's minimum steps to goal using BFS with Euclidean distance
+   - From S, find all reachable W/G tiles within radius A
+   - Mark as visited, continue from new tiles
+   - Count steps until G reached or no progress
+4. FATHER_PROCESS: Compute father's minimum steps to goal using BFS with Manhattan distance
+   - From S, find all reachable W/G tiles within radius F along axes
+   - Mark as visited, continue from new tiles
+   - Count steps until G reached or no progress
+5. COMPARE: Compare Elsa's steps vs father's steps
+   - If both reachable: compare step counts
+   - If equal: SUCCESS
+   - If Elsa < father: GO FOR IT
+   - If father < Elsa: NO CHANCE
+   - If neither reachable: NO WAY
+   - If only Elsa reachable: GO FOR IT
+   - If only father reachable: NO CHANCE
+6. DONE: Set result and done signal
+
+Distance Calculations:
+- Euclidean: sqrt(dx² + dy²) ≤ A, where values are Q16.16
+- Manhattan: |dx| + |dy| ≤ F, where values are Q16.16
+- Use integer arithmetic for Manhattan (multiply step by 65536)
+- For Euclidean, approximate sqrt or use squared comparison: dx²+dy² ≤ A²
+
+Tile Encoding:
+- 2'b00: W (white/safe)
+- 2'b01: B (black/lava) 
+- 2'b10: S (start)
+- 2'b11: G (goal)

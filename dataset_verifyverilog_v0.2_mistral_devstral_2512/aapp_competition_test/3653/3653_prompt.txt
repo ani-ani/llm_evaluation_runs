@@ -1,0 +1,138 @@
+Design a sequential Verilog module named 'dog_chain_solver' that calculates the minimum integer chain length (radius) required for a dog tied at (0,0) to cover at least L square meters, given a wall defined by points (x1,y1) and (x2,y2). The wall restricts the dog's movement to one side, creating a circular sector coverage area.
+
+The module must use fixed-point arithmetic for geometric calculations:
+- Use Q16.16 format (16 integer bits, 16 fractional bits) for intermediate calculations
+- Input coordinates are 16-bit integers
+- Input L (area) is 16-bit integer
+- Output R (radius) is 16-bit integer (whole meters)
+
+The algorithm should:
+1. Compute distance d from origin to the infinite wall line defined by the two points
+2. If the wall passes through origin (d=0), the dog is restricted to a half-plane
+3. For d > 0, the accessible area is a circular sector where the angle depends on d
+4. Calculate the required radius R using binary search (or iterative search) over integer radii 1 to 256
+5. The accessible area formula for d > 0 is:
+   - If R <= d: Full circle (area = pi * R^2)
+   - If R > d: Circular segment/sector cut by the wall
+   - For the wall being a line, the area is effectively half the circle if the wall passes through origin, or a segment of the circle for d < R
+   - Actually, for a wall defined by a line, the accessible area is the area of the circle on one side of the line.
+   - Simplified: The problem asks for the area on *one side* of the wall. Since the wall is infinite, the accessible area is the area of the circle on the correct side.
+   - If the wall is at distance d from origin, the area of the circle on the 'safe' side is:
+     If d >= R: Full circle (pi * R^2)
+     If d < R: Area = R^2 * acos(d/R) - d * sqrt(R^2 - d^2) (Capped segment) + (if wall passes through origin, area is half)
+     Let's use the specific case: The wall is a line. The safe side is one half-plane.
+     Area = (pi * R^2) / 2 (if wall passes through origin)
+     If wall is at distance d from origin:
+       Area = R^2 * acos(d/R) - d * sqrt(R^2 - d^2) + (pi * R^2) / 2? No, this depends on which side.
+       Let's stick to the geometry: Wall is a line. Safe side is one side.
+       If wall passes through origin: Area = pi*R^2 / 2.
+       If wall is at distance d > 0 from origin: Area is the part of the circle NOT cut by the wall, effectively.
+       Actually, the problem states 'on one side of the wall'.
+       So if the wall is a line, the area is the area of the circle in the half-plane.
+       If the distance from origin to line is d:
+         If d >= R: Full circle area (pi*R^2) is accessible (the wall is outside the circle). Wait, if the wall is outside, the dog can move in a full circle. But the problem says 'one side'. If the wall is outside, is the whole circle on one side? Yes, if the wall is a line, the circle is either fully on one side or cut.
+         If the wall line does not intersect the circle (d > R), the circle is entirely on one side. Area = pi * R^2.
+         If the wall line intersects the circle (d < R):
+           The area of the circle on one side of the line is:
+           Area = (pi * R^2) / 2 - d * sqrt(R^2 - d^2) + R^2 * acos(d/R). Wait, check formula.
+           The area of the segment cut off is: R^2 * acos(d/R) - d * sqrt(R^2 - d^2).
+           So area on the *other* side (larger part) is pi*R^2 - segment.
+           But we want the area on 'one side'. It implies the area available to the dog.
+           The wall blocks movement. The dog is on one side.
+           So if the wall cuts the circle, the dog is restricted to the part of the circle on its side.
+           That area is exactly the Segment Area formula if the origin is 'behind' the wall, or the rest of the circle if the origin is 'in front' of the wall.
+           Since the pole (0,0) is on the lawn side, and the wall is the boundary:
+           If distance d = 0: Area = pi*R^2 / 2.
+           If distance d > 0: The origin is distance d from the wall. The wall is the line tangent to a circle of radius d.
+           The dog is on the side of the wall away from the origin's projection? No, the origin is the pole. The pole is on the lawn side.
+           So the wall is at distance d from origin. The dog is on the side of the wall containing the origin? No, usually the wall blocks, so the dog is on the side NOT containing the origin if the wall is a fence? Wait, 'On one side of the wall... Ellen wants a lawn'.
+           Let's assume the pole (0,0) is on the lawn side. So the safe area is the intersection of the circle (radius R) and the half-plane containing (0,0) defined by the wall line.
+           Distance from origin to line is d.
+           If d >= R: The circle is entirely within the half-plane (since the line is at distance d, and the circle extends distance R, and the origin is inside). So Area = pi * R^2.
+           If d < R: The line cuts the circle. The area of the intersection of the circle and the half-plane is:
+             Area = (pi * R^2) / 2 + d * sqrt(R^2 - d^2) + R^2 * asin(d/R) ... No.
+             Standard formula for area of circle segment defined by chord distance 'a' from center (where a=d):
+             Area of segment = R^2 * acos(d/R) - d * sqrt(R^2 - d^2).
+             This is the area of the small segment cut off.
+             Since the pole is at distance d from the wall, and the wall blocks the other side, the dog has the LARGE part of the circle (unless d is very small? No, the wall cuts the circle. The safe side is the half-plane containing the origin. This usually results in the larger segment unless the origin is very far outside, but here origin is inside the safe region).
+             Wait, if the origin is distance d from the line, the chord is at distance d from the center.
+             The area of the circle on the side of the line containing the center is:
+             Area = (pi * R^2) - (Segment Area)
+             Actually, let's re-read: 'Tom the Straight Builder... built a wall... On one side of the wall Tom's wife Ellen... wants to make a perfect lawn... William... can not cross the wall... tie William up... to a pole at (0,0)... minimize the area he can cover while still being able to cover the whole lawn'.
+             This implies the lawn is the area the dog CAN cover. The dog is tied to (0,0). The wall blocks part of the circle.
+             So the available area is the area of the circle of radius R, minus the part blocked by the wall.
+             The wall is a line. The distance from (0,0) to the line is d.
+             If d >= R: The wall is outside the circle (or tangent). The dog has full circle. Area = pi*R^2.
+             If d < R: The wall cuts the circle. The blocked part is the segment on the other side of the wall.
+             The blocked area is the small segment (or the large one?)
+             If (0,0) is on the lawn side, and the wall is the boundary, then the line separates the plane. (0,0) is on one side. The circle is centered at (0,0).
+             The blocked area is the part of the circle on the *other* side of the wall line.
+             Since (0,0) is distance d from the line, the chord is at distance d.
+             The area of the circle on the opposite side of the line from the center is exactly the standard segment area:
+             Area_blocked = R^2 * acos(d/R) - d * sqrt(R^2 - d^2).
+             So Area_accessible = pi * R^2 - Area_blocked.
+             
+             Let's verify with d=0: Area_blocked = R^2 * acos(0) - 0 = R^2 * (pi/2) = pi*R^2/2.
+             Area_accessible = pi*R^2 - pi*R^2/2 = pi*R^2/2. Correct.
+             
+             Let's verify with d -> R: Area_blocked -> 0. Area_accessible -> pi*R^2. Correct.
+             
+             So the formula is:
+             If d >= R: Area = pi * R^2
+             If d < R: Area = pi * R^2 - (R^2 * acos(d/R) - d * sqrt(R^2 - d^2))
+                        = R^2 * (pi - acos(d/R)) + d * sqrt(R^2 - d^2)
+                        Note: pi - acos(x) = acos(-x)
+                        So Area = R^2 * acos(-d/R) + d * sqrt(R^2 - d^2)
+
+The module should implement a search for the smallest integer R (1 to 256) that satisfies Area >= L.
+
+Inputs:
+input clk // clock
+input rst_n // active-low reset
+input start // start computation
+input signed [15:0] x1, y1, x2, y2 // wall points
+input [15:0] L // required area (integer)
+
+Outputs:
+output reg [15:0] R_result // minimum radius in whole meters
+output reg done // high when computation complete
+
+Internal Logic:
+- Use a state machine: IDLE, CALC_DIST, SEARCH_LOOP, CALC_AREA, CHECK_DONE, FINISHED
+- Implement sqrt and acos functions using iterative methods or lookup tables (scaled for Q16.16).
+- Distance d is calculated from line (x1,y1)-(x2,y2) to (0,0).
+  Formula: d = |(y2-y1)x0 - (x2-x1)y0 + x2*y1 - y2*x1| / sqrt((y2-y1)^2 + (x2-x1)^2)
+  Since x0=0, y0=0: d = |x2*y1 - y2*x1| / sqrt((y2-y1)^2 + (x2-x1)^2)
+- Use Q16.16 for d, R_fixed, intermediate calculations.
+- R_result is integer.
+- Search R from 1 upwards or use binary search.
+- L is integer, compare with Area (also need to convert Area to integer or compare carefully).
+
+Latency: Approx 500-1000 cycles depending on iteration depth for sqrt/acos and search loop.
+
+Constraints:
+- Input coordinates are integers in [-10000, 10000]
+- L is integer in [1, 10000]
+- Output R is integer, expected <= 256 based on L <= 10000 (since pi*256^2 ~ 205k).
+- Implement multiplication of Q16.16 numbers (truncating upper bits carefully to fit 32-bit intermediate).
+- Implement sqrt using Newton-Raphson or simple bit-by-bit (bisection).
+- Implement acos(x) for x in [-1, 1]. Since x = d/R or -d/R. Note: x might be negative. acos(-x) = pi - acos(x). Use cos lookup or polynomial approximation. For small inputs, we can approximate acos(x) or use a small lookup table (e.g., 64 entries) for cos values.
+- Since R is small (<=256) and L is small, we can simplify acos. The critical values for d/R are near 0 to 1.
+- To save hardware, we can use the polynomial approximation: acos(x) approx pi/2 - x - x^3/6 ... for x near 0? No, better to use a small ROM.
+- Given the scale, we can also pre-calculate the Area for specific R and d? No, d is variable.
+- Let's assume we implement sqrt and a simplified atan2/acosh or just a core 'area calculator' unit.
+- Actually, for L=314, R=15. For L=4, R=2. The math is manageable.
+- We can implement a simple CORDIC for sqrt and atan (acos).
+
+Spec simplified for HDL generation:
+- Fixed point Q16.16.
+- State machine: IDLE, CALC_D_NOM, CALC_D_DENOM, CALC_D, INIT_SEARCH, CHECK, CALC_AREA_R_SQ, CALC_AREA_ACOS, CALC_AREA_SQRT, UPDATE, DONE.
+- Use loops with counters for iterative math.
+- Assume standard libraries are not available. Implement from scratch.
+- Limit R search to 300.
+- Limit acos calculation to reasonable accuracy (e.g., 12 bits fraction).
+- The area calculation requires: R^2, d/R, acos(d/R), sqrt(R^2 - d^2).
+- All in Q16.16.
+- Compare Area (Q16.16) with L (shifted to Q16.16).
+
+Testbench will provide inputs and check if R matches expected output.

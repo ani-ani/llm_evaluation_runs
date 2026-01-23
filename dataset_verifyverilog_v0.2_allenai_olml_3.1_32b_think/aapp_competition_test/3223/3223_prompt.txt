@@ -1,0 +1,97 @@
+Design a sequential Verilog module named 'forest_constructor' that constructs a forest (acyclic graph) with specified vertex degrees for V <= 8 vertices.
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] V // number of vertices (0-8)
+input [7:0] target_degree [0:7] // array of target degrees for vertices 0-7
+Outputs:
+output reg valid // high if forest is possible
+output reg [3:0] edge_u [0:13] // array of edge start vertices (max 14 edges for 8 nodes)
+output reg [3:0] edge_v [0:13] // array of edge end vertices
+output reg [4:0] edge_count // number of edges found
+output reg done // high when computation complete
+
+Behavior:
+The module uses a state machine with states: IDLE, CHECK_SUM, CHECK_ROOT, BUILD_EDGES, FINISH.
+
+1. IDLE: Wait for start signal. On start, reset counters and go to CHECK_SUM.
+2. CHECK_SUM: Calculate sum of target degrees and count vertices with degree > 0.
+   - If sum is odd, set valid=0, go to FINISH.
+   - If V==0, set valid=1, edge_count=0, go to FINISH.
+   - If V==1, valid=1 (if degree[0]==0) or 0 (else), go to FINISH.
+   - Otherwise, check: if sum > 2*(V-1), valid=0, go to FINISH.
+   - If sum == 0, valid=1, edge_count=0, go to FINISH.
+   - If valid check passes, go to CHECK_ROOT.
+3. CHECK_ROOT: Identify a vertex to act as the root/anchor. Vertex 1 (index 1 in 0-based array) is used as the center if it has degree > 0. If vertex 1 has degree 0 but other vertices have degree > 0, we must ensure we can connect the graph. The algorithm assumes we can connect to a root. If valid vertices exist but vertex 1 has degree 0, we effectively pick another node as root, but for this simplified spec, we enforce vertex 1 (node 2 in 1-based) to be the center if V>1 and sum>0. Actually, let's stick to the logic: We need to connect all degree>0 nodes. The logic will be: 
+   - We treat 'root' as the node we connect to. If vertex 0 (node 1) has degree > 0, it can be the root. If vertex 0 has degree 0, we might need to connect others. 
+   - Let's implement a standard algorithm: 
+     A. Identify the vertex with the highest degree (if tie, lowest index). Let this be the center.
+     B. If the highest degree is 1 and there are 2 nodes, connect them.
+     C. General strategy: Use a temporary degree array (working degrees). 
+     - Phase 1: Connect all nodes with working degree > 1 to a selected root node (e.g., the one with max degree). Decrement their degree and the root's degree. Store edges.
+     - Phase 2: Collect all nodes with remaining degree 1. Chain them linearly or attach to the last modified node.
+   - To fit in hardware, we use a simple greedy approach without sorting:
+     1. Create a 'work_degree' copy of target_degree.
+     2. Find a node with degree > 0 to be the initial connection point (root).
+     3. Iterate through nodes: if node != root and work_degree[i] > 1:
+        Connect node i to root. Decrement work_degree[i] and work_degree[root].
+     4. After Phase 3, collect all nodes with work_degree == 1 into a list.
+     5. If the number of nodes with degree 1 is odd, it's impossible (set valid=0, go to FINISH).
+     6. Chain them: Connect node list[0] to list[1], list[1] to list[2], ..., list[k-1] to root (or just a linear chain, but linear chain is safer for acyclic). Actually, if we attach all degree-1 nodes to the 'root' (which now has some remaining capacity), we might overload root. The standard approach for this specific problem (often seen in competitive programming) is to pair up the degree-1 nodes. 
+     - Let's refine: 
+       Phase A: Find root (vertex with max degree). 
+       Phase B: Iterate i from 0 to V-1. If i != root and work_degree[i] > 0:
+         While work_degree[i] > 1:
+           Connect i to root. Decrement work_degree[i], work_degree[root].
+           If work_degree[root] becomes 0 or less (before i is finished), impossible.
+       Phase C: Now all nodes have degree 0 or 1. Collect all nodes with degree 1.
+       Let count = number of nodes with degree 1. 
+       If count is odd -> Impossible.
+       If count == 0 -> Done.
+       Else: Connect pairs. 
+       - If root is in the list, connect root to list[0], list[1] to list[2], etc.
+       - If root is not in the list (root degree became 0), connect list[0] to list[1], list[2] to list[3], etc.
+       - If there is only 1 node left (count==1), impossible (unless root has capacity, but root is 0).
+     - This logic is complex for a simple state machine. 
+     
+     SIMPLIFIED ALGORITHM FOR VERILOG (8 nodes max):
+     1. Copy degrees to working array.
+     2. Check initial validity (sum even, sum <= 2V-2). If V==0 or V==1, handle.
+     3. State CHECK_ROOT: Find index of vertex with max degree. If no degree > 0, valid=1, done. Let this be 'root'.
+     4. State BUILD_EDGES:
+        - Substate 1: Loop through i=0..7. If i != root and work_degree[i] > 1:
+          While work_degree[i] > 1:
+            If work_degree[root] == 0 -> Impossible.
+            Add edge (root, i). Decrement work_degree[i], work_degree[root].
+            Store edge in output arrays.
+        - Substate 2: Collect list of vertices with work_degree == 1.
+        - Substate 3: Connect these vertices. 
+          If the list length is odd -> Impossible.
+          If list length == 0 -> Done.
+          Else: 
+            If work_degree[root] == 1:
+              Connect root to list[0]. 
+              For k from 1 to len-1 step 2: Connect list[k] to list[k+1].
+            Else:
+              For k from 0 to len-1 step 2: Connect list[k] to list[k+1].
+     5. State FINISH: Assert done.
+
+Timing: 
+- CHECK_SUM: 1 cycle (logic)
+- CHECK_ROOT: 1-2 cycles (search loop)
+- BUILD_EDGES Phase 1: 1 cycle per vertex (max 8)
+- BUILD_EDGES Phase 2 (collect): 1 cycle per vertex (max 8)
+- BUILD_EDGES Phase 3 (link): 1 cycle per edge (max 4)
+Total latency: ~20 cycles.
+
+Use internal registers for work_degree [0:7], list [0:7], list_len, root_index, loop counters.
+Use a state variable with states: IDLE, CHECK, BUILD_ROOT, BUILD_LOOP, COLLECT, LINK, DONE.
+
+Detailed Signal Widths:
+V: 4 bits (0-8)
+degree: 8 bits (0-100)
+work_degree: 8 bits array [0:7]
+Edge indices: 4 bits (0-7)
+Edge count: 5 bits (0-14)
+State: 3 bits

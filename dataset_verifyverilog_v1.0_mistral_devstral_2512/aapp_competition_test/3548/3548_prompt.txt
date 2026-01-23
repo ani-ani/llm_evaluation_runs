@@ -1,0 +1,95 @@
+module drink_partition_counter #(
+    parameter MAX_N = 8,
+    parameter MAX_PAIRS = 8,
+    parameter MOD = 1000000007
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] N,
+    input wire [3:0] P,
+    input wire [8*MAX_PAIRS-1:0] pairs_packed,
+    output reg [15:0] result,
+    output reg done
+);
+
+    // Combinational logic to compute result
+    reg [15:0] result_comb;
+    always_comb begin
+        // Unpack pairs_packed into 2D array
+        reg [7:0] pairs [0:MAX_PAIRS-1];
+        integer i, j, k;
+        reg [3:0] a, b;
+        reg [3:0] max_bad [0:MAX_N];
+        reg [3:0] left_limit [0:MAX_N];
+        reg [15:0] dp [0:MAX_N];
+        reg [15:0] sum;
+
+        // Unpack
+        for (i = 0; i < MAX_PAIRS; i = i + 1) begin
+            pairs[i] = pairs_packed[8*i +: 8];
+        end
+
+        // Initialize max_bad
+        for (i = 1; i <= MAX_N; i = i + 1) begin
+            max_bad[i] = 0;
+        end
+
+        // Process each pair up to P
+        for (k = 0; k < MAX_PAIRS; k = k + 1) begin
+            if (k < P) begin
+                a = pairs[k][3:0];
+                b = pairs[k][7:4];
+                // Check validity
+                if (a != 0 && b != 0 && a <= N && b <= N && a != b) begin
+                    if (a < b) begin
+                        if (a > max_bad[b])
+                            max_bad[b] = a;
+                    end else if (b < a) begin
+                        if (b > max_bad[a])
+                            max_bad[a] = b;
+                    end
+                end
+            end
+        end
+
+        // Compute left_limit
+        for (i = 1; i <= N; i = i + 1) begin
+            if (i == 1)
+                left_limit[i] = max_bad[1] + 1;
+            else begin
+                left_limit[i] = max_bad[i] + 1;
+                if (left_limit[i-1] > left_limit[i])
+                    left_limit[i] = left_limit[i-1];
+            end
+        end
+
+        // Compute dp
+        dp[0] = 1;
+        for (i = 1; i <= N; i = i + 1) begin
+            sum = 0;
+            for (j = left_limit[i] - 1; j <= i - 1; j = j + 1) begin
+                sum = sum + dp[j];
+            end
+            dp[i] = sum % MOD;
+        end
+
+        result_comb = dp[N];
+    end
+
+    // Sequential block for done and result latching
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            result <= 0;
+            done <= 0;
+        end else begin
+            if (start) begin
+                result <= result_comb;
+                done <= 1;
+            end else begin
+                done <= 0;
+            end
+        end
+    end
+
+endmodule

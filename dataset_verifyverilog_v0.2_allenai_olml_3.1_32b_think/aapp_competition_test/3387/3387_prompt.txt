@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'bandwidth_allocator' that implements optimal bandwidth allocation for cat picture downloads.
+
+The module handles up to 8 cat species with constraints and demand ratios, computing bandwidth allocations that minimize the sum of squared relative deviations from fair shares.
+
+Algorithm Adaptation:
+1. Compute fair share y_i = t * d_i / sum(d_j) for each species
+2. For each species, check if fair share is below minimum (set to a_i), above maximum (set to b_i), or in range
+3. Calculate total allocated bandwidth and remaining bandwidth to distribute
+4. Distribute remaining bandwidth proportionally among species that are in the middle range
+5. Output final allocations
+
+For fixed-point arithmetic, use Q16.16 format (16 integer bits, 16 fractional bits). Values are represented as integer = floor(real_value * 65536).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_species // number of species (1-8)
+input [31:0] total_bandwidth // total bandwidth t in Q16.16
+
+// Arrays for species constraints (up to 8 species)
+input [7:0][31:0] a_min // minimum bandwidth [i] in Q16.16
+input [7:0][31:0] b_max // maximum bandwidth [i] in Q16.16
+input [7:0][31:0] demand // demand d_i [i] in Q16.16 (always positive)
+
+Outputs:
+output reg [7:0][31:0] x_alloc // final allocation for each species in Q16.16
+output reg done // high when computation complete
+
+Latency: Maximum 256 clock cycles after start is asserted.
+
+Behavior:
+- Use state machine with states: IDLE, CALC_SUM, CALC_FAIR, CLASSIFY, ALLOCATE, DONE
+- IDLE: Wait for start signal
+- CALC_SUM: Compute sum of all demand values
+- CALC_FAIR: Compute fair share y_i for each species
+- CLASSIFY: Classify each species as (below_min, at_min, in_range, at_max, above_max)
+- ALLOCATE: First set boundary values, calculate remaining bandwidth, distribute proportionally among in_range species
+- DONE: Set done signal and output results
+
+For division operations in Q16.16 format:
+- To divide A by B: (A << 16) / B
+- Or use iterative subtraction for hardware-friendly implementation
+
+For proportional distribution:
+- Sum the demands of in_range species
+- For each in_range species: x_i = a_i + (remaining * d_i / sum_in_range_demands)
+
+Note: All arithmetic operations must maintain Q16.16 precision. Intermediate calculations may need wider registers (e.g., 64-bit) to prevent overflow before final normalization back to 32-bit Q16.16.

@@ -1,0 +1,94 @@
+module elementwise_division #(
+    parameter NUM_ELEMENTS = 4,
+    parameter DATA_WIDTH = 8,
+    parameter RESULT_WIDTH = 8
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Input arrays - individual ports
+    input wire [DATA_WIDTH-1:0] dividend_0,
+    input wire [DATA_WIDTH-1:0] dividend_1,
+    input wire [DATA_WIDTH-1:0] dividend_2,
+    input wire [DATA_WIDTH-1:0] dividend_3,
+    
+    input wire [DATA_WIDTH-1:0] divisor_0,
+    input wire [DATA_WIDTH-1:0] divisor_1,
+    input wire [DATA_WIDTH-1:0] divisor_2,
+    input wire [DATA_WIDTH-1:0] divisor_3,
+    
+    // Output arrays - individual ports
+    output reg [RESULT_WIDTH-1:0] result_0,
+    output reg [RESULT_WIDTH-1:0] result_1,
+    output reg [RESULT_WIDTH-1:0] result_2,
+    output reg [RESULT_WIDTH-1:0] result_3,
+    
+    output reg done
+);
+
+    // State machine
+    localparam IDLE = 2'b00;
+    localparam COMPUTE = 2'b01;
+    localparam FINISH = 2'b10;
+    
+    reg [1:0] state;
+    reg [1:0] index;
+    
+    // Combinational division results
+    wire [RESULT_WIDTH-1:0] div_result [0:3];
+    
+    // Division units (combinational)
+    assign div_result[0] = (divisor_0 != 0) ? dividend_0 / divisor_0 : 0;
+    assign div_result[1] = (divisor_1 != 0) ? dividend_1 / divisor_1 : 0;
+    assign div_result[2] = (divisor_2 != 0) ? dividend_2 / divisor_2 : 0;
+    assign div_result[3] = (divisor_3 != 0) ? dividend_3 / divisor_3 : 0;
+    
+    // Sequential logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            index <= 2'b00;
+            done <= 1'b0;
+            result_0 <= 0;
+            result_1 <= 0;
+            result_2 <= 0;
+            result_3 <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= COMPUTE;
+                        index <= 2'b00;
+                    end
+                end
+                
+                COMPUTE: begin
+                    // Store results sequentially
+                    case (index)
+                        2'b00: result_0 <= div_result[0];
+                        2'b01: result_1 <= div_result[1];
+                        2'b10: result_2 <= div_result[2];
+                        2'b11: result_3 <= div_result[3];
+                    endcase
+                    
+                    if (index == 2'b11) begin
+                        state <= FINISH;
+                        index <= 2'b00;
+                    end else begin
+                        index <= index + 1'b1;
+                    end
+                end
+                
+                FINISH: begin
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

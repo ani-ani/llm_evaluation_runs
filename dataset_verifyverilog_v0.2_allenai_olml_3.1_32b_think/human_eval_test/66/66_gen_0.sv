@@ -1,0 +1,3 @@
+module digitSum (input [7:0] char0, char1, char2, char3, char4, char5, char6, char7, output [15:0] sum);
+assign sum = (char0 >=65 && char0 <=90 ? char0 :0) + (char1 >=65 && char1 <=90 ? char1 :0) + (char2 >=65 && char2 <=90 ? char2 :0) + (char3 >=65 && char3 <=90 ? char3 :0) + (char4 >=65 && char4 <=90 ? char4 :0) + (char5 >=65 && char5 <=90 ? char5 :0) + (char6 >=65 && char6 <=90 ? char6 :0) + (char7 >=65 && char7 <=90 ? char7 :0);
+endmodule

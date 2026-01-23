@@ -1,0 +1,123 @@
+module array_append (
+    // Clock and reset
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Input arrays (fixed size: 8 elements, 8-bit each)
+    input wire [7:0] tuple_arr [0:7],
+    input wire [7:0] list_arr [0:7],
+    
+    // Length indicators (how many valid elements in each array)
+    input wire [3:0] tuple_len,  // 1-8
+    input wire [3:0] list_len,   // 1-8
+    
+    // Output array (max 16 elements for concatenation)
+    output reg [7:0] result_arr [0:15],
+    
+    // Status signals
+    output reg done
+);
+
+    // Maximum sizes
+    localparam MAX_TUPLE_LEN = 8;
+    localparam MAX_LIST_LEN = 8;
+    localparam MAX_RESULT_LEN = 16;
+    
+    // State machine states
+    reg [4:0] state;
+    reg [4:0] next_state;
+    reg [4:0] idx;
+    
+    // State definitions
+    localparam [4:0] IDLE = 5'd0;
+    localparam [4:0] COPY_TUPLE = 5'd1;
+    localparam [4:0] COPY_LIST = 5'd2;
+    localparam [4:0] FINISH = 5'd3;
+    
+    // State transition logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            idx <= 5'd0;
+            done <= 1'b0;
+        end else begin
+            state <= next_state;
+            
+            // Clear done when starting new operation
+            if (start && state == IDLE) begin
+                done <= 1'b0;
+                idx <= 5'd0;
+            end
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    next_state = COPY_TUPLE;
+                end
+            end
+            
+            COPY_TUPLE: begin
+                if (idx >= tuple_len) begin
+                    next_state = COPY_LIST;
+                end
+            end
+            
+            COPY_LIST: begin
+                if (idx >= tuple_len + list_len) begin
+                    next_state = FINISH;
+                end
+            end
+            
+            FINISH: begin
+                next_state = IDLE;
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+    
+    // Output logic
+    integer i;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset output array
+            for (i = 0; i < 16; i = i + 1) begin
+                result_arr[i] <= 8'd0;
+            end
+            idx <= 5'd0;
+        end else begin
+            case (state)
+                COPY_TUPLE: begin
+                    if (idx < tuple_len && idx < MAX_TUPLE_LEN) begin
+                        result_arr[idx] <= tuple_arr[idx];
+                        idx <= idx + 5'd1;
+                    end
+                end
+                
+                COPY_LIST: begin
+                    if (idx < tuple_len + list_len && idx < MAX_RESULT_LEN) begin
+                        result_arr[idx] <= list_arr[idx - tuple_len];
+                        idx <= idx + 5'd1;
+                    end
+                end
+                
+                FINISH: begin
+                    done <= 1'b1;
+                    idx <= 5'd0;
+                end
+                
+                default: begin
+                    // Maintain current values
+                end
+            endcase
+        end
+    end
+
+endmodule

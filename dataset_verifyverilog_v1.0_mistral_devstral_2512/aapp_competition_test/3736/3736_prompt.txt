@@ -1,0 +1,108 @@
+module mirror_checker(
+    input clk,
+    input rst_n,
+    input start,
+    input [127:0] string_in,   // 16 characters packed: char0 at [7:0], char1 at [15:8], ... char15 at [127:120]
+    input [4:0] len,           // actual string length (1-16)
+    output reg result,
+    output reg done
+);
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam CHECK = 2'b01;
+    localparam DONE = 2'b10;
+    
+    // Registers
+    reg [1:0] state, next_state;
+    reg [3:0] i, next_i;         // loop counter (0-15)
+    reg next_result;
+    
+    // Helper function to check if char is mirror-symmetric
+    function is_in_set;
+        input [7:0] char;
+        begin
+            case(char)
+                8'h41, 8'h48, 8'h49, 8'h4D, 8'h4F, 
+                8'h54, 8'h55, 8'h56, 8'h57, 8'h58, 
+                8'h59: is_in_set = 1'b1;  // A,H,I,M,O,T,U,V,W,X,Y
+                default: is_in_set = 1'b0;
+            endcase
+        end
+    endfunction
+    
+    // Combinational next state logic
+    always @(*) begin
+        // Defaults
+        next_state = state;
+        next_i = i;
+        next_result = result;
+        next_done = 1'b0;
+        
+        case(state)
+            IDLE: begin
+                if(start) begin
+                    next_state = CHECK;
+                    next_i = 0;
+                    next_result = 1;  // Assume pass until fail
+                end
+            end
+            
+            CHECK: begin
+                // Compute half of (len-1) for comparison
+                if(i > ((len-1) >> 1)) begin
+                    // Finished all pairs without failure
+                    next_state = DONE;
+                    next_done = 1'b1;
+                end else begin
+                    // Extract characters
+                    char_i = string_in[i*8 +: 8];
+                    char_j = string_in[(len-1-i)*8 +: 8];
+                    
+                    // Check conditions
+                    if(!is_in_set(char_i)) begin
+                        next_result = 0;
+                        next_state = DONE;
+                        next_done = 1'b1;
+                    end else if(i != (len-1-i)) begin
+                        if(!is_in_set(char_j) || (char_i != char_j)) begin
+                            next_result = 0;
+                            next_state = DONE;
+                            next_done = 1'b1;
+                        end else begin
+                            next_i = i + 1;
+                        end
+                    end else begin
+                        // Middle character (i == j), already checked set condition
+                        next_i = i + 1;
+                    end
+                end
+            end
+            
+            DONE: begin
+                next_state = IDLE;
+                next_done = 1'b0;
+            end
+            
+            default: begin
+                next_state = IDLE;
+                next_i = 0;
+                next_result = 0;
+            end
+        endcase
+    end
+    
+    // Sequential logic
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            state <= IDLE;
+            i <= 0;
+            result <= 0;
+            done <= 0;
+        end else begin
+            state <= next_state;
+            i <= next_i;
+            result <= next_result;
+            done <= next_done;
+        end
+    end
+endmodule

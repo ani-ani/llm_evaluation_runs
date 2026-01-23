@@ -1,0 +1,75 @@
+Design a sequential Verilog module named 'line_intersection_counter' that counts the number of distinct intersection points between 4 line segments.
+
+The module processes 4 line segments defined by 16-bit signed coordinates (Q8.8 fixed-point format, range -16.0 to 16.0). Segments are stored in an internal ROM or loaded via input interface.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] x0, y0, x1, y1 // Coordinates for current segment being loaded
+input [1:0] segment_index // Index 0-3 for segment loading
+input load_enable // Enable loading of segment data
+
+Outputs:
+output reg [7:0] result // Number of distinct intersection points (0-6)
+output reg done // High when computation complete
+output reg error // High if infinite intersections detected (-1 case)
+
+Internal Registers:
+- Store 4 segments: each segment has 4 coordinates (x0, y0, x1, y1)
+- Each coordinate is 16-bit signed (Q8.8 format)
+
+Algorithm Specification:
+1. Load Phase: Accept 4 segments via input ports (sequence: segment_index 0,1,2,3)
+2. Process Phase: For each unique pair of segments (i,j where i < j):
+   - Check if segments are parallel: (dx1*dy2 == dx2*dy1)
+   - If parallel, check for overlap:
+     - Check if they are collinear: cross product of vector from p1 to p3 and vector p1p2 is zero
+     - If collinear, check if projection intervals overlap
+     - If overlap contains more than one point, set error=1 (infinite)
+     - If overlap is single point, count 1 intersection
+   - If not parallel, calculate intersection point:
+     - Use parametric equations or cross product method
+     - Use Q8.8 fixed-point arithmetic
+     - Check if intersection point lies within both segments (0 <= t <= 1 for both)
+     - If within bounds, count 1 intersection
+3. Deduplication: Track all intersection points (max 6 pairs). Compare calculated points to avoid duplicates.
+   - Since coordinates are Q8.8, store as 32-bit pairs (x concatenated with y)
+   - Compare against previously found points
+
+Fixed-Point Arithmetic:
+- Use Q8.8 format: value = real_value * 256
+- Multiplication: result = (a * b) >> 8 (use 32-bit intermediate)
+- Division: Use repeated subtraction or pre-computed lookup (limited range)
+- For intersection: cross products may need 32-bit intermediates
+
+State Machine States:
+- IDLE: Wait for start signal, load segments
+- LOAD_SEGMENTS: Wait for 4 segments to be loaded (segment_index 0-3)
+- PROCESS: Iterate through pairs (0,1), (0,2), (0,3), (1,2), (1,3), (2,3)
+- CHECK_PARALLEL: Calculate determinant
+- CHECK_OVERLAP: Handle parallel/collinear case
+- CALC_INTERSECTION: Calculate intersection point
+- VERIFY Bounds: Check if point lies on both segments
+- UPDATE_RESULT: Increment counter if new unique point
+- DONE: Set done=1
+
+Implementation Requirements:
+- Max 4 segments (hardcoded limit)
+- Max 6 intersection pairs
+- State machine with bounded states
+- Use combinational logic for calculations within each state
+- Result stored in 8-bit register
+- Error flag for infinite intersections
+
+Test Cases:
+- 3 segments forming triangle: 3 intersections
+- 3 segments all meeting at single point: 1 intersection
+- 2 segments sharing an endpoint: 1 intersection
+- 2 collinear segments overlapping: infinite (error flag)
+
+Note: Since this is a complex algorithm, simplify by:
+- Using 32-bit intermediate calculations
+- Fixed-point arithmetic for cross products
+- Pre-computing determinants and comparing to zero
+- Tracking found intersections in a small register file

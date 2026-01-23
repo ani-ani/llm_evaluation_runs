@@ -1,0 +1,103 @@
+module subset_sum_calculator #(
+    parameter MAX_N = 8,
+    parameter DATA_WIDTH = 32,
+    parameter MOD = 1000000007
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [DATA_WIDTH-1:0] arr [0:MAX_N-1],
+    input wire [3:0] len,
+    output reg [DATA_WIDTH-1:0] result,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 2'b00;
+localparam COMPUTE = 2'b01;
+localparam DONE = 2'b10;
+
+// Registers
+reg [1:0] state, next_state;
+reg [3:0] i, next_i;
+
+// Power lookup table: pow_minus_one[k] = (2^k - 1) % MOD for k = 0 to MAX_N
+reg [DATA_WIDTH-1:0] pow_minus_one [0:MAX_N];
+initial begin
+    pow_minus_one[0] = 32'd0;   // 2^0 - 1
+    pow_minus_one[1] = 32'd1;   // 2^1 - 1
+    pow_minus_one[2] = 32'd3;   // 2^2 - 1
+    pow_minus_one[3] = 32'd7;   // 2^3 - 1
+    pow_minus_one[4] = 32'd15;  // 2^4 - 1
+    pow_minus_one[5] = 32'd31;  // 2^5 - 1
+    pow_minus_one[6] = 32'd63;  // 2^6 - 1
+    pow_minus_one[7] = 32'd127; // 2^7 - 1
+    pow_minus_one[8] = 32'd255; // 2^8 - 1
+end
+
+// Combinational logic for term calculation (current gap contribution)
+wire [DATA_WIDTH-1:0] gap = (i < len - 1) ? (arr[i+1] - arr[i]) : 0;
+wire [DATA_WIDTH-1:0] left = (i < len - 1) ? pow_minus_one[i+1] : 0;
+wire [DATA_WIDTH-1:0] right = (i < len - 1) ? pow_minus_one[len-i-1] : 0;
+wire [63:0] term_mult1 = (gap % MOD) * (left % MOD);
+wire [63:0] term_mult2 = (term_mult1 % MOD) * (right % MOD);
+wire [DATA_WIDTH-1:0] term = term_mult2 % MOD;
+
+// State register
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        i <= 0;
+        result <= 0;
+    end else begin
+        state <= next_state;
+        i <= next_i;
+        result <= next_result;
+    end
+end
+
+// Next state and output logic
+always @(*) begin
+    next_state = state;
+    next_i = i;
+    next_result = result;
+    
+    case (state)
+        IDLE: begin
+            if (start) begin
+                next_state = COMPUTE;
+                next_i = 0;
+                next_result = 0;
+            end
+        end
+        
+        COMPUTE: begin
+            if (i < len - 1) begin
+                next_result = (result + term) % MOD;
+                next_i = i + 1;
+            end else begin
+                next_state = DONE;
+                next_i = 0;
+            end
+        end
+        
+        DONE: begin
+            if (!start) begin
+                next_state = IDLE;
+            end
+        end
+        
+        default: next_state = IDLE;
+    endcase
+end
+
+// Done output
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        done <= 0;
+    end else begin
+        done <= (state == DONE);
+    end
+end
+
+endmodule

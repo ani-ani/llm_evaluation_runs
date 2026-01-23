@@ -1,0 +1,72 @@
+Design a sequential Verilog module named 'dict_depth' that finds the maximum depth of a nested dictionary structure represented as a fixed-size tree.
+
+The module represents dictionaries as tree structures:
+- Each dictionary becomes a node
+- Key-value pairs where value is a dict create parent-child edges
+- Non-dict values are leaf nodes
+- Empty dicts are leaf nodes at current depth
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_nodes // total number of nodes in the tree (1-8)
+input [7:0] parent_mask // bitmask indicating which nodes have children: bit i=1 means node i is a dict
+input [7:0] parent_map_0 // child nodes of parent 0 (bit j=1 means node j is child of node 0)
+input [7:0] parent_map_1 // child nodes of parent 1 (bit j=1 means node j is child of node 1)
+input [7:0] parent_map_2 // child nodes of parent 2 (bit j=1 means node j is child of node 2)
+input [7:0] parent_map_3 // child nodes of parent 3 (bit j=1 means node j is child of node 3)
+input [7:0] parent_map_4 // child nodes of parent 4 (bit j=1 means node j is child of node 4)
+input [7:0] parent_map_5 // child nodes of parent 5 (bit j=1 means node j is child of node 5)
+input [7:0] parent_map_6 // child nodes of parent 6 (bit j=1 means node j is child of node 6)
+input [7:0] parent_map_7 // child nodes of parent 7 (bit j=1 means node j is child of node 7)
+
+Outputs:
+output reg [3:0] depth // maximum depth of the tree (0-8)
+output reg done // high when computation complete
+
+Specification:
+- Node 0 is always the root
+- Depth is counted as: root at level 1, its children at level 2, etc.
+- Empty dicts have depth 1
+- The module traverses the tree using BFS/DFS approach
+- Use state machine: IDLE, SETUP, PROCESSING, CALCULATING, DONE
+- Latency: Result valid 10-20 clock cycles after start (depends on tree size)
+
+State Machine Description:
+- IDLE: Wait for start signal
+- SETUP: Initialize traversal (queue setup)
+- PROCESSING: Process nodes level by level, tracking current depth
+- CALCULATING: Compute maximum depth from traversal results
+- DONE: Output complete, wait for reset
+
+Implementation Strategy:
+- Use internal registers to track current node and depth
+- Process tree breadth-first to find maximum depth
+- Maximum of 8 nodes allows for reasonable state space
+- Node 0 is always root with depth 1
+- Traverse all paths and keep maximum depth
+
+Example mapping:
+Test case 1: {'a':1, 'b': {'c': {'d': {}}}}
+- Nodes: 0(root) -> 1(b) -> 2(c) -> 3(d)
+- parent_mask = 4'b1110 (nodes 0,1,2 have children)
+- parent_map_0 = 8'h02 (node 1 is child of 0)
+- parent_map_1 = 8'h04 (node 2 is child of 1)
+- parent_map_2 = 8'h08 (node 3 is child of 2)
+- Expected depth: 4
+
+Test case 2: {'a':1, 'b': {'c':'python'}}
+- Nodes: 0(root) -> 1(b) -> 2(c)
+- parent_mask = 4'b0011 (nodes 0,1 have children)
+- parent_map_0 = 8'h02 (node 1 is child of 0)
+- parent_map_1 = 8'h04 (node 2 is child of 1)
+- Expected depth: 2
+
+Test case 3: {1: 'Sun', 2: {3: {4:'Mon'}}}
+- Nodes: 0(root) -> 1(2) -> 2(3) -> 3(4)
+- parent_mask = 4'b0111 (nodes 0,1,2 have children)
+- parent_map_0 = 8'h02 (node 1 is child of 0)
+- parent_map_1 = 8'h04 (node 2 is child of 1)
+- parent_map_2 = 8'h08 (node 3 is child of 2)
+- Expected depth: 3

@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'average_solver' that solves the paper averaging problem using exhaustive search.
+
+PROBLEM SPECIFICATION:
+Given a target average P (1.0 to 5.0) with precision to 3 decimal places, find minimum number of papers (1-5) such that their average equals P exactly. Search up to 16 papers total.
+
+MODULE INTERFACE:
+- Inputs:
+  input clk                          // Clock signal
+  input rst_n                        // Active-low reset
+  input start                        // Start computation
+  input [31:0] target_avg_q16        // Target average in Q16.16 format
+
+- Outputs:
+  output reg [7:0] count_ones        // Number of 1s used
+  output reg [7:0] count_twos        // Number of 2s used
+  output reg [7:0] count_threes      // Number of 3s used
+  output reg [7:0] count_fours       // Number of 4s used
+  output reg [7:0] count_fives       // Number of 5s used
+  output reg [7:0] total_count       // Total papers used
+  output reg done                    // High when solution found or search complete
+  output reg found                  // High when valid solution found
+
+FIXED-POINT FORMAT:
+All arithmetic uses Q16.16 format (16 integer bits, 16 fractional bits).
+Example: 4.5 = 0x00048000 (4.5 * 65536 = 294912)
+
+ALGORITHM:
+1. Use state machine: IDLE → INIT → SEARCH → DONE
+2. Iterate total papers from 1 to 16
+3. For each total, iterate all possible combinations of (1s, 2s, 3s, 4s, 5s) that sum to total
+4. Calculate sum of papers: sum = c1*1 + c2*2 + c3*3 + c4*4 + c5*5
+5. Check if sum * 65536 == target_avg_q16 * total_count
+6. Use fixed-point comparison with tolerance
+7. Store first valid solution found
+8. Signal done when search completes
+
+STATE MACHINE:
+- IDLE: Wait for start signal
+- INIT: Initialize search parameters (total=1, all counts=0)
+- SEARCH: Exhaustively test combinations
+  - Use nested loops or combinatorial generation
+  - For each combination, compute sum and check equality
+  - If found, latch counts and go to DONE
+- DONE: Output result, wait for reset
+
+LATENCY: Result valid within 10,000 clock cycles after start (worst case exhaustive search)
+
+IMPLEMENTATION NOTES:
+- Use 8-bit counters for each paper type (max 16)
+- Use 32-bit accumulator for sum calculation
+- Use comparator: (sum << 16) == (target_avg_q16 * total_count)
+- For Q16.16 multiply: result = (A * B) >> 16 (but since target is already Q16, multiply with integer)
+- Optimization: Pre-compute target_avg_q16 * total_count for each total
+- Combinational logic to generate next combination
+- Store found solution in registers
+- Total paper count tracked for verification
+
+TEST CASES:
+- P=5.0 (0x00050000): Expected total=1, (0,0,0,0,1)
+- P=4.5 (0x00048000): Expected total=2, (0,0,0,1,1)
+- P=3.2 (0x00033333): Expected total=5, (2,0,0,1,2)
+
+Ensure the module has sufficient internal state and logic to perform the exhaustive search within the specified cycle budget.

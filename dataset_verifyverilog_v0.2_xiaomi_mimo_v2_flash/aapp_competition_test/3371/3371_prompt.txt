@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'partition_divider' that implements the simplified partition problem for small groups of participants.
+
+The module finds the smallest year Y such that participants can be divided into two parts (Group A and Group B) where:
+- Group A: all pairs met BEFORE year Y
+- Group B: all pairs met IN OR AFTER year Y
+- Neither group exceeds 2/3 of total participants
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] n // number of participants (1-16)
+input [5:0] c // number of known encounters (0-48)
+input [5:0] year [0:15] // meeting years for each encounter, stored as offset from 1948 (year - 1948)
+input [3:0] a [0:15] // first participant of each encounter
+input [3:0] b [0:15] // second participant of each encounter
+
+Outputs:
+output reg [5:0] result_year // smallest valid year found (as offset from 1948, 0-59)
+output reg result_valid // high when a valid year is found
+output reg result_impossible // high when no valid year exists
+output reg done // high when computation complete
+
+Behavior:
+1. Build adjacency matrix for each year threshold Y (0-59)
+2. For each Y, create valid partition:
+   - If a pair met in year < Y: must be in same group (Group A)
+   - If a pair met in year >= Y: must be in same group (Group B)
+   - This is equivalent to graph coloring with 2 colors where constraints are enforced
+3. Check if partition satisfies size constraint: max(|Group A|, |Group B|) <= 2*n/3
+4. Return smallest Y that works, or mark impossible
+
+For n ≤ 16, 2/3*n can be computed as (2*n)/3 (integer division). Since max n=16, max allowed size is 10.
+
+Latency: Variable, up to 60*60 clock cycles worst case.
+Use state machine with states: IDLE, BUILD_MATRIX, CHECK_YEAR, VERIFY_PARTITION, DONE.
+
+Use combinational logic for partition verification since n is small (≤16). The check for a given Y involves:
+- Building constraint graph where edges connect vertices that must be in same group
+- Checking if this constraint graph is bipartite (can be 2-colored)
+- Counting vertices in each partition and checking size constraint
+
+For small n, use iterative approach: try assigning each vertex to Group A, propagate constraints, then try Group B if needed.

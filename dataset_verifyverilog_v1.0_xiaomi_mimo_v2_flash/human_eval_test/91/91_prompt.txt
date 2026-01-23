@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'is_bored' that counts boredom sentences in a fixed-width string.
+
+OVERVIEW:
+The module scans through a fixed-width character array and counts sentences that start with the letter 'I'. Sentences are delimited by '.', '?', or '!'. A sentence starts with 'I' if the character immediately following a delimiter (or at index 0) is 'I'. The module processes one character per clock cycle.
+
+INPUTS:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start pulse (high for one cycle) to begin processing
+  input [7:0] char_in    // Current character from external memory/array
+  input [5:0] char_index // Index of current character (0 to 63)
+  input valid            // Valid signal for char_in
+
+OUTPUTS:
+  output reg [3:0] result  // Boredom count (0-15, supports up to 15 sentences)
+  output reg done          // High for one cycle when processing complete
+  output reg [5:0] read_index // Index to read from character memory
+
+BEHAVIOR:
+1. When start is asserted, reset counter and state
+2. Process 64 characters (index 0 to 63):
+   - Read character at read_index
+   - Track if current position is start of a sentence
+   - If character is 'I' AND at sentence start, increment result
+   - If character is '.', '?', or '!', mark next position as sentence start
+3. After processing 64 characters or null terminator (0), assert done
+4. Result holds count until next start
+
+STATE MACHINE:
+  - IDLE: Wait for start signal
+  - READ_CHAR: Request character at current index
+  - PROCESS: Check character and update count
+  - DONE: Assert done for one cycle
+
+SPECIFIC RULES:
+- Sentence starts at index 0 (if 'I') and after any delimiter
+- Delimiters: '.' (0x2E), '?' (0x3F), '!' (0x21)
+- Ignore spaces and other characters for sentence start detection
+- Stop at 64 characters maximum
+- Characters are lowercase/uppercase: only 'I' (0x49) counts, not 'i' (0x69)
+- Output format: unsigned 4-bit integer
+
+LATENCY: 64-70 clock cycles after start
+
+IMPLEMENTATION NOTES:
+- Use state machine: IDLE, WAIT_READ, PROCESS_CHAR, DONE
+- Internal registers: char_idx (6-bit), count (4-bit), sentence_start (1-bit)
+- The char_in signal comes from external memory (testbench will provide)
+- The module assumes synchronous memory: read_index is set, next cycle char_in is valid
+
+Example:
+"I love It! I try." -> 2 sentences, both start with 'I' -> result = 2

@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'password_finder' that implements the kang password character lookup algorithm.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] base_char // current character being processed (ASCII 'a'-'z')
+input [7:0] query_pos [0:15] // query position in big-endian byte array (up to 64-bit)
+input [5:0] query_len // number of valid bytes in query_pos (1-8)
+input [7:0] trans_char // current transition character being loaded
+input [7:0] trans_str [0:15] // transition string for trans_char (max 16 chars)
+input [5:0] trans_len // length of trans_str (2-16)
+input trans_valid // indicates valid transition data to load
+input trans_done // indicates all transitions loaded
+
+Outputs:
+output reg [7:0] result_char // the found character
+output reg result_valid // high when result is ready
+output reg [2:0] state // current state for debugging
+
+The module operates in phases:
+1. LOAD_TRANSITIONS: Accumulate 26 transition strings (T_a through T_z)
+2. EXPAND_LENGTHS: Compute length of f^K(S) for each character in base string S
+3. FIND_CHAR: Navigate the expansion tree to find the character at query position
+
+Implementation details:
+- Store transition string lengths (2-50) for each of 26 characters
+- Use exponentiation by squaring to compute f^K(c) length for each character c
+- Each length can be up to 2^64, store as 64-bit values
+- For finding character: start with base string S, for each position in S, check if query falls within that character's expansion
+- Use iterative state machine to avoid recursion
+- Latency: Approximately 26 * log2(K) + |S| * 26 cycles for expansion + query navigation
+
+States:
+- IDLE: waiting for start
+- LOAD_TRANS: accumulating transition strings
+- COMPUTE_LENGTHS: computing f^K for each character
+- FIND_CHARACTER: navigating to find the result
+- DONE: result ready
+
+Use 64-bit arithmetic for position handling (K up to 10^15, so lengths can be huge).
+Implementation must handle the case where position exceeds final string length.

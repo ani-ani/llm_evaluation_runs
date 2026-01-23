@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'remove_parenthesis' that removes parentheses and their contents from a fixed-width string.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start processing
+input [7:0] char_in // input character (ASCII)
+input char_valid // high when char_in is valid
+
+Outputs:
+output reg [7:0] char_out // output character
+output reg char_out_valid // high when char_out is valid
+output reg done // high when entire string is processed
+
+Behavior:
+The module processes a string character-by-character. It maintains a state to track whether currently inside parentheses.
+- Characters are copied to output unless inside parentheses
+- '(' character marks start of parentheses (not copied)
+- ')' character marks end of parentheses (not copied)
+- Any characters between '(' and ')' are skipped
+- The input string is terminated by sending a null character (0x00) after the last valid character
+
+Use a state machine with states: IDLE, COPY_CHAR, SKIP_CHARS, DONE.
+
+Latency: The output is available 1 clock cycle after each input character is received. The done signal goes high after the null terminator is processed.
+
+Implementation Details:
+- Use a 'inside_parenthesis' flag to track state
+- When start is asserted, transition from IDLE to COPY_CHAR
+- In COPY_CHAR state:
+  - If char_in == '(' and char_valid: transition to SKIP_CHARS, don't output
+  - If char_in == ')' and char_valid: this is an error (unmatched), stay in SKIP_CHARS
+  - If char_in == 0x00 and char_valid: transition to DONE, output done signal
+  - Otherwise, output char_in and remain in COPY_CHAR
+- In SKIP_CHARS state:
+  - If char_in == ')' and char_valid: transition to COPY_CHAR, don't output
+  - If char_in == 0x00 and char_valid: transition to DONE, output done signal
+  - Otherwise, skip (don't output) and remain in SKIP_CHARS
+- The done signal should remain high until reset
+
+Ensure that char_out_valid is only high when a valid output character is produced (not during skipped characters or parentheses).
+
+Test Case Examples:
+1. Input: "a(b)c\0" → Output: "ac\0"
+2. Input: "no parens\0" → Output: "no parens\0"
+3. Input: "(start)end\0" → Output: "end\0"
+4. Input: "multi(parens)here(more)\0" → Output: "multihere\0"
+5. Input: "(all)\0" → Output: "\0"
+
+Note: The input string is terminated with a null character (0x00). The output should also be terminated with a null character. All strings are fixed to a maximum of 8 characters plus null terminator.

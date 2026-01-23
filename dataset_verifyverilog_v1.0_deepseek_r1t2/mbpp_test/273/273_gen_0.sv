@@ -1,0 +1,1 @@
+module ArraySubtractor (\n    input signed [7:0] a [0:2],\n    input signed [7:0] b [0:2],\n    output signed [7:0] result [0:2]\n);\n\n    assign result[0] = a[0] - b[0];\n    assign result[1] = a[1] - b[1];\n    assign result[2] = a[2] - b[2];\n\nendmodule

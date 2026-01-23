@@ -1,0 +1,108 @@
+module pile_counter(
+  input clk, rst_n, start,
+  input [3:0] n,
+  input [5:0] a0, a1, a2, a3, a4, a5, a6, a7,
+  output reg [29:0] result,
+  output reg done
+);
+
+// State definitions
+localparam IDLE=0, PRECOMP=1, INIT=2, LOOP_S=3, NEXT_MASK=4, INIT_MASK=5, LOOP_K=6, CHECK=7, UPDATE=8, NEXT_S=9, FINISH=10;
+reg [4:0] state;
+
+// Memories for DP
+reg signed [4:0] dp_max [0:255];
+reg [29:0] dp_count [0:255];
+
+// Precomputed signals
+reg [7:0] divisors [0:7];
+reg [7:0] div_set [0:7];
+
+// Control registers
+reg [3:0] s, k;
+reg [7:0] mask;
+reg [4:0] candidate;
+
+// Helper function for popcount
+function [3:0] popcount;
+  input [7:0] v;
+  popcount = v[0] + v[1] + v[2] + v[3] + v[4] + v[5] + v[6] + v[7];
+endfunction
+
+always @(posedge clk or negedge rst_n) begin
+  if (!rst_n) begin
+    state <= IDLE;
+    done <= 0;
+    result <= 0;
+  end else begin
+    case(state)
+      IDLE: if(start) state <= PRECOMP;
+      
+      PRECOMP: begin
+        // Compute divisors and div_set
+        for(integer i=0; i<8; i=i+1) begin
+          divisors[i] <= 0;
+          div_set[i] <= 0;
+        end
+        // Combinational precomputation would be here
+        state <= INIT;
+      end
+      
+      INIT: begin
+        dp_max[0] <= 0;
+        dp_count[0] <= 1;
+        s <= 1;
+        state <= LOOP_S;
+      end
+      
+      LOOP_S: if(s > n) state <= FINISH; else begin
+        mask <= 0;
+        state <= NEXT_MASK;
+      end
+      
+      NEXT_MASK: begin
+        if(mask == 255) begin
+          s <= s + 1;
+          state <= LOOP_S;
+        end else if(popcount(mask) == s) begin
+          dp_max[mask] <= -1;
+          dp_count[mask] <= 0;
+          k <= 0;
+          state <= LOOP_K;
+        end else begin
+          mask <= mask + 1;
+        end
+      end
+      
+      LOOP_K: if(k >= 8) state <= NEXT_MASK; else begin
+        if(mask[k]) state <= CHECK; else k <= k + 1;
+      end
+      
+      CHECK: begin
+        // Condition: exists divisor i with popcount(mask & div_set[i]) >= 3
+        if(/* condition met */) begin
+          candidate <= dp_max[mask & ~(1<<k)] + 1;
+          state <= UPDATE;
+        end else state <= LOOP_K;
+      end
+      
+      UPDATE: begin
+        if(candidate > dp_max[mask]) begin
+          dp_max[mask] <= candidate;
+          dp_count[mask] <= dp_count[mask & ~(1<<k)];
+        end else if(candidate == dp_max[mask]) begin
+          dp_count[mask] <= (dp_count[mask] + dp_count[mask & ~(1<<k)]) % 1000000007;
+        end
+        k <= k + 1;
+        state <= LOOP_K;
+      end
+      
+      FINISH: begin
+        result <= dp_count[(1<<n)-1];
+        done <= 1;
+        state <= IDLE;
+      end
+    endcase
+  end
+end
+endmodule

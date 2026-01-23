@@ -1,0 +1,37 @@
+Verilog Module Specification: make_impossible
+
+Purpose: Compute minimum cost for Barry to make parenthetical sequence impossible for Bruce to balance within k moves.
+
+Scale: n <= 8, k <= 4 (from original n<=10^5)
+
+Parameters:
+  N = 8 : Maximum sequence length
+  K = 4 : Maximum Bruce moves
+  COST_W = 16 : Cost width (signed, enough for -1000..1000)
+
+Inputs:
+  clk         : Clock signal
+  rst_n       : Active-low reset (minimum 2 cycles)
+  start       : Start pulse (1 cycle high)
+  seq_0..seq_7: Sequence bits (0='(', 1=')')
+  k [3:0]     : Max Bruce moves
+  cost_0..cost_7: [COST_W-1:0] signed costs
+
+Outputs:
+  min_cost    : [COST_W-1:0] signed (valid when success=1)
+  success     : 1=Barry can make impossible, 0=Bruce always wins
+  done        : 1=Computation complete
+
+Behavior:
+  1. On start, enumerate all 2^N Barry flip subsets
+  2. For each subset:
+     a. Compute resulting sequence
+     b. Calculate min flips Bruce needs via DP
+     c. If min flips > k, record Barry's cost
+  3. Find minimum cost among valid Barry moves
+  4. Set success/min_cost accordingly
+  5. Assert done
+
+Timing: Up to 100k cycles for full enumeration
+
+Implementation: State machine with S_IDLE, S_PREPARE, S_ENUMERATE, S_COMPUTE, S_CHECK, S_DONE. Use binary counter for Barry subsets, DP table [N+1][N+1] for Bruce min flips.

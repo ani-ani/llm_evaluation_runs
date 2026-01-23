@@ -1,0 +1,214 @@
+module cube_counter (
+    input wire clk,
+    input wire reset,
+    input wire start,
+    input wire [39:0] tile_0, tile_1, tile_2, tile_3,
+    input wire [39:0] tile_4, tile_5, tile_6, tile_7,
+    output reg done,
+    output reg [63:0] count
+);
+
+parameter N = 8;  // Number of tiles (max 8)
+parameter DATA_WIDTH = 10;  // Color width (0-999)
+parameter MAX_CANONICAL_TYPES = 8;
+
+// States
+localparam S_IDLE = 0;
+localparam S_COMPUTE_CANONICAL = 1;
+localparam S_BUILD_TABLE = 2;
+localparam S_MAIN_LOOP_I = 3;
+localparam S_DECREMENT_I = 4;
+localparam S_MAIN_LOOP_J = 5;
+localparam S_DECREMENT_J = 6;
+localparam S_ROTATION_LOOP = 7;
+localparam S_GET_ROTATED_GG = 8;
+localparam S_FORM_TUPLES = 9;
+localparam S_LOOKUP_TUPLES = 10;
+localparam S_COMPUTE_PRODUCT = 11;
+localparam S_ADD_TO_COUNT = 12;
+localparam S_INCREMENT_J = 13;
+localparam S_INCREMENT_I = 14;
+localparam S_DONE = 15;
+
+reg [3:0] state;
+
+// Internal storage
+reg [DATA_WIDTH-1:0] tile_colors [0:N-1][0:3];
+reg [DATA_WIDTH-1:0] canon_colors [0:N-1][0:3];
+reg [2:0] canon_idx [0:N-1];
+
+reg [DATA_WIDTH-1:0] canon_types [0:MAX_CANONICAL_TYPES-1][0:3];
+reg [3:0] dd [0:MAX_CANONICAL_TYPES-1];
+reg [1:0] cc [0:MAX_CANONICAL_TYPES-1];
+reg [2:0] num_canon_types;
+
+reg [2:0] i_idx, j_idx;
+reg [1:0] rot;
+reg [1:0] tuple_idx;
+
+reg [3:0] dd_temp [0:MAX_CANONICAL_TYPES-1];
+reg [3:0] product_temp;
+reg [63:0] total_count;
+
+reg [DATA_WIDTH-1:0] tuple_colors [0:3];
+reg [DATA_WIDTH-1:0] tuple_canon [0:3];
+reg [2:0] tuple_canon_idx;
+reg tuple_found;
+
+reg [DATA_WIDTH-1:0] gg_rot [0:3];
+
+integer k;
+
+// State machine
+always @(posedge clk or posedge reset) begin
+    if (reset) begin
+        state <= S_IDLE;
+        done <= 0;
+        count <= 0;
+        total_count <= 0;
+        num_canon_types <= 0;
+    end else begin
+        case (state)
+            S_IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Copy input tiles
+                    tile_colors[0][0] <= tile_0[9:0];   tile_colors[0][1] <= tile_0[19:10];
+                    tile_colors[0][2] <= tile_0[29:20]; tile_colors[0][3] <= tile_0[39:30];
+                    tile_colors[1][0] <= tile_1[9:0];   tile_colors[1][1] <= tile_1[19:10];
+                    tile_colors[1][2] <= tile_1[29:20]; tile_colors[1][3] <= tile_1[39:30];
+                    tile_colors[2][0] <= tile_2[9:0];   tile_colors[2][1] <= tile_2[19:10];
+                    tile_colors[2][2] <= tile_2[29:20]; tile_colors[2][3] <= tile_2[39:30];
+                    tile_colors[3][0] <= tile_3[9:0];   tile_colors[3][1] <= tile_3[19:10];
+                    tile_colors[3][2] <= tile_3[29:20]; tile_colors[3][3] <= tile_3[39:30];
+                    tile_colors[4][0] <= tile_4[9:0];   tile_colors[4][1] <= tile_4[19:10];
+                    tile_colors[4][2] <= tile_4[29:20]; tile_colors[4][3] <= tile_4[39:30];
+                    tile_colors[5][0] <= tile_5[9:0];   tile_colors[5][1] <= tile_5[19:10];
+                    tile_colors[5][2] <= tile_5[29:20]; tile_colors[5][3] <= tile_5[39:30];
+                    tile_colors[6][0] <= tile_6[9:0];   tile_colors[6][1] <= tile_6[19:10];
+                    tile_colors[6][2] <= tile_6[29:20]; tile_colors[6][3] <= tile_6[39:30];
+                    tile_colors[7][0] <= tile_7[9:0];   tile_colors[7][1] <= tile_7[19:10];
+                    tile_colors[7][2] <= tile_7[29:20]; tile_colors[7][3] <= tile_7[39:30];
+                    state <= S_COMPUTE_CANONICAL;
+                    tile_idx_for_canon <= 0;
+                    num_canon_types <= 0;
+                end
+            end
+
+            S_COMPUTE_CANONICAL: begin
+                // Compute canonical for tile tile_idx_for_canon
+                // Generate rotations
+                // ... (implementation omitted for brevity)
+                // This state would compute min rotation and store canonical
+                // Then move to next tile or to S_BUILD_TABLE
+            end
+
+            S_BUILD_TABLE: begin
+                // Build dd and cc tables
+                // ... (implementation omitted)
+                // Then initialize loops
+                i_idx <= 0;
+                state <= S_MAIN_LOOP_I;
+            end
+
+            S_MAIN_LOOP_I: begin
+                if (i_idx < N) begin
+                    state <= S_DECREMENT_I;
+                end else begin
+                    state <= S_DONE;
+                end
+            end
+
+            S_DECREMENT_I: begin
+                dd[canon_idx[i_idx]] <= dd[canon_idx[i_idx]] - 1;
+                j_idx <= i_idx + 1;
+                state <= S_MAIN_LOOP_J;
+            end
+
+            S_MAIN_LOOP_J: begin
+                if (j_idx < N) begin
+                    state <= S_DECREMENT_J;
+                end else begin
+                    dd[canon_idx[i_idx]] <= dd[canon_idx[i_idx]] + 1;
+                    i_idx <= i_idx + 1;
+                    state <= S_MAIN_LOOP_I;
+                end
+            end
+
+            S_DECREMENT_J: begin
+                dd[canon_idx[j_idx]] <= dd[canon_idx[j_idx]] - 1;
+                rot <= 0;
+                state <= S_ROTATION_LOOP;
+            end
+
+            S_ROTATION_LOOP: begin
+                if (rot < 4) begin
+                    state <= S_GET_ROTATED_GG;
+                end else begin
+                    dd[canon_idx[j_idx]] <= dd[canon_idx[j_idx]] + 1;
+                    j_idx <= j_idx + 1;
+                    state <= S_MAIN_LOOP_J;
+                end
+            end
+
+            S_GET_ROTATED_GG: begin
+                // Compute rotation of tile j
+                // ... (implementation omitted)
+                state <= S_FORM_TUPLES;
+                tuple_idx <= 0;
+            end
+
+            S_FORM_TUPLES: begin
+                // Form tuple based on tuple_idx
+                // ... (implementation omitted)
+                state <= S_LOOKUP_TUPLES;
+            end
+
+            S_LOOKUP_TUPLES: begin
+                // Compute canonical of tuple and lookup
+                // ... (implementation omitted)
+                // If found, go to S_COMPUTE_PRODUCT, else skip
+            end
+
+            S_COMPUTE_PRODUCT: begin
+                // Copy dd to dd_temp
+                // Compute product with decrement trick
+                // ... (implementation omitted)
+                state <= S_ADD_TO_COUNT;
+            end
+
+            S_ADD_TO_COUNT: begin
+                total_count <= total_count + product_temp;
+                tuple_idx <= tuple_idx + 1;
+                if (tuple_idx < 3) begin
+                    state <= S_FORM_TUPLES;
+                end else begin
+                    state <= S_ROTATION_LOOP;
+                    rot <= rot + 1;
+                end
+            end
+
+            S_INCREMENT_J: begin
+                dd[canon_idx[j_idx]] <= dd[canon_idx[j_idx]] + 1;
+                state <= S_MAIN_LOOP_J;
+                j_idx <= j_idx + 1;
+            end
+
+            S_INCREMENT_I: begin
+                dd[canon_idx[i_idx]] <= dd[canon_idx[i_idx]] + 1;
+                state <= S_MAIN_LOOP_I;
+                i_idx <= i_idx + 1;
+            end
+
+            S_DONE: begin
+                count <= total_count;
+                done <= 1;
+                if (!start) state <= S_IDLE;
+            end
+
+            default: state <= S_IDLE;
+        endcase
+    end
+end
+
+endmodule

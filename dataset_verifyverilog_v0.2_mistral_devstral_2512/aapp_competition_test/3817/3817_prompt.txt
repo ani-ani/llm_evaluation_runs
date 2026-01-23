@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'wool_sequence_counter' that computes the number of sequences of length n with values in [0, 2^m-1] that are not wool sequences.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] n // Length of the sequence (1 to 100000)
+input [31:0] m // Exponent for value range 2^m (1 to 100000)
+
+Outputs:
+output reg [31:0] result // The result modulo 1000000009
+output reg done // High when computation is complete
+
+Specifications:
+The module implements the formula: ans = (2^m - 1) * (2^m - 2) * ... * (2^m - n) % MOD
+Where MOD = 1000000009.
+
+The calculation is performed in two phases:
+1. Compute base = (2^m - 1) % MOD. Since m can be large, use binary exponentiation (iterative) or loop for max 100000 cycles. Given the constraints, a standard loop is acceptable but we will optimize 2^m calculation.
+2. Multiply result by (base - i) for i from 0 to n-1.
+
+State Machine States:
+- IDLE: Wait for start signal. Initialize variables.
+- CALC_POW: Compute power = (2^m) % MOD. Uses a counter to shift/add.
+- CALC_LOOP: Iterate n times to multiply result by (power - 1 - i).
+- DONE: Set done flag high.
+
+Latency: Total cycles approx N + log2(M). Max N=100000. Result valid when done is high.
+
+Internal Registers:
+- mod = 1000000009
+- pow_accum: holds 2^m % mod
+- loop_counter: tracks iteration i
+- current_result: holds the running product
+- temp_mult: holds multiplicand (pow_accum - loop_counter)
+
+Constraints:
+- All arithmetic is modulo 1000000009.
+- Use 32-bit width for all internal signals.
+- Ensure no overflow in intermediate multiplication (use 64-bit intermediate or logic).

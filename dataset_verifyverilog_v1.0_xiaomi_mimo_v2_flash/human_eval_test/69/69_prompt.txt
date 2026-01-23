@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'search_max_valid' that implements a simplified version of the search problem.
+
+**Problem Adaptation:**
+- Input array size limited to maximum 16 elements (parameter N=16).
+- Input values limited to 0-15 (4 bits). Value 0 is ignored (treated as missing).
+- The module finds the greatest integer X (1-15) such that:
+  1. X appears in the list (Frequency > 0).
+  2. Frequency of X >= X.
+- If no such X exists, return -1 (0xFF in 8-bit signed output).
+
+**Interface:**
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start computation (pulse high for 1 cycle)
+  input [3:0] data_in    // Data input value for the current cycle
+  input [3:0] index      // Current index (0 to N-1) corresponding to data_in
+  input valid_in         // High when data_in and index are valid
+  input done_in          // High when all N elements have been fed in
+
+Outputs:
+  output reg [7:0] result // Result (1-15 for valid, 0xFF for -1)
+  output reg done         // High for 1 cycle when computation is complete
+
+**Behavioral Description:**
+The module operates in two phases:
+1. **Data Loading Phase:** When `start` is high, the module resets internal state. During this phase, the user feeds the array elements one by one via `data_in` and `index`, asserting `valid_in` for each. The module internally maintains a frequency count for each value (1-15) using a lookup table (RAM-like structure).
+2. **Computation Phase:** Once `done_in` is asserted, the module iterates from value 15 down to 1. It checks if the frequency of the current value V is greater than or equal to V. The first V that satisfies this condition is the result.
+
+**Internal Logic:**
+- Use a 16x4-bit memory (or 16 registers) to store frequencies for values 0-15.
+- On `start`, clear all frequencies to 0.
+- On `valid_in`, increment frequency at address `data_in`.
+- After `done_in`, start a lookup loop: Check V=15, 14, ..., 1.
+  - Read frequency[V].
+  - If frequency[V] >= V and V != 0, set result = V, set done=1, return to IDLE.
+  - If loop finishes without finding a match, set result = 0xFF, set done=1.
+
+**Latency:**
+- Data loading is external (depends on when user asserts `valid_in` and `done_in`).
+- Computation phase takes max 15 cycles (to check values 15 down to 1).
+- Total latency from `done_in` to `done` output: max 15 cycles.
+
+**State Machine States:**
+- IDLE: Waiting for `start`.
+- LOAD: Waiting for input data (conceptual state, handled by input handling logic).
+- CHECK: Iterating through values 15 to 1 to find the result.
+- DONE: Result is valid.
+
+**Constraints:**
+- Input values: 0-15.
+- Array length: 0-16.
+- Synthesizable design using standard Verilog constructs.

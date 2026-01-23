@@ -1,0 +1,61 @@
+Verilog HDL Module Specification: Recursive List Sum Flattener
+
+## Overview
+Implement a hardware module that flattens a nested list structure and sums all integer elements. Since hardware cannot handle dynamic recursion, we flatten a fixed-depth structure using iterative processing.
+
+## Interface Specification
+
+### Inputs:
+- `clk` : Clock signal (rising edge triggered)
+- `rst_n` : Active-low synchronous reset
+- `start` : Start pulse (assert for 1 cycle to begin computation)
+- `data_in` : 8-bit input data element
+- `valid_in` : 1-bit flag indicating current `data_in` is valid
+- `depth_in` : 2-bit value indicating nesting depth (0=single element, 1=top-level list, 2=nested list)
+
+### Outputs:
+- `result` : 16-bit sum of all elements (after flattening)
+- `done` : Asserted high for 1 cycle when computation completes
+- `ready` : Asserted high when ready to accept new input sequence
+
+## Functional Behavior
+
+The module processes a sequence of input values representing a flattened list structure:
+1. Input format: Each element is provided sequentially with its depth metadata
+2. Example: [1, 2, [3,4]] is input as:
+   - (data=1, depth=1, valid=1)
+   - (data=2, depth=1, valid=1)
+   - (data=3, depth=2, valid=1)
+   - (data=4, depth=2, valid=1)
+   - (valid=0) - end of sequence
+3. The module maintains an accumulator that sums all values with depth >= 1
+4. Output appears when valid_in goes low (end of sequence)
+
+## Parameters:
+- MAX_ELEMENTS = 16 (maximum input elements to process)
+- DATA_WIDTH = 8 (input data bit width)
+- RESULT_WIDTH = 16 (result bit width)
+- DEPTH_WIDTH = 2 (depth indicator width)
+
+## Timing Protocol:
+1. On reset: done=0, result=0, ready=1
+2. Assert start for 1 clock cycle
+3. Feed input sequence with valid_in=1
+4. Set valid_in=0 when sequence ends
+5. Wait for done=1 (within MAX_ELEMENTS+5 cycles)
+6. Read result on same cycle done is high
+
+## Reset Behavior:
+- rst_n=0: All state cleared, done=0, result=0, ready=1
+- Minimum 2 clock cycles of reset required
+
+## Example Test Sequence:
+Input [1, 2, [3,4]]:
+- Start pulse
+- Clock 1: data=1, depth=1, valid=1
+- Clock 2: data=2, depth=1, valid=1  
+- Clock 3: data=3, depth=2, valid=1
+- Clock 4: data=4, depth=2, valid=1
+- Clock 5: valid=0 (end)
+- Clock 6-8: Processing
+- Clock 9: done=1, result=10

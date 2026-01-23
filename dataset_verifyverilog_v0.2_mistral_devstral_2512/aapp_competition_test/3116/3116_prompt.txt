@@ -1,0 +1,26 @@
+Design a sequential Verilog module named 'min_cylinder_volume' that computes the minimum volume of a cylinder enclosing a set of 3D points. The cylinder axis must be perpendicular to a base defined by 3 input points. The algorithm iterates through all unique triplets of points, calculates the plane defined by them, projects all points onto the axis perpendicular to that plane to find the height, and calculates the minimum radius required to enclose the projections in a circle. It then computes the volume and tracks the minimum. 
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation signal
+input [4:0] num_points // Number of points (4 to 8, scaled down from 1000)
+input [63:0] points [0:7] // Array of 8 points, each point is 3x 16-bit fixed-point Q16.16 values (x, y, z)
+
+Outputs:
+output reg [63:0] min_volume // Minimum volume in Q16.16 format
+output reg done // High when computation is complete
+
+Latency: Approximately 1000-2000 clock cycles (due to O(N^3) complexity with hardware loops).
+
+Internal Logic:
+1. Iterate through all combinations of 3 points (triplets).
+2. For each triplet, calculate the normal vector of the plane (N = (P2-P1) × (P3-P1)).
+3. Calculate the projection of all points onto the normal vector.
+4. Find min and max projections to determine height h = max_proj - min_proj.
+5. Calculate the distance of each point from the line defined by the projection center and the normal vector. The maximum distance is the radius r.
+6. Calculate volume V = π * r^2 * h. π is approximated as 3.14159 in Q16.16.
+7. Update minimum volume.
+
+Note: Since this is complex, use a state machine: IDLE, INIT, SEARCH_LOOP (outer), TRIPLET_LOOP (inner), CALC_NORMAL, CALC_PROJECTIONS, CALC_RADIUS, CALC_VOLUME, UPDATE_MIN, DONE.
+Use intermediate registers for fixed-point multiplication and division. Division can be implemented as repeated subtraction or a lookup table for the sake of simplicity, but for full functionality, assume a combinational divider is available or implement a simple iterative one. Given the complexity, ensure the state machine handles the nesting of loops correctly.

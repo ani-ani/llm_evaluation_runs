@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'min_co2_match' that computes the minimum total carbon dioxide emissions for arranging 8 students into groups of two friends. This is a simplified maximum weight perfect matching problem.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] p_idx, q_idx // student pair index (0-7) for weight loading
+input [31:0] weight // Q16.16 fixed-point weight (emission cost)
+input weight_valid // valid signal for loading weight
+
+Outputs:
+output reg [31:0] result // minimum total cost in Q16.16 format
+output reg done // high when computation complete
+output reg impossible // high if no perfect matching exists
+
+Specification:
+- The module handles 8 students labeled 0 to 7 (adapted from 1-8)
+- First, load edge weights into adjacency matrix using p_idx and q_idx inputs
+- After all weights loaded (by deasserting start), compute minimum cost perfect matching
+- Use state machine: IDLE, LOAD_WEIGHTS, COMPUTE, DONE
+- Compute by evaluating all possible perfect matchings in parallel (28 possible matchings for 8 nodes)
+- Output result in Q16.16 format (multiply grams by 65536)
+- If no perfect matching exists, set impossible = 1
+- Latency: 20 clock cycles after start deasserts (for loading and computing)
+
+Implementation approach:
+- Use 8x8 register array to store edge weights
+- Pre-compute all 28 valid matchings as parallel comparators
+- Each matching is a set of 4 disjoint edges covering all 8 nodes
+- Find minimum sum of weights among valid matchings
+- Result is sum of 4 edge weights in Q16.16 format
+
+Test Cases:
+1. 4 nodes, matching possible: nodes (0-1: 375), (2-3: 98) -> total 473 -> result 0x001D9000
+2. 4 nodes, no perfect matching: nodes (0-1: 375), (1-2: 200) -> impossible
+3. 6 nodes, perfect matching: edges covering all -> result based on minimum sum

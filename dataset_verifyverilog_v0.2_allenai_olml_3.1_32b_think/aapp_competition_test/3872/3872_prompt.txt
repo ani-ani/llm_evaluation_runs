@@ -1,0 +1,41 @@
+Design a sequential Verilog module named `string_equivalence` that determines if two fixed-width strings are equivalent based on the recursive definition: two strings are equal if they are identical, or if splitting them into halves and swapping halves yields equivalent substrings.
+
+To make this hardware-friendly, we treat the problem as computing a canonical 'sorted' form of the string. Two strings are equivalent if and only if their canonical forms are identical.
+
+We implement this iteratively for a fixed string width of 16 characters. The module processes the string in passes, doubling the block size each pass (1, 2, 4, 8, 16).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation pulse
+input [127:0] string_a // 16 ASCII characters (8 bits each)
+input [127:0] string_b // 16 ASCII characters (8 bits each)
+
+Outputs:
+output reg equivalent // 1 if equivalent, 0 otherwise
+output reg done // High when computation is complete
+
+Internal Behavior:
+The module maintains internal registers for string A and string B. On start, it loads the inputs. It then enters a processing loop.
+For block sizes k = 1, 2, 4, 8:
+- Iterate through the string in chunks of size 2*k.
+- For each chunk (left half L and right half R):
+  - Compare L and R lexicographically.
+  - If L > R, swap L and R in the register.
+  - If L == R, order is arbitrary.
+- After processing all chunks for a given k, double k and repeat.
+- After k=8 is processed (resulting in a fully sorted canonical form), compare the internal registers of A and B.
+
+State Machine:
+- IDLE: Wait for start. Reset done=0.
+- INIT: Load inputs into internal registers, reset counters. Set block_size = 1.
+- PROCESS: Iterate through the string. This state takes multiple cycles.
+  - Inner loop: Compare/swap specific blocks based on current block_size.
+  - Update indices.
+- NEXT_PASS: Increment block_size. If block_size < 8, go to PROCESS. If block_size >= 8, go to COMPARE.
+- COMPARE: Compare canonical registers of A and B. Set equivalent result.
+- DONE: Assert done=1, return to IDLE.
+
+Specify latency: Result valid ~40-50 clock cycles after start (depending on exact cycle count for loops). Assume a simple state machine where PROCESS takes 8 cycles per pass (one per chunk) and there are 4 passes (sizes 1, 2, 4, 8). Total approx 32-40 cycles.
+
+Use non-blocking assignments for state transitions and registers.

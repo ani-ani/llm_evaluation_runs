@@ -1,0 +1,1 @@
+module substring_counter(\n    input [7:0] str_len,  // String length (0-255)\n    output reg [15:0] result  // Number of substrings\n);\n\n    // Combinational calculation: n(n+1)/2\n    always @(*) begin\n        result = (str_len * (str_len + 8'd1)) >> 1'd1;\n    end\n\nendmodule

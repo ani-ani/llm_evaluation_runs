@@ -1,0 +1,79 @@
+Design a sequential Verilog module named 'dog_walk_min_distance' that computes the minimum distance between two dogs walking along their respective paths.
+
+**PROBLEM ADAPTATION:**
+- Maximum 16 points per dog path (instead of 100,000)
+- Coordinates: 0-255 (8-bit, instead of 0-10000)
+- Fixed-point arithmetic: Q8.8 format (8 integer, 8 fractional bits)
+- Two-pass algorithm implemented as state machine
+- First pass: Determine sequential timeline (which dog is faster)
+- Second pass: Find minimum distance across all segments
+
+**INPUT INTERFACES:**
+- `clk`: Clock signal
+- `rst_n`: Active-low reset
+- `start`: Start computation pulse
+- `shadow_points_in` and `lydia_points_in`: Coordinate inputs (2D coordinates)
+- `shadow_count`: Number of points in Shadow's path (5-bit, max 16)
+- `lydia_count`: Number of points in Lydia's path (5-bit, max 16)
+
+**SIGNAL DEFINITIONS:**
+input clk;
+input rst_n;
+input start;
+input [4:0] shadow_count; // 1-16 points
+input [4:0] lydia_count;   // 1-16 points
+input [7:0] shadow_x [0:15]; // Shadow's x coordinates
+input [7:0] shadow_y [0:15]; // Shadow's y coordinates
+input [7:0] lydia_x [0:15];  // Lydia's x coordinates  
+input [7:0] lydia_y [0:15];  // Lydia's y coordinates
+
+**OUTPUTS:**
+output reg done;           // Computation complete
+output reg [15:0] min_dist_sq; // Minimum squared distance in Q8.8 format
+
+**INTERNAL STATE MACHINE (States):**
+1. IDLE: Wait for start signal
+2. LOAD_PATHS: Load coordinates from inputs
+3. COMPUTE_SEGMENTS: Calculate segment lengths and times
+4. FIND_MIN_DIST: Iterate through time segments to find minimum distance
+5. DONE: Signal completion
+
+**ALGORITHM DESCRIPTION:**
+1. **Load Phase**: Store all 16 points for each dog in BRAM-style registers
+2. **Segment Calculation**: For each dog, compute segment vectors (dx, dy) and squared lengths in Q8.8
+3. **Timeline Analysis**: 
+   - Calculate total time for each dog (sum of segment lengths)
+   - Determine which dog finishes first
+   - Create unified timeline of distance change points
+4. **Distance Tracking**:
+   - For each time interval, compute both dogs' positions as linear interpolation
+   - Position = start_pos + (time_interval / segment_length) * segment_vector
+   - Distance between positions = sqrt((x1-x2)^2 + (y1-y2)^2)
+   - Track minimum squared distance (avoid sqrt until final conversion)
+5. **Fixed-Point Arithmetic**:
+   - All positions stored in Q8.8 format
+   - Interpolation uses integer arithmetic with scaling
+   - Distance squared computed in Q16.16, scaled to Q8.8 for output
+
+**IMPLEMENTATION DETAILS:**
+- Use Q8.8 fixed-point for coordinates and positions
+- Intermediate calculations use Q16.16 for precision
+- Maximum 16 segments per dog → 32 total timeline points
+- Store: shadow_segments[15:0], lydia_segments[15:0] each containing:
+  - dx, dy (Q8.8)
+  - length_sq (Q16.16)
+  - cumulative_time (Q16.16)
+- State counter for segment iteration (0 to 15)
+- Minimum distance update requires checking both start and end of each segment, plus any minimum points where derivative is zero
+- Since paths are straight lines, minimum within a segment occurs at endpoints or when derivative of distance is zero (requires solving for t)
+- Simplified approach: Check all segment endpoints + sample mid-points
+
+**TIMING:**
+- 3 clock cycles per segment point (load, compute, compare)
+- With 16+16 points: ~96 cycles + 20 cycles overhead = ~116 cycles total
+- Done signal high for 1 cycle, then returns to IDLE
+
+**RESET BEHAVIOR:**
+- All state registers reset to IDLE
+- Minimum distance register reset to max value (0xFFFF)
+- Counter registers reset to zero

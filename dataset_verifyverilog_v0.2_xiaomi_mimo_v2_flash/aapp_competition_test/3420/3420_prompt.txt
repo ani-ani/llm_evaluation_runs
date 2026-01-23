@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'book_circle' that computes the minimum number of presentations needed for a book circle problem.
+
+The problem reduces to finding the minimum vertex cover in a bipartite graph, which equals the size of maximum matching (König's theorem). Students are vertices, books are edges between a boy and girl who read it.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] boy_count // number of boys (1-8)
+input [3:0] girl_count // number of girls (1-8)
+input [7:0][7:0] adj_matrix // adjacency matrix: adj_matrix[b][g]=1 if boy b and girl g share a book
+
+Outputs:
+output reg [3:0] result // minimum presentations (max matching size)
+output reg done // high when computation complete
+
+Specification:
+- Use DP approach: dp[i][mask] = max matching using first i boys and girls in mask
+- States: IDLE(0), INIT(1), PROCESS_BOY(2), PROCESS_MASK(3), CHECK_GIRL(4), UPDATE(5), NEXT_MASK(6), COPY_DP(7), NEXT_BOY(8), DONE(9)
+- dp arrays size: 256 entries × 4 bits each (8 girls → 2^8 masks)
+- Latency: ~500 clock cycles (worst case: 8 boys × 256 masks × 8 girls)
+- Loop bounds: boy_count ≤ 8, girl_count ≤ 8, mask < 2^girl_count
+- Result available in DONE state, then returns to IDLE
+
+Algorithm:
+1. Initialize dp_curr[mask] = 0 for all masks
+2. For each boy i (0 to boy_count-1):
+   a. For each mask (0 to 2^girl_count-1):
+      i. Initialize best = dp_curr[mask] (don't match boy i)
+      ii. For each girl g in mask:
+          - If edge exists (adj_matrix[i][g]==1), try matching boy i with girl g
+          - Update best = max(best, dp_curr[mask without g] + 1)
+      iii. dp_next[mask] = best
+   b. Copy dp_next to dp_curr
+3. Final result = dp_curr[(1<<girl_count)-1]

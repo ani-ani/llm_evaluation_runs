@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'maximal_factoring' that computes the weight of a maximal factoring of a string.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0] char_in // input character (ASCII A-Z)
+input valid_in // valid character input
+input [4:0] str_len // actual length of input string (1-16)
+
+Outputs:
+output reg [7:0] result // minimal weight (max 16)
+output reg done // high when computation complete
+
+Specify latency: Result valid 5000 clock cycles after start asserted.
+
+Implementation details:
+- Accept exactly 16 character positions (fixed-width). Use 'valid_in' to mark valid characters. Fill remaining positions with nulls.
+- Store string in internal memory: reg [7:0] string [0:15]
+- Use dynamic programming: dp[i][j] = minimal weight of substring from i to j
+- State machine states: IDLE (wait for start), LOAD (collect 16 chars), COMPUTE (DP calculation), OUTPUT (result ready)
+- DP recurrence: dp[i][j] = min(j-i+1, min over all k from i to j-1 of dp[i][k] + dp[k+1][j], min over all periods p of dp[i][i+p-1])
+- For factor detection: if substring s[i..j] can be expressed as repeated pattern (length p), weight = dp[i][i+p-1]
+- Base case: dp[i][i] = 1
+- Result: dp[0][str_len-1]
+
+Constraints:
+- Maximum string length: 16 characters
+- Maximum weight: 16
+- Character encoding: ASCII A-Z (0x41-0x5A)
+- Use 8-bit registers for characters
+- Use 8-bit registers for dp values (sufficient for max weight 16)
+- Use 4-bit counters for loop indices
+
+Algorithm steps:
+1. Load string into memory (16 cycles)
+2. Initialize dp[i][i] = 1 for all i (16 cycles)
+3. For length L from 2 to str_len:
+   For each starting position i:
+     Compute dp[i][i+L-1] = L (literal representation)
+     Check all splits: for k from i to i+L-2, dp[i][i+L-1] = min(dp[i][i+L-1], dp[i][k] + dp[k+1][i+L-1])
+     Check repetitions: for period p from 1 to L/2, if L % p == 0 and substring repeats with period p, dp[i][i+L-1] = min(dp[i][i+L-1], dp[i][i+p-1])
+4. Output dp[0][str_len-1]
+
+The module should be fully synthesizable and use finite state machine for control.

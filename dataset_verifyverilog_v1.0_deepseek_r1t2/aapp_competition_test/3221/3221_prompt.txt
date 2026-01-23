@@ -1,0 +1,57 @@
+module ginger_candies #(
+    parameter MAX_N = 8,
+    parameter MAX_M = 16,
+    parameter C_WIDTH = 16,
+    parameter RESULT_WIDTH = 32,
+    parameter ALPHA_WIDTH = 5
+)(
+    input wire clk,                   // Clock
+    input wire rst_n,                 // Active-low reset
+    input wire start,                 // Start pulse (1 cycle)
+    input wire [3:0] M,               // Number of edges (1-16)
+    input wire [2:0] u [0:MAX_M-1],   // Source vertex (0-7)
+    input wire [2:0] v [0:MAX_M-1],   // Destination vertex
+    input wire [C_WIDTH-1:0] c [0:MAX_M-1], // Candy count
+    input wire [MAX_M-1:0] valid_edge, // Bitmask: 1 if edge i is valid
+    input wire [ALPHA_WIDTH-1:0] alpha, // α constant
+    output reg [RESULT_WIDTH-1:0] result, // Minimum energy or 0xFFFFFFFF if none
+    output reg done                     // High for 1 cycle when result is ready
+);
+
+// Description:
+// This module computes the minimum energy for Mr. G's ginger candies problem
+// on a small graph (max 8 vertices, 16 edges). The algorithm enumerates all
+// subsets of edges (2^M subsets). For each non‑empty subset it checks:
+//   1. All vertices have even degree in the subset.
+//   2. The subgraph formed by the subset is connected.
+//   3. The maximum candy value L and number of edges K are computed.
+//   4. Cost = L^2 + α * K is calculated.
+// The minimum cost over all valid subsets is stored in result.
+// If no valid subset exists, result is set to 0xFFFFFFFF.
+//
+// Implementation outline:
+// - State machine: IDLE, LOAD, ENUM_INIT, ENUM_CHECK, ENUM_NEXT, CONN_CHECK, UPDATE_MIN, DONE.
+// - Internal registers:
+//   * subset_reg [MAX_M-1:0]: current subset bitmask
+//   * min_cost [RESULT_WIDTH-1:0]: current minimum cost
+//   * edge_idx [3:0]: index for iterating edges
+//   * vertex_deg [MAX_N-1:0][3:0]: degree counters (4 bits enough for max 16 edges)
+//   * max_candy [C_WIDTH-1:0]: maximum candy in current subset
+//   * edge_count [4:0]: number of edges in subset
+//   * visited [MAX_N-1:0]: connectivity visited flags
+//   * queue [MAX_N-1:0]: simple FIFO for BFS (width 3 bits, depth 8)
+//   * queue_wr, queue_rd pointers
+// - On start: latch M, u, v, c, valid_edge, alpha into internal registers.
+// - Then iterate subset from 0 to (1<<M)-1. For each subset:
+//   * Reset degrees, max_candy, edge_count.
+//   * For each edge i (0..M-1): if subset has edge i, update degrees, max_candy, edge_count.
+//   * Check edge_count > 0 and all degrees even.
+//   * If passes, run BFS from first vertex with degree>0 to check connectivity.
+//   * If connected, compute cost = max_candy^2 + alpha * edge_count (use multiplier).
+//   * Update min_cost if cost < min_cost.
+// - After all subsets, set result = min_cost (or 0xFFFFFFFF if none) and pulse done.
+// - Multiplication: max_candy is up to 2^16-1, square fits in 32 bits.
+// - The module is fully synchronous; reset clears all registers.
+// - The interface uses array ports; assign each element individually in testbench.
+
+endmodule

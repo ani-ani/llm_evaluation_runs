@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'perm_run_counter' that counts permutations of length n with runs of length at most k, modulo p.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] n // permutation length (scaled down to 16 max)
+input [3:0] k // max run length (scaled down to 4 max)
+input [31:0] p // prime modulus
+
+Outputs:
+output reg [31:0] result // final count modulo p
+output reg done // high when computation complete
+
+Specification:
+- Implement for n <= 16 and k <= 4 (scaling down from original constraints)
+- Use dynamic programming approach with state tracking
+- DP state: dp[mask][last][run_len] where mask is permutation prefix, last is last element, run_len is current run length
+- Unroll or iterate through permutations systematically
+- Latency: Maximum ~16*16*4*16 = 16384 cycles (worst case)
+- Use state machine: IDLE, SETUP, PROCESSING, DONE
+- During PROCESSING, maintain current mask, last element, and run length
+- Compute result by iterating through all valid permutations
+- All arithmetic modulo p (32-bit multiplication and addition)
+
+Behavioral Description:
+1. In IDLE state, wait for start signal
+2. In SETUP state, initialize dp[0][0][0] = 1 (base case)
+3. In PROCESSING state, iterate through all permutation prefixes:
+   - For each valid state (mask, last, run_len), try adding each unused element
+   - Check if adding element extends run (increasing or decreasing)
+   - Update new_run_len, or reset to 1 if run breaks
+   - Only proceed if new_run_len <= k
+   - Update dp[new_mask][new_last][new_run_len] modulo p
+4. In DONE state, sum all dp[full_mask][*][*] and output result
+
+Use localparam for state encoding:
+- STATE_IDLE = 0
+- STATE_SETUP = 1  
+- STATE_PROCESSING = 2
+- STATE_DONE = 3
+
+The module should handle up to n=16, requiring 2^16 = 65536 mask states, which is implementable as BRAM or distributed RAM in hardware.

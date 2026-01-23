@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'tournament_scheduler' that constructs a playing schedule for a tournament with m teams (n players each). 
+
+The module uses a state machine to generate rounds such that every player plays every other player from different teams exactly once, with at most one bye per player.
+
+**Input Constraints:**
+- n (players per team): 1 to 4 (scaled down from 25)
+- m (teams): 2 to 4 (scaled down from 25)
+- Total players <= 16
+- Max rounds <= 32
+
+**Interface:**
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High for one cycle to start generation
+input [3:0] n_in // Number of players per team (1-4)
+input [3:0] m_in // Number of teams (2-4)
+
+Outputs:
+output reg [5:0] round_index // Current round number (0-63)
+output reg [4:0] game_count // Number of games in current round
+output reg [4:0] player1_idx // Index of first player in current game (0-15)
+output reg [4:0] player2_idx // Index of second player in current game (0-15)
+output reg output_valid // High when player1/2 indices are valid for current game
+output reg done // High when all rounds are generated
+
+**Behavior:**
+1. Calculate total players P = n_in * m_in.
+2. Assign players: Team 0: 0..n_in-1, Team 1: n_in..2*n_in-1, etc.
+3. Generate rounds using a schedule algorithm (e.g., Circle method).
+   - For each round, generate P/2 games (or less if P is odd).
+   - In each game, ensure players are from different teams.
+   - If P is odd, one player gets a bye.
+4. Stream out games: Set `player1_idx`, `player2_idx` for each game, assert `output_valid` for one cycle per game.
+5. Increment `round_index` after all games in a round are output.
+6. Assert `done` when all rounds are complete.
+
+**Simplification:**
+Implement a standard round-robin tournament schedule generator. The output stream allows the testbench to reconstruct the schedule.
+
+Ensure the state machine handles the full generation cycle.
+
+**State Machine:**
+- IDLE: Wait for start.
+- SETUP: Calculate P, initialize rotation arrays.
+- GEN_ROUND: Loop through pairs to generate games.
+  - Sub-state: CHECK_PAIR: Check if pair is valid (different teams).
+  - Sub-state: OUTPUT_GAME: Output valid game.
+- NEXT_ROUND: Update rotation.
+- DONE: Assert done.
+
+**Timing:**
+Output stream is sequential, one game per cycle (or a few cycles delay), asserted on `output_valid`.

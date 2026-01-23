@@ -1,0 +1,304 @@
+Design a sequential Verilog module named 'patience_merge' that implements a simplified version of the problem: merging N sequences lexicographically to form the optimal Solution Sequence.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation (pulse high for one cycle)
+input [2:0] N_in // Number of sequences (1 to 8)
+input [2:0] L_seq [0:7] // Lengths of each sequence (max 8 per sequence)
+input [7:0] seq_data [0:7][0:7] // The sequences data. seq_data[i] is sequence i. Max 8 elements per sequence.
+
+Outputs:
+output reg [7:0] result_value // The value of the next card in the Solution Sequence
+output reg result_valid // High when result_value is valid
+output reg done // High when all cards have been output (game finished)
+
+Behavior:
+The module should maintain internal pointers for each sequence (head index).
+When start is asserted, the module resets pointers and begins processing.
+In each step (state PROCESSING):
+1. Identify which sequences have remaining cards (head < length).
+2. Among these, compare their current head values lexicographically to find the best sequence.
+   - Since we want the lexicographically smallest Solution Sequence, we pick the sequence with the smallest current head value.
+   - If there's a tie in head values, the problem implies we must look ahead to the rest of the sequences to break the tie. 
+     However, for this hardware implementation, we will use a greedy approach for simplicity (strictly smaller head value wins), 
+     which is sufficient for non-conflicting inputs. 
+     *Note*: To strictly solve the problem as stated (which requires lookahead on ties), a more complex logic is needed. 
+     However, given hardware constraints, we assume inputs might be adapted or we use a hybrid comparator.
+     Let's refine the comparator: Compare the entire remaining sequences starting from the heads. 
+     For hardware feasibility with small N and L, we can perform a multi-level comparison.
+     Comparator logic: 
+     - Compare Head A vs Head B. If different, pick smaller.
+     - If equal, move to next element (A+1 vs B+1). 
+     - Continue until one sequence ends or values differ.
+     - If one sequence ends, the longer one is considered "smaller" (or append a virtual infinite value).
+     
+     *Simplification for Spec*: 
+     Since full lookahead is complex (requires iteratively comparing potentially entire sequences), 
+     and the prompt asks for a scalable solution, we will implement a "Greedy with Lookahead" logic 
+     but bound the lookahead depth to a small constant (e.g., 4 elements) or assume simple greedy is sufficient for benchmark.
+     
+     Let's stick to the simplest robust hardware approach: 
+     "Pick the sequence with the smallest current value."
+     
+     *Refined Logic* (to match problem statement better):
+     We need to compare sequences S_i and S_j. 
+     Let P_i be the pointer for sequence i.
+     Compare S_i[P_i] and S_j[P_j]. 
+     If equal, we compare S_i[P_i+1] and S_j[P_j+1], etc.
+     This is lexicographical comparison.
+     
+     Hardware Implementation:
+     We have 8 sequences. We need to find the "best" sequence.
+     We can use a comparator tree or iterative comparator.
+     Since N is small (≤8), we can iterate through all sequences and keep the "best so far".
+     
+     Algorithm:
+     1. Reset: Set all pointers to 0.
+     2. Loop until all pointers reach their lengths:
+        a. Find the best sequence index 'best_idx' among active sequences.
+           - Initialize best_idx = -1.
+           - For each sequence i:
+             - If i is active (ptr < len):
+               - If best_idx == -1, set best_idx = i.
+               - Else, compare Sequence[i] (starting at ptr[i]) with Sequence[best_idx] (starting at ptr[best_idx]).
+                 - The comparison must be lexicographical. 
+                 - Since we can't loop infinitely in hardware easily, we will perform a fixed-depth comparison (e.g., checking up to 8 elements ahead) to simulate the lookahead.
+                 - Actually, with L ≤ 8, we can unroll the comparison fully if we had a large multiplexer, but let's use a secondary state for comparison.
+                 
+     Revised Module Structure:
+     - State machine: IDLE, COMPARE, OUTPUT.
+     - IDLE: Wait for start.
+     - COMPARE: Find the best sequence.
+       - We need a sub-state machine or a combinational block to compare two sequences lexicographically.
+       - Let's assume a combinational block `compare_sequences` takes index A and index B and returns A < B lexicographically.
+       - The main loop iterates over N sequences to find the best one.
+     - OUTPUT: Output the value at the head of the best sequence, increment its pointer.
+     - Continue until done.
+
+     Module Definition:
+     module patience_merge(
+         input clk,
+         input rst_n,
+         input start,
+         input [2:0] N_in,
+         input [2:0] L_seq [0:7],
+         input [7:0] seq_data [0:7][0:7],
+         output reg [7:0] result_value,
+         output reg result_valid,
+         output reg done
+     );
+
+     Internal Registers:
+     - pointers [0:7] [2:0]: Current index for each sequence.
+     - active_count [2:0]: Number of sequences that still have cards.
+     - best_index [2:0]: The index of the sequence chosen for output.
+     - state [1:0]: IDLE (0), FIND_BEST (1), OUTPUT (2), CHECK_DONE (3).
+     - temp_best_idx [2:0]: Used during the scanning loop.
+     - temp_compare_idx [2:0]: Index of sequence currently being compared against temp_best_idx.
+
+     Logic Flow:
+     State FIND_BEST:
+       - Need to iterate through sequences 0 to N_in-1.
+       - We can use a loop counter `i`.
+       - Inside FIND_BEST, we need to decide if sequence `i` is better than `best_index`.
+       - This requires a sequential or combinational comparator.
+       - Since we need to stay in a state, let's use a helper state `COMPARE_TWO`.
+       
+     Wait, managing a nested loop in state machines is messy.
+     Let's make it simpler:
+     Use a combinational block `get_best_sequence` that runs continuously.
+     But it depends on pointers which change sequentially.
+     
+     Let's try a semi-parallel approach:
+     State: SELECT
+     1. Set `candidate_idx` = 0. 
+     2. If `candidate_idx` >= N_in or its pointer is at end, increment.
+     3. Once we have a valid candidate, compare it with `candidate_idx + 1`, `candidate_idx + 2`...
+     4. This requires a loop inside the state.
+     
+     Let's use a single loop in state `FIND_BEST`:
+     - `i` goes from 0 to N_in-1.
+     - If `pointers[i] < L_seq[i]` (active):
+       - If `best_index` is invalid, set `best_index = i`.
+       - Else, compare Sequence `i` vs Sequence `best_index`.
+         - Comparison Logic: 
+           - Iterate `k` from 0 to `max(L_seq[i]-ptr[i], L_seq[best]-ptr[best])`.
+           - Read values `val_i = seq_data[i][ptr[i] + k]` (if valid), `val_b = seq_data[best][ptr[best] + k]` (if valid).
+           - If `val_i < val_b`: Sequence `i` wins. Update `best_index = i`. Break.
+           - If `val_i > val_b`: Sequence `best` wins. Break.
+           - If equal, continue.
+     - This nested loop is best implemented with a sub-state machine.
+
+     Final Simplified Logic for Hardware:
+     We have 8 sequences. 
+     We will use a priority-encoder style logic but with value comparison.
+     Because the total length is small, we can actually do this:
+     We will maintain `pointers`.
+     In state `IDLE`: reset pointers.
+     In state `STEP` (or `RUNNING`):
+       - We find the best sequence.
+       - To avoid complex nested loops in FSM, we can use a "Compare-Select" iteration.
+       - We compare pairs. 
+       - Let's assume a combinational block `lex_compare` that compares two sequences given their indices and pointers.
+       - Since N is small (8), we can unroll the comparison loop or use a small loop in the FSM.
+
+     Let's define the states clearly:
+     - `IDLE`: Wait for `start`. If `start`, go to `PROCESS`.
+     - `PROCESS`: The main loop state. 
+       - If `done` condition (all pointers >= lengths), go to `IDLE` (or stay done).
+       - Else, find the best sequence.
+         - Sub-state `FIND`: 
+           - Compare sequence `i` (counter) with current `best`.
+           - This comparison might take multiple cycles if we do it sequentially.
+           - Actually, with N=8 and L=8, we can do this in 1 cycle if we use a massive tree of comparators, but let's stick to a sequential scan to save logic.
+           - Let's use a state `COMPARE` which compares `curr` vs `best`.
+           - `COMPARE` state needs to iterate through elements.
+           
+     Okay, let's simplify the "lexicographical" requirement to hardware friendly.
+     The problem: "Best sequence is lexicographically smallest".
+     This means comparing [a, b, c] vs [a, d, e].
+     Since [a] == [a], we look at [b] vs [d]. b < d, so [a, b, c] wins.
+     
+     Hardware Block: `compare_lex(i, j, ptr_i, ptr_j)` -> `i_wins`
+     This block needs to look at `seq_data[i][ptr_i...]` vs `seq_data[j][ptr_j...]`.
+     Since we can't loop forever, we will have a bounded loop (up to max length).
+     We can do this in a state `COMPARE_SEQS`.
+
+     Revised FSM:
+     - `IDLE`: Reset pointers.
+     - `FIND_BEST`: 
+       - Reset `best_idx` to invalid.
+       - Reset `scan_idx` to 0.
+       - Go to `SCAN`.
+     - `SCAN`: Loop through 0 to N-1.
+       - If `scan_idx` >= N, go to `OUTPUT`.
+       - If `pointers[scan_idx] >= L_seq[scan_idx]`, increment `scan_idx` and stay in `SCAN`.
+       - Else, if `best_idx` is invalid, set `best_idx = scan_idx`, increment `scan_idx`.
+       - Else, we need to compare `scan_idx` vs `best_idx`. Go to `COMPARE`.
+     - `COMPARE`: 
+       - Compare `seq_data[scan_idx]` starting at `ptr[scan_idx]` vs `seq_data[best_idx]` starting at `ptr[best_idx]`.
+       - We need a loop here. Let's use a variable `k` (offset).
+       - This requires a sub-state `COMPARE_LOOP`.
+     - `COMPARE_LOOP`:
+       - Check bounds. If we hit the end of one sequence, handle tie-breaking (shorter vs longer).
+       - Actually, the problem definition: "One sequence is better than the other if for the first cards they differ..."
+       - If they are identical up to the end of one, the shorter one is implicitly better (or equal, but tie-break doesn't matter for sequence output if values are same, but here we might have distinct sequences).
+       - Wait, if we have [1, 2] and [1, 2, 3].
+       - [1, 2] ends. The next card for first is nothing (conceptually infinity). The next for second is 3. 
+       - Since Infinity > 3, [1, 2, 3] is lexicographically smaller? No.
+       - [1, 2] < [1, 2, 3] (prefix is smaller).
+       - So if we reach end of one, the shorter one wins.
+       
+       Logic in `COMPARE_LOOP`:
+       - `val_scan = seq_data[scan_idx][ptr[scan_idx] + k]` (if valid, else INF)
+       - `val_best = seq_data[best_idx][ptr[best_idx] + k]` (if valid, else INF)
+       - If `val_scan < val_best`: `best_idx = scan_idx`. Go back to `SCAN`.
+       - If `val_scan > val_best`: Go back to `SCAN`.
+       - If equal: `k++`. If `k` exceeds some limit (e.g., 8), stop (assume equal). Go back to `SCAN`.
+       - If both out of bounds: Equal. Go back to `SCAN`.
+
+     - `OUTPUT`: 
+       - `result_value = seq_data[best_idx][ptr[best_idx]]`.
+       - `ptr[best_idx]++`.
+       - `result_valid = 1`.
+       - Go to `CHECK_DONE`.
+     - `CHECK_DONE`:
+       - `result_valid = 0`.
+       - Check if all `ptr[i] >= L_seq[i]`. If yes, `done = 1`, go to `IDLE`. If no, go to `FIND_BEST`.
+
+     This FSM is feasible.
+     
+     Inputs:
+     - `start`: Pulse to start.
+     - `N_in`: 3 bits (1-8).
+     - `L_seq`: Array of 8x3 bits.
+     - `seq_data`: Array of 8x8x8 bits.
+     
+     Outputs:
+     - `result_value`: 8 bits.
+     - `result_valid`: 1 bit.
+     - `done`: 1 bit.
+
+     Timing:
+     - Each output takes several cycles (SCAN + COMPARE loops + OUTPUT).
+     - With N=8, max 8 scans. Each scan might do a compare loop of max 8 iterations.
+     - So max ~80 cycles per element. Total elements ~64. ~5000 cycles. This is acceptable for simulation.
+
+     Module Header:
+     module patience_merge (
+         input wire clk,
+         input wire rst_n,
+         input wire start,
+         input wire [2:0] N_in,
+         input wire [2:0] L_seq [0:7],
+         input wire [7:0] seq_data [0:7][0:7],
+         output reg [7:0] result_value,
+         output reg result_valid,
+         output reg done
+     );
+
+     Internal Registers:
+     reg [2:0] ptr [0:7];
+     reg [2:0] state;
+     reg [2:0] scan_idx;
+     reg [2:0] best_idx;
+     reg [2:0] k; // offset for comparison
+     
+     Parameter states:
+     IDLE = 0,
+     FIND_BEST = 1, // Setup for scan
+     SCAN = 2,      // Iterate through sequences
+     COMPARE = 3,   // Compare current scan vs best
+     OUTPUT = 4,
+     CHECK_DONE = 5
+
+     Logic Details:
+     - In IDLE, reset ptr[i] to 0, done=0.
+     - In SCAN: if scan_idx == N_in -> state = OUTPUT (we found the best one).
+               else if ptr[scan_idx] == L_seq[scan_idx] -> scan_idx++, stay in SCAN.
+               else if best_idx is invalid (e.g. > N_in) -> best_idx = scan_idx; scan_idx++; stay in SCAN.
+               else -> state = COMPARE; k = 0.
+     - In COMPARE: 
+       - Determine `val_scan` and `val_best` at offset `k`.
+       - `val_scan_valid = (ptr[scan_idx] + k < L_seq[scan_idx])`
+       - `val_best_valid = (ptr[best_idx] + k < L_seq[best_idx])`
+       - `val_scan_val = val_scan_valid ? seq_data[scan_idx][ptr[scan_idx]+k] : 8'hFF` (Infinity for max value, or we can treat end as large).
+       - `val_best_val = val_best_valid ? seq_data[best_idx][ptr[best_idx]+k] : 8'hFF`.
+       - If `val_scan_val < val_best_val`: `best_idx = scan_idx`. `state = SCAN`; `scan_idx++`.
+       - Else if `val_scan_val > val_best_val`: `state = SCAN`; `scan_idx++`.
+       - Else (equal): 
+         - If `!val_scan_valid && !val_best_valid`: (both ended) -> Equal. `state = SCAN`; `scan_idx++`.
+         - Else if `!val_scan_valid`: (scan ended, best didn't) -> Scan is prefix. Scan wins. `best_idx = scan_idx`. `state = SCAN`; `scan_idx++`.
+         - Else if `!val_best_valid`: (best ended, scan didn't) -> Best is prefix. Best wins. `state = SCAN`; `scan_idx++`.
+         - Else: `k++`. Stay in COMPARE.
+           - Safety: If k > 7 (max length), treat as equal. `state = SCAN`; `scan_idx++`.
+     - In OUTPUT: 
+       - `result_value = seq_data[best_idx][ptr[best_idx]]`.
+       - `result_valid = 1`.
+       - `ptr[best_idx]++`.
+       - `state = CHECK_DONE`.
+     - In CHECK_DONE:
+       - `result_valid = 0`.
+       - Check if all ptrs reach end.
+       - `done_flag = 1` initially.
+       - Loop i 0 to N-1: if ptr[i] < L_seq[i], done_flag = 0.
+       - If done_flag: `done = 1`; `state = IDLE`.
+       - Else: `state = FIND_BEST` (reset scan_idx and best_idx). 
+         - Actually, we can just go to SCAN with `scan_idx = 0`, `best_idx = N` (invalid).
+
+     Let's refine the state transitions slightly for clarity:
+     - IDLE -> (start) -> FIND_BEST
+     - FIND_BEST -> SCAN (set scan_idx=0, best_idx=8)
+     - SCAN -> (valid found) -> COMPARE (setup k=0)
+     - SCAN -> (end of list) -> OUTPUT (if best_idx valid)
+     - SCAN -> (invalid seq) -> SCAN (inc scan_idx)
+     - SCAN -> (best_idx invalid) -> SCAN (set best_idx, inc scan_idx)
+     - COMPARE -> (scan < best) -> SCAN (set best_idx, inc scan_idx)
+     - COMPARE -> (scan >= best) -> SCAN (inc scan_idx)
+     - COMPARE -> (equal) -> COMPARE (inc k) or SCAN (if end)
+     - OUTPUT -> CHECK_DONE
+     - CHECK_DONE -> (done) -> IDLE (set done flag)
+     - CHECK_DONE -> (not done) -> FIND_BEST
+
+     This looks solid.

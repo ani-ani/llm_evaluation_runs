@@ -1,0 +1,1 @@
+module is_sum_of_powers_of_two(\n  input [7:0] n,\n  output is_sum\n);\n  // Check if n can be represented as sum of non-zero powers of 2\n  // According to test cases: even numbers return True, odd numbers return False\n  // This is simply checking if the least significant bit is 0\n  \n  assign is_sum = (n[0] == 1'b0);\n  \nendmodule

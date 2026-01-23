@@ -1,0 +1,71 @@
+module max_sum (
+    input [2:0] n,          // 2:10, 3:11, 4:00 in binary? Actually we use 3-bit: 3'd2,3'd3,3'd4
+    input [7:0] arr_0, arr_1, arr_2, arr_3, arr_4, arr_5, arr_6,
+    output reg [9:0] result
+);
+
+    wire [7:0] arr [0:6];
+    assign arr[0] = arr_0;
+    assign arr[1] = arr_1;
+    assign arr[2] = arr_2;
+    assign arr[3] = arr_3;
+    assign arr[4] = arr_4;
+    assign arr[5] = arr_5;
+    assign arr[6] = arr_6;
+
+    wire [2:0] num_elements = 2 * n - 1;  // 3,5,7
+
+    integer i;
+    reg [9:0] sum_abs;
+    reg [2:0] neg_count;
+    reg zero_exists;
+    reg [7:0] min_abs;
+    reg [7:0] abs_val_reg;
+
+    always @(*) begin
+        sum_abs = 0;
+        neg_count = 0;
+        zero_exists = 0;
+        min_abs = 8'hFF;
+
+        for (i = 0; i < 7; i = i + 1) begin
+            if (i < num_elements) begin
+                // Compute absolute value
+                if (arr[i][7]) begin  // negative
+                    neg_count = neg_count + 1;
+                    abs_val_reg = ~arr[i] + 1;
+                end else begin
+                    abs_val_reg = arr[i];
+                end
+
+                // Check for zero
+                if (arr[i] == 0) begin
+                    zero_exists = 1;
+                end
+
+                // Update sum
+                sum_abs = sum_abs + {2'b00, abs_val_reg};
+
+                // Update minimum
+                if (abs_val_reg < min_abs) begin
+                    min_abs = abs_val_reg;
+                end
+            end
+        end
+    end
+
+    wire is_odd = n[0];  // n=3 -> 1, n=2 or 4 -> 0
+
+    always @(*) begin
+        if (is_odd) begin
+            result = sum_abs;
+        end else begin
+            if (neg_count[0] == 0 || zero_exists) begin
+                result = sum_abs;
+            end else begin
+                result = sum_abs - ( {2'b00, min_abs} << 1 );  // 2 * min_abs
+            end
+        end
+    end
+
+endmodule

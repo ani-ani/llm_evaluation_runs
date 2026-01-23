@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'max_f_value' that implements the maximum value of function f(l,r) = sum of |a[i]-a[i+1]| * (-1)^(i-l) for all valid l,r pairs.
+
+The module should compute this efficiently using a modified Kadane's algorithm that handles alternating signs.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [2:0] n // number of elements in array (2 to 8)
+input [7:0][15:0] a // array of 8 elements, each 16-bit signed
+
+Outputs:
+output reg [31:0] result // maximum f value (32-bit to handle sum)
+output reg done // high when computation complete
+
+Specification:
+- The algorithm processes array 'a' to find maximum alternating sum of absolute differences
+- For each adjacent pair (a[i], a[i+1]), compute diff = |a[i] - a[i+1]| * (-1)^i
+- Apply modified Kadane's algorithm on two sequences (starting with + and -)
+- Use state machine with states: IDLE, LOAD, PROCESS, CALC, DONE
+- Latency: Result valid 20 clock cycles after start asserted
+- All arithmetic uses signed 16-bit for differences, 32-bit for accumulation
+
+Behavioral description:
+1. In IDLE state, wait for start signal
+2. LOAD state: Validate n >= 2 and n <= 8
+3. PROCESS state: For i from 0 to n-2, compute:
+   - diff = |a[i] - a[i+1]| (absolute value)
+   - seq1[i] = diff * (-1)^i (starting with +)
+   - seq2[i] = -seq1[i] (starting with -)
+   - Apply Kadane's max subarray to both sequences
+   - Keep track of max across both sequences
+4. CALC state: Compare final max values
+5. DONE state: Output result and set done high
+
+The module uses:
+- A counter to iterate through array elements
+- Arithmetic unit for absolute difference computation
+- Accumulators for current and max sums for both sequences
+- Registers to store intermediate values

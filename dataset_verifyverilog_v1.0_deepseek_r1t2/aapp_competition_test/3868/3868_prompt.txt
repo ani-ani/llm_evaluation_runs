@@ -1,0 +1,193 @@
+module min_cost_gather #(
+    parameter N = 2,           // Number of cities (1 to N)
+    parameter MAX_FLIGHTS = 8, // Maximum number of flights
+    parameter MAX_DAY = 16     // Maximum day value
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    // Packed flight data: each flight is 28 bits {valid[0], day[4:0], from[2:0], to[2:0], cost[15:0]}
+    input wire [28*MAX_FLIGHTS-1:0] flights,
+    output reg [19:0] min_cost,  // 20-bit to prevent overflow
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam INIT_ARRIVALS = 3'b001;
+localparam PROCESS_ARRIVALS = 3'b010;
+localparam INIT_DEPARTURES = 3'b011;
+localparam PROCESS_DEPARTURES = 3'b100;
+localparam COMPUTE_MIN = 3'b101;
+localparam FINISHED = 3'b110;
+
+// Internal signals and registers
+reg [2:0] state;
+reg [4:0] day_counter;          // Current day (1 to MAX_DAY)
+reg [3:0] flight_counter;       // Current flight index (0 to MAX_FLIGHTS-1)
+reg [19:0] arrival_cost_per_city [1:N];  // Min arrival cost per city
+reg [19:0] departure_cost_per_city [1:N]; // Min departure cost per city
+reg [19:0] arrival_cost [1:MAX_DAY];     // Total arrival cost for each day
+reg [19:0] departure_cost [1:MAX_DAY];   // Total departure cost for each day
+reg [19:0] total_arrival_cost;
+reg [19:0] total_departure_cost;
+reg [3:0] arrival_count;        // Number of cities with arrival flights
+reg [3:0] departure_count;      // Number of cities with departure flights
+reg [19:0] best_cost;
+reg [4:0] compute_day;
+
+// Unpack flights into arrays
+wire flight_valid [0:MAX_FLIGHTS-1];
+wire [4:0] flight_day [0:MAX_FLIGHTS-1];
+wire [2:0] flight_from [0:MAX_FLIGHTS-1];
+wire [2:0] flight_to [0:MAX_FLIGHTS-1];
+wire [15:0] flight_cost [0:MAX_FLIGHTS-1];
+
+generate
+    genvar i;
+    for (i = 0; i < MAX_FLIGHTS; i = i + 1) begin
+        assign flight_valid[i] = flights[i*28 + 27];
+        assign flight_day[i] = flights[i*28 + 26: i*28 + 22];
+        assign flight_from[i] = flights[i*28 + 21: i*28 + 19];
+        assign flight_to[i] = flights[i*28 + 18: i*28 + 16];
+        assign flight_cost[i] = flights[i*28 + 15: i*28];
+    end
+endgenerate
+
+// State machine and logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        min_cost <= 20'hFFFFF; // INF
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= INIT_ARRIVALS;
+                end
+            end
+
+            INIT_ARRIVALS: begin
+                // Initialize arrival data
+                arrival_count <= 0;
+                total_arrival_cost <= 0;
+                for (int j = 1; j <= N; j = j + 1) begin
+                    arrival_cost_per_city[j] <= 20'hFFFFF;
+                end
+                day_counter <= 1;
+                flight_counter <= 0;
+                state <= PROCESS_ARRIVALS;
+            end
+
+            PROCESS_ARRIVALS: begin
+                if (flight_counter < MAX_FLIGHTS) begin
+                    if (flight_valid[flight_counter] && flight_to[flight_counter] == 0 && flight_day[flight_counter] == day_counter) begin
+                        // Arrival flight
+                        reg [2:0] city = flight_from[flight_counter];
+                        if (city >= 1 && city <= N) begin
+                            if (arrival_cost_per_city[city] > {4'b0, flight_cost[flight_counter]}) begin
+                                if (arrival_cost_per_city[city] == 20'hFFFFF) begin
+                                    arrival_count <= arrival_count + 1;
+                                end
+                                total_arrival_cost <= total_arrival_cost - arrival_cost_per_city[city] + {4'b0, flight_cost[flight_counter]};
+                                arrival_cost_per_city[city] <= {4'b0, flight_cost[flight_counter]};
+                            end
+                        end
+                    end
+                    flight_counter <= flight_counter + 1;
+                end else begin
+                    // All flights processed for this day
+                    if (arrival_count == N) begin
+                        arrival_cost[day_counter] <= total_arrival_cost;
+                    end else begin
+                        arrival_cost[day_counter] <= 20'hFFFFF;
+                    end
+                    if (day_counter < MAX_DAY) begin
+                        day_counter <= day_counter + 1;
+                        flight_counter <= 0;
+                    end else begin
+                        state <= INIT_DEPARTURES;
+                    end
+                end
+            end
+
+            INIT_DEPARTURES: begin
+                // Initialize departure data
+                departure_count <= 0;
+                total_departure_cost <= 0;
+                for (int j = 1; j <= N; j = j + 1) begin
+                    departure_cost_per_city[j] <= 20'hFFFFF;
+                end
+                day_counter <= MAX_DAY;
+                flight_counter <= 0;
+                state <= PROCESS_DEPARTURES;
+            end
+
+            PROCESS_DEPARTURES: begin
+                if (flight_counter < MAX_FLIGHTS) begin
+                    if (flight_valid[flight_counter] && flight_from[flight_counter] == 0 && flight_day[flight_counter] == day_counter) begin
+                        // Departure flight
+                        reg [2:0] city = flight_to[flight_counter];
+                        if (city >= 1 && city <= N) begin
+                            if (departure_cost_per_city[city] > {4'b0, flight_cost[flight_counter]}) begin
+                                if (departure_cost_per_city[city] == 20'hFFFFF) begin
+                                    departure_count <= departure_count + 1;
+                                end
+                                total_departure_cost <= total_departure_cost - departure_cost_per_city[city] + {4'b0, flight_cost[flight_counter]};
+                                departure_cost_per_city[city] <= {4'b0, flight_cost[flight_counter]};
+                            end
+                        end
+                    end
+                    flight_counter <= flight_counter + 1;
+                end else begin
+                    // All flights processed for this day
+                    if (departure_count == N) begin
+                        departure_cost[day_counter] <= total_departure_cost;
+                    end else begin
+                        departure_cost[day_counter] <= 20'hFFFFF;
+                    end
+                    if (day_counter > 1) begin
+                        day_counter <= day_counter - 1;
+                        flight_counter <= 0;
+                    end else begin
+                        state <= COMPUTE_MIN;\n                        compute_day <= 1;
+                        best_cost <= 20'hFFFFF;
+                    end
+                end
+            end
+
+            COMPUTE_MIN: begin
+                // Find min cost for k-day window
+                if (compute_day <= MAX_DAY - k) begin
+                    if (arrival_cost[compute_day] != 20'hFFFFF && departure_cost[compute_day + k] != 20'hFFFFF) begin
+                        reg [19:0] total = arrival_cost[compute_day] + departure_cost[compute_day + k];
+                        if (total < best_cost) begin
+                            best_cost <= total;
+                        end
+                    end
+                    compute_day <= compute_day + 1;
+                end else begin
+                    state <= FINISHED;
+                    if (best_cost != 20'hFFFFF) begin
+                        min_cost <= best_cost;
+                    end else begin
+                        min_cost <= 20'hFFFFF;
+                    end
+                end
+            end
+
+            FINISHED: begin
+                done <= 1;
+                if (!start) begin
+                    state <= IDLE;
+                end
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

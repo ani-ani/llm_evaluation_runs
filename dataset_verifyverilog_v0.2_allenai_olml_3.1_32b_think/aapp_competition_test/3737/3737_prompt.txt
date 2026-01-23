@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'steward_support' that implements the logic to count stewards who have strictly greater strength than the minimum and strictly less strength than the maximum.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] strength // Strength of the current steward
+input [2:0] n // Number of stewards (1 to 8)
+
+Outputs:
+output reg [2:0] result // Number of supported stewards
+output reg done // High when computation complete
+
+Specify latency: Result valid 10 clock cycles after start asserted (allowing 8 cycles for input, 2 for processing).
+
+Behavioral Description:
+The module processes 'n' sequential inputs of strengths (8-bit values). It must:
+1. Accept 'n' inputs, one per clock cycle when 'start' is high (or state is INPUT).
+2. Store the first value as initial min and max.
+3. Update min/max as new values arrive.
+4. After all values are received, count how many values are strictly between min and max.
+5. Output the count.
+
+Use a state machine with states: IDLE, INPUT, CALCULATE, DONE.
+Internal storage: 
+- 'strengths' array: reg [7:0] mem [0:7] (stores up to 8 values)
+- 'min_val' and 'max_val': reg [7:0]
+- 'count': reg [2:0] for the result
+- 'idx': reg [2:0] for input index
+- 'calc_idx': reg [2:0] for calculation index
+
+In IDLE: Wait for start signal, initialize idx=0, min_val=8'hFF, max_val=8'h00.
+In INPUT: On each clock, if idx < n, store strength in mem[idx], increment idx. Transition to CALCULATE when idx == n.
+In CALCULATE: Iterate through mem[0] to mem[n-1]. If (val > min_val && val < max_val), increment count. Transition to DONE when calc_idx == n.
+In DONE: Assert done signal. Wait for reset or start.
+
+Handle edge cases:
+- If n < 2, result should be 0.
+- If all strengths are equal, result should be 0.
+- If min == max, result should be 0.

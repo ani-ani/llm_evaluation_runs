@@ -1,0 +1,180 @@
+module coexist_checker #(
+    parameter MAX_M = 8,
+    parameter MAX_N = 8,
+    parameter IDX_WIDTH = 3,
+    parameter N_WIDTH = 3
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [N_WIDTH-1:0] m,
+    input wire [N_WIDTH-1:0] n,
+    input wire [IDX_WIDTH-1:0] edge_u_0,
+    input wire [IDX_WIDTH-1:0] edge_u_1,
+    input wire [IDX_WIDTH-1:0] edge_u_2,
+    input wire [IDX_WIDTH-1:0] edge_u_3,
+    input wire [IDX_WIDTH-1:0] edge_u_4,
+    input wire [IDX_WIDTH-1:0] edge_u_5,
+    input wire [IDX_WIDTH-1:0] edge_u_6,
+    input wire [IDX_WIDTH-1:0] edge_u_7,
+    input wire [IDX_WIDTH-1:0] edge_v_0,
+    input wire [IDX_WIDTH-1:0] edge_v_1,
+    input wire [IDX_WIDTH-1:0] edge_v_2,
+    input wire [IDX_WIDTH-1:0] edge_v_3,
+    input wire [IDX_WIDTH-1:0] edge_v_4,
+    input wire [IDX_WIDTH-1:0] edge_v_5,
+    input wire [IDX_WIDTH-1:0] edge_v_6,
+    input wire [IDX_WIDTH-1:0] edge_v_7,
+    output reg done,
+    output reg result
+);
+
+// State definitions
+localparam IDLE = 0;
+localparam CLEAR_COLORS = 1;
+localparam INIT = 2;
+localparam SCAN_PASS = 3;
+localparam CHECK_CHANGED = 4;
+localparam DONE_YES = 5;
+localparam DONE_NO = 6;
+
+// Internal registers
+reg [2:0] state;
+reg [2:0] clear_idx;
+reg [2:0] pass_counter;
+reg [2:0] edge_idx;
+reg changed;
+reg conflict;
+reg [2:0] m_reg;
+reg [2:0] n_reg;
+reg [1:0] color [0:MAX_M-1]; // 0=uncolored, 1=colorA, 2=colorB
+
+// Current edge selection
+wire [IDX_WIDTH-1:0] current_u;
+wire [IDX_WIDTH-1:0] current_v;
+assign current_u = (edge_idx == 0) ? edge_u_0 :
+                   (edge_idx == 1) ? edge_u_1 :
+                   (edge_idx == 2) ? edge_u_2 :
+                   (edge_idx == 3) ? edge_u_3 :
+                   (edge_idx == 4) ? edge_u_4 :
+                   (edge_idx == 5) ? edge_u_5 :
+                   (edge_idx == 6) ? edge_u_6 :
+                   edge_u_7;
+assign current_v = (edge_idx == 0) ? edge_v_0 :
+                   (edge_idx == 1) ? edge_v_1 :
+                   (edge_idx == 2) ? edge_v_2 :
+                   (edge_idx == 3) ? edge_v_3 :
+                   (edge_idx == 4) ? edge_v_4 :
+                   (edge_idx == 5) ? edge_v_5 :
+                   (edge_idx == 6) ? edge_v_6 :
+                   edge_v_7;
+
+// Current colors
+wire [1:0] cu = color[current_u];
+wire [1:0] cv = color[current_v];
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        clear_idx <= 0;
+        pass_counter <= 0;
+        edge_idx <= 0;
+        changed <= 0;
+        conflict <= 0;
+        m_reg <= 0;
+        n_reg <= 0;
+        for (integer i = 0; i < MAX_M; i = i + 1)
+            color[i] <= 2'b0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                result <= 0;
+                if (start) begin
+                    state <= CLEAR_COLORS;
+                    clear_idx <= 0;
+                end
+            end
+
+            CLEAR_COLORS: begin
+                if (clear_idx < MAX_M) begin
+                    color[clear_idx] <= 2'b0;
+                    clear_idx <= clear_idx + 1;
+                end else begin
+                    clear_idx <= 0;
+                    state <= INIT;
+                end
+            end
+
+            INIT: begin
+                m_reg <= m;
+                n_reg <= n;
+                pass_counter <= 0;
+                changed <= 0;
+                conflict <= 0;
+                edge_idx <= 0;
+                if (n == 0)
+                    state <= DONE_YES;
+                else
+                    state <= SCAN_PASS;
+            end
+
+            SCAN_PASS: begin
+                if (!conflict) begin
+                    if (current_u == current_v) begin
+                        conflict <= 1;
+                    end else if (cu == 0 && cv == 0) begin
+                        color[current_u] <= 1;
+                        color[current_v] <= 2;
+                        changed <= 1;
+                    end else if (cu == 0 && cv != 0) begin
+                        color[current_u] <= (cv == 1) ? 2 : 1;
+                        changed <= 1;
+                    end else if (cv == 0 && cu != 0) begin
+                        color[current_v] <= (cu == 1) ? 2 : 1;
+                        changed <= 1;
+                    end else if (cu == cv) begin
+                        conflict <= 1;
+                    end
+                end
+
+                if (edge_idx < n_reg - 1)
+                    edge_idx <= edge_idx + 1;
+                else begin
+                    state <= CHECK_CHANGED;
+                    edge_idx <= 0;
+                end
+            end
+
+            CHECK_CHANGED: begin
+                if (conflict)
+                    state <= DONE_NO;
+                else if (changed) begin
+                    changed <= 0;
+                    pass_counter <= pass_counter + 1;
+                    if (pass_counter + 1 >= m_reg)
+                        state <= DONE_YES;
+                    else
+                        state <= SCAN_PASS;
+                end else
+                    state <= DONE_YES;
+            end
+
+            DONE_YES: begin
+                done <= 1;
+                result <= 1;
+            end
+
+            DONE_NO: begin
+                done <= 1;
+                result <= 0;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,56 @@
+Design a sequential Verilog module named 'coin_change_max' that solves the maximum coin change problem.
+
+Problem: Given price P and counts of 1c, 5c, 10c, 25c coins, find maximum coins to pay exactly P without change, or detect impossibility.
+
+Adapted constraints: Price P is scaled to 0-1000 (16-bit). Coin counts scaled to max 100 per type (7-bit). Use 16-bit fixed-point arithmetic.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [15:0] price // price P in cents (0-1000)
+input [6:0] n1 // count of 1-cent coins
+input [6:0] n5 // count of 5-cent coins
+input [6:0] n10 // count of 10-cent coins
+input [6:0] n25 // count of 25-cent coins
+
+Outputs:
+output reg [15:0] max_coins // maximum coins used (or 0xFFFF if impossible)
+output reg done // high when computation complete
+output reg impossible // high when no solution exists
+
+Latency: Approximately 5000 clock cycles worst case for DP computation.
+
+Implementation Strategy:
+Use dynamic programming with bounded state space:
+1. DP table with states [amount][coin_counts_used]
+2. Iterate through coin denominations: 1c, 5c, 10c, 25c
+3. For each coin type, iterate possible usage (bounded by both coin count and remaining amount)
+4. Track maximum coin count for each reachable amount
+5. Use state machine: IDLE → PREPARE → COMPUTE_1 → COMPUTE_5 → COMPUTE_10 → COMPUTE_25 → DONE
+
+Algorithm:
+- Initialize DP[0] = 0 coins, DP[x>0] = invalid
+- For each denomination (1, 5, 10, 25) with count C:
+  - For amount from P down to 0:
+    - For k from 1 to C:
+      - If amount + k*denom ≤ P and dp[amount] valid:
+        - dp[amount + k*denom] = max(dp[amount + k*denom], dp[amount] + k)
+- Check dp[P] - if valid, result = dp[P], else impossible
+
+Special handling to maximize coins: Since smaller coins give more count, prioritize using them within constraints.
+
+State machine states:
+- IDLE: Wait for start
+- INIT: Clear DP table (set to invalid)
+- COIN_1: Process 1-cent coins
+- COIN_5: Process 5-cent coins  
+- COIN_10: Process 10-cent coins
+- COIN_25: Process 25-cent coins
+- VERIFY: Check final result
+- DONE: Set outputs
+
+Use block RAM for DP table: 1024 entries × 16 bits (amount 0-1023)
+Use counters for coin usage tracking.
+
+Note: This is a challenging sequential design. The module uses pipelined DP updates with bounded iteration counts to fit within reasonable cycle budget.

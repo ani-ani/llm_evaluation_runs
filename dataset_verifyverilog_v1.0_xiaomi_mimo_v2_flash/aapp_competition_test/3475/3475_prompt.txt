@@ -1,0 +1,134 @@
+module transport_solver #(
+    parameter T = 4,
+    parameter N = 8,
+    parameter DATA_WIDTH = 32,
+    parameter INF = 32'hFFFF_FFFF
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [DATA_WIDTH-1:0] num_points,
+    input wire [DATA_WIDTH-1:0] d_min [0:T-1],
+    input wire [DATA_WIDTH-1:0] a [0:T-1],
+    input wire [DATA_WIDTH-1:0] d [0:N-2],
+    input wire [DATA_WIDTH-1:0] h [0:N-2],
+    output reg [DATA_WIDTH-1:0] result,
+    output reg result_valid
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam LOOP_I = 3'b001;
+localparam LOOP_J = 3'b010;
+localparam LOOP_T = 3'b011;
+localparam SEG_LOOP = 3'b100;
+localparam UPDATE_DP = 3'b101;
+localparam DONE = 3'b110;
+
+// Registers
+reg [2:0] state, next_state;
+reg [DATA_WIDTH-1:0] dp [0:N-1];
+reg [DATA_WIDTH-1:0] i, j, t, k;
+reg [DATA_WIDTH-1:0] seg_dist;
+reg signed [DATA_WIDTH-1:0] seg_min_h, seg_max_h;
+
+// Next state logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 0;
+        result_valid <= 0;
+        for (integer idx = 0; idx < N; idx = idx + 1)
+            dp[idx] <= INF;
+        i <= 0;
+        j <= 0;
+        t <= 0;
+        k <= 0;
+        seg_dist <= 0;
+        seg_min_h <= 0;
+        seg_max_h <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                result_valid <= 0;
+                if (start) begin
+                    dp[0] <= 0;
+                    for (integer idx = 1; idx < N; idx = idx + 1)
+                        dp[idx] <= INF;
+                    i <= 1;
+                    state <= LOOP_I;
+                end
+            end
+
+            LOOP_I: begin
+                if (i >= num_points) begin
+                    state <= DONE;
+                end else begin
+                    j <= 0;
+                    state <= LOOP_J;
+                end
+            end
+
+            LOOP_J: begin
+                if (j >= i) begin
+                    i <= i + 1;
+                    state <= LOOP_I;
+                end else begin
+                    t <= 0;
+                    state <= LOOP_T;
+                end
+            end
+
+            LOOP_T: begin
+                if (t >= T) begin
+                    j <= j + 1;
+                    state <= LOOP_J;
+                end else begin
+                    k <= j;
+                    seg_dist <= 0;
+                    seg_min_h <= 32'sh7FFF_FFFF;
+                    seg_max_h <= 32'sh8000_0000;
+                    state <= SEG_LOOP;
+                end
+            end
+
+            SEG_LOOP: begin
+                if (k >= i) begin
+                    state <= UPDATE_DP;
+                end else begin
+                    seg_dist <= seg_dist + d[k];
+                    if ($signed(h[k]) < seg_min_h) seg_min_h <= $signed(h[k]);
+                    if ($signed(h[k]) > seg_max_h) seg_max_h <= $signed(h[k]);
+                    k <= k + 1;
+                    state <= SEG_LOOP;
+                end
+            end
+
+            UPDATE_DP: begin
+                if (dp[j] != INF) begin
+                    if (seg_dist >= d_min[t] && ((seg_max_h - seg_min_h) <= $signed(a[t]))) begin
+                        if (dp[j] + 1 < dp[i]) begin
+                            dp[i] <= dp[j] + 1;
+                        end
+                    end
+                end
+                t <= t + 1;
+                state <= LOOP_T;
+            end
+
+            DONE: begin
+                if (num_points > 0) begin
+                    result <= dp[num_points-1];
+                end else begin
+                    result <= INF;
+                end
+                result_valid <= 1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

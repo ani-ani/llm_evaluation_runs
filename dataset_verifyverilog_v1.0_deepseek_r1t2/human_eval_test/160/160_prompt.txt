@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'algebra_eval' that evaluates an algebraic expression with operator precedence.
+
+**INTERFACE SPECIFICATION:**
+Inputs:
+  input clk                    // Clock signal
+  input rst_n                  // Active-low reset
+  input start                  // Start computation (pulse high)
+  input [2:0] num_operators    // Number of operators (1-8)
+  input [7:0][2:0] operator    // Array of operators, 8 entries max. Each is encoded as:
+                               //   0: + (addition)
+                               //   1: - (subtraction)
+                               //   2: * (multiplication)
+                               //   3: // (floor division)
+                               //   4: ** (exponentiation)
+  input [7:0][31:0] operand    // Array of operands in Q16.16 format, 9 entries max
+
+Outputs:
+  output reg [31:0] result     // Result in Q16.16 format
+  output reg done              // High for 1 cycle when result is valid
+
+**BEHAVIOR:**
+1. Parse expression and evaluate with correct precedence:
+   - First pass: Handle * (2), ** (4), // (3) from left to right
+   - Second pass: Handle + (0), - (1) from left to right
+2. All values in Q16.16 format (16 integer bits, 16 fractional bits)
+3. Operations:
+   - Addition/Subtraction: Standard integer math on Q16.16 values
+   - Multiplication: Multiply then shift right by 16
+   - Division: Shift left by 16 then divide (floor division)
+   - Exponentiation: Integer exponentiation (base and exponent as integers, result as Q16.16)
+4. Use state machine with states: IDLE, CHECK_PRECEDENCE, CALCULATE, DONE
+5. Latency: Result valid 20-50 clock cycles after start (worst case with max operators)
+6. Exponentiation: Limit exponent to max 16 to prevent overflow
+7. Use temp registers to store intermediate results
+8. Loop through operators based on num_operators input
+
+**IMPLEMENTATION NOTES:**
+- Use Q16.16 format throughout (multiply by 65536 for fractional parts)
+- State machine should track current operator index and pass number
+- First pass handles high-precedence ops (2,3,4)
+- Second pass handles low-precedence ops (0,1)
+- Need temporary storage for operands that may be modified
+- Result valid when done goes high
+- Operands array has 9 elements (8 operators means 9 operands)
+- Operator array has 8 elements (indexed 0-7)
+
+Example: Expression [2, 3, 4, 5] with operators ['+', '*', '-']
+- operator[0] = 0 (+), operand[0]=2, operand[1]=3
+- operator[1] = 2 (*), operand[1]=3, operand[2]=4  
+- operator[2] = 1 (-), operand[2]=4, operand[3]=5
+- First pass: evaluate 3*4 = 12, expression becomes 2 + 12 - 5
+- Second pass: evaluate 2+12=14, then 14-5=9
+- Result: 9.0 in Q16.16 = 0x00090000

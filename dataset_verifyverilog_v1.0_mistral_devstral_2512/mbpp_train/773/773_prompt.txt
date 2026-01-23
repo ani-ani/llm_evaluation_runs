@@ -1,0 +1,115 @@
+module substring_search #(
+    parameter TEXT_LEN = 32,
+    parameter PATTERN_LEN = 8,
+    parameter CHAR_WIDTH = 8
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [CHAR_WIDTH-1:0] text[TEXT_LEN],
+    input wire [CHAR_WIDTH-1:0] pattern[PATTERN_LEN],
+    input wire [5:0] text_valid_len,  // Actual length of text (1-32)
+    input wire [3:0] pattern_valid_len,  // Actual length of pattern (1-8)
+    output reg found,
+    output reg [5:0] match_start,
+    output reg [5:0] match_end,
+    output reg done
+);
+
+// State machine states
+localparam IDLE = 2'd0;
+localparam SEARCH = 2'd1;
+localparam COMPLETE = 2'd2;
+
+reg [1:0] state;
+reg [5:0] text_idx;      // Position in text
+reg [3:0] pattern_idx;   // Position in pattern
+reg match_in_progress;
+reg [5:0] current_match_start;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        found <= 0;
+        match_start <= 0;
+        match_end <= 0;
+        done <= 0;
+        text_idx <= 0;
+        pattern_idx <= 0;
+        match_in_progress <= 0;
+        current_match_start <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start && text_valid_len > 0 && pattern_valid_len > 0) begin
+                    state <= SEARCH;
+                    text_idx <= 0;
+                    pattern_idx <= 0;
+                    match_in_progress <= 0;
+                    found <= 0;
+                end
+            end
+            
+            SEARCH: begin
+                if (text_idx < text_valid_len) begin
+                    // Check if current text character matches pattern
+                    if (text[text_idx] == pattern[pattern_idx]) begin
+                        if (!match_in_progress) begin
+                            // Start of new match
+                            match_in_progress <= 1;
+                            current_match_start <= text_idx;
+                            pattern_idx <= 1;
+                        end else begin
+                            // Continue existing match
+                            pattern_idx <= pattern_idx + 1;
+                        end
+                        text_idx <= text_idx + 1;
+                        
+                        // Check if full pattern matched
+                        if (pattern_idx == pattern_valid_len - 1) begin
+                            found <= 1;
+                            match_start <= current_match_start;
+                            match_end <= text_idx + 1;
+                            state <= COMPLETE;
+                            done <= 1;
+                            match_in_progress <= 0;
+                        end
+                    end else begin
+                        // No match at this position
+                        if (match_in_progress && text[text_idx] == pattern[0]) begin
+                            // Check if first char matches - start new match
+                            current_match_start <= text_idx;
+                            pattern_idx <= 1;
+                            text_idx <= text_idx + 1;
+                        end else begin
+                            // No match, move to next text position
+                            match_in_progress <= 0;
+                            pattern_idx <= 0;
+                            text_idx <= text_idx + 1;
+                        end
+                    end
+                end else begin
+                    // Reached end of text without finding pattern
+                    state <= COMPLETE;
+                    done <= 1;
+                    found <= 0;
+                    match_start <= 0;
+                    match_end <= 0;
+                end
+            end
+            
+            COMPLETE: begin
+                // Wait for start to go low
+                if (!start) begin
+                    state <= IDLE;
+                    done <= 0;
+                end
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,44 @@
+Design a Verilog module that solves the following problem:
+
+Given a real number P (1 <= P <= 5) represented as an integer P_scaled = round(P * 1000), find nonnegative integers a1, a2, a3, a4, a5 (counts of papers with numbers 1,2,3,4,5) such that the average equals P and the total number of papers is minimal.
+
+Constraints:
+- P_scaled is a 13-bit unsigned integer (range 1000 to 5000).
+- The minimal number of papers n is at most 256.
+- The module should compute the result within 1000 clock cycles.
+
+Interface:
+- clk: clock, rising edge triggered
+- rst_n: active-low synchronous reset
+- start: start signal, pulse high for one cycle to initiate computation
+- P_scaled[12:0]: input, representing P * 1000
+
+Outputs:
+- a1[7:0], a2[7:0], a3[7:0], a4[7:0], a5[7:0]: counts of papers 1 through 5
+- done: output high for one cycle when computation is complete and outputs are valid
+
+Behavior:
+1. On reset (rst_n=0), the module should clear internal state and set done=0, outputs=0.
+2. When start is asserted (start=1 for one cycle), the module should begin searching for the minimal n (1 to 256) such that P_scaled * n is divisible by 1000.
+3. For each candidate n, compute sum S = (P_scaled * n) / 1000. Check that n <= S <= 5*n (should hold for P in [1,5]).
+4. For the minimal n that satisfies the divisibility condition, find nonnegative integers a1..a5 satisfying:
+   a1 + a2 + a3 + a4 + a5 = n
+   a1 + 2*a2 + 3*a3 + 4*a4 + 5*a5 = S
+   This can be done by nested loops (since n <= 256).
+5. When the solution is found, set the output registers a1..a5 to the computed values and assert done for one cycle.
+6. If no solution is found within n=256 (should not happen for valid inputs), set all outputs to 0 and assert done.
+
+Implementation notes:
+- Use a state machine to control the search.
+- Use a counter for n (8-bit) and iterate from 1 to 256.
+- For each n, check divisibility: (P_scaled * n) % 1000 == 0. This can be done by multiplying and checking remainder.
+- Since P_scaled and n are small, multiplication can be done with 24-bit registers (13+8=21 bits, but to be safe use 24 bits).
+- To find a1..a5, you can use nested loops over a5, a4, a3, a2, then compute a1 = n - (a5+a4+a3+a2) and check if the sum matches.
+- The entire computation should be completed within 1000 cycles.
+
+Example:
+- Input P_scaled = 5000 (P=5.0) -> output a1=0, a2=0, a3=0, a4=0, a5=1
+- Input P_scaled = 4500 (P=4.5) -> output a1=0, a2=0, a3=0, a4=1, a5=1
+- Input P_scaled = 3200 (P=3.2) -> output a1=2, a2=0, a3=0, a4=1, a5=2 (or any valid solution)
+
+Write the Verilog module according to this specification.

@@ -1,0 +1,75 @@
+module max_sum_dp (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] n,  // Input value (0-60)
+    output reg [15:0] result,
+    output reg done
+);
+
+// FSM states
+reg [2:0] state;
+localparam IDLE = 3'd0;
+localparam COMPUTE = 3'd1;
+localparam COMPLETE = 3'd2;
+
+// Computation registers
+reg [7:0] i;  // Current index being computed
+reg [15:0] res [0:60];  // Lookup table for DP values
+reg [15:0] sum_terms;
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        i <= 0;
+        // Reset base cases
+        res[0] <= 0;
+        res[1] <= 1;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    if (n <= 1) begin
+                        result <= (n == 0) ? 0 : 1;
+                        done <= 1;
+                        state <= IDLE;
+                    end else begin
+                        i <= 2;
+                        state <= COMPUTE;
+                    end
+                end
+            end
+            
+            COMPUTE: begin
+                // Calculate sum of terms: res[i/2] + res[i/3] + res[i/4] + res[i/5]
+                sum_terms <= res[i >> 1] + res[i / 3] + res[i / 4] + res[i / 5];
+                
+                // Compute and store result for current i
+                if ((res[i >> 1] + res[i / 3] + res[i / 4] + res[i / 5]) > i)
+                    res[i] <= res[i >> 1] + res[i / 3] + res[i / 4] + res[i / 5];
+                else
+                    res[i] <= i;
+                
+                if (i == n) begin
+                    state <= COMPLETE;
+                end else begin
+                    i <= i + 1;
+                end
+            end
+            
+            COMPLETE: begin
+                result <= res[n];
+                done <= 1;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

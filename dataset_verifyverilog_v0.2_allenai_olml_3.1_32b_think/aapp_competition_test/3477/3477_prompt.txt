@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'xray_optimal_energies' that solves the weighted k-means clustering problem for x-ray spectrum optimization. The module implements an iterative algorithm to find m simulation energies that minimize the weighted sum of squared distances.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [5:0] n // Number of energy bins (1-64)
+input [3:0] m // Number of simulation energies (1-8)
+input [31:0] k_data // Photon count for current bin
+input [5:0] bin_index // Index for k_data input
+input k_wr // Write enable for loading k array
+
+Outputs:
+output reg [31:0] min_sum // Result in Q32.0 format (integer)
+output reg done // High when computation complete
+output reg valid // High when result is valid
+
+Internal Behavior:
+The module should:
+1. Store photon counts k[1..n] in a 64x32-bit RAM
+2. Initialize m simulation energies E_j to uniformly spaced values
+3. Iteratively refine:
+   - Assign each bin i to the closest E_j (min (i-E_j)^2)
+   - Update each E_j as weighted centroid: sum(k_i*i)/sum(k_i) for assigned bins
+4. Converge when E_j values stop changing (or max iterations reached)
+5. Calculate final weighted sum of squared distances
+
+Algorithm Details:
+- Use Q16.16 fixed-point for E_j values (precision ~1e-5)
+- Use 6 iterations maximum (sufficient for convergence with small n)
+- State Machine: IDLE → LOAD_K → INIT_E → ITERATE → ASSIGN → UPDATE → CALC_SUM → DONE
+- In ASSIGN state: compute distances for all bins in parallel (64 comparators)
+- In UPDATE state: accumulate weighted sums for each cluster
+- In CALC_SUM state: compute final metric
+
+Output Constraints:
+- min_sum is the integer result (sum of weighted squared errors)
+- Result valid within ~2000 clock cycles (6 iterations × n cycles)
+
+Signal Widths:
+- k_data: 32 bits (photon counts up to 10^6 fit easily)
+- E_j: 32 bits (Q16.16 format)
+- Distance: 48 bits (i and E_j are up to 64 and 65536, squared is < 2^32, weighted < 2^48)
+- Accumulators: 64 bits to prevent overflow
+
+Example Operation:
+For input "3 2, k=[3,1,1]":
+- Initial E = [1.0, 2.0]
+- Iteration 1: Bins {1}→E1, {2,3}→E2, E becomes [1.0, 2.5]
+- Final sum: k1*0 + k2*0.25 + k3*0.25 = 0.5
+- Output: 0.5 * 2^32 (if fixed-point) or scaled integer

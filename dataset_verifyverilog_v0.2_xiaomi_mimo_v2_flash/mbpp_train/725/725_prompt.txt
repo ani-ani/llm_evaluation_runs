@@ -1,0 +1,60 @@
+Design a sequential Verilog module named 'quotation_extractor' that extracts text between double-quote characters from a fixed-width input string.
+
+**Problem Adaptation**: 
+- Input string: Fixed 64 characters (ASCII bytes)
+- Maximum extracted substrings: 8
+- Maximum length per substring: 16 characters
+- Target: Extract all text segments enclosed in double quotes (")
+
+**Inputs**:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start extraction
+input [7:0] char_in // Current character from string (one byte per cycle)
+input [5:0] char_index // Index of current character (0-63)
+
+**Outputs**:
+output reg [7:0] extracted [0:7] // Array of 8 extracted substrings, each 16 chars
+output reg [3:0] extracted_count // Number of valid extracted substrings
+output reg done // High when extraction complete
+output reg error // High if more than 8 substrings found
+
+**Behavioral Description**:
+The module implements a finite state machine with the following states:
+- IDLE: Wait for start signal
+- SCANNING: Process characters one by one
+- CAPTURING: Currently inside quotes, capturing characters
+- DONE: All 64 characters processed
+
+**Algorithm**:
+1. On start, reset all internal state
+2. Read character at current index (0-63)
+3. If outside quotes and encounter ", transition to CAPTURING state, start new substring
+4. If inside quotes and encounter ", end current substring and store it
+5. If inside quotes, append character to current substring (up to 16 chars)
+6. If inside quotes and substring exceeds 16 chars, mark error
+7. If outside quotes and non-quote character, ignore
+8. After index reaches 63, transition to DONE
+9. If in CAPTURING state when reaching end, mark error (unmatched quote)
+
+**State Machine Details**:
+- IDLE -> SCANNING when start=1
+- SCANNING -> CAPTURING when char_in==34 (ASCII ") and not in quotes
+- CAPTURING -> SCANNING when char_in==34 (ASCII ")
+- SCANNING/DONE -> IDLE when rst_n=0
+
+**Output Format**:
+- extracted[0] through extracted[7]: Each is 128-bit wire (16×8-bit ASCII chars)
+- extracted_count: 0 to 8 (binary encoding)
+- extracted[0] valid when extracted_count >= 1, etc.
+- Strings are zero-padded if shorter than 16 chars
+
+**Timing**: Result valid 65 clock cycles after start asserted (1 cycle for each character + 1 for initialization).
+
+**Implementation Notes**:
+- Use internal registers for: quote_state (1 bit), substring_index (3 bits), char_pos (4 bits), buffer (16×8 bits)
+- All extracted substrings stored in output array
+- Error flag set if: >8 substrings OR substring >16 chars OR unmatched quote at end
+- ASCII code for " is 34 (0x22)
+
+Ensure the module handles the complete extraction pipeline within the given constraints.

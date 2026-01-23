@@ -1,0 +1,196 @@
+module SortTuplesByScore #(
+    parameter NUM_ELEMENTS = 4,
+    parameter DATA_WIDTH = 16,   // Width for the score (second tuple element)
+    parameter NAME_WIDTH = 8     // Width for name/ID (first tuple element)
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Input array of tuples - packed format
+    // Each tuple: [NAME_WIDTH-1:0] name, [DATA_WIDTH-1:0] score
+    // Using separate signals for clarity
+    input wire [NAME_WIDTH-1:0] in_name_0,
+    input wire [DATA_WIDTH-1:0] in_score_0,
+    input wire [NAME_WIDTH-1:0] in_name_1,
+    input wire [DATA_WIDTH-1:0] in_score_1,
+    input wire [NAME_WIDTH-1:0] in_name_2,
+    input wire [DATA_WIDTH-1:0] in_score_2,
+    input wire [NAME_WIDTH-1:0] in_name_3,
+    input wire [DATA_WIDTH-1:0] in_score_3,
+    
+    // Output sorted array of tuples
+    output reg [NAME_WIDTH-1:0] out_name_0,
+    output reg [DATA_WIDTH-1:0] out_score_0,
+    output reg [NAME_WIDTH-1:0] out_name_1,
+    output reg [DATA_WIDTH-1:0] out_score_1,
+    output reg [NAME_WIDTH-1:0] out_name_2,
+    output reg [DATA_WIDTH-1:0] out_score_2,
+    output reg [NAME_WIDTH-1:0] out_name_3,
+    output reg [DATA_WIDTH-1:0] out_score_3,
+    
+    output reg done
+);
+
+    // State machine for sorting
+    reg [2:0] state;
+    reg [2:0] next_state;
+    
+    // Internal storage for sorting
+    reg [NAME_WIDTH-1:0] names [0:3];
+    reg [DATA_WIDTH-1:0] scores [0:3];
+    
+    // Comparator result signals
+    wire comp_0_1;
+    wire comp_1_2;
+    wire comp_2_3;
+    
+    // Comparator logic - compare scores only
+    assign comp_0_1 = scores[0] > scores[1];
+    assign comp_1_2 = scores[1] > scores[2];
+    assign comp_2_3 = scores[2] > scores[3];
+    
+    // State definitions
+    localparam [2:0] STATE_IDLE = 3'd0;
+    localparam [2:0] STATE_LOAD = 3'd1;
+    localparam [2:0] STATE_SORT_1 = 3'd2;
+    localparam [2:0] STATE_SORT_2 = 3'd3;
+    localparam [2:0] STATE_SORT_3 = 3'd4;
+    localparam [2:0] STATE_DONE = 3'd5;
+    
+    // State register
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= STATE_IDLE;
+        end else begin
+            state <= next_state;
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        case (state)
+            STATE_IDLE: begin
+                if (start)
+                    next_state = STATE_LOAD;
+                else
+                    next_state = STATE_IDLE;
+            end
+            STATE_LOAD: next_state = STATE_SORT_1;
+            STATE_SORT_1: next_state = STATE_SORT_2;
+            STATE_SORT_2: next_state = STATE_SORT_3;
+            STATE_SORT_3: next_state = STATE_DONE;
+            STATE_DONE: next_state = STATE_IDLE;
+            default: next_state = STATE_IDLE;
+        endcase
+    end
+    
+    // Sorting logic (bubble sort passes)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset outputs
+            out_name_0 <= 0; out_score_0 <= 0;
+            out_name_1 <= 0; out_score_1 <= 0;
+            out_name_2 <= 0; out_score_2 <= 0;
+            out_name_3 <= 0; out_score_3 <= 0;
+            done <= 0;
+        end else begin
+            done <= 0;
+            
+            case (state)
+                STATE_LOAD: begin
+                    // Load input data
+                    names[0] <= in_name_0;
+                    scores[0] <= in_score_0;
+                    names[1] <= in_name_1;
+                    scores[1] <= in_score_1;
+                    names[2] <= in_name_2;
+                    scores[2] <= in_score_2;
+                    names[3] <= in_name_3;
+                    scores[3] <= in_score_3;
+                end
+                
+                STATE_SORT_1: begin
+                    // First pass: compare adjacent pairs (0-1, 1-2, 2-3)
+                    if (comp_0_1) begin
+                        names[0] <= names[1];
+                        scores[0] <= scores[1];
+                        names[1] <= names[0];
+                        scores[1] <= scores[0];
+                    end
+                    if (comp_1_2) begin
+                        names[1] <= names[2];
+                        scores[1] <= scores[2];
+                        names[2] <= names[1];
+                        scores[2] <= scores[1];
+                    end
+                    if (comp_2_3) begin
+                        names[2] <= names[3];
+                        scores[2] <= scores[3];
+                        names[3] <= names[2];
+                        scores[3] <= scores[2];
+                    end
+                end
+                
+                STATE_SORT_2: begin
+                    // Second pass
+                    if (comp_0_1) begin
+                        names[0] <= names[1];
+                        scores[0] <= scores[1];
+                        names[1] <= names[0];
+                        scores[1] <= scores[0];
+                    end
+                    if (comp_1_2) begin
+                        names[1] <= names[2];
+                        scores[1] <= scores[2];
+                        names[2] <= names[1];
+                        scores[2] <= scores[1];
+                    end
+                    if (comp_2_3) begin
+                        names[2] <= names[3];
+                        scores[2] <= scores[3];
+                        names[3] <= names[2];
+                        scores[3] <= scores[2];
+                    end
+                end
+                
+                STATE_SORT_3: begin
+                    // Third pass
+                    if (comp_0_1) begin
+                        names[0] <= names[1];
+                        scores[0] <= scores[1];
+                        names[1] <= names[0];
+                        scores[1] <= scores[0];
+                    end
+                    if (comp_1_2) begin
+                        names[1] <= names[2];
+                        scores[1] <= scores[2];
+                        names[2] <= names[1];
+                        scores[2] <= scores[1];
+                    end
+                    if (comp_2_3) begin
+                        names[2] <= names[3];
+                        scores[2] <= scores[3];
+                        names[3] <= names[2];
+                        scores[3] <= scores[2];
+                    end
+                    
+                    // Output the sorted array
+                    out_name_0 <= names[0];
+                    out_score_0 <= scores[0];
+                    out_name_1 <= names[1];
+                    out_score_1 <= scores[1];
+                    out_name_2 <= names[2];
+                    out_score_2 <= scores[2];
+                    out_name_3 <= names[3];
+                    out_score_3 <= scores[3];
+                end
+                
+                STATE_DONE: begin
+                    done <= 1;
+                end
+            endcase
+        end
+    end
+
+endmodule

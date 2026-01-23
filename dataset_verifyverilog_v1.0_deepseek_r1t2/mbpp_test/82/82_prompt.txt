@@ -1,0 +1,90 @@
+module sphere_volume(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] radius,  // 16-bit unsigned radius (scaled by 256 for fractional input)
+    output reg [31:0] volume,   // 32-bit result in Q16.16 format
+    output reg done
+);
+
+    // Fixed-point constants for Q16.16 format
+    // PI = 3.141592653589793 * 65536 = 205887
+    localparam PI_FIXED = 205887;
+    // 4/3 = 1.333333333333333 * 65536 = 87381
+    localparam FOUR_THIRDS = 87381;
+    
+    // State machine states
+    localparam IDLE = 3'b000;
+    localparam COMPUTE_R2 = 3'b001;
+    localparam COMPUTE_R3 = 3'b010;
+    localparam COMPUTE_R3_PI = 3'b011;
+    localparam COMPUTE_FINAL = 3'b100;
+    localparam DONE_STATE = 3'b101;
+    
+    reg [2:0] state;
+    reg [31:0] r2;      // r^2
+    reg [31:0] r3;      // r^3
+    reg [47:0] temp;    // 48-bit intermediate
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            volume <= 0;
+            done <= 0;
+            r2 <= 0;
+            r3 <= 0;
+            temp <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        state <= COMPUTE_R2;
+                        // Scale radius: radius is provided as value * 256
+                        // r2 = (radius * radius) / 256 = radius * radius >> 8
+                        r2 <= (radius * radius) >> 8;
+                    end
+                end
+                
+                COMPUTE_R2: begin
+                    // r3 = (r2 * radius) / 256
+                    // r2 is already scaled, multiply then shift
+                    r3 <= (r2 * radius) >> 8;
+                    state <= COMPUTE_R3;
+                end
+                
+                COMPUTE_R3: begin
+                    // Multiply r3 by PI, result scaled by 256 (from r3) * 65536 = 16777216
+                    // temp = r3 * PI_FIXED
+                    temp <= r3 * PI_FIXED;
+                    state <= COMPUTE_R3_PI;
+                end
+                
+                COMPUTE_R3_PI: begin
+                    // Shift right by 16 to get Q16.16 format (remove extra scaling)
+                    // temp is now r3 * PI, we need to divide by 256 (from radius scaling)
+                    // temp >> 16 gives r3 * PI in Q16.16, but r3 still needs division by 256
+                    // So: temp >> (16 + 8) = temp >> 24
+                    temp <= temp >> 8;  // First shift 8 to divide by 256
+                    state <= COMPUTE_FINAL;
+                end
+                
+                COMPUTE_FINAL: begin
+                    // Multiply by 4/3 and scale to Q16.16
+                    // temp is now r3 * PI / 256 (value in Q16.16)
+                    // Multiply by FOUR_THIRDS (1.3333... in Q16.16)
+                    // temp * FOUR_THIRDS, then shift right 16 to maintain Q16.16
+                    volume <= (temp[31:0] * FOUR_THIRDS) >> 16;
+                    state <= DONE_STATE;
+                end
+                
+                DONE_STATE: begin
+                    done <= 1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+endmodule

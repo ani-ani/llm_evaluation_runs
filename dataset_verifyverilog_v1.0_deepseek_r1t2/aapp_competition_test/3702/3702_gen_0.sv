@@ -1,0 +1,1 @@
+module fib_seq_solver(\n    input [19:0] n,\n    input [19:0] a,\n    input [19:0] d,\n    output [63:0] b,\n    output [63:0] e\n);\n    localparam [63:0] CONST = 64'd368131125;\n    localparam [63:0] MOD = 64'd1000000000;\n    localparam [63:0] SCALE = 64'd12000000000;\n    assign b = ((CONST * a) % MOD) * SCALE + 64'd1;\n    assign e = ((CONST * d) % MOD) * SCALE;\nendmodule

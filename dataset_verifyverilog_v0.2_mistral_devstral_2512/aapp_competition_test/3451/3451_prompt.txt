@@ -1,0 +1,82 @@
+Design a sequential Verilog module named 'barry_bruce' that computes the minimum effort for Barry to make a parenthesis sequence unfixable by Bruce within k operations.
+
+Problem Adaptation:
+- Sequence length n is fixed to 16 characters.
+- k (max moves for Bruce) is limited to 8.
+- Costs are 8-bit signed integers (range -128 to 127).
+- The module calculates the minimum cost subset of positions Barry can flip such that the resulting sequence cannot be balanced by flipping at most k positions.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] n_in // Sequence length (0-16)
+input [3:0] k_in // Max moves for Bruce (0-8)
+input [15:0] seq_in // 16-bit vector representing parenthesis sequence: 1='(', 0=')'
+input [127:0] costs_in // 16 8-bit costs packed together (cost[0] in bits 7:0, cost[1] in 15:8, etc.)
+
+Outputs:
+output reg [7:0] min_cost // Minimum cost result
+output reg impossible // High if impossible for Bruce to balance regardless of Barry
+output reg valid // High when computation is done
+
+Specification:
+The module must implement a sequential algorithm:
+1. Iterate through all possible subsets of Barry's operations (2^n possibilities, scaled to n≤16, so max 65536 states). Since n=16, this requires a state machine.
+2. For each subset, calculate the resulting sequence.
+3. Check if the resulting sequence can be balanced by Bruce with ≤k operations. This requires checking all subsets of up to k flips (combinational check for small k).
+4. If a sequence cannot be balanced, record the sum of costs for Barry's subset.
+5. Find the minimum such cost.
+
+State Machine (Latency: many cycles, e.g., 2^16 cycles):
+- IDLE: Wait for start signal.
+- SETUP: Initialize subset counter.
+- CHECK_FLIPS: Iterate through Barry's subset (represented by a counter). For each subset:
+  - Calculate modified sequence.
+  - Check if Bruce can fix it within k moves.
+- UPDATE_MIN: Update min_cost if current subset cost is lower.
+- DONE: Assert valid signal.
+
+Bruce's Check (Combinational Helper):
+Given a sequence of length n and max k, determine if it can be balanced.
+A sequence is balanced if:
+1. Total number of '(' equals total number of ')'.
+2. Running balance never goes negative.
+With up to k flips, we can potentially fix these issues.
+For small k (≤8), we can check all combinations of up to k flips (C(n, k)).
+However, a simpler check for small n:
+Calculate the prefix sums (balance). Min balance. Total balance.
+If |total_balance| > 2*k, impossible.
+But also need to fix intermediate negatives.
+We will implement a brute-force check: Generate all subsets of flips up to size k and verify the sequence.
+
+Fixed-Point Note: No floating point. Costs are integers.
+
+Area Optimization:
+Since 2^16 iterations is heavy, the state machine should use a counter 'barry_mask' from 0 to (1<<n)-1.
+In each iteration:
+1. Compute cost sum (popcount of mask weighted by costs).
+2. Compute modified sequence.
+3. Run Bruce's checker.
+
+Bruce's Checker Logic (Simplified for HW):
+Generate all masks 'bruce_mask' with popcount <= k. For each, apply flip to 'modified_seq' and check balance.
+Check balance: sum of bits == n/2 (implies equal parens) and min prefix sum >= 0.
+If any such mask balances the sequence, Barry's move fails. Otherwise, it succeeds.
+
+Output:
+min_cost: The minimum accumulated cost found.
+impossible: If no subset of Barry's moves makes it impossible (Bruce wins always), set high. Note: If Bruce can fix even the original string, Barry might have to spend effort. If Barry does nothing (cost 0) and Bruce cannot fix, then min_cost is 0. If Barry does nothing and Bruce CAN fix, Barry must spend >0. If even after spending max possible cost (sum of all positive costs), Bruce can still fix, output '?'.
+
+Note on '?': If the problem implies that if Bruce can always balance, output '?'. This means for ALL subsets of Barry's moves (including doing nothing), Bruce finds a fix. In this context, if the original string is fixable by Bruce, Barry might have to flip some positions. If Barry flips all possible positions (the entire string reversed) and Bruce can STILL fix it (unlikely but possible if k >= n), then it's impossible for Barry to disrupt. So 'impossible' output logic:
+If min_cost is never updated from infinity (or if the 'always fixable' condition is met), output '?'.
+In the verilog output, 'impossible' pin can indicate '?' condition.
+
+Implementation Detail: Since 2^16 * 2^k (worst case) is too large for simulation, we assume k is small (≤3-4 for practical testbench, though spec says ≤8) or we optimize the Bruce check.
+Optimized Bruce Check:
+A sequence is fixable within k moves if:
+1. We can achieve equal number of open/close brackets.
+2. We can ensure the running balance never drops below 0.
+Brute force for small n/k is acceptable in specification, but we will describe it as 'exhaustive checking of flip subsets'.
+
+Testbench constraints: n=4, k=1 or k=3.

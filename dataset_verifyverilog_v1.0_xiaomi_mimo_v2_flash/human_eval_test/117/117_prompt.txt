@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'word_selector' that identifies the first word in a string containing exactly N consonants.
+
+**Problem Adaptation:**
+- Input string is fixed to 16 characters (8-bit ASCII).
+- Each character is 8-bit ASCII.
+- String is passed as an array of 16 bytes.
+- N (number of consonants) is a 4-bit input.
+- Output: The module returns the first matching word found (as a 16-byte array) or an empty array (all spaces).
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: Clock signal
+  - `rst_n`: Active-low reset
+  - `start`: Start computation pulse (high for one cycle)
+  - `str [0:15]`: 16-element array, each 8-bit (ASCII character).
+  - `n`: 4-bit input (0-15).
+- **Outputs:**
+  - `result [0:15]`: 16-element array, each 8-bit. Contains the first matching word padded with spaces (0x20). If no match, result is all zeros (0x00).
+  - `done`: High for 1 cycle when computation is finished.
+
+**Behavioral Description:**
+The module uses a Finite State Machine (FSM) with states: IDLE, SCANNING, CHECKING, FOUND, FINISHED.
+1. **IDLE**: Waits for `start` signal. Resets internal pointers and counters.
+2. **SCANNING**: Iterates through the input string array index `i` from 0 to 15.
+   - Reads `str[i]`.
+   - If `str[i]` is a space (0x20), it signifies the end of a word.
+     - If a word was being processed (`in_word` is true), transition to CHECKING state to verify the consonant count of that word.
+   - If `str[i]` is a letter:
+     - Check if it is a consonant. Consonants are letters that are NOT 'a','e','i','o','u' (case insensitive).
+     - Increment `consonant_count` if a consonant is detected.
+     - Store the character into a temporary buffer (e.g., `current_word`).
+     - Continue scanning.
+   - If `i` reaches 16 and a word is being processed, go to CHECKING.
+   - If `i` reaches 16 and no match found, go to FINISHED.
+3. **CHECKING**: Compare `consonant_count` with input `n`.
+   - If equal, transition to FOUND.
+   - If not equal, clear `current_word` buffer and `consonant_count`, then return to SCANNING to continue.
+4. **FOUND**: Copy `current_word` buffer to the `result` output array. Pad remaining positions with spaces (0x20). Set `done` high. Transition to FINISHED.
+5. **FINISHED**: Wait for `start` to go low, then return to IDLE.
+
+**Implementation Details:**
+- Use `case` statements or logic for ASCII comparison (case-insensitive).
+- 'a'/'A', 'e'/'E', 'i'/'I', 'o'/'O', 'u'/'U'.
+- Consonant detection: `(char is letter) && (char is not vowel)`.
+- The module must be synthesizable (Icarus Verilog compatible).

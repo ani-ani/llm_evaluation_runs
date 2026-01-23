@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'world_counter' that counts the number of non-similar worlds given n operations and minimum cut m.
+
+The module implements the dynamic programming logic from the reference Python code:
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation signal
+input [5:0] n // Number of operations (1 to 50)
+input [5:0] m // Minimum cut (1 to 50)
+
+Outputs:
+output reg [63:0] result // The result modulo 10^9+7
+output reg done // High when computation is complete
+
+Specifications:
+- Use a state machine with states: IDLE, INIT, PREPARE_INVERSE, DP_LOOP, FINISHED.
+- The DP logic computes f[0..50][0..50] and s[0..50][0..50].
+- Use 64-bit registers for intermediate calculations to avoid overflow before modulo.
+- The modulus is 1000000007.
+- Since n and m are small, the computation can finish in a few thousand cycles.
+- Inside the DP loops, calculate combinations using modular arithmetic. The reference uses a formula: cnt = product((tmp + i - 1) * inv[i]) for i in range(1, node+1).
+- The 'inv' array needs to be computed for numbers up to 50. This can be done using Fermat's Little Theorem (pow(i, mod-2)) or Extended Euclidean Algorithm, or simply hard-coded.
+- The module must track loops for 'node', 'cut', and the inner summation loops.
+
+Behavioral Description:
+1. IDLE: Wait for start signal.
+2. INIT: Reset DP arrays (f and s) and initialize f[0][0] = 1, s[0][0] = 1.
+3. PREPARE_INVERSE: Calculate modular inverses for 1..n and store them.
+4. DP_LOOP: Iterate 'node' from 1 to n. Inside, iterate 'cut' from 1 to n.
+   a. Calculate 'tmp' by summing over 'ln' and 'lc' (using f and s tables).
+   b. If tmp is non-zero, calculate 'cnt' by multiplying terms (tmp + i - 1) * inv[i].
+   c. Then update the 'g' table (implicitly part of the logic) and add to 'f' table.
+   d. After finishing 'cut' loop, update 's' table.
+5. FINISHED: Output the result f[n][m-1].
+
+Note: The logic involves nested loops. A direct hardware implementation would involve a controller that sequences through these loops and updates memory elements. Since the sizes are small (max 50), we can use block memories or registers for the tables.

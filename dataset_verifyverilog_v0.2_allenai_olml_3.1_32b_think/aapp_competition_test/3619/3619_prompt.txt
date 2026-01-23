@@ -1,0 +1,65 @@
+Design a sequential Verilog module named 'optimal_team_selector' that solves the scaled-down optimal team selection problem using a fractional programming approach with binary search and tree DP.
+
+Problem Adaptation:
+- Tree structure: n=12 nodes max, k=6 team size max
+- Employee data: salary (s) and productivity (p) are 12-bit integers (0-4095)
+- Tree is a chain or small branching structure
+- CEO (node 0) is implicit root; nodes 1..n are candidates
+- Constraint: Must select at least one child of CEO (root constraint)
+- Objective: Maximize (sum p / sum s)
+
+Algorithm:
+1. Use Binary Search on the ratio R. We want max R such that sum(p_i) - R * sum(s_i) > 0.
+2. Convert to max sum(p_i - R * s_i). Since R is floating, we use Fixed-Point Q16.16.
+3. For a fixed R, compute Tree DP: for each node, compute max score (sum of values) for picking exactly 'c' nodes in its subtree (including itself).
+4. Handle dependency: A node can only be picked if its parent is picked. Root constraint handled in final selection.
+5. Iterate R from 0 to 4095 (max possible ratio) in steps of 1/256 (8 fractional bits) for 12-bit search range.
+
+Inputs:
+- clk, rst_n, start
+- In valid signal for loading data (data_valid)
+- Input data: node_id (4 bits), parent_id (4 bits), salary (12 bits), productivity (12 bits)
+- Load sequence: Feed data for all n nodes sequentially.
+- Parameters: N=12 (max nodes), K=6 (max team size), M=4 (max children per node).
+
+Outputs:
+- output reg [31:0] max_ratio_q16_16 // Result in Q16.16 format
+- output reg done
+
+Internal Logic:
+- State Machine: IDLE -> LOAD_DATA -> BINARY_SEARCH -> DP_COMPUTE -> DONE
+- In BINARY_SEARCH state: Iterate 16 iterations of binary search (covering 16-bit integer range).
+- In DP_COMPUTE state: Iterate over tree nodes (from leaves up to root) to calculate DP table.
+- DP State: `dp[node][count]` stores max accumulated value (p - R*s) for picking 'count' nodes in subtree.
+- DP Transition: For each node, combine results from its children using knapsack-style merging.
+- We need to enforce root constraint: Only consider solutions that include at least one child of root.
+
+Module Definition:
+module optimal_team_selector (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire data_valid,
+    input wire [3:0] node_id,      // 1..12
+    input wire [3:0] parent_id,    // 0..11 (0 is CEO)
+    input wire [11:0] salary,
+    input wire [11:0] productivity,
+    output reg [31:0] max_ratio_q16_16,
+    output reg done
+);
+
+// Module implementation details:
+// 1. Storage: Use BRAM or registers for tree data (parent, salary, productivity) for up to 12 nodes.
+// 2. Binary Search: Maintain low (0), high (max_int * 65536), mid. 16 iterations.
+// 3. DP Engine: 
+//    - Use a scratchpad memory for DP values (2D array: [12][7]).
+//    - Value calculation: (productivity << 16) - (mid * salary). 
+//    - Mid is Q16.16, salary is int. Multiplication gives Q16.16 result.
+//    - Tree traversal: Use a stack or iterate indices 12 downto 1.
+//    - Merging: Standard knapsack merge for tree: NewChild = Max(IncludeChild, ExcludeChild).
+// 4. Constraints: If parent_id == 0, flag node as 'root_child'. In final DP calculation, 
+//    the result is only valid if the 'root_child' flag is set in the selected subset.
+// 5. Output: After binary search converges, format mid (or slightly lower to ensure positive) 
+//    to Q16.16 output.
+
+endmodule

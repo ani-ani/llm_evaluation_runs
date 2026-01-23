@@ -1,0 +1,69 @@
+Design a Verilog module that computes the minimum time for Harry to reach his bed in the hamster cage, assuming both hemispheres make optimal decisions. The cage is modeled as a directed graph with n nodes (balls) and m edges (tubes). The left hemisphere (maximizer) moves first, then alternates with the right hemisphere (minimizer). The goal is to compute the total weight sum from start s to target t under optimal play, or detect if the game can continue indefinitely (infinity).
+
+The module should handle a scaled-down version of the problem with the following constraints:
+- Maximum number of nodes: 8
+- Maximum number of edges: 16
+- Node indices: 0 to 7 (3 bits)
+- Edge weights: 8-bit unsigned (0-255)
+- Result: 16-bit unsigned; plus a flag indicating infinity.
+
+The module must be a sequential circuit with a clock and reset. It accepts the graph description and start signal, computes the answer, and outputs the result and an infinite flag. The computation should complete within a bounded number of clock cycles (e.g., 1000 cycles).
+
+Interface Specification:
+
+Module name: hamster_path
+
+Parameters:
+  MAX_NODES = 8
+  MAX_EDGES = 16
+  DATA_WIDTH = 8
+  RESULT_WIDTH = 16
+
+Inputs:
+  clk        : Clock signal (rising edge)
+  rst_n      : Active-low synchronous reset
+  start      : Start computation (pulse for one cycle)
+  s          : Start node index [2:0]
+  t          : Target node index [2:0]
+  num_edges  : Actual number of edges [3:0] (valid range 1..16)
+  edge_src   : Array of source node indices, size MAX_EDGES, each 3 bits
+  edge_dst   : Array of destination node indices, size MAX_EDGES, each 3 bits
+  edge_weight: Array of edge weights, size MAX_EDGES, each DATA_WIDTH bits
+
+Outputs:
+  result     : Result value [RESULT_WIDTH-1:0]; valid when done=1 and infinite=0
+  infinite   : Flag indicating the result is infinite (1) or finite (0)
+  done       : Asserted for one clock cycle when computation finishes
+
+Behavior:
+- On reset (rst_n=0), the module returns to IDLE state, outputs are cleared.
+- When start is asserted (high for one cycle), the module starts computing using the provided graph.
+- The module shall compute the optimal total weight from s to t under alternating moves, starting with the left hemisphere.
+- If the game can continue indefinitely (i.e., no finite optimal path exists), the infinite flag shall be set to 1 and result may be undefined.
+- The done signal shall be asserted for exactly one clock cycle when the computation is complete.
+- The result and infinite flags shall be stable during the cycle when done is asserted.
+
+Algorithm Details:
+The module shall implement the following iterative algorithm:
+
+1. Initialize two arrays dp0 and dp1 of size MAX_NODES, each element 16 bits, to a large value (e.g., 16'hFFFF). Set dp0[t] = 0, dp1[t] = 0.
+
+2. For iteration count from 1 to max_iter (max_iter = 2 * MAX_NODES):
+   a. Copy dp0, dp1 to next_dp0, next_dp1.
+   b. For each edge (u, v, w) where u, v are node indices and w is weight:
+      - If u is a left-turn node (parity 0): next_dp0[u] = max(next_dp0[u], w + dp1[v])
+      - If u is a right-turn node (parity 1): next_dp1[u] = min(next_dp1[u], w + dp0[v])
+   c. After processing all edges, compare next_dp0, next_dp1 with dp0, dp1.
+   d. If no change, break the loop (converged).
+   e. Otherwise, update dp0 = next_dp0, dp1 = next_dp1.
+
+3. After the loop, if dp0[s] is still 16'hFFFF (or if the loop completed max_iter iterations without convergence), set infinite = 1. Otherwise, set result = dp0[s] and infinite = 0.
+
+Note: The algorithm must be implemented in hardware. Since the graph size is small, the state machine can process one edge per clock cycle during the iteration phase.
+
+Additional Notes:
+- The graph is guaranteed to have at least one outgoing edge for every node except t.
+- There are no self-loops, but multiple edges between the same pair of nodes are allowed.
+- The module should not rely on external memory; all state must be stored in registers.
+
+The Verilog code should be synthesizable and follow good design practices.

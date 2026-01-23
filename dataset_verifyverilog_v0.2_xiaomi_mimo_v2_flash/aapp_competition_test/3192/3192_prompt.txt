@@ -1,0 +1,68 @@
+Design a sequential Verilog module named 'shortest_cycle_finder' that finds the shortest dependency cycle in a file dependency graph.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [3:0] num_nodes // Number of nodes (1-16)
+input [15:0] adj_matrix [0:15][0:15] // Adjacency matrix (flattened or 2D array depending on simulator support, here described as a flattened input vector of 256 bits or 16x16 array of 1-bit)
+
+Outputs:
+output reg [3:0] cycle_len // Length of the shortest cycle found (0 if no cycle)
+output reg [3:0] cycle_nodes [0:15] // Array of node indices in the cycle
+output reg done // High when computation complete
+
+Behavior:
+The module should implement a Breadth-First Search (BFS) from every node to find the shortest cycle. Since n is small (max 16), we can iterate through each node as a potential start node and run BFS.
+
+Alternatively, use a state machine to implement Floyd-Warshall algorithm to find shortest paths and detect cycles.
+
+State Machine States:
+1. IDLE: Wait for start signal.
+2. INIT: Initialize distance matrix (max value) and parent matrix.
+3. FLOYD_LOOP_I: Outer loop for i from 0 to num_nodes-1.
+4. FLOYD_LOOP_J: Middle loop for j from 0 to num_nodes-1.
+5. FLOYD_LOOP_K: Inner loop for k from 0 to num_nodes-1.
+6. CHECK_CYCLES: Check diagonal of distance matrix for minimum distance.
+7. BACKTRACK: Reconstruct the path for the shortest cycle.
+8. DONE: Set done high.
+
+Constraints:
+- Max nodes N = 16.
+- Node indices are 4 bits.
+- Distances are 5 bits (max path length 15).
+- The adjacency matrix input is provided as 256 bits (16x16). `adj_matrix[i][j]` is 1 if file i imports file j.
+- The output `cycle_nodes` should contain the indices of the files in the cycle. The cycle starts at `cycle_nodes[0]` and ends at `cycle_nodes[cycle_len-1]`, where `cycle_nodes[cycle_len-1]` imports `cycle_nodes[0]`.
+- If no cycle exists, `cycle_len` should be 0.
+
+Detailed Behavior:
+1. On `start`, copy `adj_matrix` to an internal `dist` matrix. Initialize `dist[i][j] = 1` if `adj_matrix[i][j]` is 1. Initialize `parent[i][j] = i` if edge exists.
+2. Run Floyd-Warshall: `for k in 0..N-1: for i in 0..N-1: for j in 0..N-1: if dist[i][k] + dist[k][j] < dist[i][j]: update dist[i][j] and parent[i][j]`.
+3. After loops, scan diagonal `dist[i][i]`. The smallest non-zero value is the shortest cycle length. Track the index `start_node` of this minimum.
+4. If a cycle is found, use the `parent` matrix to reconstruct the path: `path = [start_node]`, `curr = start_node`, `prev = parent[start_node][start_node]`. While `curr != start_node` (or `prev != start_node`), append `prev` to path and step back. Reverse the path to get the cycle order.
+5. Output the cycle.
+
+Note on Implementation:
+This is a complex sequential logic. To make it testable, the inputs `adj_matrix` will be provided as 16 separate 16-bit inputs or a single large vector. Given the problem statement asks for a 'module', we define the interface to accept the flattened adjacency matrix.
+
+Interface Refinement:
+- `adj_matrix` input: `input [255:0] adj_matrix_flat` (Row-major order: node 0's imports are bits [15:0], node 1's are [31:16], etc.)
+
+Internal Logic:
+- Use a counter for the triple loop.
+- Use BRAM or Registers for `dist` and `parent` matrices. `dist` needs 5 bits per entry (16x16x5 = 1280 bits). `parent` needs 4 bits per entry (16x16x4 = 1024 bits).
+- Since the scale is small (16x16), we can use dense registers.
+
+Alternative Simplified Approach (BFS from each node): 
+- Iterate `start_node` from 0 to N-1.
+- Run BFS to compute distances to all other nodes.
+- If `dist[start_node][start_node]` (a self-loop via others) is found, record it.
+- BFS state machine: Enqueue/Dequeue neighbors.
+- This might be easier to implement than Floyd-Warshall triple nested loops in hardware if the number of nodes is very small.
+
+Let's stick with Floyd-Warshall as it's a standard algorithm for shortest paths and cycles in dense graphs, which matches the adjacency matrix input.
+
+Spec Update:
+Since 16x16 arrays are large for flattened inputs in some simulators, let's stick to the flattened 256-bit input for `adj_matrix`. The internal logic will unpack this into a register file.
+
+The `cycle_nodes` output is an array of 16 4-bit values. The `done` signal goes high when finished. `cycle_len` is 0 if no cycle.

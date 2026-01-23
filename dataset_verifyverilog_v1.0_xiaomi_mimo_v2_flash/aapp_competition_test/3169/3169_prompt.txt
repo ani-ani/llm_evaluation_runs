@@ -1,0 +1,30 @@
+Design a Verilog module that computes a valid removal order for sticks on a table. 
+
+Problem restatement for hardware:
+- N sticks (line segments) with coordinates (x1,y1,x2,y2), 0 <= x,y <= 16383 (14-bit).
+- N <= 8.
+- Sticks do not intersect and are not vertical (x1 != x2).
+- Arthur sits at y=0; sticks are removed by translating straight down.
+- A stick cannot be removed if another stick is below it in its vertical projection.
+- Output a sequence of stick indices (0-indexed) that is a valid removal order.
+
+Module interface:
+- Inputs: clk, rst_n, start, N[3:0], and for i=0..7: x1_i[13:0], y1_i[13:0], x2_i[13:0], y2_i[13:0]
+- Outputs: data_out[3:0], valid_out, done
+
+Behavior:
+1. On start pulse, latch stick data.
+2. Compute dependency graph: edge j->i exists if stick j is below stick i and their x-projections overlap.
+   To check "below": for overlapping x-interval, compute y values at both ends using 64-bit arithmetic; j is below i if y_j(x) < y_i(x) at both ends.
+3. Perform topological sort (Kahn's algorithm): repeatedly output nodes with indegree 0, decrement indegrees of successors.
+4. Output one index per cycle with valid_out high; assert done for one cycle after last output.
+5. Reset clears all state.
+
+Implementation details:
+- State machine: IDLE, COMPUTE_DEPS, OUTPUT.
+- Use registers for dependency and successor matrices (8x8 bits).
+- Use 64-bit intermediate arithmetic for comparisons.
+- Loop over pairs in COMPUTE_DEPS; in OUTPUT, scan for indegree 0 nodes.
+- Ensure reset is active-low and synchronous.
+
+The testbench will provide N and coordinates, collect output, and verify against expected orders.

@@ -1,0 +1,158 @@
+module chocolate_division (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] n,
+    input [7:0] arr_0, arr_1, arr_2, arr_3, arr_4, arr_5, arr_6, arr_7,
+    output reg [15:0] result,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam SUM = 3'b001;
+localparam CHECK_S = 3'b010;
+localparam FACTORIZE = 3'b011;
+localparam COMPUTE_COST = 3'b100;
+localparam DONE = 3'b101;
+
+// Registers
+reg [2:0] state;
+reg [15:0] S;
+reg [7:0] a_reg [0:7];
+reg [4:0] prime_index;
+reg [15:0] min_cost;
+reg [15:0] current_cost;
+reg [7:0] current_p;
+reg [7:0] current_residue;
+reg [3:0] i;
+reg [15:0] temp_sum;
+reg [7:0] remainder;
+reg [15:0] divisor;
+
+// Combinational logic for prime checking (simplified)
+wire [7:0] next_prime;
+assign next_prime = (prime_index == 0) ? 2 :
+                    (prime_index == 1) ? 3 :
+                    (prime_index == 2) ? 5 :
+                    (prime_index == 3) ? 7 :
+                    (prime_index == 4) ? 11 :
+                    (prime_index == 5) ? 13 :
+                    (prime_index == 6) ? 17 :
+                    19;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        S <= 0;
+        min_cost <= 16'hFFFF;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    // Load array
+                    a_reg[0] <= arr_0;
+                    a_reg[1] <= arr_1;
+                    a_reg[2] <= arr_2;
+                    a_reg[3] <= arr_3;
+                    a_reg[4] <= arr_4;
+                    a_reg[5] <= arr_5;
+                    a_reg[6] <= arr_6;
+                    a_reg[7] <= arr_7;
+                    temp_sum <= 0;
+                    i <= 0;
+                    state <= SUM;
+                end
+            end
+            
+            SUM: begin
+                if (i < n) begin
+                    temp_sum <= temp_sum + a_reg[i];
+                    i <= i + 1;
+                end else begin
+                    S <= temp_sum;
+                    state <= CHECK_S;
+                end
+            end
+            
+            CHECK_S: begin
+                if (S == 1) begin
+                    result <= 16'hFFFF; // -1
+                    done <= 1;
+                    state <= DONE;
+                end else begin
+                    prime_index <= 0;
+                    min_cost <= 16'hFFFF;
+                    state <= FACTORIZE;
+                end
+            end
+            
+            FACTORIZE: begin
+                if (prime_index < 8) begin
+                    current_p <= next_prime;
+                    if (S % next_prime == 0) begin
+                        current_cost <= 0;
+                        current_residue <= 0;
+                        i <= 0;
+                        state <= COMPUTE_COST;
+                    end else begin
+                        prime_index <= prime_index + 1;
+                    end
+                end else begin
+                    // Check if remaining S is prime > 19
+                    if (S > 19 && S % 2 != 0 && S % 3 != 0 && S % 5 != 0 && 
+                        S % 7 != 0 && S % 11 != 0 && S % 13 != 0 && S % 17 != 0 && S % 19 != 0) begin
+                        current_p <= S[7:0];
+                        current_cost <= 0;
+                        current_residue <= 0;
+                        i <= 0;
+                        state <= COMPUTE_COST;
+                    end else begin
+                        result <= min_cost;
+                        done <= 1;
+                        state <= DONE;
+                    end
+                end
+            end
+            
+            COMPUTE_COST: begin
+                if (i < n) begin
+                    // Compute mod = a_reg[i] % current_p
+                    remainder <= a_reg[i] % current_p;
+                    // Wait one cycle for mod operation
+                    i <= i + 1;
+                end else begin
+                    // After processing all elements
+                    if (current_cost < min_cost)
+                        min_cost <= current_cost;
+                    prime_index <= prime_index + 1;
+                    state <= FACTORIZE;
+                end
+            end
+            
+            DONE: begin
+                done <= 0; // Pulse done for one cycle
+                state <= IDLE;
+            end
+        endcase
+        
+        // Cost computation logic (combinational within COMPUTE_COST state)
+        if (state == COMPUTE_COST && i < n && i > 0) begin
+            // Update residue: (current_residue + remainder) % current_p
+            if (current_residue + remainder >= current_p)
+                current_residue <= current_residue + remainder - current_p;
+            else
+                current_residue <= current_residue + remainder;
+            
+            // Add cost
+            if (current_residue <= (current_p >> 1))
+                current_cost <= current_cost + current_residue;
+            else
+                current_cost <= current_cost + current_p - current_residue;
+        end
+    end
+end
+
+endmodule

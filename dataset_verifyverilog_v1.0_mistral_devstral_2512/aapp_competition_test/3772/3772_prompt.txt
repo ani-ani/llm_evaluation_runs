@@ -1,0 +1,57 @@
+module resistor_network (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [63:0] a_in,
+    input wire [63:0] b_in,
+    output reg [63:0] result,
+    output reg done
+);
+
+    // State encoding
+    localparam IDLE = 1'b0;
+    localparam COMPUTE = 1'b1;
+    
+    // Internal registers
+    reg state;
+    reg [63:0] a, b, count;
+    
+    // Next state logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            a <= 64'd0;
+            b <= 64'd0;
+            count <= 64'd0;
+            result <= 64'd0;
+            done <= 1'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        a <= a_in;
+                        b <= b_in;
+                        count <= 64'd0;
+                        state <= COMPUTE;
+                    end
+                end
+                
+                COMPUTE: begin
+                    if (b == 64'd0) begin
+                        result <= count;
+                        done <= 1'b1;
+                        state <= IDLE;
+                    end else begin
+                        // quotient = a / b (integer division)
+                        count <= count + (a / b);
+                        // Update: a = b, b = a % b
+                        a <= b;
+                        b <= a % b;
+                    end
+                end
+            endcase
+        end
+    end
+
+endmodule

@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'bridge_scheduler' that solves the bridge scheduling problem.
+
+Problem Summary: Given arrival times of boats, compute total time bridge is unavailable to road traffic, ensuring no boat waits > 30 minutes (1800s). Bridge takes 60s to raise/lower, 20s per boat to pass.
+
+Adapted Constraints for Hardware:
+- Maximum N = 8 boats (parameterizable)
+- Arrival times: 0 to 2047 seconds (11-bit values)
+- Maximum wait time: 1800 seconds (12-bit counter)
+- Bridge movement: 60 seconds (6-bit counter, 0-59)
+- Boat passage: 20 seconds (5-bit counter, 0-19)
+- Output: Total unavailable time in seconds (16-bit max ~65535)
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] num_boats // Number of boats (1 to 8)
+input [10:0] boat_arrival_time [0:7] // Array of 8 arrival times (11 bits each). Use only first num_boats entries.
+
+Outputs:
+output reg [15:0] total_time // Total seconds bridge unavailable
+output reg done // High when computation complete
+
+Specify latency: Result valid 1 clock cycle after 'done' is asserted.
+
+Behavior:
+1. In IDLE state, wait for start signal.
+2. Process boats in arrival order using a state machine.
+3. Track current time and bridge state (LOWERED, RAISING, RAISED, LOWERING).
+4. For each boat arrival decision:
+   - If bridge is lowered or lowering, and boat can be served without exceeding 1800s wait: RAISE bridge
+   - If bridge is raised, serve boats and decide when to lower
+5. Calculate total time bridge is unavailable = sum of all RAISE time + time while RAISED + RAISE time
+6. Use registers to track: current_time, bridge_state, boat_index, wait_time_counter, bridge_movement_counter, boat_pass_counter, accumulated_time
+
+State Machine States:
+- IDLE: Wait for start
+- RAISE_BRIDGE: Count 60 seconds
+- SERVE_BOATS: Bridge raised, serve boats one by one
+- LOWER_BRIDGE: Count 60 seconds
+- DONE: Result ready
+
+For boat scheduling logic:
+- When a boat arrives at time T and bridge is LOWERED, check if T <= current_time + 60 + 20 + (next_boat_interval if any) 
+- Keep bridge raised if next boat arrives within 60s (time to lower + raise again)
+- Track total unavailable time as accumulated_time + current_time
+
+All arithmetic in seconds. Use 16-bit registers for time tracking.
+
+Implementation should be purely sequential with proper state transitions and counters.

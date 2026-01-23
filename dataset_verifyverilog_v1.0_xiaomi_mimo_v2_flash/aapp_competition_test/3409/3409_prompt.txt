@@ -1,0 +1,44 @@
+Verilog Module Specification: Peg Board Transformation Checker
+
+OVERVIEW:
+Implement a module that determines if a target peg board configuration can be reached from a starting configuration by a sequence of valid hammering operations. The grid size is scaled down to 4x4 for hardware feasibility.
+
+MODULE NAME: peg_board_checker
+
+INTERFACE SPECIFICATION:
+
+Inputs:
+  - clk: Clock signal (rising edge triggered)
+  - rst_n: Active-low synchronous reset
+  - start: Start pulse (assert for 1 cycle to begin computation)
+  - start_grid [15:0]: 16-bit input representing 4x4 start configuration
+    * Bit order: row-major, each bit: 1=peg up (O), 0=peg down (X)
+    * Bit i corresponds to cell (i/4, i%4)
+  - target_grid [15:0]: 16-bit input representing 4x4 target configuration
+    * Same encoding as start_grid
+
+Outputs:
+  - result: 1-bit output, 1=reachable, 0=not reachable
+  - done: Asserted high for 1 cycle when computation completes
+
+INTERNAL STATE:
+  - Current state (16-bit) during search
+  - Queue for BFS (FIFO, max 256 entries, each 4-bit index)
+  - Visited states bitmap (2^16 = 65536 bits = 8192 bytes)
+  - Cycle counter (10-bit, max 1024 cycles for timeout)
+
+BEHAVIOR:
+1. On start pulse, initialize with start_grid
+2. Perform BFS to find if target_grid is reachable
+3. If target found within max cycles, result=1
+4. If queue exhausted or timeout, result=0
+5. Assert done when complete
+
+TIMING:
+- Combinational paths should be kept short
+- State updates on clock edge
+- Done asserted within 1000 cycles max
+
+RESET:
+- On rst_n=0: all state cleared, result=0, done=0
+- Minimum 2 clock cycles reset required

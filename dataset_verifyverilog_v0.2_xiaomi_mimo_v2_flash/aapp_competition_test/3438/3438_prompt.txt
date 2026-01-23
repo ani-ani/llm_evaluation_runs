@@ -1,0 +1,43 @@
+module spec:
+Design a sequential Verilog module named 'introspective_cache' that implements a simplified Belady's optimal caching algorithm.
+The module processes a sequence of object accesses (0-15) to simulate a cache with 8 slots.
+Since the algorithm requires future knowledge, the module uses a 'lookahead buffer' of 16 accesses.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing the sequence
+input [3:0] access_i // Current access input
+input valid_i // High when access_i is valid
+
+Outputs:
+output reg [2:0] read_count // Total cache reads (loads) counter
+output reg done // High when sequence is fully processed
+
+Parameters (Fixed):
+CACHE_SIZE = 8
+LOOKAHEAD_DEPTH = 16
+OBJECT_BITS = 4 (0-15)
+
+Behavior:
+1. The module maintains a cache state of 8 slots (each holding a valid bit and object ID).
+2. It buffers incoming accesses into a FIFO of depth 16 (Lookahead Window).
+3. When an access arrives:
+   - Check if object is in cache. If yes, hit (no read increment).
+   - If miss:
+     a. If cache has empty slot, load object (increment read_count).
+     b. If cache is full, look into the lookahead buffer for each cached object to find the index of the NEXT use.
+        - Evict the object that is used FARTEST in the future (highest index).
+        - If an object is never used again in the lookahead, it is the best candidate for eviction.
+     c. Load new object (increment read_count).
+4. The process repeats until all inputs are consumed.
+
+State Machine:
+- IDLE: Wait for start.
+- FILL_WINDOW: Buffer first LOOKAHEAD_DEPTH or until valid_i drops.
+- PROCESS_ACCESS: Evaluate current access against cache and lookahead.
+- UPDATE_CACHE: Update cache state.
+- LOOKAHEAD_SHIFT: Shift window, load new access.
+- DONE: All accesses processed.
+
+Note: Since 'a' can be up to 100000, but we are hardware constrained, we assume the testbench feeds the sequence rapidly. The module must handle the logic for one access per cycle (after initial window fill). The 'read_count' tracks cache loads.

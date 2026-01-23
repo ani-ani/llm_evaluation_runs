@@ -1,0 +1,118 @@
+module holmes_deduction (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] known_events,  // Bitmask: event i is known if bit i-1 = 1
+    input wire [7:0] implications [7:0],  // Adjacency matrix: implications[i][j] = 1 means event i+1 -> event j+1
+    output reg [7:0] certain_events,
+    output reg done
+);
+
+// Internal state
+reg [2:0] iteration_count;
+reg [7:0] current_certain;
+reg [7:0] next_certain;
+reg computing;
+
+// Deduction logic
+always @(*) begin
+    next_certain = current_certain;
+    
+    // Forward propagation: if A is certain and A->B, then B is certain
+    for (integer i = 0; i < 8; i = i + 1) begin
+        if (current_certain[i]) begin
+            for (integer j = 0; j < 8; j = j + 1) begin
+                if (implications[i][j]) begin
+                    next_certain[j] = 1'b1;
+                end
+            end
+        end
+    end
+    
+    // Backward propagation for single causes
+    for (integer j = 0; j < 8; j = j + 1) begin
+        if (current_certain[j]) begin
+            integer cause_count = 0;
+            integer last_cause = -1;
+            for (integer i = 0; i < 8; i = i + 1) begin
+                if (implications[i][j]) begin
+                    cause_count = cause_count + 1;
+                    last_cause = i;
+                end
+            end
+            if (cause_count == 1 && last_cause >= 0) begin
+                next_certain[last_cause] = 1'b1;
+            end
+        end
+    end
+    
+    // Common cause propagation: if all causes of B share a common cause C, then C is certain
+    for (integer j = 0; j < 8; j = j + 1) begin
+        if (current_certain[j]) begin
+            // Find causes of j
+            reg [7:0] causes_of_j = 8'b0;
+            for (integer i = 0; i < 8; i = i + 1) begin
+                if (implications[i][j]) begin
+                    causes_of_j[i] = 1'b1;
+                end
+            end
+            
+            // Find common causes of all causes of j
+            reg [7:0] common_causes = 8'b11111111;  // Start with all
+            for (integer i = 0; i < 8; i = i + 1) begin
+                if (causes_of_j[i]) begin
+                    // Intersection with causes of cause i
+                    reg [7:0] causes_of_i = 8'b0;
+                    for (integer k = 0; k < 8; k = k + 1) begin
+                        if (implications[k][i]) begin
+                            causes_of_i[k] = 1'b1;
+                        end
+                    end
+                    common_causes = common_causes & causes_of_i;
+                end
+            end
+            
+            // Add common causes
+            next_certain = next_certain | common_causes;
+        end
+    end
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        current_certain <= 8'b0;
+        iteration_count <= 3'b0;
+        computing <= 1'b0;
+        done <= 1'b0;
+        certain_events <= 8'b0;
+    end else begin
+        if (start && !computing) begin
+            current_certain <= known_events;
+            iteration_count <= 3'b0;
+            computing <= 1'b1;
+            done <= 1'b0;
+        end else if (computing) begin
+            if (iteration_count < 3'd7) begin  // Max 7 iterations for 8 events
+                if (current_certain == next_certain) begin
+                    // Fixed point reached
+                    computing <= 1'b0;
+                    done <= 1'b1;
+                    certain_events <= current_certain;
+                end else begin
+                    current_certain <= next_certain;
+                    iteration_count <= iteration_count + 1'b1;
+                end
+            end else begin
+                // Max iterations reached
+                computing <= 1'b0;
+                done <= 1'b1;
+                certain_events <= next_certain;
+            end
+        end else begin
+            done <= 1'b0;
+        end
+    end
+end
+
+endmodule

@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'prince_of_python' that solves the simplified speedrun problem.
+
+Problem:
+- Given n levels (8 max), each with specific completion times and shortcut rules
+- Each level i has times a[i][j] for using item j, and shortcut time s[i]
+- You start with item 0, beat levels in any order
+- After beating level k, you obtain item k
+- Shortcut for level i uses item x[i] unconventionally
+- Goal: Minimize total time to beat all levels
+
+Key Insight:
+For optimal ordering, each level's effective time depends on which item you have. But with sorted constraints, we can treat this as: select n distinct completion times (one per level) minimizing sum. This becomes a matching problem.
+
+Simplified for N=8:
+Implement recursive DFS with bitmask to find minimum sum assignment.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] n // number of levels (1-8)
+input [2:0] level [0:7] // level indices
+input [2:0] x [0:7] // shortcut items
+input [31:0] s [0:7] // shortcut times
+input [31:0] a [0:7][0:8] // times for each level using items 0-8
+
+Outputs:
+output reg [39:0] result // minimum total time
+output reg done // high when computation complete
+output reg error // high if invalid input
+
+Behavior:
+- Use state machine: IDLE → CALCULATING → DONE
+- Implement recursive depth-first search (depth max 8)
+- Track used levels (bitmask) and used times (bitmask)
+- For each level, try: using current item, or shortcut (if item available)
+- Current item starts at 0, increases as levels are beaten
+- Compute minimum sum across all permutations
+- Latency: approximately 8*8 = 64 cycles max
+- Use valid array indices (0-7 for levels, 0-8 for items)
+
+Implementation details:
+- Store current level index and recursion depth in state
+- Use 9-bit masks for times (items 0-8) and 8-bit masks for levels
+- For shortcut: level i requires having item x[i] available
+- Item availability depends on which levels have been beaten
+- Parallel computation: for each state, evaluate all available options
+- Use 32-bit adders for sum accumulation
+- Track minimum sum across all valid paths

@@ -1,0 +1,46 @@
+Design a sequential Verilog module named `flubber_optimizer` that approximates the maximum value of F^a * W^(1-a) for a micro-fluidic network.
+
+**Interface:**
+- Inputs: 
+  - `clk`, `rst_n` (Active low reset)
+  - `start` (Initiates the search)
+  - `v_fixed` [31:0]: Viscosity in Q16.16 format (e.g., 3.0 is 0x00030000)
+  - `a_fixed` [31:0]: Parameter 'a' in Q16.16 format (e.g., 0.66 is 0x0000A3D7)
+  - `c_edges` [5:0][31:0]: Array of 6 edge capacities in Q16.16. Order: 1-4, 2-4, 4-3, 4-5 (unused), 1-5 (unused), 3-5 (unused). For the 4-node graph, we map inputs to edges: E1 (2-4), E2 (4-3), E3 (1-4).
+  - Note: To map to 4 nodes (1, 2, 3, 4), we treat node 4 as the central mixing node. Edges are (2-4), (4-3), (1-4).
+
+- Outputs:
+  - `done`: High when search complete
+  - `f_best` [31:0]: Best Flubber rate found (Q16.16)
+  - `w_best` [31:0]: Best Water rate found (Q16.16)
+  - `val_best` [31:0]: Best objective value (Q16.16)
+
+**Algorithm Description:**
+1. **Search Loop:** The module should iterate through a pre-defined set of 16 flow patterns (indices 0 to 15). Each index represents a ratio of Flubber vs Water.
+2. **Flow Estimation:** For each pattern, calculate the maximum feasible flow.
+   - Let `total_flow` = 1.0 + (index << 1) // A dummy increasing sequence to simulate variable flow
+   - Or, simpler for hardware: The pattern index represents a mix. 
+   - *Simplified Logic:* 
+     - `F_prop` = index (scaled to Q16.16)
+     - `W_prop` = (16 - index) (scaled to Q16.16)
+     - Calculate the bottleneck capacity `C_bottle` for this mix using the input edges `c_edges` and `v_fixed`. 
+     - Capacity constraint: `v*F + W <= C_bottle`.
+     - We scale `F` and `W` by `total_flow`. 
+     - For the purpose of this simplified benchmark, we assume the `c_edges` inputs are the capacities of the 3 valid edges.
+     - Calculate the resulting `F_actual` and `W_actual` that fit within the bottleneck.
+3. **Value Calculation:**
+   - Compute `Value = F_actual^a * W_actual^(1-a)`.
+   - Use a small Lookup Table (LUT) for `x^y` approximation or shift-based approximation for the testbench.
+   - In the Verilog module, to keep it synthesizable without a massive DSP chain, we will implement a simplified logic: 
+     - Compare the weighted flows. 
+     - Since the objective function is convex, the optimal solution lies on the boundary. We iterate through the discrete set of boundary points.
+4. **State Machine:**
+   - `IDLE`: Wait for `start`.
+   - `SEARCH`: Iterate `idx` from 0 to 15. In each cycle, compute flow, capacity check, and value. Keep track of the maximum value.
+   - `DONE`: Output the best `f`, `w`, and `val`.
+
+**Constraints:**
+- Use Q16.16 fixed-point arithmetic.
+- Capacity constraint: `v*f + w <= C`.
+- Non-negative flows.
+- The module should effectively search for the optimal point on the trade-off curve defined by the constraints.

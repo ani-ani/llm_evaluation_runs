@@ -1,0 +1,142 @@
+module vault_security (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] A,
+    input wire [3:0] B,
+    input wire [3:0] L,
+    output reg [15:0] insecure,
+    output reg [15:0] secure,
+    output reg [15:0] super_secure,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam INIT = 3'b001;
+localparam COMPUTE = 3'b010;
+localparam INCR_J = 3'b011;
+localparam INCR_X = 3'b100;
+localparam DONE = 3'b101;
+
+reg [2:0] state, next_state;
+reg [3:0] x_reg, next_x_reg;
+reg [4:0] j_reg, next_j_reg; // j from 0 to A+B (max 16)
+reg [15:0] cnt_ins, next_cnt_ins;
+reg [15:0] cnt_sec, next_cnt_sec;
+reg [15:0] cnt_sup, next_cnt_sup;
+wire [4:0] max_j; // A+B
+
+// Helper function: check if two numbers are coprime (for numbers up to 16)
+function automatic is_coprime(input [3:0] a, b);
+    begin
+        if (a == 0 || b == 0) 
+            is_coprime = (a == 0 && b == 0) ? 0 : (a == 0 ? (b == 1) : (b == 0 ? (a == 1) : 1));
+        else begin
+            // Check common prime factors: 2,3,5,7,11,13
+            if (a%2==0 && b%2==0) is_coprime = 0;
+            else if (a%3==0 && b%3==0) is_coprime = 0;
+            else if (a%5==0 && b%5==0) is_coprime = 0;
+            else if (a%7==0 && b%7==0) is_coprime = 0;
+            else if (a%11==0 && b%11==0) is_coprime = 0;
+            else if (a%13==0 && b%13==0) is_coprime = 0;
+            else is_coprime = 1;
+        end
+    end
+endfunction
+
+assign max_j = A + B;
+
+// Sequential state update
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        x_reg <= 4'b0;
+        j_reg <= 5'b0;
+        cnt_ins <= 16'b0;
+        cnt_sec <= 16'b0;
+        cnt_sup <= 16'b0;
+    end else begin
+        state <= next_state;
+        x_reg <= next_x_reg;
+        j_reg <= next_j_reg;
+        cnt_ins <= next_cnt_ins;
+        cnt_sec <= next_cnt_sec;
+        cnt_sup <= next_cnt_sup;
+    end
+end
+
+// Combinational next state logic
+always @(*) begin
+    next_state = state;
+    next_x_reg = x_reg;
+    next_j_reg = j_reg;
+    next_cnt_ins = cnt_ins;
+    next_cnt_sec = cnt_sec;
+    next_cnt_sup = cnt_sup;
+    done = 0;
+
+    case (state)
+        IDLE: begin
+            if (start) next_state = INIT;
+        end
+
+        INIT: begin
+            next_x_reg = 4'd1;
+            next_j_reg = 5'd0;
+            next_cnt_ins = 16'd0;
+            next_cnt_sec = 16'd0;
+            next_cnt_sup = 16'd0;
+            next_state = COMPUTE;
+        end
+
+        COMPUTE: begin
+            // Compute coprime flags
+            reg cop1 = is_coprime(x_reg, j_reg);
+            reg cop2 = is_coprime(x_reg, max_j - j_reg);
+            
+            if (cop1 && cop2) begin
+                next_cnt_sup = cnt_sup + 1;
+            end else if (cop1 || cop2) begin
+                next_cnt_sec = cnt_sec + 1;
+            end else begin
+                next_cnt_ins = cnt_ins + 1;
+            end
+            next_state = INCR_J;
+        end
+
+        INCR_J: begin
+            if (j_reg < max_j) begin
+                next_j_reg = j_reg + 1;
+                next_state = COMPUTE;
+            end else begin
+                next_j_reg = 5'd0;
+                next_state = INCR_X;
+            end
+        end
+
+        INCR_X: begin
+            if (x_reg < L) begin
+                next_x_reg = x_reg + 1;
+                next_state = COMPUTE;
+            end else begin
+                next_state = DONE;
+            end
+        end
+
+        DONE: begin
+            done = 1;
+            if (!start) next_state = IDLE;
+            else next_state = DONE;
+        end
+
+        default: next_state = IDLE;
+    endcase
+end
+
+// Output assignments
+assign insecure = cnt_ins;
+assign secure = cnt_sec;
+assign super_secure = cnt_sup;
+
+endmodule

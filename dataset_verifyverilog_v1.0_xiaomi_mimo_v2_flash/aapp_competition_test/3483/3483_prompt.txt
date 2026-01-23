@@ -1,0 +1,123 @@
+module Figurine4Pack #(
+    parameter N = 8,
+    parameter WEIGHT_WIDTH = 8,
+    parameter RESULT_WIDTH = 16,
+    parameter FP_FRAC_BITS = 16
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [WEIGHT_WIDTH-1:0] weights [0:N-1],
+    
+    output reg [RESULT_WIDTH-1:0] max_weight,
+    output reg [RESULT_WIDTH-1:0] min_weight,
+    output reg [RESULT_WIDTH-1:0] num_distinct,
+    output reg [31:0] expected_weight,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam LOAD = 3'b001;
+localparam COMPUTE = 3'b010;
+localparam COUNT_DISTINCT = 3'b011;
+localparam DONE = 3'b100;
+
+reg [2:0] state, next_state;
+
+// Data storage
+reg [WEIGHT_WIDTH-1:0] w [0:N-1];
+reg [RESULT_WIDTH-1:0] sum_all;
+reg [WEIGHT_WIDTH:0] min_val;
+reg [WEIGHT_WIDTH:0] max_val;
+reg [10:0] combo_idx;
+reg [10:0] distinct_count;
+reg [1020:0] seen_sums;
+
+// Combinational signals
+wire [2:0] i0 = combo_idx % N;
+wire [2:0] i1 = (combo_idx / N) % N;
+wire [2:0] i2 = (combo_idx / (N*N)) % N;
+wire [2:0] i3 = (combo_idx / (N*N*N)) % N;
+wire [WEIGHT_WIDTH:0] current_sum = w[i0] + w[i1] + w[i2] + w[i3];
+wire [10:0] total_combos = N * N * N * N;
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) state <= IDLE;
+    else state <= next_state;
+end
+
+always @(*) begin
+    case (state)
+        IDLE: next_state = start ? LOAD : IDLE;
+        LOAD: next_state = COMPUTE;
+        COMPUTE: next_state = COUNT_DISTINCT;
+        COUNT_DISTINCT: next_state = (combo_idx >= total_combos) ? DONE : COUNT_DISTINCT;
+        DONE: next_state = IDLE;
+        default: next_state = IDLE;
+    endcase
+end
+
+// Datapath
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        max_weight <= 0;
+        min_weight <= 0;
+        num_distinct <= 0;
+        expected_weight <= 0;
+        done <= 0;
+        sum_all <= 0;
+        min_val <= {11{1'b1}};
+        max_val <= 0;
+        combo_idx <= 0;
+        distinct_count <= 0;
+        seen_sums <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    combo_idx <= 0;
+                    distinct_count <= 0;
+                    seen_sums <= 0;
+                    min_val <= {11{1'b1}};
+                    max_val <= 0;
+                    sum_all <= 0;
+                end
+            end
+            
+            LOAD: begin
+                for (integer i = 0; i < N; i = i + 1) begin
+                    w[i] <= weights[i];
+                end
+            end
+            
+            COMPUTE: begin
+                for (integer i = 0; i < N; i = i + 1) begin
+                    sum_all <= sum_all + w[i];
+                    if (w[i] < min_val) min_val <= w[i];
+                    if (w[i] > max_val) max_val <= w[i];
+                end
+            end
+            
+            COUNT_DISTINCT: begin
+                if (!seen_sums[current_sum]) begin
+                    seen_sums[current_sum] <= 1'b1;
+                    distinct_count <= distinct_count + 1;
+                end
+                combo_idx <= combo_idx + 1;
+            end
+            
+            DONE: begin
+                max_weight <= max_val * 4;
+                min_weight <= min_val * 4;
+                num_distinct <= distinct_count;
+                expected_weight <= (sum_all * 4 * (1 << FP_FRAC_BITS)) / N;
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+endmodule

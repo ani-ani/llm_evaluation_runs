@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'min_number_finder' that finds the smallest positive integer X such that the product of its digits equals N (in base 10). The module should implement a digit factorization algorithm.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] N // target product (0 < N < 256)
+
+Outputs:
+output reg [63:0] result // the smallest integer X (or 0 if impossible)
+output reg done // high when computation complete
+output reg impossible // high when no solution exists
+
+Specification:
+- The module uses base 10 and handles N from 1 to 255
+- Algorithm: Factor N into digits 2-9 (avoiding prime factors > 7)
+- Use digits 9,8,7,6,5,4,3,2 in that order for factorization (greedy approach)
+- After factorization, sort digits in ascending order to minimize X
+- Include any number of 1s to match digit count if needed (but 1s don't affect product)
+- Latency: 16 clock cycles after start is asserted
+- State machine states: IDLE, FACTORING, SORTING, DONE
+
+Detailed behavior:
+1. IDLE: Wait for start signal
+2. FACTORING: Try dividing N by 9,8,7,6,5,4,3,2 repeatedly, recording digits
+3. SORTING: Arrange collected digits in ascending order to form smallest number
+4. DONE: Output result in result register
+
+For impossible cases (N has prime factor > 7 or N > 9^20 equivalent), set impossible=1 and result=0
+
+The result is constructed as a base-10 number with digits sorted ascending.
+Example: N=24 factors as 8 and 3, sorted gives 38.
+Example: N=216 factors as 9,8,3 sorted gives 389, but actually 216 = 6*6*6 = 666 is smaller. Need to reconsider. Better: use smallest digits possible.
+
+Correct approach: Factor into as many 9s as possible, then 8s, etc., BUT we need to minimize the final number by having fewer digits. Actually, we want smallest lexicographic number. Better: factor N into optimal digits.
+
+For the purpose of this simplified module, we'll use a fixed approach: try all combinations of 0-5 digits from {2,3,4,5,6,7,8,9} to find one that multiplies to N, then pick the one with fewest digits, and within that, the lexicographically smallest when sorted ascending.

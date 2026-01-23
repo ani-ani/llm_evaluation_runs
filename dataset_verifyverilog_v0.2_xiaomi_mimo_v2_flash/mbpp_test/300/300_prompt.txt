@@ -1,0 +1,41 @@
+Design a combinational Verilog module named 'binary_seq_counter' that counts binary sequences of length 2n where sum of first n bits equals sum of last n bits.
+
+This uses the formula: result = 1 + sum of (C(n,r)^2) for r=1 to n
+Where C(n,r) is n choose r.
+
+Inputs:
+input [3:0] n // n value (1 to 8)
+input start // activation signal
+
+Outputs:
+output [31:0] result // Q16.16 fixed-point result
+
+Module Specification:
+- Compute result purely combinationally when start=1
+- Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+- All intermediate calculations use 32-bit registers
+- Iterative calculation of C(n,r) for r=1 to n using recurrence: C(n,r) = C(n,r-1) * (n+1-r) / r
+- Accumulate C(n,r)^2 into result
+- Initial result = 1.0 in Q16.16 format (32'h00010000)
+
+Use bounded loops: always_comb with for-loop up to n=8 iterations
+- Define internal variables: nCr (current binomial coefficient), temp (for multiplication), r (loop counter)
+- For each r, compute nCr = (nCr * (n + 1 - r)) / r (using integer division)
+- Accumulate nCr * nCr into result
+- All operations in integer arithmetic, then scale to Q16.16 at end
+
+Implementation approach:
+1. Convert n to integer range 1-8
+2. Initialize nCr = 1, result = 1<<16 (1.0 in Q16.16)
+3. For r from 1 to n:
+   - temp = nCr * (n + 1 - r)
+   - nCr = temp / r (integer division)
+   - result += (nCr * nCr) << 16
+4. Output result in Q16.16 format
+
+Example conversions:
+- n=1: result = 2.0 = 2.0 * 65536 = 131072 = 32'h00020000
+- n=2: result = 6.0 = 6.0 * 65536 = 393216 = 32'h00060000
+- n=3: result = 20.0 = 20.0 * 65536 = 1310720 = 32'h00140000
+
+The module should work for n values 1 through 8.

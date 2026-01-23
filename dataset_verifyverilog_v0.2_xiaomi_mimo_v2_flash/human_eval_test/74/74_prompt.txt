@@ -1,0 +1,51 @@
+Design a combinational Verilog module named 'total_match' that implements a list comparison algorithm.
+
+The module accepts two lists of fixed-width strings and returns the list with fewer total characters. If counts are equal, it returns the first list.
+
+**ADAPTATION NOTES:**
+- Original lists can be unbounded → Fixed to maximum 8 strings per list
+- Strings can be arbitrary length → Fixed to 8 characters max per string
+- Character comparison is case-sensitive (as shown in test cases)
+- Each string is represented as 8 ASCII bytes (8-bit values)
+- Empty strings are represented with null terminators (0x00) or zero-length count
+
+**INPUTS:**
+- `list1_valid`: [7:0] bitmask indicating which strings in list1 are valid (active high)
+- `list1_data`: [7:0][7:0][7:0] array storing list1 strings. list1_data[i][j] is j-th character of i-th string
+- `list1_lengths`: [7:0][3:0] array storing actual length of each string in list1 (0-8)
+- `list2_valid`: [7:0] bitmask indicating which strings in list2 are valid
+- `list2_data`: [7:0][7:0][7:0] array storing list2 strings
+- `list2_lengths`: [7:0][3:0] array storing actual length of each string in list2
+
+**OUTPUTS:**
+- `result_list1_valid`: [7:0] bitmask for selected list (equals list1_valid or list2_valid)
+- `result_list1_data`: [7:0][7:0][7:0] array for selected list's string data
+- `result_list1_lengths`: [7:0][3:0] array for selected list's string lengths
+- `is_first_list`: 1-bit indicating if list1 was selected (1) or list2 was selected (0)
+
+**BEHAVIOR:**
+1. Compute total characters for list1 by summing all valid `list1_lengths`
+2. Compute total characters for list2 by summing all valid `list2_lengths`
+3. If sum_list1 <= sum_list2: output list1 and set is_first_list = 1
+4. If sum_list1 > sum_list2: output list2 and set is_first_list = 0
+
+**IMPLEMENTATION GUIDANCE:**
+- Use combinational logic (no clock/reset needed)
+- For sum computation, use a tree of adders or simple cascaded addition
+- Maximum total characters: 8 strings × 8 chars = 64 chars → needs 7-bit sum
+- Output registers should hold the selected list data
+- All operations complete in zero cycles (purely combinational)
+
+**EXAMPLE MAPPING:**
+Example 1: ['hi', 'admin'] vs ['hI', 'Hi']
+  list1: 'hi' (2 chars) + 'admin' (5 chars) = 7 chars
+  list2: 'hI' (2 chars) + 'Hi' (2 chars) = 4 chars
+  Result: list2 (4 < 7)
+
+Example 2: ['hi', 'admin'] vs ['hi', 'hi', 'admin', 'project']
+  list1: 2 + 5 = 7 chars
+  list2: 2 + 2 + 5 + 7 = 16 chars
+  Result: list1 (7 < 16)
+
+Example 3: Empty lists
+  Both sums = 0, return list1 per tie-breaking rule

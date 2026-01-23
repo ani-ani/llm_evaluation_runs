@@ -1,0 +1,137 @@
+module BingoTwoCardChecker (
+    input [11:0] card1 [0:4][0:4],
+    input [11:0] card2 [0:4][0:4],
+    output reg tie_found,
+    output reg [2:0] tie_row1,
+    output reg [2:0] tie_row2
+);
+    // Parameters
+    localparam ROWS = 5;
+    localparam COLS = 5;
+    localparam DATA_WIDTH = 12;
+    localparam MAX_UNION_SIZE = 10;
+    localparam MAX_INTERSECTION_SIZE = 5;
+
+    // Internal helper function: check if a number is in an array
+    function automatic int is_in_array(
+        input [DATA_WIDTH-1:0] num,
+        input [DATA_WIDTH-1:0] arr [0:MAX_UNION_SIZE-1],
+        input int size
+    );
+        int i;
+        is_in_array = 0;
+        for (i = 0; i < size; i++) begin
+            if (arr[i] == num) begin
+                is_in_array = 1;
+                return 1;
+            end
+        end
+        return 0;
+    endfunction
+
+    // Main combinational logic
+    always_comb begin
+        // Initialize outputs
+        tie_found = 0;
+        tie_row1 = 0;
+        tie_row2 = 0;
+
+        // Iterate over each row in card1
+        for (int i = 0; i < ROWS; i++) begin
+            // Iterate over each row in card2
+            for (int j = 0; j < ROWS; j++) begin
+                // Compute intersection of row i and row j
+                reg [DATA_WIDTH-1:0] inter [0:MAX_INTERSECTION_SIZE-1];
+                int inter_size = 0;
+                for (int k = 0; k < COLS; k++) begin
+                    for (int l = 0; l < COLS; l++) begin
+                        if (card1[i][k] == card2[j][l]) begin
+                            // Check if already in intersection
+                            int found = 0;
+                            for (int m = 0; m < inter_size; m++) begin
+                                if (inter[m] == card1[i][k]) found = 1;
+                            end
+                            if (!found && inter_size < MAX_INTERSECTION_SIZE) begin
+                                inter[inter_size] = card1[i][k];
+                                inter_size++;
+                            end
+                        end
+                    end
+                end
+
+                // Compute union of row i and row j
+                reg [DATA_WIDTH-1:0] uni [0:MAX_UNION_SIZE-1];
+                int uni_size = 0;
+                // Add all from row i
+                for (int k = 0; k < COLS; k++) begin
+                    if (!is_in_array(card1[i][k], uni, uni_size) && uni_size < MAX_UNION_SIZE) begin
+                        uni[uni_size] = card1[i][k];
+                        uni_size++;
+                    end
+                end
+                // Add all from row j
+                for (int k = 0; k < COLS; k++) begin
+                    if (!is_in_array(card2[j][k], uni, uni_size) && uni_size < MAX_UNION_SIZE) begin
+                        uni[uni_size] = card2[j][k];
+                        uni_size++;
+                    end
+                end
+
+                // For each element in intersection, check if it can be the last number
+                for (int x_idx = 0; x_idx < inter_size; x_idx++) begin
+                    reg [DATA_WIDTH-1:0] x = inter[x_idx];
+                    int valid = 1;
+
+                    // Check all rows in card1
+                    for (int r = 0; r < ROWS; r++) begin
+                        // Check if this row is subset of union
+                        int is_subset = 1;
+                        for (int c = 0; c < COLS; c++) begin
+                            if (!is_in_array(card1[r][c], uni, uni_size)) begin
+                                is_subset = 0;
+                                break;
+                            end
+                        end
+                        if (is_subset) begin
+                            // If subset, must contain x
+                            int contains_x = 0;
+                            for (int c = 0; c < COLS; c++) begin
+                                if (card1[r][c] == x) contains_x = 1;
+                            end
+                            if (!contains_x) valid = 0;
+                        end
+                    end
+
+                    // Check all rows in card2
+                    for (int r = 0; r < ROWS; r++) begin
+                        int is_subset = 1;
+                        for (int c = 0; c < COLS; c++) begin
+                            if (!is_in_array(card2[r][c], uni, uni_size)) begin
+                                is_subset = 0;
+                                break;
+                            end
+                        end
+                        if (is_subset) begin
+                            int contains_x = 0;
+                            for (int c = 0; c < COLS; c++) begin
+                                if (card2[r][c] == x) contains_x = 1;
+                            end
+                            if (!contains_x) valid = 0;
+                        end
+                    end
+
+                    if (valid) begin
+                        tie_found = 1;
+                        tie_row1 = i;
+                        tie_row2 = j;
+                        // Break out of loops by checking tie_found in outer loops
+                        // This will stop further iterations once a tie is found
+                        if (tie_found) break;
+                    end
+                end
+                if (tie_found) break;
+            end
+            if (tie_found) break;
+        end
+    end
+endmodule

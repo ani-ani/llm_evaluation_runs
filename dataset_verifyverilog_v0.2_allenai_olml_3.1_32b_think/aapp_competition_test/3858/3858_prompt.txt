@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'convex_scoring' that computes the sum of scores of all convex polygons formed by a subset of points.
+
+The module implements the following algorithm derived from inclusion-exclusion:
+1. Calculate total score = 2^N - 1 (exclude empty set)
+2. Subtract subsets that do NOT form convex polygons:
+   - Subtract 1 for empty set (already handled by step 1 calculation logic if not careful, but usually 2^N - 1 excludes empty)
+   - Subtract N for single points (these don't form polygons)
+   - Subtract (2^k - k - 1) for every collinear subset of size k >= 2.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] N // Number of points (max 200)
+input [15:0] x_i [0:199] // Array of x-coordinates (packed or unpacked depending on tool, let's use unpacked for clarity: input [15:0] x_i_0, ..., x_i_199 - but standard Verilog ports are limited. Let's use a flattened input array for testbench convenience or iterate). To keep it synthesizable and simple, we will process one point pair per cycle.
+
+Actually, for N=200, a full 200-point parallel input is huge. Let's limit the input interface to accept points sequentially or use a smaller N. 
+
+Given the complexity of the algorithm (O(N^2) slope comparison), we will implement a controller that iterates through all pairs of points (i < j), calculates the slope, counts how many points lie on that line, and updates the 'excluded' score.
+
+Revised Interface for practicality (N <= 16 to fit in reasonable logic):
+input [7:0] N // Number of points (max 16)
+input [15:0] points_x [0:15] // X coords
+input [15:0] points_y [0:15] // Y coords
+
+Internal Logic:
+- State Machine: IDLE, CALCULATE_SLOPES, COUNT_COLLINEAR, ACCUMULATE_RESULT, DONE
+- We need to iterate i from 0 to N-1, j from i+1 to N-1.
+- For each pair, calculate (dx, dy).
+- Reduce (dx, dy) by GCD (approximated or simplified for Verilog since GCD is complex, we can compare cross products directly or use a hash map in software, but in hardware we usually compare lines directly).
+- We will maintain an array of flags 'used' to skip pairs already processed on the same line.
+
+Output:
+output reg [31:0] result // The final score
+output reg done // High when computation is done
+
+Latency: Dependent on N. For N=16, O(N^2) iterations, each taking a few cycles. Expect ~500-1000 cycles.
+
+Fixed-Point: Not used here as calculations are integer mod 2^32 (or mod 998244353).
+
+Constraint: The problem asks for 2^N - sum(2^k - k - 1) - 1 - N. We will compute this.
+
+Steps:
+1. Compute 2^N (Power of 2 unit)
+2. Subtract 1 + N.
+3. Find all lines. For each pair (i, j) not marked 'used':
+   a. Find all points k on line i-j.
+   b. Count k (size M).
+   c. Mark all pairs in M as used.
+   d. Subtract (2^M - M - 1) from result.
+
+Hardware Acceleration:
+- Parallel GCD/Comparison: We can use a small state machine to calculate GCD of differences.
+- Slope Normalization: Store reduced (dx, dy) or just cross product checks.
+- Modulo 998244353: Use a modulo unit.
+
+Note: The prompt asks for Verilog. I will design a sequential module that accepts N points and computes the result.

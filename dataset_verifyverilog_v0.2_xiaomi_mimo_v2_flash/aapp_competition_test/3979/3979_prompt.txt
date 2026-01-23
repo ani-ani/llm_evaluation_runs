@@ -1,0 +1,29 @@
+Design a sequential Verilog module named 'lexicographical_solver' that determines which letters should be capitalized to make a sequence of words lexicographically non-decreasing.
+
+The module processes constraints derived from adjacent word pairs. It supports a small fixed size: up to 8 words, alphabet size up to 16 letters, and word lengths up to 16.
+
+Inputs:
+input clk: System clock
+input rst_n: Active-low reset
+input start: High to start processing
+input [3:0] word_len_1: Length of first word
+input [15:0] word_1 [16]: First word (16 entries of 4-bit symbols, only first word_len_1 entries valid)
+input [3:0] word_len_2: Length of second word
+input [15:0] word_2 [16]: Second word (16 entries of 4-bit symbols, only word_len_2 entries valid)
+
+Outputs:
+output reg [15:0] capitalization_mask: Bit mask where bit i is 1 if letter i+1 must be capitalized
+output reg valid: High when processing is complete and result is valid
+output reg impossible: High if no valid capitalization exists
+
+Behavior:
+The module should implement a simplified constraint satisfaction algorithm:
+1. Compare the two input words character by character.
+2. Identify the first mismatch:
+   - If word1 > word2 at mismatch: word1 char must be capitalized (1), word2 char must not (0). These are hard constraints.
+   - If word1 < word2 at mismatch: Both characters must have the SAME capitalization state (if one is capitalized, the other must be). This creates a dependency.
+3. Propagate constraints: If a letter is forced to be capitalized, any letter dependent on it (via 'same' constraint) must also be capitalized. If a conflict arises (e.g., a letter must be both capitalized and not), assert 'impossible'.
+4. Output the final set of letters to capitalize as a bitmask.
+
+Use a state machine with states: IDLE, COMPARE, PROPAGATE, DONE.
+Latency: Result valid approximately 16 clock cycles after start.

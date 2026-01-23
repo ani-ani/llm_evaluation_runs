@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'optimal_cluster' that finds the smallest possible cluster size by exploring all possible orderings of N points.
+
+The problem adapts the original by:
+1. Scaling n from 250000 to N=8
+2. Using Q8.8 fixed-point format (8 integer, 8 fractional bits) for S and T
+3. Exploring all 256 possible orderings (brute-force) to find minimal cluster size
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0] a_i [0:7] // array of N=8 a values (0-255)
+input [7:0] b_i [0:7] // array of N=8 b values (0-255)
+input [0:7] c_i // array of N=8 c values (1 bit each)
+
+Outputs:
+output reg [7:0] cluster_size // minimal cluster size found
+output reg done // high when computation complete
+
+Latency: 256 clock cycles after start (one per ordering).
+
+Algorithm:
+1. State IDLE: Wait for start signal, then reset counters
+2. State PROCESSING: For each of 256 orderings:
+   - Treat ordering as selecting S,T weights (2 bits per ordering to select from 4 quadrants)
+   - Compute score_i = a_i * S + b_i * T for all i
+   - Sort points by score (assuming distinct scores or handling ties as worst case)
+   - Find first and last indices where c_i=1
+   - Calculate cluster_size = last - first + 1
+   - Track minimum across all orderings
+3. State DONE: Output final cluster_size
+
+For tie handling: Assume worst-case ordering where c=1 elements are spread out when scores are equal.
+
+Implementation notes:
+- Use small fixed values for S,T (e.g., S,T ∈ {1.0, -1.0, 0.5, -0.5} in Q8.8)
+- Scores can be computed as: a_i * S_val + b_i * T_val where S_val, T_val are pre-defined
+- Use parallel comparators for sorting small N=8 array
+- Use bubble sort or sorting network for 8 elements
+
+The module should complete in exactly 256 cycles and output the minimal cluster size.

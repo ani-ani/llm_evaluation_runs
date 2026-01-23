@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'team_selection' that computes the optimal assignment of students to programming and sports teams to maximize total strength.
+
+Problem scaling:
+- n (number of students) ≤ 8
+- p (programming team size) ≤ 8
+- s (sports team size) ≤ 8
+- p + s ≤ n
+- Skill values a_i, b_i are 8-bit integers (0-255)
+
+The module should perform a brute-force search over all possible valid assignments (C(n, p) * C(n-p, s) combinations) to find the maximum total strength.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] n // Number of students (1-8)
+input [2:0] p // Programming team size (0-8)
+input [2:0] s // Sports team size (0-8)
+input [7:0] a [0:7] // Programming skills of 8 students
+input [7:0] b [0:7] // Sports skills of 8 students
+
+Outputs:
+output reg [15:0] max_strength // Maximum total strength (sum of p programming skills + s sports skills)
+output reg [2:0] prog_indices [0:7] // Indices of students in programming team (p valid values, others ignored)
+output reg [2:0] sports_indices [0:7] // Indices of students in sports team (s valid values, others ignored)
+output reg done // High when computation complete
+
+Implementation details:
+1. Use a state machine with states: IDLE, PREPARE, GENERATE_COMBOS, EVALUATE, UPDATE, DONE.
+2. In PREPARE state, initialize bitmasks and counters.
+3. In GENERATE_COMBOS state, generate valid combinations of indices. Use a 8-bit mask where bits set to 1 represent students assigned to the programming team. Iterate to find masks with exactly p bits set.
+4. For each programming mask, generate sports masks from remaining students (n - p students) with exactly s bits set.
+5. In EVALUATE state, calculate the strength for the current pair of masks:
+   - Sum programming skills for bits set in prog_mask
+   - Sum sports skills for bits set in sports_mask
+   - Add them together
+6. In UPDATE state, compare with current max_strength and store results if better.
+7. Must track which indices correspond to the best masks to fill prog_indices and sports_indices arrays.
+8. Latency: Approx 2048 clock cycles worst case (max 8 choose 3 * 5 choose 3 = 56 * 10 = 560 evaluations, plus overhead).
+9. The module must output the indices (0-based) in the prog_indices and sports_indices arrays.
+10. The done signal is asserted when all combinations are evaluated.
+
+Latency: Result valid approximately 3000 clock cycles after start asserted.

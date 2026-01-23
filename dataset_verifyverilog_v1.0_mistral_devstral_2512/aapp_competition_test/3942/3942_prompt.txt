@@ -1,0 +1,51 @@
+Treasure Door Solver - Beautiful String Validation
+
+Module: TreasureSolver
+
+Parameters:
+  - MAX_LEN = 16 (maximum string length)
+  - MAX_HASHES = 8 (maximum number of '#' characters)
+  - CHAR_WIDTH = 2 (bits per character)
+
+Inputs:
+  - clk: Clock signal (rising edge triggered)
+  - rst_n: Active-low synchronous reset
+  - start: Start pulse (assert for 1 cycle to begin processing)
+  - char_arr[0:15]: 16-element input array, each element 2 bits
+    Encoding: 00='(', 01=')', 10='#', 11=unused
+  - length: 5-bit value (0-31) indicating number of valid characters
+
+Outputs:
+  - assign_arr[0:7]: 8-element output array, each element 8 bits
+    Contains replacement counts for each '#' character
+  - num_hashes: 4-bit value indicating number of '#' characters found
+  - done: Asserted high for 1 cycle when processing completes
+  - fail: Asserted high if no valid solution exists
+
+Functionality:
+  1. On start assertion, reset internal state
+  2. Process input string in sequential states:
+     - Count '(' and ')' characters
+     - Count '#' characters and record last '#' position
+     - Calculate last assignment: last_assign = count('(') - count(')') - count('#') + 2
+     - Verify last_assign >= 1 (each '#' needs at least 1)
+     - Simulate string with assignments to verify balance never goes negative
+     - Final balance must be zero
+  3. If verification passes:
+     - Fill assign_arr with 1 for all '#' except last
+     - Last '#' gets last_assign
+     - Set num_hashes = count('#')
+     - Pulse done=1, fail=0
+  4. If verification fails:
+     - Pulse done=1, fail=1
+     - assign_arr and num_hashes undefined
+
+Timing:
+  - start pulse initiates computation
+  - Processing completes within 2*MAX_LEN cycles
+  - done pulses high for 1 cycle when complete
+  - Sample outputs on same cycle done is high
+
+Reset behavior:
+  - On rst_n=0: all outputs zero, internal state cleared
+  - Minimum 2 clock cycles of reset required before start

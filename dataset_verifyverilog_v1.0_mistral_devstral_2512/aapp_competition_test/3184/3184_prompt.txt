@@ -1,0 +1,70 @@
+Module: CameraCover
+
+Description:
+Computes the minimum number of cameras needed to cover all walls of a convex polygon building modeled as a circle with N walls (N <= 8). Each camera covers a contiguous range of walls, possibly wrapping around. The module uses BFS on the state space of coverage masks to find the minimal number of cameras. If coverage is impossible, outputs 0.
+
+Parameters:
+- N (integer, default 8): number of walls (3 <= N <= 8)
+- K (integer, default 8): number of cameras (1 <= K <= 8)
+
+Ports:
+- clk       : in  std_logic;  -- System clock, rising edge triggered
+- rst_n     : in  std_logic;  -- Active-low synchronous reset
+- start     : in  std_logic;  -- Start pulse, assert for one clock cycle to begin computation
+- a_i       : in  std_logic_vector(2 downto 0) array (0 to K-1);  -- Start wall of camera i (1..N, 0 means unused)
+- b_i       : in  std_logic_vector(2 downto 0) array (0 to K-1);  -- End wall of camera i (1..N, 0 means unused)
+- done      : out std_logic;  -- Asserted high for one cycle when computation finishes
+- result    : out std_logic_vector(7 downto 0);  -- Minimal number of cameras (1..K) if possible, else 0
+
+Functionality:
+1. Reset (rst_n = '0'): Clears all internal state. done <= '0', result <= (others => '0').
+2. Idle state: Wait for start = '1'. On rising edge with start = '1', latch all a_i and b_i values.
+3. Mask computation:
+   For each camera i (0 to K-1):
+     if a_i = 0 then mask_i = 0 (unused camera).
+     else if a_i <= b_i then
+          mask_i = ( (1 to b_i) - (1 to a_i) + 1 ) bits set from a_i-1 to b_i-1.
+          Specifically: mask_i = ((1 << (b_i - a_i + 1)) - 1) << (a_i - 1)
+     else (a_i > b_i, wrap around)
+          mask_i = bits a_i-1 to N-1 and bits 0 to b_i-1.
+          Specifically: mask_i = ((1 << (N - a_i + 1)) - 1) << (a_i - 1) OR ((1 << b_i) - 1)
+   Store mask_i in an internal array (size K, each N bits).
+4. BFS initialization:
+   - visited array: size 2^N, each 1 bit, initialized to 0.
+   - distance array: size 2^N, each ceil(log2(K+1)) bits, initialized to 0.
+   - queue: FIFO of depth 2^N (for N=8, depth 256) to store states.
+   - Set visited[0] = 1, distance[0] = 0, enqueue state 0.
+5. BFS loop:
+   While queue not empty:
+     a. Dequeue state s.
+     b. If s = (1<<N)-1 (all walls covered), then result <= distance[s], go to DONE.
+     c. For each camera i (0 to K-1):
+          next_state = s | mask_i.
+          If next_state != s and visited[next_state] = 0:
+             visited[next_state] = 1;
+             distance[next_state] = distance[s] + 1;
+             enqueue next_state.
+   If queue empties without reaching target, result <= 0 (impossible).
+6. DONE state:
+   Assert done = '1' for one clock cycle, then return to idle.
+
+Timing:
+- The module is fully synchronous.
+- The computation may take up to (2^N * K) cycles for the BFS plus a few cycles for mask computation and initialization.
+- The done signal is asserted for exactly one clock cycle when the result is ready.
+
+Implementation Notes:
+- Use a finite state machine (FSM) with states: IDLE, LOAD_MASKS, INIT_BFS, BFS_DEQUEUE, BFS_PROCESS, UPDATE_QUEUE, DONE.
+- For N=8, visited can be a 256-bit register (e.g., 8 x 32-bit vector). Distance can be 256 x 4-bit memory.
+- Queue can be implemented as a circular buffer with read and write pointers (depth = 256).
+- Ensure all signals have correct widths (a_i, b_i: 3 bits; result: 8 bits; internal state counters: up to 2^N).
+- The design must be synthesizable.
+
+Testbench Requirements:
+- Use cocotb.
+- Define N=8, K=8.
+- Test three scenarios as described in the problem statement.
+- Use the provided helper functions to handle array assignments.
+- Assign values to a_i and b_i individually (either via a0..a7, b0..b7 or via indexed arrays).
+- Assert start, wait for done, check result against expected.
+- Include timeout handling and proper reset sequence.

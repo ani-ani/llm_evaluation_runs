@@ -1,0 +1,1 @@
+module lateral_surface_cube(\n    input [7:0] side_length,\n    output [15:0] area\n);\n    assign area = 4 * side_length * side_length;\nendmodule

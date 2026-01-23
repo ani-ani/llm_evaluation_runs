@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'substitution_cipher_decoder' that implements a simplified substitution cipher decryption.
+
+**Module Overview**:
+- The module accepts an encrypted 8-character string and attempts to find a unique substitution mapping using a set of 12 known 2-8 character words.
+- The algorithm uses a brute-force search over possible substitution keys constrained by matching patterns between encrypted letters and known words.
+- Results are valid only if: (1) a subset of known words appears in plaintext, (2) the number of unique letters in those words equals the number of unique letters in the encrypted text.
+
+**Inputs**:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start decryption
+input [63:0] encrypted_text // 8 characters, 8 bits each (ASCII)
+input [5:0] text_length // Actual length (1-8)
+
+**Outputs**:
+output reg [63:0] plaintext // Decrypted 8-character result
+output reg [255:0] mapping // 32x8-bit mapping table (encrypted 'a'-'z' to plaintext 'a'-'z')
+output reg valid // High if unique solution found
+output reg done // High when computation complete
+output reg ambiguous // High if multiple solutions exist
+
+**Known Words (12 words, stored as packed arrays)**:
+- "be" (2), "our" (3), "rum" (3), "will" (4), "dead" (4), "hook" (4), "ship" (4), "blood" (5), "sable" (5), "avenge" (6), "parrot" (6), "captain" (7)
+
+**Behavior**:
+1. **IDLE state**: Wait for start signal
+2. **SEARCH state**: Generate candidate mappings by matching encrypted character patterns against known words
+   - Use parallel pattern matching: compare character positions in encrypted text with potential word placements
+   - For each encrypted character, maintain a set of possible plaintext letters from matching words
+   - Constraint: each encrypted letter maps to exactly one plaintext letter
+3. **VALIDATE state**: Check if candidate mapping produces a valid decryption
+   - Apply mapping to encrypted text to get plaintext
+   - Count unique letters in plaintext that match known words
+   - Verify uniqueness constraint: unique letters in matched words = unique letters in encrypted text
+4. **DONE state**: Output result
+
+**Implementation Strategy**:
+- Use combinational pattern matching blocks for each known word (12 parallel comparators)
+- Each word comparator checks if the word pattern could match any substring of encrypted text
+- Maintain a 26x26 bit lookup table for mapping constraints (encrypted→plain)
+- State machine with 200 cycle timeout (max for 200 char input, scaled to 8)
+- Track number of solutions found (0=impossible, 1=valid, >1=ambiguous)
+
+**Fixed-Point/Format Specifications**:
+- All characters are ASCII (8-bit), but only 'a'-'z' (0x61-0x7A) are encrypted
+- Mapping table uses bit masking: mapping[encrypted_letter*8 +: 8] = plaintext_letter
+- Valid result requires valid=1, ambiguous=0
+
+**Latency**: 50-100 clock cycles for 8-character input with parallel search
+
+**State Machine**:
+- IDLE: Wait for start
+- PREPARE: Pre-compute unique letters in encrypted text
+- GENERATE_CANDIDATES: Build partial mappings from word matches
+- VERIFY_MAPPING: Test full mapping against constraints
+- COMPLETE: Finalize result, set done=1
+
+**Special Handling**:
+- If no valid mapping: valid=0, ambiguous=0
+- If multiple valid mappings: valid=0, ambiguous=1
+- If exactly one valid mapping: valid=1, ambiguous=0
+
+The module must handle the full constraint satisfaction problem using hardware-friendly bounded search.

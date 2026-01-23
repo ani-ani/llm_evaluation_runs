@@ -1,0 +1,110 @@
+Design a sequential Verilog module named `arrange_solver` that solves the 'Arrange' game: finding the minimum number of swaps to sort a permutation given a set of allowed swaps.
+
+The module implements a BFS (Breadth-First Search) algorithm. Since hardware resources are limited, we scale the problem to support a maximum of N=6 elements. This limits the state space to 720 permutations (6!), which is manageable.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation signal
+input [5:0] perm [5:0] // Current permutation (N=6). perm[0] to perm[5] hold values 1 to 6.
+input [5:0] swap_a // Index of first element to swap (0-based)
+input [5:0] swap_b // Index of second element to swap (0-based)
+
+Outputs:
+output reg [7:0] min_swaps // Minimum number of swaps found
+output reg done // High when computation is complete (search finished)
+output reg valid // High when min_swaps is valid
+
+Behavioral Description:
+The module acts as a BFS controller. Since generating a full 720-entry LUT for state indexing is complex, we will simulate the BFS logic using a sequence of operations controlled by the state machine.
+
+However, to make this synthesizable and testable within reasonable logic limits, we will implement a simplified approach: iterative deepening depth-first search (IDDFS) or a state machine that performs the search. Given the sequential nature and the need to track visited states, the module should:
+
+1. Receive the starting permutation.
+2. Receive the allowed swap (only one swap pair is provided per input to keep the interface simple, but conceptually the design supports a sequence of swaps if the interface is expanded. For this specific implementation, we assume a fixed set of allowed swaps is hardcoded or the input provides the graph edges).
+
+Actually, to be useful as a benchmark, we need to handle multiple allowed swaps. Let's assume the input interface provides the permutation and the swap pairs (M can be up to N*(N-1)/2, but for N=6, max M=15). To keep the IO manageable, let's assume M=2 for this specific module design, or that swaps are provided serially.
+
+Let's stick to a direct parallel search approach for small N.
+
+**Refined Approach:**
+Since N is small (<=6), we can unroll the BFS. However, a pure combinational logic for BFS is huge.
+
+Let's design a **Sequential State Machine** that performs the search.
+
+**Inputs:**
+- `clk`, `rst_n`, `start`
+- `perm_in [5:0]`: The initial permutation (values 1-6).
+- `allowed_swap_1 [2:0]`, `allowed_swap_2 [2:0]`: Index pairs for allowed swaps. (Supporting just 2 swaps for interface simplicity, but the logic can be expanded).
+
+**Logic:**
+1.  **State Encoding**:
+    - `IDLE`: Waiting for start.
+    - `INIT`: Initialize BFS queue with starting state.
+    - `PROCESS`: Dequeue state, check if sorted. If yes, done. If no, generate neighbors (apply swaps), check if visited, enqueue.
+    - `DONE`: Output result.
+
+2.  **Visited Array**: Use a large memory (register array) to store visited states. For N=6, we need 720 bits.
+
+3.  **Queue**: Need to store states (permutations) and their depths. 720 entries * (6*4 bits) is large, so we limit the queue size or optimize.
+
+**Alternative for Benchmarking (Simpler):**
+Since full BFS is memory-heavy, we will implement a **Parallel Comparator Network** that finds the solution for a *fixed* set of inputs or uses a generic iterative solver.
+
+Let's go with the **Iterative Deepening** approach which uses less memory (DFS with depth limit).
+
+**Module Specification:**
+Design a sequential module `arrange_min_swaps`.
+
+**Inputs:**
+- `clk, rst_n, start`
+- `initial_perm [5:0][3:0]`: 6 elements, 4 bits each (values 1-6).
+- `swap_idx_1 [2:0]`, `swap_idx_2 [2:0]`: Indices of the swap to consider (fixed for this run, or multiple inputs if we unroll). To keep it generic, let's assume the module supports up to 4 allowed swaps defined by registers.
+- `swaps [3:0][2:0]`: Array of swap indices (0-based).
+- `num_swaps [2:0]`: Number of valid swaps.
+
+**Outputs:**
+- `result [3:0]`: Minimum swap count (max depth 15).
+- `done`, `valid`.
+
+**Algorithm:**
+Implement Iterative Deepening DFS (IDDFS).
+- Outer loop: depth_limit = 0 to 15.
+- Inner DFS: recursive (implemented iteratively with stack) to find if target is reachable within depth_limit.
+
+This requires a stack and recursion simulation. 
+
+**Simplification for Verilog Generation:**
+To strictly adhere to "runnable" and "simple", we will implement a **BFS with state compression**. Since 6! = 720 is too large for a naive register array in a simple text response, we will scale N down to **N=4 (24 states)** for the specification. This is a standard "small problem" adaptation.
+
+**Final Prompt:**
+Design a sequential Verilog module named `arrange_solver_4` that finds the minimum number of swaps to sort a permutation of 4 elements (`N=4`) using Breadth-First Search (BFS). The state space is 24 permutations, which fits in small memory.
+
+**Inputs:**
+- `clk`, `rst_n`, `start`
+- `perm_in [3:0][3:0]`: Initial permutation of 4 numbers (1-4).
+- `swap_1 [1:0]`, `swap_2 [1:0]`: Index pair for one allowed swap. (To support multiple swaps, the testbench will loop or we can add a control signal to add swaps to a register file. Let's stick to a single swap pair for the IO interface, but the internal logic should handle multiple swaps by iterating over a list. Actually, to be useful, we should have an array of swaps).
+
+Let's specify an interface that supports 3 fixed allowed swaps (common case).
+
+**Inputs:**
+- `start_swap_config`: Signal to load swap definitions.
+- `swap_indices [2:0][3:0]`: 3 swaps, each defined by 4 bits (high 2 bits = idx1, low 2 bits = idx2). 0 means invalid.
+- `perm_in [3:0][3:0]`: The permutation to solve.
+
+**Outputs:**
+- `min_swaps [3:0]`: Result.
+- `done`, `valid`.
+
+**Internal Logic:**
+1.  **State Machine**: `IDLE`, `LOAD_PERM`, `LOAD_SWAPS`, `BFS_INIT`, `BFS_LOOP`, `FINISHED`.
+2.  **Memory**:
+    - `visited [23:0]`: 1 bit per permutation. Need a way to map permutation to index. Since 4! = 24, we can use a Rank/Unrank algorithm or simple lookup. For simplicity in HDL, we can store visited states in a 24-bit register, but we need to calculate the index. The index is the permutation's lexicographical rank. Implementing factorial number system rank in Verilog is doable for N=4.
+    - `queue_perm [23:0][3:0][3:0]`: Store permutations in queue.
+    - `queue_dist [23:0][3:0]`: Store distances.
+3.  **BFS Steps**:
+    - Push start state.
+    - Pop state, check if sorted (1,2,3,4).
+    - If not, for each swap, apply swap, check if visited. If not, push to queue.
+
+This is the specification.

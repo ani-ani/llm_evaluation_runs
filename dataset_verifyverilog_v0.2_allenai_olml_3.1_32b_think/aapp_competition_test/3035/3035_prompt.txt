@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'lemonade_trade' that computes the maximum amount of blue lemonade obtainable from 1 litre of pink lemonade through a series of trades.
+
+The module will model a directed graph where nodes are lemonade types and edges are trades. Due to hardware constraints, we limit the graph to at most 8 distinct lemonade types and 16 edges.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] num_nodes // Number of distinct lemonade types (1 to 8)
+input [4:0] num_edges // Number of trade offers (0 to 16)
+input [2:0] pink_idx // Index of 'pink' lemonade node
+input [2:0] blue_idx // Index of 'blue' lemonade node
+input [15:0] edge_start [15:0] // Start node index for each edge (max 16 edges)
+input [15:0] edge_end [15:0] // End node index for each edge
+input [31:0] edge_rate [15:0] // Exchange rate in Q16.16 format (16 integer, 16 fractional)
+
+Outputs:
+output reg [31:0] max_blue // Result in Q16.16 format (capped at 10.0)
+output reg done // High when computation complete
+
+Behavior:
+- The module accepts a graph definition (nodes, edges, rates) and finds the maximum exchange rate product along any path from 'pink' to 'blue'.
+- Input 'edge_rate' is in Q16.16 fixed-point format. For example, 1.5 is represented as 1.5 * 65536 = 98304.
+- The algorithm should perform a search (e.g., modified Dijkstra for maximum product or BFS with state tracking) to find the maximum multiplier.
+- Initial amount is 1.0 litre (represented as 1.0 * 65536 = 65536 in Q16.16).
+- Multiply the initial amount by the product of rates along the path.
+- If the result exceeds 10.0 litres (10.0 * 65536 = 655360), cap it at 10.0.
+- The module should use a state machine with states: IDLE, INIT, PROCESSING (iterating through paths/edges), CAP_CHECK, DONE.
+- Latency: Result valid 100 clock cycles after start asserted (allowing time for graph traversal of up to 8 nodes).
+
+Constraints:
+- Max 8 nodes, 16 edges.
+- Use Q16.16 fixed-point arithmetic for all multiplications.
+- Handle potential cycles by tracking visited nodes in current path (or assume input graph is acyclic for this simplified hardware version).
+- The output max_blue should be in Q16.16 format.

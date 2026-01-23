@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'dna_program_comparator' that determines if two DNA editing programs are equivalent.
+
+The module processes operations from two programs sequentially and simplifies them by canceling insert-delete pairs at the same position, then compares the simplified sequences.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start comparison
+input [7:0] op_type // operation type: 0=none, 1=Insert, 2=Delete, 3=End
+input [15:0] op_pos // position for operation
+input [7:0] op_char // character to insert (ASCII value)
+input program_sel // 0=program1, 1=program2
+
+Outputs:
+output reg result // 0=identical, 1=different
+output reg done // high when comparison complete
+output reg error // high if input error
+
+Specification:
+- Process operations one at a time (not both programs simultaneously)
+- Use program_sel to indicate which program the current operation belongs to
+- When op_type=3 (End), mark end of current program
+- Store simplified operation sequences in internal buffers (max 8 operations per program)
+- Simplification: Cancel adjacent Insert-Delete at same position
+- After both programs end, compare simplified sequences
+- Use state machine with states: IDLE, READ_OPS1, READ_OPS2, SIMPLIFY1, SIMPLIFY2, COMPARE, DONE
+- Latency: Variable depending on operation count, done signal goes high after comparison
+
+Operation encoding:
+- op_type=0: No operation (idle)
+- op_type=1: Insert (uses op_pos and op_char)
+- op_type=2: Delete (uses op_pos only)
+- op_type=3: End of program
+
+Simplification rules:
+- After reading each operation, check if it cancels with the last stored operation
+- For Ins(p, c) followed by Del(p): both cancel
+- For Del(p) followed by Del(q) where q > p: second becomes Del(q-1)
+- For Ins(p, c) followed by Ins(q, d) where q > p: both remain but positions may shift
+
+Store simplified operations in arrays:
+- op1_type[0:7], op1_pos[0:7], op1_char[0:7]
+- op2_type[0:7], op2_pos[0:7], op2_char[0:7]
+
+Compare: Both must have same count and matching (type, pos, char) for each operation.

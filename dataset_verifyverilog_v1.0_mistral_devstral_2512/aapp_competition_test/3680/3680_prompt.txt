@@ -1,0 +1,162 @@
+FENCE POSTS VERILOG MODULE SPECIFICATION
+
+============================================
+1. OVERVIEW
+============================================
+Compute minimum cuts to obtain N identical fence posts from K poles.
+Posts must be as long as possible. Leftover pieces must not exceed post length.
+
+============================================
+2. INTERFACE SPECIFICATION
+============================================
+
+Module Name: fence_posts
+
+Inputs:
+  - clk          : System clock (rising edge)
+  - rst_n        : Active-low reset (synchronous)
+  - start        : Start pulse (1 cycle)
+  - K[3:0]       : Number of poles (1-8)
+  - N[3:0]       : Number of posts needed (1-16)
+  - p[0:7][7:0]  : Pole lengths array (8-bit each)
+
+Outputs:
+  - cuts[7:0]    : Minimum cuts result (8-bit)
+  - done         : Result valid pulse (1 cycle)
+
+============================================
+3. TIMING REQUIREMENTS
+============================================
+- On start=1, module begins computation on next clock edge
+- Computation takes ≤ 256 clock cycles (worst case)
+- done=1 for exactly 1 cycle when result is ready
+- rst_n=0 clears all state (done=0, cuts=0)
+- start must remain high for 1 cycle only
+
+============================================
+4. ALGORITHM BEHAVIOR
+============================================
+
+State Machine States:
+  IDLE          : Waiting for start
+  FIND_L        : Search for maximum L
+  CHECK_L       : Verify L produces enough posts
+  COMPUTE_D     : Build array of divisible poles
+  SORT_D        : Sort D ascending (bubble sort)
+  FIND_T        : Find max t with prefix_sum ≤ N
+  CALC_RESULT   : Compute cuts = N - t
+  DONE          : Assert done signal
+
+Internal Registers:
+  - L[7:0]          : Current post length being tested
+  - max_L[7:0]      : Maximum pole length
+  - temp_sum[7:0]   : Accumulator for total posts
+  - D[0:7][7:0]     : Array of k_i values (divisible poles)
+  - D_size[2:0]     : Number of valid entries in D
+  - prefix_sum[7:0] : Prefix sum during t calculation
+  - t[2:0]          : Count of full divisible poles
+  - state[2:0]      : State machine state
+  - cuts_reg[7:0]   : Final result register
+  - done_reg        : Done signal register
+
+============================================
+5. DETAILED OPERATION
+============================================
+
+Step 1: Find Maximum L (FIND_L/ CHECK_L)
+  - Set L = max(p[0..K-1])
+  - While L > 0:
+    * Compute total = Σ floor(p[i] / L) for i=0..K-1
+    * If total >= N, proceed to Step 2
+    * Else, L = L - 1
+
+Step 2: Build Divisible Array (COMPUTE_D)
+  - Clear D_size
+  - For each pole i (0..K-1):
+    * If p[i] % L == 0:
+      - D[D_size] = floor(p[i] / L)
+      - D_size = D_size + 1
+
+Step 3: Sort D (SORT_D)
+  - Sort D[0..D_size-1] in ascending order
+  - Use bubble sort or odd-even transposition network
+
+Step 4: Find Maximum t (FIND_T)
+  - prefix_sum = 0, t = 0
+  - For i = 0 to D_size-1:
+    * If prefix_sum + D[i] ≤ N:
+      - prefix_sum = prefix_sum + D[i]
+      - t = t + 1
+    * Else: break
+
+Step 5: Compute Result (CALC_RESULT)
+  - cuts_reg = N - t
+  - Advance to DONE state
+
+============================================
+6. DIVISION & MODULO IMPLEMENTATION
+============================================
+
+Division (div function):
+  Input: a[7:0], b[7:0]
+  Output: floor(a/b)
+  Implementation: Sequential subtraction in state machine
+  - Initialize count = 0
+  - While a >= b: a = a - b; count = count + 1
+  - Return count
+
+Modulo (mod function):
+  Input: a[7:0], b[7:0]
+  Output: a % b
+  Implementation: Repeated subtraction until a < b
+
+============================================
+7. SYNTHESIS CONSTRAINTS
+============================================
+- Maximum clock frequency: 100 MHz
+- Resource limit: ≤ 1000 LUTs, ≤ 500 FFs
+- No external memory, all data in registers
+- Combinational paths ≤ 30ns
+- State machine must be safe (no undefined states)
+
+============================================
+8. VERILOG MODULE TEMPLATE
+============================================
+
+module fence_posts (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] K,
+    input wire [3:0] N,
+    input wire [7:0] p [0:7],
+    output reg [7:0] cuts,
+    output reg done
+);
+
+// Internal registers and state machine here
+// Include helper functions for division/modulo
+// Implement all states as specified
+
+endmodule
+
+============================================
+9. CORNER CASES
+============================================
+- K=0: Not possible per constraints (K≥1)
+- N=0: Not possible per constraints (N≥K≥1)
+- All poles same length: Algorithm still works
+- L=1: Always valid, worst-case cuts
+- No divisible poles: D_size=0, t=0, cuts=N
+
+============================================
+10. TESTBENCH INTERACTION
+============================================
+Testbench will:
+  1. Assert start for 1 cycle
+  2. Wait for done=1 with 1000 cycle timeout
+  3. Read cuts value
+  4. Compare with expected result
+  5. Repeat for multiple test cases
+
+Ensure all signals match interface specification exactly.

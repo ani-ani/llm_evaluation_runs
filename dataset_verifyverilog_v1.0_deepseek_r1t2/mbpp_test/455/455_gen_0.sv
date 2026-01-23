@@ -1,0 +1,1 @@
+module check_monthnumb_number(\n    input [3:0] monthnum2,\n    output reg has_31_days\n);\n\n    // Month has 31 days: Jan, Mar, May, Jul, Aug, Oct, Dec\n    always @(*) begin\n        case (monthnum2)\n            4'd1, 4'd3, 4'd5, 4'd7, 4'd8, 4'd10, 4'd12: has_31_days = 1'b1;\n            default: has_31_days = 1'b0;\n        endcase\n    end\n\nendmodule

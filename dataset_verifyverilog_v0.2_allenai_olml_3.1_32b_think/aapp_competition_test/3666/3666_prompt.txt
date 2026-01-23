@@ -1,0 +1,25 @@
+Design a sequential Verilog module named 'gear_ratio_solver' that determines front and rear sprocket sizes given up to 12 gear ratios (numerator and denominator ≤100). The module should handle input as fixed-size arrays representing a set of reduced gear ratios (num/den). To fit hardware constraints, we limit the number of distinct gears to at most 8 and reduce ratios to lowest terms. The module uses a state machine to iterate over possible front sprocket candidates (up to 8 values from ratio numerators) and rear sprocket candidates (up to 8 values from ratio denominators), checking if the combination matches all input ratios. Output the selected front sizes (two values) and rear sizes (six values). Due to hardware limits, the module expects input arrays of size 8 with valid count, and outputs fixed-size arrays.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [6:0] num_ratios // number of ratios, up to 12
+input [7:0] num_array [0:7] // numerator array, 8 elements, each 8-bit (0 if unused)
+input [7:0] den_array [0:7] // denominator array, 8 elements, each 8-bit (0 if unused)
+
+Outputs:
+output reg [15:0] front1 // first front sprocket size
+output reg [15:0] front2 // second front sprocket size
+output reg [15:0] rear0 // rear sprocket 0
+output reg [15:0] rear1 // rear sprocket 1
+output reg [15:0] rear2 // rear sprocket 2
+output reg [15:0] rear3 // rear sprocket 3
+output reg [15:0] rear4 // rear sprocket 4
+output reg [15:0] rear5 // rear sprocket 5
+output reg done // high when computation complete
+output reg impossible // high if no solution found
+
+Latency: Up to 100,000 clock cycles (depends on search). Use state machine with states: IDLE, PREPROCESS, SEARCH_FRONT, SEARCH_REAR, VERIFY, DONE, IMPOSSIBLE. In PREPROCESS, reduce input ratios to lowest terms (GCD) and collect unique numerators and denominators into candidate arrays (max 8 each). In SEARCH_FRONT, iterate over pairs of distinct numerators (front1, front2). In SEARCH_REAR, for each front pair, iterate over permutations of 6 distinct denominators from candidate list, but due to complexity, assume we take the 6 smallest unique denominators and check. If mismatch, try next. Output the first found solution. Sprocket sizes are ≤10000; use 16-bit integers. If no solution found after exhaustive search, assert impossible and done.
+
+Testbench must pre-reduce input and format into 8-element arrays. For example, for sample input, numerators are {19,10,19,4,20,19,20,19}, denominators {13,1,14,3,7,7,13,15}. Reduce to unique: fronts {19,10,4,20}, rears {13,1,14,3,7,15}.

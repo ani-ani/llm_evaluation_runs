@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'police_escape' that computes the minimal speed required for robbers to escape police in a small city graph.
+
+Problem Adaptation:
+- Graph size: 4 nodes (intersections), 6 possible edges max
+- Edge lengths: 1-100 hundred meters (scaled to 1-100)
+- Highway exits: 1-2 exits
+- Both cars start at different nodes
+- Police max speed: 160 km/h fixed
+- Output: Minimal speed in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+
+Algorithm:
+1. Compute shortest distances from robbers' start to all exits using BFS (adjacency matrix)
+2. Compute shortest distances from police start to all nodes using BFS
+3. For each exit, check if robbers can reach it before police can reach it
+   - Condition: dist_robber / speed_robber < dist_police / 160
+   - Required speed: dist_police * 160 / dist_robber
+4. Find minimum speed across all valid exits
+5. If no valid exit, output IMPOSSIBLE (use special value like 0xFFFFFFFF)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [1:0] num_nodes // actual number of nodes (2-4)
+input [1:0] num_exits // actual number of exits (1-2)
+input [1:0] robber_start // robber starting node (0-3)
+input [1:0] police_start // police starting node (0-3)
+input [5:0] edge_length [4:0][4:0] // adjacency matrix, 4x4, each entry 0-63 (0 means no edge)
+input [1:0] exits [1:0] // exits array (max 2 exits)
+
+Outputs:
+output reg [31:0] min_speed // Q16.16 fixed-point format, 0xFFFFFFFF = IMPOSSIBLE
+output reg done // high when computation complete
+output reg possible // high if escape possible
+
+Specify latency: 256 clock cycles (enough for BFS traversal of 4-node graph)
+Use state machine with states: IDLE, LOAD_GRAPH, COMPUTE_DIST_ROBBER, COMPUTE_DIST_POLICE, CHECK_EXITS, CALCULATE_SPEED, DONE.
+
+For fixed-point arithmetic:
+- Use Q16.16 format throughout
+- Input edge lengths are integers, multiply by 65536 for fixed-point
+- Police speed 160 km/h = 160 * 65536 = 10485760 in Q16.16
+- Division: (dist_police * 160) / dist_robber, all in Q16.16
+- Output min_speed in Q16.16
+
+BFS Implementation:
+- Use adjacency matrix for graph representation
+- Compute shortest path distances using queue-based BFS
+- Since graph is small (4 nodes), unroll loops or use state machine
+- Distance array: 4 entries, each 8 bits is sufficient (max path length 6 edges * 100 = 600)
+
+Edge cases:
+- If robbers start at same node as police: IMPOSSIBLE
+- If no path to any exit: IMPOSSIBLE
+- If police can reach all exits faster than robbers regardless of speed: IMPOSSIBLE

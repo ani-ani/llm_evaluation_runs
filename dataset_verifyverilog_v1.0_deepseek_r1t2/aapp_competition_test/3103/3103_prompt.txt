@@ -1,0 +1,212 @@
+module path_counter #(
+    parameter Y = 8,
+    parameter X = 16,
+    parameter MOD = 1000003
+) (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] x_init,  // Start column (0-based)
+    input [7:0] grid_flat [0:Y*X-1],  // Flattened grid: row-major order
+    output reg [19:0] result,
+    output reg done
+);
+
+// Character constants
+localparam CHAR_TILDE = 8'h7E;  // '~'
+localparam CHAR_HASH = 8'h23;    // '#'
+localparam CHAR_AT = 8'h40;      // '@'
+localparam CHAR_GT = 8'h3E;      // '>'
+localparam CHAR_LT = 8'h3C;      // '<'
+
+// State machine states
+localparam IDLE = 3'b000;
+localparam FIND_CASTLE = 3'b001;
+localparam INIT_DP = 3'b010;
+localparam PASS1 = 3'b011;
+localparam PASS2 = 3'b100;
+localparam NEXT_ROW = 3'b101;
+localparam OUTPUT = 3'b110;
+
+reg [2:0] state, next_state;
+reg [3:0] castle_x, castle_y;
+reg [3:0] current_row;
+reg [3:0] x_counter;  // For iterating through columns
+reg [19:0] dp_prev [0:X-1];
+reg [19:0] dp_current [0:X-1];
+reg [7:0] grid_reg [0:Y-1][0:X-1];  // Stored grid
+reg [19:0] temp_sum;
+
+// Helper to get grid cell from flattened array
+function [7:0] get_grid;
+    input [3:0] y;
+    input [3:0] x;
+    begin
+        get_grid = grid_flat[y * X + x];
+    end
+endfunction
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic and datapath
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: begin
+            if (start) next_state = FIND_CASTLE;
+        end
+        
+        FIND_CASTLE: begin
+            // Castle found when we reach end of search
+            if (castle_y == Y || (castle_x == X-1 && castle_y == Y-1)) begin
+                next_state = INIT_DP;
+            end else begin
+                next_state = FIND_CASTLE;
+            end
+        end
+        
+        INIT_DP: begin
+            // After initialization, check if we need to process more rows
+            if (castle_y == Y-1) begin
+                next_state = OUTPUT;
+            end else begin
+                next_state = PASS1;
+            end
+        end
+        
+        PASS1: begin
+            if (x_counter == 0) next_state = PASS2;
+            else next_state = PASS1;
+        end
+        
+        PASS2: begin
+            if (x_counter == X-1) begin
+                if (current_row == Y-1) next_state = OUTPUT;
+                else next_state = NEXT_ROW;
+            end else begin
+                next_state = PASS2;
+            end
+        end
+        
+        NEXT_ROW: begin
+            next_state = PASS1;
+        end
+        
+        OUTPUT: begin
+            next_state = IDLE;
+        end
+    endcase
+end
+
+// Datapath operations
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset all registers
+        castle_x <= 0;
+        castle_y <= 0;
+        current_row <= 0;
+        x_counter <= 0;
+        result <= 0;
+        done <= 0;
+        // Reset dp arrays
+        for (integer i = 0; i < X; i = i + 1) begin
+            dp_prev[i] <= 0;
+            dp_current[i] <= 0;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Latch in grid and start processing
+                    for (integer y = 0; y < Y; y = y + 1) begin
+                        for (integer x = 0; x < X; x = x + 1) begin
+                            grid_reg[y][x] <= get_grid(y, x);
+                        end
+                    end
+                    castle_x <= 0;
+                    castle_y <= 0;
+                    current_row <= 0;
+                end
+            end
+            
+            FIND_CASTLE: begin
+                // Scan for castle position
+                if (castle_x < X-1) begin
+                    castle_x <= castle_x + 1;
+                end else begin
+                    castle_x <= 0;
+                    castle_y <= castle_y + 1;
+                end
+            end
+            
+            INIT_DP: begin
+                // Initialize DP for castle row
+                for (integer i = 0; i < X; i = i + 1) begin
+                    dp_current[i] <= 0;
+                end
+                dp_current[castle_x] <= 1;
+                x_counter <= X-1;  // Start from right for PASS1
+                current_row <= castle_y;
+            end
+            
+            PASS1: begin
+                // Right-to-left pass for '>' currents
+                if (grid_reg[current_row][x_counter] == CHAR_GT && x_counter < X-1) begin
+                    if (grid_reg[current_row][x_counter+1] != CHAR_HASH) begin
+                        temp_sum <= dp_current[x_counter] + dp_current[x_counter+1];
+                        if (dp_current[x_counter] + dp_current[x_counter+1] >= MOD)
+                            dp_current[x_counter] <= dp_current[x_counter] + dp_current[x_counter+1] - MOD;
+                        else
+                            dp_current[x_counter] <= dp_current[x_counter] + dp_current[x_counter+1];
+                    end
+                end
+                x_counter <= x_counter - 1;
+            end
+            
+            PASS2: begin
+                // Left-to-right pass for '<' currents
+                if (grid_reg[current_row][x_counter] == CHAR_LT && x_counter > 0) begin
+                    if (grid_reg[current_row][x_counter-1] != CHAR_HASH) begin
+                        temp_sum <= dp_current[x_counter] + dp_current[x_counter-1];
+                        if (dp_current[x_counter] + dp_current[x_counter-1] >= MOD)
+                            dp_current[x_counter] <= dp_current[x_counter] + dp_current[x_counter-1] - MOD;
+                        else
+                            dp_current[x_counter] <= dp_current[x_counter] + dp_current[x_counter-1];
+                    end
+                end
+                x_counter <= x_counter + 1;
+            end
+            
+            NEXT_ROW: begin
+                // Prepare for next row
+                dp_prev <= dp_current;  // Copy current to previous
+                current_row <= current_row + 1;
+                // Initialize new row from previous row (north moves)
+                for (integer i = 0; i < X; i = i + 1) begin
+                    if (grid_reg[current_row+1][i] != CHAR_HASH && 
+                        grid_reg[current_row][i] != CHAR_HASH) begin
+                        dp_current[i] <= dp_prev[i];
+                    end else begin
+                        dp_current[i] <= 0;
+                    end
+                end
+                x_counter <= X-1;  // Start from right for PASS1
+            end
+            
+            OUTPUT: begin
+                result <= dp_current[x_init];
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+endmodule

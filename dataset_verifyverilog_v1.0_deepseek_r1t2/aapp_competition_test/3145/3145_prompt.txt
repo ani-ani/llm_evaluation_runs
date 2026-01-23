@@ -1,0 +1,122 @@
+module multiple_counter (
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] X,        // Multiplier (scaled to 16-bit)
+    input [15:0] A,        // Lower bound (scaled to 16-bit)
+    input [15:0] B,        // Upper bound (scaled to 16-bit)
+    input [9:0] allowed_mask, // Bitmask for allowed digits (bit d = 1 if digit d allowed)
+    output reg [15:0] count,
+    output reg done
+);
+
+// State encoding
+localparam IDLE = 3'b000;
+localparam CHECK = 3'b001;
+localparam CHECK_DIGITS = 3'b010;
+localparam EXTRACT_DIGIT = 3'b011;
+localparam COUNT = 3'b100;
+localparam INCREMENT = 3'b101;
+localparam DONE = 3'b110;
+
+// Internal registers
+reg [2:0] state;
+reg [15:0] current;      // Current number being checked
+reg [15:0] rem;          // (current mod X)
+reg [15:0] temp_count;   // Accumulated count
+reg [15:0] temp_num;     // Temporary number for digit extraction
+reg valid;               // Flag for valid digit sequence
+
+// Combinational helpers
+wire [3:0] next_digit;
+wire [15:0] next_temp_num;
+wire [15:0] rem_next;
+
+assign next_digit = temp_num % 10;
+assign next_temp_num = temp_num / 10;
+assign rem_next = (rem + 1 < X) ? rem + 1 : 0;
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        current <= 0;
+        rem <= 0;
+        temp_count <= 0;
+        temp_num <= 0;
+        valid <= 0;
+        done <= 0;
+        count <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    current <= A;
+                    rem <= A % X;  // Initial remainder
+                    temp_count <= 0;
+                    state <= CHECK;
+                end
+            end
+            
+            CHECK: begin
+                if (current > B) begin
+                    count <= temp_count;
+                    state <= DONE;
+                end else if (rem == 0) begin
+                    // Current is multiple of X
+                    state <= CHECK_DIGITS;
+                end else begin
+                    state <= INCREMENT;
+                end
+            end
+            
+            CHECK_DIGITS: begin
+                valid <= 1;
+                if (current == 0) begin
+                    // Handle zero case
+                    if (allowed_mask[0]) state <= COUNT;
+                    else state <= INCREMENT;
+                end else begin
+                    temp_num <= current;
+                    state <= EXTRACT_DIGIT;
+                end
+            end
+            
+            EXTRACT_DIGIT: begin
+                if (allowed_mask[next_digit] == 0) begin
+                    valid <= 0;
+                    state <= INCREMENT;  // Skip invalid number
+                end else begin
+                    temp_num <= next_temp_num;
+                    if (next_temp_num == 0) begin
+                        if (valid) state <= COUNT;
+                        else state <= INCREMENT;
+                    end else begin
+                        state <= EXTRACT_DIGIT;
+                    end
+                end
+            end
+            
+            COUNT: begin
+                temp_count <= temp_count + 1;
+                state <= INCREMENT;
+            end
+            
+            INCREMENT: begin
+                current <= current + 1;
+                rem <= rem_next;
+                state <= CHECK;
+            end
+            
+            DONE: begin
+                done <= 1;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

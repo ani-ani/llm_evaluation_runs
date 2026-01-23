@@ -1,0 +1,128 @@
+module min_path #(
+    parameter MAX_N = 8,
+    parameter DATA_WIDTH = 12,
+    parameter RESULT_WIDTH = 16
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [DATA_WIDTH-1:0] w [0:MAX_N-1][0:MAX_N-1],
+    input wire [4:0] N,
+    output reg [RESULT_WIDTH-1:0] result,
+    output reg done
+);
+
+// States
+localparam IDLE = 3'd0;
+localparam INIT = 3'd1;
+localparam LOOP = 3'd2;
+localparam FINAL = 3'd3;
+
+// Internal registers
+reg [2:0] state;
+reg [4:0] M, l, r;
+reg [RESULT_WIDTH-1:0] dp [1:MAX_N][1:MAX_N];
+reg [RESULT_WIDTH-1:0] INF;
+
+// Initialize INF
+initial begin
+    INF = {RESULT_WIDTH{1'b1}};
+end
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        M <= 0;
+        l <= 0;
+        r <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= INIT;
+                end
+            end
+
+            INIT: begin
+                // Initialize dp to INF
+                integer i, j;
+                for (i = 1; i <= MAX_N; i = i + 1) begin
+                    for (j = 1; j <= MAX_N; j = j + 1) begin
+                        dp[i][j] <= INF;
+                    end
+                end
+                // Set base case
+                dp[1][1] <= 0;
+                // Initialize counters
+                M <= 1;
+                l <= 1;
+                r <= 1;
+                // Proceed to loop if N > 1
+                if (N > 1)
+                    state <= LOOP;
+                else
+                    state <= FINAL; // if only one city, result is 0
+            end
+
+            LOOP: begin
+                // Process current (M, l, r)
+                // Check condition: max(l,r) == M and dp[l][r] is reachable
+                if ((l == M || r == M) && (l <= M && r <= M) && dp[l][r] != INF) begin
+                    // Compute new costs
+                    reg [RESULT_WIDTH-1:0] new_cost_left;
+                    reg [RESULT_WIDTH-1:0] new_cost_right;
+                    new_cost_left = dp[l][r] + w[l-1][M];   // weight between city l and city M+1
+                    new_cost_right = dp[l][r] + w[r-1][M];  // weight between city r and city M+1
+
+                    // Update dp for new city M+1
+                    if (new_cost_left < dp[M+1][r])
+                        dp[M+1][r] <= new_cost_left;
+                    if (new_cost_right < dp[l][M+1])
+                        dp[l][M+1] <= new_cost_right;
+                end
+
+                // Increment counters
+                if (r < N) begin
+                    r <= r + 1;
+                end else begin
+                    r <= 1;
+                    if (l < N) begin
+                        l <= l + 1;
+                    end else begin
+                        l <= 1;
+                        if (M < N-1) begin
+                            M <= M + 1;
+                        end else begin
+                            state <= FINAL;
+                        end
+                    end
+                end
+            end
+
+            FINAL: begin
+                // Compute minimum over dp[l][r] where max(l,r) == N
+                integer i, j;
+                reg [RESULT_WIDTH-1:0] min_val;
+                min_val = INF;
+                for (i = 1; i <= N; i = i + 1) begin
+                    for (j = 1; j <= N; j = j + 1) begin
+                        if ((i == N || j == N) && dp[i][j] < min_val) begin
+                            min_val = dp[i][j];
+                        end
+                    end
+                end
+                result <= min_val;
+                done <= 1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'goat_rope_solver' that computes the maximum rope length for goats tied to posts.
+
+The problem: Given n posts at coordinates, find maximum rope length such that circular regions don't overlap. This equals half the minimum distance between any two posts.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_posts // number of posts (1-8)
+input [15:0] post_x [0:7] // x-coordinates of up to 8 posts in Q16.16 format
+input [15:0] post_y [0:7] // y-coordinates of up to 8 posts in Q16.16 format
+
+Outputs:
+output reg [31:0] result // maximum rope length in Q16.16 format
+output reg done // high when computation complete
+
+Specifications:
+- Use Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Input coordinates are already in Q16.16 (e.g., 250.0 = 250 * 65536 = 0x00FA0000)
+- Compute Euclidean distance between all pairs of posts: sqrt((x1-x2)^2 + (y1-y2)^2)
+- Find minimum distance among all pairs
+- Result = minimum_distance / 2
+- Round to nearest value (2 decimal places in Q16.16 means 0x00000014 or 0x00000015)
+- Latency: maximum 500 clock cycles
+- State machine states: IDLE, INIT_PAIRS, COMPUTE_DIST, FIND_MIN, DIVIDE, ROUND, DONE
+- For square root: use shift-add algorithm or lookup (implement simplified version)
+- For division by 2: right shift by 1
+- For rounding: check bit 15 of fractional part
+
+Algorithm:
+1. Initialize min_distance to maximum value
+2. For each pair (i,j) where i < j:
+   a. Compute dx = post_x[i] - post_x[j]
+   b. Compute dy = post_y[i] - post_y[j]
+   c. Compute dx2 = dx * dx (32-bit result)
+   d. Compute dy2 = dy * dy (32-bit result)
+   e. Sum = dx2 + dy2 (32-bit)
+   f. Compute sqrt(sum) to get distance
+   g. Update min_distance if smaller
+3. Divide min_distance by 2
+4. Round to nearest 1/65536 unit
+5. Output result
+
+Implementation notes:
+- Use state machine with sub-states for distance computation
+- For square root: approximate or use iterative method (8-16 iterations max)
+- For multiplication: use 16x16->32 multiplier
+- Store coordinates in registers, process pairs sequentially
+- Maximum 8 posts = 28 pairs to check
+- Use 32-bit arithmetic throughout intermediate calculations

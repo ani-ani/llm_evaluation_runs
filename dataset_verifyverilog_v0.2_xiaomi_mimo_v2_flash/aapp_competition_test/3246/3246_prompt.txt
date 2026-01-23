@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'text_decipher' that decodes a shuffled concatenated sentence.
+
+Problem: Given a string formed by concatenating shuffled words (first/last letters fixed), and a dictionary of valid words, find the unique deciphering.
+
+Adapted Constraints:
+- Input string length: 1-16 characters
+- Dictionary size: 1-8 words
+- Word length: 1-8 characters
+- All dictionary words are unique
+
+Algorithm:
+1. Use DP array dp[0..16], where dp[i] = number of ways to parse prefix of length i
+2. Initialize dp[0] = 1 (empty prefix has 1 way)
+3. For each position i from 1 to string_length:
+   - For each dictionary word w:
+     - If w matches substring starting at position (i-len(w)):
+       - Check: first/last letters match, length matches
+       - Check middle part: sorted(w[1:-1]) == sorted(substring[1:-1])
+       - If match: dp[i] += dp[i-len(w)]
+4. Track unique solution path
+5. Result: 
+   - dp[length] == 0: "impossible"
+   - dp[length] > 1: "ambiguous"
+   - dp[length] == 1: output unique sentence
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0] char_in // next character of input string (16 chars max)
+input [7:0] dict_word [0:7][0:7] // 8 words × 8 chars, 0xFF terminated
+input [3:0] dict_size // number of valid words (1-8)
+input [3:0] input_length // length of input string (1-16)
+
+Outputs:
+output reg [7:0] result [0:31] // output sentence (max 32 chars with spaces)
+output reg [1:0] status // 0=processing, 1=done_unique, 2=impossible, 3=ambiguous
+output reg done // high when complete
+
+Behavior:
+- State machine: IDLE, LOAD_DICT, LOAD_STRING, PROCESS_DP, BUILD_OUTPUT, DONE
+- Load dictionary and string character by character
+- Process DP with word matching
+- Word matching: compare first/last char, then sort middle chars and compare
+- Build output by reconstructing unique path
+- Latency: ~1000 cycles (worst case)
+
+Spec:
+- Use Q16.16 for any calculations (though mostly integer)
+- Implement bubble sort for middle char comparison (8 chars max)
+- Use state machine with bounded loops
+- Output format: words separated by single space, no trailing space

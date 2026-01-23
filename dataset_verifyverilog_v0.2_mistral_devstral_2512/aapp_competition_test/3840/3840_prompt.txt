@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'pirate_chest_solver' that finds the minimum number of moves to empty coin chests according to the game rules.
+
+The game rules:
+- Chests are numbered 1 to n
+- A move chooses x where 2*x + 1 <= n
+- A move removes 1 coin from chests x, 2*x, and 2*x+1 (if coins exist)
+- Find minimum total moves to empty all chests
+- If impossible (n=1 or n even), output -1
+
+Module Specification:
+module pirate_chest_solver (
+    input clk,
+    input rst_n,
+    input start,
+    input [4:0] n,  // Number of chests (1-15)
+    input [15:0] coins [0:14],  // Coin counts for chests 1-15 (index 0=chest1)
+    output reg [15:0] result,
+    output reg done
+);
+
+Inputs:
+- clk: Clock signal
+- rst_n: Active-low reset
+- start: Start computation
+- n: Number of chests (5 bits, max 31)
+- coins[0:14]: Array of 15 elements, each 16 bits (coin counts 0-65535)
+
+Outputs:
+- result: 16-bit result (minimum moves or -1)
+- done: High when computation complete
+
+Behavior:
+The module implements a greedy algorithm that processes chests from the highest index down to 1:
+1. Validate input: if n==1 or n is even, return -1
+2. Initialize moves counter to 0
+3. For each chest i from n down to 1:
+   - If chest i has coins > 0:
+     - Determine parent chest: parent = i/2 (integer division)
+     - Add chest i's coins to moves counter
+     - Subtract chest i's coins from parent's coin count (but not below 0)
+     - If i is odd, also subtract chest i's coins from sibling (i-1)
+     - Set chest i's coins to 0
+4. Return total moves
+
+Latency: Result valid approximately 400 clock cycles after start asserted.
+
+Use state machine with states: IDLE, VALIDATE, PROCESS_LOOP, CALCULATE_RESULT, DONE.
+
+The algorithm is greedy: empty the deepest chests first by moving their coins up to parent chests, counting each coin as one move.

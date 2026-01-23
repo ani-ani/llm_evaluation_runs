@@ -1,0 +1,103 @@
+module dragon (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] n,          // Array length (1-8)
+    input [7:0] arr_0,      // Individual array ports (8 elements max)
+    input [7:0] arr_1,
+    input [7:0] arr_2,
+    input [7:0] arr_3,
+    input [7:0] arr_4,
+    input [7:0] arr_5,
+    input [7:0] arr_6,
+    input [7:0] arr_7,
+    output reg [7:0] result,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 2'b00;
+localparam COMPUTE = 2'b01;
+localparam DONE_STATE = 2'b10;
+
+reg [1:0] state;
+reg [3:0] i;              // Current element index
+reg [7:0] dp0, dp1, dp2, dp3; // DP states
+reg [7:0] temp_result;
+
+// Helper to read array element based on index
+function [7:0] read_array;
+    input [3:0] idx;
+    begin
+        case(idx)
+            4'd0: read_array = arr_0;
+            4'd1: read_array = arr_1;
+            4'd2: read_array = arr_2;
+            4'd3: read_array = arr_3;
+            4'd4: read_array = arr_4;
+            4'd5: read_array = arr_5;
+            4'd6: read_array = arr_6;
+            4'd7: read_array = arr_7;
+            default: read_array = 8'd0;
+        endcase
+    end
+endfunction
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        i <= 0;
+        dp0 <= 0;
+        dp1 <= 0;
+        dp2 <= 0;
+        dp3 <= 0;
+        temp_result <= 0;
+    end else begin
+        case(state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= COMPUTE;
+                    i <= 0;
+                    dp0 <= 0;
+                    dp1 <= 0;
+                    dp2 <= 0;
+                    dp3 <= 0;
+                end
+            end
+            
+            COMPUTE: begin
+                if (i < n) begin
+                    // Process current element
+                    if (read_array(i) == 8'd1) begin
+                        dp0 <= dp0 + 1;
+                        dp2 <= (dp1 > dp2) ? (dp1 + 1) : (dp2 + 1);
+                    end else begin
+                        dp1 <= (dp0 > dp1) ? (dp0 + 1) : (dp1 + 1);
+                        dp3 <= (dp2 > dp3) ? (dp2 + 1) : (dp3 + 1);
+                    end
+                    i <= i + 1;
+                end else begin
+                    // Compute final result
+                    temp_result <= dp0;
+                    if (dp1 > temp_result) temp_result <= dp1;
+                    if (dp2 > temp_result) temp_result <= dp2;
+                    if (dp3 > temp_result) temp_result <= dp3;
+                    state <= DONE_STATE;
+                end
+            end
+            
+            DONE_STATE: begin
+                result <= temp_result;
+                done <= 1;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

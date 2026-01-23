@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'name_filter_sum' that processes a list of fixed-length names and returns the total length of valid names.
+
+**Algorithm Description**:
+A valid name must start with an uppercase letter (A-Z) followed by lowercase letters (a-z) only. The module processes a fixed-size list of names, each represented as an 8-character ASCII byte array, and sums the lengths of all valid names.
+
+**Fixed-Point/Format Specification**:
+- Each name is 8 characters (bytes) fixed-width
+- Characters are represented as ASCII values (7-bit, stored in 8-bit vectors)
+- Uppercase: ASCII 0x41-0x5A (A-Z)
+- Lowercase: ASCII 0x61-0x7A (a-z)
+- Maximum sum: 8 names × 8 chars = 64 (fits in 8-bit result)
+
+**Inputs**:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0] char_data // Current character byte from memory
+input valid_char // High when char_data is valid
+output reg [2:0] name_addr // Index to fetch next name (0-7)
+output reg [2:0] char_addr // Index to fetch next character within name (0-7)
+output reg fetch_next // Pulse to request next character
+
+**Outputs**:
+output reg [7:0] result // Total length of valid names
+output reg done // High when computation complete
+output reg error // High if invalid name format detected (for debugging)
+
+**Behavior**:
+- Processes names sequentially: Name 0, Name 1, ... Name 7
+- For each name, reads all 8 characters
+- Validates pattern: First char must be uppercase, remaining 7 must be lowercase
+- If valid, adds the actual name length (count of non-null characters) to result
+- Null characters (0x00) are treated as string terminators
+- Result is valid when done=1
+
+**State Machine States**:
+- IDLE: Wait for start signal
+- FETCH_NAME: Set name_addr to current name index
+- FETCH_CHAR: Set char_addr, request character, wait for valid_char
+- VALIDATE: Check character against rules
+- COUNT_LENGTH: Track non-null characters in current name
+- ADD_TO_SUM: Add valid name length to result
+- NEXT_NAME: Move to next name index
+- DONE: All names processed
+
+**Timing**: Result valid 80-100 clock cycles after start (worst case: 8 names × 8 chars + overhead)
+
+**Constraints**:
+- Fixed 8 names maximum
+- Fixed 8 characters per name maximum
+- Use combinational logic for character validation
+- Use sequential logic for state progression and accumulation

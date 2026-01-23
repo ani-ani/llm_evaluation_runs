@@ -1,0 +1,86 @@
+module bell_numbers(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,  // Input n (0-8)
+    output reg [63:0] result,
+    output reg done
+);
+
+// Internal state and registers
+reg [2:0] state;
+reg [3:0] i, j;
+reg [63:0] bell [0:8][0:8]; // 9x9 array for n=0..8
+reg processing;
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam INIT = 3'd1;
+localparam LOOP_I = 3'd2;
+localparam LOOP_J = 3'd3;
+localparam UPDATE = 3'd4;
+localparam FINISH = 3'd5;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        processing <= 0;
+        i <= 0;
+        j <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= INIT;
+                    i <= 0;
+                    j <= 0;
+                end
+            end
+
+            INIT: begin
+                // Initialize bell[0][0] = 1
+                bell[0][0] <= 64'd1;
+                i <= 1;
+                j <= 0;
+                state <= LOOP_I;
+            end
+
+            LOOP_I: begin
+                if (i <= n) begin
+                    bell[i][0] <= bell[i-1][i-1];
+                    j <= 1;
+                    state <= LOOP_J;
+                end else begin
+                    state <= FINISH;
+                end
+            end
+
+            LOOP_J: begin
+                if (j <= i) begin
+                    state <= UPDATE;
+                end else begin
+                    i <= i + 1;
+                    j <= 0;
+                    state <= LOOP_I;
+                end
+            end
+
+            UPDATE: begin
+                bell[i][j] <= bell[i-1][j-1] + bell[i][j-1];
+                j <= j + 1;
+                state <= LOOP_J;
+            end
+
+            FINISH: begin
+                result <= bell[n][0];
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

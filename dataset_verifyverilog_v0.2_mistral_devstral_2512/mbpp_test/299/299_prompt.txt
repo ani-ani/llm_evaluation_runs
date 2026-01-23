@@ -1,0 +1,59 @@
+Design a sequential Verilog module named 'max_aggregate' that calculates the maximum aggregate marks from a list of (name, marks) tuples.
+
+**Problem Adaptation:**
+- Names: 8-character fixed-width strings (encoded as 64-bit values)
+- Marks: 8-bit signed integers (range -128 to 127)
+- Maximum entries: 8 tuples
+- Output: The name (64-bit) with highest total marks and the total (10-bit signed to accommodate sum up to 8*127=1016)
+
+**Interface:**
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation (pulse high for one cycle when data is ready)
+input [2:0] num_entries // number of valid entries (1-8)
+input [63:0] name_in // current entry name (8 ASCII chars, 8 bits each)
+input [7:0] marks_in // current entry marks (signed)
+input valid_in // indicates current input tuple is valid
+
+Outputs:
+output reg [63:0] result_name // name with highest aggregate marks
+output reg [9:0] result_total // total marks for that name (signed)
+output reg done // high when computation complete
+output reg error // high if num_entries is 0
+
+**Behavioral Specification:**
+1. On start, the module processes all num_entries tuples sequentially
+2. The module maintains an internal structure to accumulate marks per name
+3. For each incoming tuple:
+   - Check if name already exists in accumulator
+   - If yes: add marks_in to existing total
+   - If no: create new entry with marks_in
+4. After processing all tuples, find the name with maximum total marks
+5. Return both the name and total
+6. Latency: approximately num_entries * 4 cycles + 8 cycles for max finding
+
+**Implementation Details:**
+- Use a register file of 8 entries, each with:
+  * 64-bit name field (0 means unused)
+  * 10-bit accumulated marks (signed)
+- State machine states:
+  * IDLE: wait for start
+  * ACCUMULATE: process all tuples
+  * FIND_MAX: scan accumulator for maximum
+  * DONE: present result
+
+**Processing Flow:**
+1. When valid_in is high, capture (name_in, marks_in)
+2. Search existing entries for matching name
+3. If match found: update accumulator
+4. If no match: find empty slot and store new entry
+5. After all entries processed, find max total
+6. Output the winning name and total
+
+The module must handle:
+- Duplicate names accumulating
+- Up to 8 unique names
+- Empty input (num_entries=0) -> set error flag
+- Single entry should work correctly

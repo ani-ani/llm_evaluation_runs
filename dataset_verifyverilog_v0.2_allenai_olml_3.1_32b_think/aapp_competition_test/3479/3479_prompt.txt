@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'shuttle_optimizer' that computes the minimum time to transport n people to a stadium using k cars.
+
+Problem Adaptation:
+- Maximum n = 16 people (fixed-width 5-bit counter)
+- Maximum k = 4 cars (fixed-width 3-bit counter)
+- Driver times t_i are provided as Q16.16 fixed-point values (scaled by 65536)
+- The module sorts the first n drivers by time (ascending)
+- Simulation proceeds: on each trip, the fastest available driver takes the car, taking min(5, remaining_people) passengers to stadium.
+- The car returns driven by the fastest person at the stadium (which is one of the previously transported people).
+- Since all people at the stadium are those who have already arrived, the fastest return driver is the fastest among the transported group.
+- The state machine updates: people_at_home decreases, cars_at_home increments after return trip.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] n_in // Number of people (max 16)
+input [2:0] k_in // Number of cars (max 4)
+input [15:0] t_in [0:15] // Array of 16 driver times in Q16.16 format
+
+Outputs:
+output reg [31:0] min_time // Result in Q16.16 format
+output reg done // High when computation complete
+
+Latency: Depends on n and k, but completes within O(n*k) cycles (max ~256 cycles for worst case n=16, k=4).
+
+Behavioral Description:
+1. IDLE state: Waits for start signal. When start goes high, loads inputs and sorts t_in[0:n_in-1] in ascending order (bubble sort unrolled for 16 elements or sequential state machine).
+2. PROCESSING state: Simulates trips iteratively.
+   - Maintains state variables: people_home, cars_home, current_time, fastest_driver_idx, next_driver_idx, transport_count
+   - Trip to stadium: Finds fastest available driver (next_driver_idx) among those at home. Calculates passengers = min(5, people_home - 1). Updates current_time += t_fastest. people_home -= passengers. fastest_driver_idx tracks the fastest among those transported.
+   - Return trip: If people_home > 0 and cars_at_stadium > 0, calculate return time using fastest_driver_idx. current_time += t_fastest. cars_home increments.
+   - The simulation continues until people_home == 0.
+3. DONE state: Output min_time and set done high.
+
+Implementation details:
+- Use Q16.16 fixed-point arithmetic for all time calculations
+- Sorting: Sequential bubble sort over max 16 elements (120 comparisons max)
+- Simulation loop: Max iterations bounded by n*2 (since at most n/1 trips needed)
+- State machine states: IDLE, SORTING, SIMULATING_TRIPS, SIMULATING_RETURN, DONE
+- Internal registers for simulation state

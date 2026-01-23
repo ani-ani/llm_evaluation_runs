@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'bulkhead_planner' that computes bulkhead placements for a boat cross-section.
+
+The module must handle:
+- A polygon with up to 8 vertices (N <= 8)
+- Fixed-point coordinates and calculations using Q16.16 format
+- Finding maximum M such that total_area / M >= min_area (scaled)
+- Computing M-1 bulkhead X-coordinates that divide the shape into M equal-area sections
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_vertices // actual number of vertices (3-8)
+input [31:0] min_area // scaled minimum area (Q16.16)
+input [31:0] vertices_x [0:7] // X-coordinates of vertices (Q16.16)
+input [31:0] vertices_y [0:7] // Y-coordinates of vertices (Q16.16)
+
+Outputs:
+output reg [2:0] M // maximum number of sections (1-8)
+output reg [31:0] bulkhead_x [0:6] // X-coordinates of bulkheads (Q16.16)
+output reg [2:0] bulkhead_count // M-1
+output reg done // high when computation complete
+
+Internal Logic:
+1. Compute total area of polygon using shoelace formula: Area = |sum(x_i*y_{i+1} - x_{i+1}*y_i)|/2
+2. Calculate M = floor(total_area / min_area), clamped to max 8
+3. Compute target_area = total_area / M
+4. Use iterative search to find X-coordinates where cumulative area = k*target_area for k=1..M-1
+5. For each bulkhead, scan horizontal slices to accumulate area until reaching target
+
+State Machine: IDLE, CALC_TOTAL_AREA, FIND_M, CALC_TARGET, PLACE_BULKHEADS, DONE
+
+Behavior:
+- In IDLE: Wait for start signal
+- In CALC_TOTAL_AREA: Compute total area of polygon
+- In FIND_M: Divide total_area by min_area to find M, clamp to 8
+- In CALC_TARGET: Compute target_area = total_area / M
+- In PLACE_BULKHEADS: For each bulkhead k=1 to M-1, search X-coordinates where cumulative area equals k*target_area. Use trapezoidal approximation by sampling vertical slices.
+- In DONE: Assert done signal
+
+Note: The shape constraint guarantees no vertical line crosses the polygon more than once, so we can integrate by scanning X from min_x to max_x.
+
+Use Q16.16 fixed-point arithmetic throughout. Implement iterative search with maximum 256 steps per bulkhead. Use combinational logic for polygon area calculation and trapezoidal integration.

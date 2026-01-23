@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'prime_minister_happiness' that solves the simplified problem: given coordinates and resident counts for up to 12 cities, find the minimal distance D such that there exists a connected component (via edges <= D) containing a subset of cities whose sum of residents is divisible by K.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [5:0] N // Number of cities (max 12)
+input [5:0] K // Modulo divisor (max 30)
+input [31:0] x [0:11] // X coordinates of cities
+input [31:0] y [0:11] // Y coordinates of cities  
+input [31:0] residents [0:11] // Resident counts
+
+Outputs:
+output reg [31:0] min_D // Result in Q16.16 fixed point format (lower 16 bits are fractional)
+output reg done // High when computation is complete
+
+Behavioral Description:
+The module computes the minimal D in Q16.16 fixed-point format.
+
+1. Precompute all pairwise distances (squared to avoid sqrt initially) between N cities.
+   Distance squared between city i and j: (xi - xj)^2 + (yi - yj)^2
+   Store in a 12x12 matrix.
+
+2. Extract all unique distances (or squared distances) into a sorted array.
+   Since N is small, we can use a linear scan approach to find the threshold.
+
+3. Iterate through possible D values (candidate distances). For each candidate D:
+   a. Build adjacency matrix: edge exists if distance <= candidate D.
+   b. Find connected components (using bitmasks or iterative flooding).
+   c. For each component, check if any subset of its cities has sum of residents % K == 0.
+      Use dynamic programming: reachable_mods[subset_mask] = true if modulo sum possible.
+      
+4. The first D (in sorted order) that satisfies condition is the answer.
+
+5. Convert result to Q16.16 (multiply by 65536) and output.
+
+Latency: Approximately 5000 clock cycles (depends on implementation detail).
+State Machine: IDLE, PRECOMP_DIST, SORT_DIST, CHECK_THRESHOLD, DONE.
+Use combinational logic for distance calculation and subset sum checking.

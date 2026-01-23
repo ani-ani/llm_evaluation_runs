@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'magic_boxes' that computes the smallest magical box side length exponent p required to contain a collection of boxes.
+
+The problem logic is:
+Given a set of boxes with side length exponent k_i and count a_i, the minimum container size exponent for a specific type is k_i + ceil(log4(a_i)). The answer is the maximum of these values across all box types.
+
+Due to hardware constraints, we will scale inputs:
+- k_i (size exponent): limited to range [0, 31]
+- a_i (count): limited to range [0, 2^20 - 1] (approx 1 million)
+- Total number of box types (n): fixed at 4 types maximum.
+- Output p: limited to range [0, 63].
+
+Inputs:
+- input clk: System clock
+- input rst_n: Active-low reset
+- input start: Start computation signal
+- input [4:0] k_in: Exponent k_i for current box type (0-31)
+- input [19:0] a_in: Count a_i for current box type (0-1048575)
+- input [1:0] type_index: Index of current box type (0 to 3)
+- input valid_in: High when k_in, a_in, type_index are valid
+
+Outputs:
+- output reg [5:0] result: The resulting exponent p (0-63)
+- output reg done: High when computation is complete
+
+Specifications:
+1. The module must store the 4 input pairs in internal registers.
+2. It must compute ceil(log4(a)) for each valid input a.
+   - Since a <= 2^20, log4(a) <= 10. We can use a lookup table or a comparator tree (check 4, 16, 64, 256, 1024, ... up to 4^10).
+   - Example: if a=0 or 1, log4(1)=0. If a=2..4, log4(4)=1 (since ceil(0.5)=1). If a=5..16, log4(16)=2.
+   - Specifically: ceil(log4(a)) = 
+     0 if a <= 1,
+     1 if 2 <= a <= 4,
+     2 if 5 <= a <= 16,
+     3 if 17 <= a <= 64, ...
+3. Calculate required container exponent: k_in + log4_result.
+4. Compare with current maximum and update.
+5. Sequence:
+   - Wait in IDLE state.
+   - On 'start', transition to CAPTURE state.
+   - Assert 'valid_in' 4 times (type_index 0,1,2,3) to load inputs.
+   - Transition to COMPUTE state.
+   - In COMPUTE state, iterate through stored types, calculate p_k, and find maximum.
+   - Transition to DONE state, output result.
+
+State Machine States: IDLE, CAPTURE, COMPUTE, DONE.
+Latency: Result valid ~20 clock cycles after start (to handle capture and calculation).

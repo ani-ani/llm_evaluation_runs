@@ -1,0 +1,98 @@
+module sliding_blocks_solver #(
+    parameter GRID_ROWS = 4,
+    parameter GRID_COLS = 4,
+    parameter MAX_BLOCKS = 8,
+    parameter DATA_WIDTH = 8
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [DATA_WIDTH-1:0] init_r,
+    input wire [DATA_WIDTH-1:0] init_c,
+    input wire [DATA_WIDTH-1:0] target_r [0:MAX_BLOCKS-1],
+    input wire [DATA_WIDTH-1:0] target_c [0:MAX_BLOCKS-1],
+    input wire [3:0] num_blocks,
+    output reg move_valid,
+    output reg [1:0] move_dir,
+    output reg [DATA_WIDTH-1:0] move_k,
+    output reg done,
+    output reg possible
+);
+
+// State machine
+localparam S_IDLE=3'd0, S_CHECK=3'd1, S_SEARCH=3'd2, S_OUTPUT=3'd3, S_UPDATE=3'd4, S_COMPLETE=3'd5, S_FAIL=3'd6;
+
+reg [2:0] state;
+reg [GRID_ROWS*GRID_COLS-1:0] grid;
+reg [3:0] idx;
+reg [DATA_WIDTH-1:0] cur_r, cur_c, k_reg;
+reg [1:0] dir_reg;
+
+function bit is_occ(input [DATA_WIDTH-1:0] r, c);
+begin
+    is_occ = (r>=1 && r<=GRID_ROWS && c>=1 && c<=GRID_COLS) ? grid[(r-1)*GRID_COLS + (c-1)] : 0;
+end
+endfunction
+
+function automatic [9:0] find_move(input [DATA_WIDTH-1:0] r, c);
+    integer i; bit v_up, v_down, v_left, v_right;
+begin
+    v_up = is_occ(r-1,c) && !is_occ(r+1,c);
+    for (i=r+1; i<=GRID_ROWS; i=i+1) if (is_occ(i,c)) v_up = 0;
+    
+    v_down = is_occ(r+1,c) && !is_occ(r-1,c);
+    for (i=r-1; i>=1; i=i-1) if (is_occ(i,c)) v_down = 0;
+    
+    v_left = is_occ(r,c-1) && !is_occ(r,c+1);
+    for (i=c+1; i<=GRID_COLS; i=i+1) if (is_occ(r,i)) v_left = 0;
+    
+    v_right = is_occ(r,c+1) && !is_occ(r,c-1);
+    for (i=c-1; i>=1; i=i-1) if (is_occ(r,i)) v_right = 0;
+    
+    if (v_up) find_move = {1'b1, 2'b11, r};
+    else if (v_down) find_move = {1'b1, 2'b10, r};
+    else if (v_left) find_move = {1'b1, 2'b00, c};
+    else if (v_right) find_move = {1'b1, 2'b01, c};
+    else find_move = 10'b0;
+end
+endfunction
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= S_IDLE; grid <= 0; idx <= 0;
+        move_valid <= 0; done <= 0; possible <= 0;
+    end else begin
+        case (state)
+            S_IDLE: if (start) begin
+                move_valid <= 0; done <= 0; possible <= 0; idx <= 0;
+                grid <= 0;
+                if (init_r>=1 && init_r<=GRID_ROWS && init_c>=1 && init_c<=GRID_COLS)
+                    grid[(init_r-1)*GRID_COLS + (init_c-1)] <= 1'b1;
+                state <= S_CHECK;
+            end
+            S_CHECK: if (idx >= num_blocks) begin
+                possible <= 1; state <= S_COMPLETE;
+            end else begin
+                cur_r <= target_r[idx]; cur_c <= target_c[idx]; state <= S_SEARCH;
+            end
+            S_SEARCH: begin
+                {dir_reg, k_reg} <= find_move(cur_r, cur_c);
+                if (find_move(cur_r, cur_c)[9]) state <= S_OUTPUT;
+                else state <= S_FAIL;
+            end
+            S_OUTPUT: begin
+                move_valid <= 1; move_dir <= dir_reg; move_k <= k_reg; state <= S_UPDATE;
+            end
+            S_UPDATE: begin
+                move_valid <= 0;
+                if (cur_r>=1 && cur_r<=GRID_ROWS && cur_c>=1 && cur_c<=GRID_COLS)
+                    grid[(cur_r-1)*GRID_COLS + (cur_c-1)] <= 1'b1;
+                idx <= idx + 1; state <= S_CHECK;
+            end
+            S_COMPLETE: begin done <= 1; state <= S_IDLE; end
+            S_FAIL: begin possible <= 0; done <= 1; state <= S_IDLE; end
+            default: state <= S_IDLE;
+        endcase
+    end
+end
+endmodule

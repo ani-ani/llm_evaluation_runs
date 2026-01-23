@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'prime_checker' that checks if a 32-bit integer is a prime number.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [31:0] num_in // 32-bit integer to check
+
+Outputs:
+output reg is_prime // high when num_in is prime
+output reg done // high when computation complete
+
+Specify latency: Result valid after up to 256 clock cycles (worst case) or 128 cycles for sqrt(32-bit max). Use state machine with states: IDLE, INIT, CHECK, ITERATE, DONE.
+
+Behavior:
+- Only check divisibility from 2 to floor(sqrt(num_in)) for efficiency
+- For num_in < 2, return is_prime = 0 immediately
+- Use iterative approach: store divisor 'i' starting at 2, increment each cycle, check if num_in % i == 0
+- If any divisor found, set is_prime = 0 and go to DONE
+- If i reaches sqrt(num_in) or exceeds limit without finding divisor, set is_prime = 1 and go to DONE
+- Use 32-bit division to compute remainder (num_in % i)
+- For sqrt, use approximation: i*i <= num_in, compute i*i each iteration
+- Implement in combinational logic for division check, sequential for iteration
+- Assume division yields remainder in one cycle (combinational divider)
+- When num_in >= 2, process takes variable time up to sqrt(num_in) iterations (max 256 for safety)
+- For num_in > 2^31-1, behavior undefined (use 32-bit signed/unsigned)
+
+Module structure:
+- State machine with states: IDLE, INIT, CHECK, ITERATE, DONE
+- IDLE: wait for start signal, reset internal registers
+- INIT: initialize divisor i = 2, compute sqrt_limit = floor(sqrt(num_in)) or use approximate limit
+- CHECK: compute remainder = num_in % i using combinational divider
+- ITERATE: if remainder != 0, increment i, check if i <= sqrt_limit, else go to DONE
+- DONE: set done=1, hold is_prime value
+
+Implementation details:
+- Use 32-bit registers for divisor i, remainder, temp values
+- Use combinational logic for checking: (remainder == 0), (i*i <= num_in), etc.
+- For simplicity, use fixed iteration limit of 128 cycles (sufficient for 32-bit numbers)
+- When i reaches 128 or i*i > num_in, stop
+- Special case: handle num_in == 2, num_in == 3, num_in == 1, num_in == 0
+- Internal computation: need to calculate i*i and num_in % i
+- Output: is_prime = 1 only if no divisors found from 2 to min(sqrt_limit, 128)
+
+Required internal logic:
+- Combinational: i_squared = i * i (33-bit to handle overflow)
+- Combinational: remainder = num_in % i (32-bit output)
+- Combinational: condition checks for state transitions

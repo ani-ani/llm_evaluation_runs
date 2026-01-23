@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'betting_game' that computes the expected number of rounds until at least one player wins in a simplified betting game.
+
+**Simplified Problem Specification:**
+- N (balls): 2 to 16
+- D (balls drawn per round): 1 to 4
+- C (cards size): 1 to 8
+- Player cards contain distinct numbers from 1 to N
+- Game stops when either player marks all their C numbers
+- Compute expected rounds using dynamic programming for small state space
+
+**Inputs:**
+input clk              // Clock signal
+input rst_n            // Active-low reset
+input start            // Start computation
+input [3:0] N_in       // Number of balls (2-16)
+input [2:0] D_in       // Balls drawn per round (1-4)
+input [2:0] C_in       // Cards size (1-8)
+input [15:0] cesar_card  // Bitmask of Cesar's numbers (bit 0 = ball 1, bit 15 = ball 16)
+input [15:0] raul_card   // Bitmask of Raul's numbers
+
+**Outputs:**
+output reg [31:0] result  // Expected rounds in Q16.16 fixed-point format
+output reg done           // High when computation complete
+output reg valid          // High when result is valid
+
+**Behavior:**
+1. Wait for start signal
+2. Initialize state: both players have 0 marks
+3. Use DP approach: For each possible state (Cesar's marked bits, Raul's marked bits), compute expected rounds to win
+4. State encoding: 16 bits for Cesar, 16 bits for Raul = 32 bits total, but only bits corresponding to their cards matter
+5. For each state, compute probability of transitioning to next states based on D balls drawn from N
+6. Solve: E[state] = 1 + Σ P(transition) * E[next_state] for states where game hasn't ended
+7. Use iterative relaxation or direct matrix inversion for small state space
+8. Output final expected value starting from initial state (no marks)
+
+**Latency:** Result valid within 100,000 clock cycles after start (allows for iterative computation)
+
+**Fixed-point format:** Q16.16 (16 integer bits, 16 fractional bits). Input values represent numbers * 65536. Output in same format.
+
+**Implementation hints:**
+- Use state machine: IDLE, INITIALIZE, COMPUTE, DONE
+- Pre-compute combination values for probability calculations
+- Since N≤16, D≤4, maximum combinations is C(16,4)=1820, manageable
+- Use block RAM or registers for DP table (max 2^16 entries, but sparse)
+- Implement iterative solver with convergence detection
+
+**Test case 1:** N=2, D=1, C=1, Cesar={1}, Raul={2}. Expected: 1.0 (0x00010000)
+**Test case 2:** N=16, D=4, C=4, Cesar={1,2,3,4}, Raul={5,6,7,8}. Expected: ~5.2 rounds (0x00053333)
+
+The module should compute the exact expected value for the simplified problem.

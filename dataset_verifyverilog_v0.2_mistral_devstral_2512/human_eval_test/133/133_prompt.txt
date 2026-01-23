@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'sum_squares' that computes the sum of squared numbers in a list, where each number is first rounded to the ceiling (upper integer).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] num_elements // number of elements in list (1-8)
+input [31:0] input_list [0:7] // Q16.16 format: 16 integer bits, 16 fractional bits. 8 elements max.
+
+Outputs:
+output reg [31:0] result // Q16.16 format result
+output reg done // high when computation complete
+
+Specify latency: Result valid 10 clock cycles after start asserted.
+
+The module should implement these steps:
+1. For each input value in Q16.16 format, perform ceiling operation
+2. Square the ceiled integer value
+3. Accumulate all squares into final sum
+
+Ceiling operation in Q16.16:
+- Extract integer part (bits 31:16) and fractional part (bits 15:0)
+- If fractional part > 0 and value >= 0, increment integer part by 1
+- If value < 0 and fractional part == 0, keep integer part as is
+- If value < 0 and fractional part > 0, keep integer part as is (ceiling goes toward zero)
+
+Examples:
+- Input: 0x00018000 (1.5 in Q16.16) → Ceiling: 2 → Square: 4 → Result: 0x00040000
+- Input: 0x00010000 (1.0 in Q16.16) → Ceiling: 1 → Square: 1 → Result: 0x00010000
+- Input: 0xFFFFC000 (-1.0 in Q16.16, interpreted as signed) -1.0 → Ceiling: -1 → Square: 1 → Result: 0x00010000
+- Input: 0xFFFECC00 (-2.4 in Q16.16) → Ceiling: -2 → Square: 4 → Result: 0x00040000
+
+Note: For negative numbers with non-zero fractional part, ceiling moves toward zero (e.g., -2.4 → -2)
+
+Use state machine with states: IDLE, LOAD, CEIL, SQUARE, ACCUM, DONE.
+Implement counter for tracking current element being processed.
+Accumulator should be 32-bit wide in Q16.16 format.
+All intermediate calculations should maintain precision.
+Squaring a 17-bit integer (after ceiling) produces up to 34 bits, then converted back to Q16.16 format.
+
+For state transitions:
+- IDLE: Wait for start signal
+- LOAD: Load current element from input_list
+- CEIL: Compute ceiling of current element
+- SQUARE: Square the ceiled value
+- ACCUM: Add to accumulator
+- DONE: Set done signal high, hold result
+
+The module should iterate through num_elements count of elements.

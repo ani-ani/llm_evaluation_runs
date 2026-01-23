@@ -1,0 +1,49 @@
+Module: fish_shell
+Description: Simplified fish shell command history processor with bounded history and command length.
+
+Parameters:
+  - MAX_CMD_LEN = 32: Maximum command length in characters
+  - MAX_HISTORY = 8: Maximum number of history entries
+  - CHAR_WIDTH = 8: ASCII character width
+
+Inputs:
+  - clk: Clock signal (rising edge triggered)
+  - rst_n: Active-low synchronous reset
+  - start: Start processing a new command (assert for 1 cycle)
+  - cmd_in: Input command characters [MAX_CMD_LEN-1:0][CHAR_WIDTH-1:0]
+  - cmd_len: Number of valid characters in cmd_in [5:0]
+
+Outputs:
+  - cmd_out: Completed command characters [MAX_CMD_LEN-1:0][CHAR_WIDTH-1:0]
+  - out_len: Number of valid characters in cmd_out [5:0]
+  - done: Asserted high for 1 cycle when processing is complete
+
+Internal behavior:
+  - Maintain history as circular buffer of MAX_HISTORY entries
+  - Each history entry stores command string and its length
+  - Processing algorithm:
+    1. On start, initialize current buffer and index
+    2. For each character in cmd_in (from 0 to cmd_len-1):
+        a. If character != '^': append to current buffer
+        b. If character == '^':
+            - Count consecutive '^' characters (up_count)
+            - Search history backwards from newest to oldest for commands that start with current prefix (buffer content before '^'s)
+            - If found, replace current buffer with that command
+            - Skip processing the remaining '^' characters
+    3. After processing all characters, output current buffer and add to history
+
+Timing:
+  - Processing may take multiple cycles (up to 512 cycles worst-case)
+  - done goes high when computation completes
+  - cmd_out and out_len are valid when done is high
+
+Reset behavior:
+  - On rst_n=0: all state cleared, history empty, done=0
+  - Minimum 2 clock cycles of reset required
+
+Interface specification for testbench:
+  - Arrays accessed element-wise: cmd_in[i], cmd_out[i]
+  - clk period: 10ns
+  - Timeout: 1000 cycles for done
+  - Start pulse: 1 clock cycle high
+  - cmd_len range: 0 to 32

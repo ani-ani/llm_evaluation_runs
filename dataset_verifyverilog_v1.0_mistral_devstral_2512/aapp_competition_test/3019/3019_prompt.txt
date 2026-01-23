@@ -1,0 +1,54 @@
+// Module: max_revenue
+// Description: Computes the maximum revenue for the data selling problem.
+// Inputs:
+//   clk: clock, rising edge
+//   rst_n: active-low asynchronous reset
+//   start: pulse high for one cycle to start computation
+//   N: number of data pieces (1 to 14), 4 bits
+//   S_0 to S_13: property of each data piece, 10 bits each (only first N are valid)
+// Outputs:
+//   result: maximum revenue, 7 bits
+//   done: high for one cycle when result is valid
+//
+// Internal operation:
+// 1. After start, precompute subset sums and number of distinct prime factors (omega) for all subsets (masks 1 to (1<<N)-1).
+//    - Use a state machine to iterate over masks.
+//    - For each mask, compute sum = sum[mask_without_lsb] + S[lsb_index].
+//    - For each sum, compute omega by checking divisibility by precomputed primes (list of primes up to 118).
+//    - Store sum in subset_sum memory (14 bits wide, 2^N entries).
+//    - Store omega in subset_omega memory (3 bits wide, 2^N entries).
+// 2. DP computation:
+//    - Initialize dp[0] = 0.
+//    - For mask from 1 to (1<<N)-1:
+//        max_val = 0
+//        sub = mask
+//        while sub != 0:
+//            candidate = dp[mask ^ sub] + subset_omega[sub]
+//            if candidate > max_val: max_val = candidate
+//            sub = (sub - 1) & mask
+//        dp[mask] = max_val
+//    - Store dp values in dp memory (7 bits wide, 2^N entries).
+// 3. Output result = dp[(1<<N)-1] and assert done.
+//
+// Memories:
+//   subset_sum: array [0:16383] of logic [13:0]; // 2^14 entries, 14 bits each
+//   subset_omega: array [0:16383] of logic [2:0]; // 2^14 entries, 3 bits each
+//   dp: array [0:16383] of logic [6:0]; // 2^14 entries, 7 bits each
+//
+// The prime list (primes up to 118) should be hardcoded in the module as a ROM.
+// The omega computation state machine should iterate over the prime list and count distinct prime factors.
+//
+// The module should have the following states:
+//   IDLE: wait for start
+//   INIT_START: initialize mask counter to 1
+//   INIT_SUM: compute subset_sum for current mask
+//   INIT_OMEGA: compute omega for current mask (may take multiple cycles)
+//   INIT_NEXT: increment mask, loop back until all masks done
+//   DP_START: initialize mask counter to 1
+//   DP_OUTER: for current mask, initialize submask iteration
+//   DP_INNER: for each submask, compute candidate and update max_val
+//   DP_NEXT: increment submask, loop until submask=0
+//   DP_STORE: store max_val to dp[mask], increment mask, loop until all masks done
+//   DONE: output result and assert done for one cycle
+//
+// The module should be fully synchronous and resettable.

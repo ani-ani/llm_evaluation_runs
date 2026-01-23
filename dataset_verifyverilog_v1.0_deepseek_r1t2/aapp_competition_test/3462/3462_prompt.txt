@@ -1,0 +1,182 @@
+module file_matcher (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] pattern_char,  // Current character of pattern
+    input [7:0] filename_char,  // Current character of filename
+    input pattern_valid,        // Pattern data valid
+    input filename_valid,       // Filename data valid
+    input pattern_end,          // End of pattern
+    input filename_end,         // End of filename
+    output reg match,
+    output reg done
+);
+
+// Parameters
+parameter MAX_LEN = 16;
+
+// State machine states
+parameter IDLE = 3'b000;
+parameter MATCH = 3'b001;
+parameter CHECK_STAR = 3'b010;
+parameter ADVANCE_PATTERN = 3'b011;
+parameter ADVANCE_FILENAME = 3'b100;
+parameter BACKTRACK = 3'b101;
+parameter DONE = 3'b110;
+
+// Registers
+reg [2:0] state, next_state;
+reg [7:0] pattern_reg [0:MAX_LEN-1];  // Pattern buffer
+reg [7:0] filename_reg [0:MAX_LEN-1]; // Filename buffer
+reg [4:0] pattern_idx;                 // Current pattern position
+reg [4:0] filename_idx;                // Current filename position
+reg [4:0] star_idx;                    // Last '*' position in pattern
+reg [4:0] star_match_idx;              // Filename position for '*'
+reg [4:0] pattern_len;
+reg [4:0] filename_len;
+reg processing;
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: begin
+            if (start && pattern_valid && filename_valid) begin
+                next_state = MATCH;
+            end
+        end
+        MATCH: begin
+            if (pattern_idx >= pattern_len && filename_idx >= filename_len) begin
+                next_state = DONE;  // Both ended - match
+            end else if (pattern_idx >= pattern_len) begin
+                next_state = DONE;  // Pattern ended but filename didn't - no match
+            end else if (filename_idx >= filename_len) begin
+                // Filename ended, check if remaining pattern is all '*'
+                if (pattern_reg[pattern_idx] == 8'h2A) begin
+                    next_state = ADVANCE_PATTERN;
+                end else begin
+                    next_state = DONE;  // No match
+                end
+            end else if (pattern_reg[pattern_idx] == 8'h2A) begin
+                next_state = CHECK_STAR;  // Handle wildcard
+            end else if (pattern_reg[pattern_idx] == filename_reg[filename_idx] || pattern_reg[pattern_idx] == 8'h3F) begin
+                next_state = ADVANCE_BOTH;  // Match or '?', advance both
+            end else if (star_idx != 5'h1F) begin
+                next_state = BACKTRACK;  // No match but previous '*' exists
+            end else begin
+                next_state = DONE;  // No match
+            end
+        end
+        CHECK_STAR: begin
+            next_state = ADVANCE_PATTERN;
+        end
+        ADVANCE_BOTH: begin
+            next_state = MATCH;
+        end
+        ADVANCE_PATTERN: begin
+            next_state = MATCH;
+        end
+        ADVANCE_FILENAME: begin
+            next_state = MATCH;
+        end
+        BACKTRACK: begin
+            next_state = MATCH;
+        end
+        DONE: begin
+            if (!start) begin
+                next_state = IDLE;
+            end
+        end
+    endcase
+end
+
+// Output and datapath logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        pattern_idx <= 0;
+        filename_idx <= 0;
+        star_idx <= 5'h1F;  // Invalid value
+        star_match_idx <= 0;
+        match <= 0;
+        done <= 0;
+        processing <= 0;
+        pattern_len <= 0;
+        filename_len <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start && pattern_valid && filename_valid) begin
+                    pattern_idx <= 0;
+                    filename_idx <= 0;
+                    star_idx <= 5'h1F;
+                    star_match_idx <= 0;
+                    match <= 0;
+                    done <= 0;
+                    processing <= 1;
+                    pattern_len <= 0;
+                    filename_len <= 0;
+                end
+            end
+            CHECK_STAR: begin
+                // Record position of '*'
+                star_idx <= pattern_idx;
+                star_match_idx <= filename_idx;
+                pattern_idx <= pattern_idx + 1;
+            end
+            ADVANCE_BOTH: begin
+                pattern_idx <= pattern_idx + 1;
+                filename_idx <= filename_idx + 1;
+            end
+            ADVANCE_PATTERN: begin
+                if (pattern_idx < pattern_len) begin
+                    pattern_idx <= pattern_idx + 1;
+                end
+            end
+            ADVANCE_FILENAME: begin
+                if (filename_idx < filename_len) begin
+                    filename_idx <= filename_idx + 1;
+                end
+            end
+            BACKTRACK: begin
+                // Use '*' to match one more character
+                pattern_idx <= star_idx + 1;
+                filename_idx <= star_match_idx + 1;
+                star_match_idx <= star_match_idx + 1;
+            end
+            DONE: begin
+                if (pattern_idx >= pattern_len && filename_idx >= filename_len) begin
+                    match <= 1;
+                end else begin
+                    match <= 0;
+                end
+                done <= 1;
+                processing <= 0;
+            end
+        endcase
+        
+        // Buffer input characters
+        if (pattern_valid && processing) begin
+            if (pattern_len < MAX_LEN) begin
+                pattern_reg[pattern_len] <= pattern_char;
+                pattern_len <= pattern_len + 1;
+            end
+        end
+        if (filename_valid && processing) begin
+            if (filename_len < MAX_LEN) begin
+                filename_reg[filename_len] <= filename_char;
+                filename_len <= filename_len + 1;
+            end
+        end
+    end
+end
+
+endmodule

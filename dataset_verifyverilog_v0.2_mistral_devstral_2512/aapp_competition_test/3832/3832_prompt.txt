@@ -1,0 +1,81 @@
+Design a sequential Verilog module named 'hill_houses' that computes the minimum cost to build k houses on hills, where k ranges from 1 to ceil(n/2).
+
+Problem Adaptation:
+- Supports up to N=10 hills (scaled from 5000)
+- Max 5 houses (ceil(10/2))
+- Input heights are integers 0-100
+- Costs are computed in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- The module uses a state machine to perform dynamic programming iteratively
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset (async)
+input start // Start computation pulse
+input [6:0] hill_height // Current hill height (scaled to 0-100)
+input valid // High when hill_height is valid
+
+Outputs:
+output reg [5:0] current_k // Current k value being computed (1 to 5)
+output reg [31:0] min_cost // Minimum cost in Q16.16 format
+output reg result_valid // High when result for current_k is ready
+output reg done // High when all k values (1 to 5) are computed
+
+Behavior:
+The module implements a dynamic programming algorithm to find the minimum cost to make at least k hills strictly higher than their neighbors.
+
+Algorithm Overview:
+For each hill processed, the FSM updates DP states:
+- State 0: No house at current hill
+- State 1: House at current hill (requires lowering neighbors)
+- State 2: Previous hill had a house (current hill cannot have one)
+
+The module processes hills sequentially. After processing all N hills, it outputs the minimum cost for k=1, then k=2, etc.
+
+Internal Parameters:
+- N_MAX = 10 (max number of hills)
+- K_MAX = 5 (max houses)
+- Q_FORMAT = 16 (fractional bits)
+- MULTIPLIER = 65536 (2^16)
+
+State Machine States:
+IDLE: Wait for start signal, initialize DP table
+RECV_HILLS: Read hill heights into buffer
+COMPUTE: Process DP updates for each hill
+OUTPUT: Output results for k=1 to K_MAX
+DONE: Set done=1
+
+DP Calculation Logic:
+For a hill at index i with height h_i:
+- If placing house at i: cost = max(0, h_{i-1} - (h_i - 1)) + max(0, h_{i+1} - (h_i - 1))
+- If not placing house: cost = 0 (unless constrained by previous house)
+
+The module uses 3 registers to track DP states:
+- dp0: Cost with 0 houses ending at current position
+- dp1: Cost with 1+ houses ending at current position
+- dp2: Cost with previous position having a house
+
+Timing:
+- After start, N clock cycles to read hills
+- 2*N clock cycles for DP computation
+- K_MAX clock cycles to output results
+- Total latency: ~40 cycles
+
+Scaling:
+- Heights are 0-100
+- Costs are computed as integers then scaled to Q16.16
+- Output min_cost is (cost * 65536)
+
+Constraints:
+- Input heights must be stable during RECV_HILLS state
+- Module expects exactly N hills (10)
+- Invalid if fewer hills provided
+
+Test Case Examples:
+Input: [1,1,1,1,1] (n=5)
+Expected: [1,2,2] (scaled to Q16.16: 65536, 131072, 131072)
+
+Input: [1,2,3] (n=3)
+Expected: [0,2] (scaled: 0, 131072)
+
+Input: [1,2,3,2,2] (n=5)
+Expected: [0,1,3] (scaled: 0, 65536, 196608)

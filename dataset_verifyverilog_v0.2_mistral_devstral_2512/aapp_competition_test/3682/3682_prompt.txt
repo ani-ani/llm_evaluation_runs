@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'plagiarism_detector' that implements code similarity detection between a submitted snippet and a repository of code fragments.
+
+The module should:
+1. Accept normalized code lines through a streaming interface
+2. Compare each submitted line against all repository fragments simultaneously
+3. Track consecutive matching line counts for each fragment
+4. Report the maximum match length and which fragments achieved it
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start new detection cycle
+input [255:0] current_line // current normalized code line (ASCII string, padded with zeros)
+input line_valid // high when current_line contains valid data
+input [255:0] repo_line_0, repo_line_1 // repository lines for comparison
+input [1:0] repo_valid // bit mask indicating which repository entries are valid
+input [3:0] repo_index // index of current repository fragment being compared
+input fragment_end // high when current fragment ends
+input snippet_end // high when submission snippet ends
+
+Outputs:
+output reg [7:0] max_match_length // maximum consecutive matching lines found
+output reg [255:0] matching_filenames // concatenated filenames of fragments with max match (up to 8 chars each, space separated)
+output reg done // high when computation complete
+output reg match_found // high if any match found
+
+Behavior:
+- On start, reset all internal state
+- For each valid input line, normalize it (trim leading/trailing spaces, collapse multiple spaces to single space)
+- Skip empty lines (after normalization)
+- Compare current normalized line against repository lines in parallel
+- Track consecutive match counter for each fragment
+- When a mismatch occurs, record the counter if it's a new maximum
+- When fragment_end is asserted, finalize current fragment's match count
+- When snippet_end is asserted, compute final results
+- Output format: max_match_length followed by space-separated filenames of all fragments achieving that maximum
+
+The module must maintain state for up to 100 repository fragments (scalable design).
+
+Use state machine with states: IDLE, READ_FRAGMENT, NORMALIZE, COMPARE, UPDATE_STATE, FINALIZE.
+
+Latency: Result valid 1000 clock cycles after start asserted (worst case for 100 fragments).

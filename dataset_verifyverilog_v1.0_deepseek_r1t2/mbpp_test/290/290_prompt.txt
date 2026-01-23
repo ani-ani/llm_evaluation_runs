@@ -1,0 +1,231 @@
+module max_length (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // 2D array: 8 sublists, each 8 elements
+    // We use individual port naming for compatibility
+    input wire [7:0] arr_0_0, arr_0_1, arr_0_2, arr_0_3, arr_0_4, arr_0_5, arr_0_6, arr_0_7,
+    input wire [7:0] arr_1_0, arr_1_1, arr_1_2, arr_1_3, arr_1_4, arr_1_5, arr_1_6, arr_1_7,
+    input wire [7:0] arr_2_0, arr_2_1, arr_2_2, arr_2_3, arr_2_4, arr_2_5, arr_2_6, arr_2_7,
+    input wire [7:0] arr_3_0, arr_3_1, arr_3_2, arr_3_3, arr_3_4, arr_3_5, arr_3_6, arr_3_7,
+    input wire [7:0] arr_4_0, arr_4_1, arr_4_2, arr_4_3, arr_4_4, arr_4_5, arr_4_6, arr_4_7,
+    input wire [7:0] arr_5_0, arr_5_1, arr_5_2, arr_5_3, arr_5_4, arr_5_5, arr_5_6, arr_5_7,
+    input wire [7:0] arr_6_0, arr_6_1, arr_6_2, arr_6_3, arr_6_4, arr_6_5, arr_6_6, arr_6_7,
+    input wire [7:0] arr_7_0, arr_7_1, arr_7_2, arr_7_3, arr_7_4, arr_7_5, arr_7_6, arr_7_7,
+    
+    // Length of each sublist (1-8 elements, 0 means empty/not used)
+    input wire [3:0] len_0, len_1, len_2, len_3, len_4, len_5, len_6, len_7,
+    
+    output reg [3:0] max_len,
+    output reg [7:0] max_list_0, max_list_1, max_list_2, max_list_3,
+    output reg [7:0] max_list_4, max_list_5, max_list_6, max_list_7,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam COMPUTE = 2'b01;
+    localparam FINISH = 2'b10;
+    
+    reg [1:0] state;
+    reg [2:0] sublist_idx;  // 0-7 for 8 sublists
+    reg [3:0] current_len;
+    reg [2:0] copy_idx;  // For copying longest list
+    reg copy_valid;
+    
+    // Input array storage (flattened)
+    reg [7:0] arr [0:7][0:7];
+    reg [3:0] lens [0:7];
+    
+    integer i, j;
+    
+    // State machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            max_len <= 4'd0;
+            done <= 1'b0;
+            sublist_idx <= 3'd0;
+            copy_idx <= 3'd0;
+            copy_valid <= 1'b0;
+            // Clear storage
+            for (i = 0; i < 8; i = i + 1) begin
+                lens[i] <= 4'd0;
+                for (j = 0; j < 8; j = j + 1) begin
+                    arr[i][j] <= 8'd0;
+                end
+            end
+            // Clear outputs
+            max_list_0 <= 8'd0; max_list_1 <= 8'd0; max_list_2 <= 8'd0; max_list_3 <= 8'd0;
+            max_list_4 <= 8'd0; max_list_5 <= 8'd0; max_list_6 <= 8'd0; max_list_7 <= 8'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        // Store inputs
+                        arr[0][0] <= arr_0_0; arr[0][1] <= arr_0_1; arr[0][2] <= arr_0_2; arr[0][3] <= arr_0_3;
+                        arr[0][4] <= arr_0_4; arr[0][5] <= arr_0_5; arr[0][6] <= arr_0_6; arr[0][7] <= arr_0_7;
+                        arr[1][0] <= arr_1_0; arr[1][1] <= arr_1_1; arr[1][2] <= arr_1_2; arr[1][3] <= arr_1_3;
+                        arr[1][4] <= arr_1_4; arr[1][5] <= arr_1_5; arr[1][6] <= arr_1_6; arr[1][7] <= arr_1_7;
+                        arr[2][0] <= arr_2_0; arr[2][1] <= arr_2_1; arr[2][2] <= arr_2_2; arr[2][3] <= arr_2_3;
+                        arr[2][4] <= arr_2_4; arr[2][5] <= arr_2_5; arr[2][6] <= arr_2_6; arr[2][7] <= arr_2_7;
+                        arr[3][0] <= arr_3_0; arr[3][1] <= arr_3_1; arr[3][2] <= arr_3_2; arr[3][3] <= arr_3_3;
+                        arr[3][4] <= arr_3_4; arr[3][5] <= arr_3_5; arr[3][6] <= arr_3_6; arr[3][7] <= arr_3_7;
+                        arr[4][0] <= arr_4_0; arr[4][1] <= arr_4_1; arr[4][2] <= arr_4_2; arr[4][3] <= arr_4_3;
+                        arr[4][4] <= arr_4_4; arr[4][5] <= arr_4_5; arr[4][6] <= arr_4_6; arr[4][7] <= arr_4_7;
+                        arr[5][0] <= arr_5_0; arr[5][1] <= arr_5_1; arr[5][2] <= arr_5_2; arr[5][3] <= arr_5_3;
+                        arr[5][4] <= arr_5_4; arr[5][5] <= arr_5_5; arr[5][6] <= arr_5_6; arr[5][7] <= arr_5_7;
+                        arr[6][0] <= arr_6_0; arr[6][1] <= arr_6_1; arr[6][2] <= arr_6_2; arr[6][3] <= arr_6_3;
+                        arr[6][4] <= arr_6_4; arr[6][5] <= arr_6_5; arr[6][6] <= arr_6_6; arr[6][7] <= arr_6_7;
+                        arr[7][0] <= arr_7_0; arr[7][1] <= arr_7_1; arr[7][2] <= arr_7_2; arr[7][3] <= arr_7_3;
+                        arr[7][4] <= arr_7_4; arr[7][5] <= arr_7_5; arr[7][6] <= arr_7_6; arr[7][7] <= arr_7_7;
+                        
+                        lens[0] <= len_0; lens[1] <= len_1; lens[2] <= len_2; lens[3] <= len_3;
+                        lens[4] <= len_4; lens[5] <= len_5; lens[6] <= len_6; lens[7] <= len_7;
+                        
+                        max_len <= 4'd0;
+                        max_list_0 <= 8'd0; max_list_1 <= 8'd0; max_list_2 <= 8'd0; max_list_3 <= 8'd0;
+                        max_list_4 <= 8'd0; max_list_5 <= 8'd0; max_list_6 <= 8'd0; max_list_7 <= 8'd0;
+                        
+                        sublist_idx <= 3'd0;
+                        state <= COMPUTE;
+                    end
+                end
+                
+                COMPUTE: begin
+                    // Compare current sublist length with max
+                    if (lens[sublist_idx] > max_len) begin
+                        max_len <= lens[sublist_idx];
+                        copy_idx <= 3'd0;
+                        copy_valid <= 1'b1;
+                    end else begin
+                        copy_valid <= 1'b0;
+                    end
+                    
+                    // Move to next sublist
+                    if (sublist_idx < 3'd7) begin
+                        sublist_idx <= sublist_idx + 3'd1;
+                    end else if (copy_valid) begin
+                        // Start copying after checking all
+                        state <= FINISH;
+                    end else begin
+                        // Done without copying
+                        done <= 1'b1;
+                        state <= IDLE;
+                    end
+                end
+                
+                FINISH: begin
+                    // Copy the longest list
+                    if (copy_idx < max_len) begin
+                        case (sublist_idx)
+                            3'd0: begin
+                                case (copy_idx)
+                                    4'd0: max_list_0 <= arr[0][0];
+                                    4'd1: max_list_1 <= arr[0][1];
+                                    4'd2: max_list_2 <= arr[0][2];
+                                    4'd3: max_list_3 <= arr[0][3];
+                                    4'd4: max_list_4 <= arr[0][4];
+                                    4'd5: max_list_5 <= arr[0][5];
+                                    4'd6: max_list_6 <= arr[0][6];
+                                    4'd7: max_list_7 <= arr[0][7];
+                                endcase
+                            end
+                            3'd1: begin
+                                case (copy_idx)
+                                    4'd0: max_list_0 <= arr[1][0];
+                                    4'd1: max_list_1 <= arr[1][1];
+                                    4'd2: max_list_2 <= arr[1][2];
+                                    4'd3: max_list_3 <= arr[1][3];
+                                    4'd4: max_list_4 <= arr[1][4];
+                                    4'd5: max_list_5 <= arr[1][5];
+                                    4'd6: max_list_6 <= arr[1][6];
+                                    4'd7: max_list_7 <= arr[1][7];
+                                endcase
+                            end
+                            3'd2: begin
+                                case (copy_idx)
+                                    4'd0: max_list_0 <= arr[2][0];
+                                    4'd1: max_list_1 <= arr[2][1];
+                                    4'd2: max_list_2 <= arr[2][2];
+                                    4'd3: max_list_3 <= arr[2][3];
+                                    4'd4: max_list_4 <= arr[2][4];
+                                    4'd5: max_list_5 <= arr[2][5];
+                                    4'd6: max_list_6 <= arr[2][6];
+                                    4'd7: max_list_7 <= arr[2][7];
+                                endcase
+                            end
+                            3'd3: begin
+                                case (copy_idx)
+                                    4'd0: max_list_0 <= arr[3][0];
+                                    4'd1: max_list_1 <= arr[3][1];
+                                    4'd2: max_list_2 <= arr[3][2];
+                                    4'd3: max_list_3 <= arr[3][3];
+                                    4'd4: max_list_4 <= arr[3][4];
+                                    4'd5: max_list_5 <= arr[3][5];
+                                    4'd6: max_list_6 <= arr[3][6];
+                                    4'd7: max_list_7 <= arr[3][7];
+                                endcase
+                            end
+                            3'd4: begin
+                                case (copy_idx)
+                                    4'd0: max_list_0 <= arr[4][0];
+                                    4'd1: max_list_1 <= arr[4][1];
+                                    4'd2: max_list_2 <= arr[4][2];
+                                    4'd3: max_list_3 <= arr[4][3];
+                                    4'd4: max_list_4 <= arr[4][4];
+                                    4'd5: max_list_5 <= arr[4][5];
+                                    4'd6: max_list_6 <= arr[4][6];
+                                    4'd7: max_list_7 <= arr[4][7];
+                                endcase
+                            end
+                            3'd5: begin
+                                case (copy_idx)
+                                    4'd0: max_list_0 <= arr[5][0];
+                                    4'd1: max_list_1 <= arr[5][1];
+                                    4'd2: max_list_2 <= arr[5][2];
+                                    4'd3: max_list_3 <= arr[5][3];
+                                    4'd4: max_list_4 <= arr[5][4];
+                                    4'd5: max_list_5 <= arr[5][5];
+                                    4'd6: max_list_6 <= arr[5][6];
+                                    4'd7: max_list_7 <= arr[5][7];
+                                endcase
+                            end
+                            3'd6: begin
+                                case (copy_idx)
+                                    4'd0: max_list_0 <= arr[6][0];
+                                    4'd1: max_list_1 <= arr[6][1];
+                                    4'd2: max_list_2 <= arr[6][2];
+                                    4'd3: max_list_3 <= arr[6][3];
+                                    4'd4: max_list_4 <= arr[6][4];
+                                    4'd5: max_list_5 <= arr[6][5];
+                                    4'd6: max_list_6 <= arr[6][6];
+                                    4'd7: max_list_7 <= arr[6][7];
+                                endcase
+                            end
+                            3'd7: begin
+                                case (copy_idx)
+                                    4'd0: max_list_0 <= arr[7][0];
+                                    4'd1: max_list_1 <= arr[7][1];
+                                    4'd2: max_list_2 <= arr[7][2];
+                                    4'd3: max_list_3 <= arr[7][3];
+                                    4'd4: max_list_4 <= arr[7][4];
+                                    4'd5: max_list_5 <= arr[7][5];
+                                    4'd6: max_list_6 <= arr[7][6];
+                                    4'd7: max_list_7 <= arr[7][7];
+                                endcase
+                            end
+                        endcase
+                        copy_idx <= copy_idx + 3'd1;
+                    end else begin
+                        done <= 1'b1;
+                        state <= IDLE;
+                    end
+                end
+            endcase
+        end
+    end
+
+endmodule

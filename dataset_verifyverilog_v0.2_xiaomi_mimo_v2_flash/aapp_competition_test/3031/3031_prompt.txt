@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'good_nodes_finder' that identifies good nodes in a small tree.
+
+Problem Adaptation: Find nodes where all simple paths starting from that node have adjacent edges of different colors (rainbow condition). For N=8 nodes, colors 1-8, tree structure.
+
+Module Specification:
+module good_nodes_finder(
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] node_count,          // Number of nodes (up to 8)
+    input [23:0] edge_data,          // Packed edge: {color[3:0], node_b[3:0], node_a[3:0]}
+    input [2:0] edge_index,          // Current edge index to load (0 to n-2)
+    output reg [7:0] good_nodes,     // Bitmask of good nodes (bit i = 1 if node i+1 is good)
+    output reg done                  // High when computation complete
+);
+
+The tree is input edge-by-edge via edge_data and edge_index. When start is asserted, the module should:
+1. Load all n-1 edges (n-1 clock cycles)
+2. After loading, check each node (1 to n) if it is good
+3. A node is good if for all paths starting from it, no two adjacent edges share the same color
+
+Implementation approach:
+- Store edges in an adjacency matrix or list format
+- For each node, perform BFS/DFS traversal
+- During traversal, track color of parent edge
+- If any path has adjacent edges with same color, node is NOT good
+- Since N <= 8, we can unroll loops or use bounded iteration
+
+Signal widths:
+- Node IDs: 4 bits (1-8)
+- Colors: 4 bits (1-8)
+- Edge count: 3 bits (max 7 edges for 8 nodes)
+
+States:
+- IDLE: Wait for start
+- LOAD_EDGES: Accept edge data for n-1 cycles
+- CHECK_NODES: Check each node for good status
+- DONE: Output result
+
+Latency: Approximately n + (n * path_check_cycles) cycles. For n=8, roughly 64 cycles max.
+
+Output good_nodes is a bitmask where bit 0 corresponds to node 1, bit 1 to node 2, etc.
+
+The module should detect rainbow condition: adjacent edges (in path) must have different colors. Edge colors are given; adjacent means consecutive edges in the path, not necessarily adjacent in tree structure.

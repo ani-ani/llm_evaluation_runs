@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'laser_tag_wall' that computes the y-coordinate range on the target wall (x=0) where a laser hits after reflecting off a mirror.
+
+The problem is scaled and simplified:
+- Coordinates are input as fixed-point Q16.16 values (16 integer bits, 16 fractional bits)
+- Input values represent integers in range [-100, 100] scaled by 65536
+- The mirror is defined by endpoints (x1, y1) and (x2, y2)
+- The shooter is at (x3, y3)
+- The target wall is at x=0
+- The module computes the reflection of the shooter's position across the mirror line to find the image point
+- It then computes the intersection of the line from shooter to image with the wall (x=0)
+- Simplified logic: Calculate mirror line equation, reflect point, find wall intersection
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [31:0] x1, y1, x2, y2, x3, y3 // mirror endpoints and shooter position in Q16.16 format
+
+Outputs:
+output reg [31:0] y_wall // y-coordinate of intersection point on wall in Q16.16 format
+output reg done // high when computation complete
+output reg can_hit // high if wall can be hit
+
+Latency: Result valid 20 clock cycles after start asserted.
+
+Behavioral Description:
+1. Calculate the mirror line coefficients A, B, C (Ax + By + C = 0)
+   where A = y2 - y1, B = x1 - x2, C = x2*y1 - x1*y2
+2. Reflect shooter (x3, y3) across the mirror line to get image point (x', y')
+3. Compute line from shooter to image and find intersection with x=0 wall
+4. Special cases: 
+   - If shooter is on mirror line: can't hit (parallel reflection)
+   - If reflected line is parallel to wall: infinite range (use infinity flags)
+
+The module should use a state machine with states: IDLE, CALC_MIRROR, REFLECT_POINT, CALC_INTERSECTION, DONE.
+
+Note: For infinite range cases, the system should detect when the reflected line is vertical (parallel to wall x=0) or when geometry leads to undefined intersection. In such cases, output special values.
+
+Use Q16.16 fixed-point arithmetic throughout. Division operations should be implemented as state machine steps (iterative or lookup-based).

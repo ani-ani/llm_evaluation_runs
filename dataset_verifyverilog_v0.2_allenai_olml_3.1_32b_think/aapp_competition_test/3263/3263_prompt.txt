@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'fluttershy_scheduling' that solves a simplified customer serving problem for a shy pony boutique.
+
+**Problem Simplified for Hardware:**
+- Max Customers (N): 16
+- Max Clothing Types (M): 4
+- Time values and durations are scaled to fit 32-bit integers (representing original time / 1000).
+- The system processes customers one by one in arrival order using a state machine.
+- The goal is to track the 'cost' (time) to be in different states (wearing different clothes) and update them upon customer arrivals.
+
+**Inputs:**
+- `clk`: System clock
+- `rst_n`: Active-low reset
+- `start`: High for one cycle to start processing the sequence of customers
+- `config_p_in` [M-1:0][31:0]: Array of put-on times P_i for each clothing type
+- `config_r_in` [M-1:0][31:0]: Array of remove times R_i for each clothing type
+- `customer_type_in` [4:0]: Clothing type of the current customer (0 to M-1, 0 means invalid/end)
+- `customer_time_in` [31:0]: Arrival time of the current customer
+- `in_valid`: High when input data is ready
+- `in_ready`: Handshake output, high when module is ready to accept input
+
+**Outputs:**
+- `result`: 32-bit output showing the maximum number of customers served
+- `result_valid`: High when the final result is valid
+
+**Behavior:**
+1. **Initialization (IDLE state):**
+   - On `start`, initialize an internal memory array `dp_state[0..M-1]` to all 1s (infinity). `dp_state[none]` (let's use index M for 'no clothing') is set to 0.
+   - Reset served counter to 0.
+2. **Processing Customers (PROCESSING state):**
+   - Wait for `in_valid` high. If valid, capture `customer_type_in` and `customer_time_in`.
+   - Use a combinational block to calculate new costs:
+     - Iterate through all previous states `dp_state[j]` (0 to M).
+     - Calculate time to be ready for the new customer if transitioning from state `j`.
+     - Case 1: If `j == customer_type_in`: Valid, time is `dp_state[j]` (no change needed).
+     - Case 2: If `j` is 'none' (index M) and we start dressing for type `C`: Time is `dp_state[M] + P_C`.
+     - Case 3: If `j != C` and `j` is not 'none': We must remove `j` then put on `C`. Time is `dp_state[j] + R_j + P_C`.
+   - Find the minimum time among all valid transitions that result in being ready before `customer_time_in`.
+   - If a valid transition exists (time <= `customer_time_in`):
+     - Update the corresponding state `dp_state[customer_type_in]` with this new minimum time.
+     - Increment the served counter.
+   - Move to `WAIT_FOR_NEXT` or stay in `PROCESSING` depending on handshake.
+3. **Completion:**
+   - After processing all customers, move to `DONE` state and output the served count.
+
+**State Machine States:**
+- `IDLE`: Waiting for start signal.
+- `PROCESSING`: Receiving and processing customers.
+- `DONE`: Computation finished, result available.
+
+**Timing:**
+- Latency: Processing is pipelined. Allow 1 clock cycle for calculation per customer.
+- The module must handle the `in_ready` / `in_valid` handshake to stream in the 16 customers.

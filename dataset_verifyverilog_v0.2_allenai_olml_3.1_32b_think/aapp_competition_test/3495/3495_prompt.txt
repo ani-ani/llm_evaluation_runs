@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'robotic_arm' that computes joint positions for a robotic arm to reach as close as possible to a target point.
+
+Module Specification:
+- Input clock and reset signals
+- Input target coordinates in Q16.16 fixed-point format
+- Input array of segment lengths in Q16.16 format
+- Output array of joint positions (x, y coordinates) in Q16.16 format
+- Process: Calculate total length, check reachability, place joints iteratively
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input signed [31:0] target_x // Target X coordinate (Q16.16)
+input signed [31:0] target_y // Target Y coordinate (Q16.16)
+input [31:0] seg_length [0:7] // Array of 8 segment lengths (Q16.16)
+input [2:0] num_segments // Number of active segments (1-8)
+
+Outputs:
+output reg signed [31:0] joint_x [0:7] // X coordinates of 8 joints (Q16.16)
+output reg signed [31:0] joint_y [0:7] // Y coordinates of 8 joints (Q16.16)
+output reg done // High when computation complete
+output reg reachable // High if target is reachable
+
+Latency: Approximately 20 clock cycles (for 8 segments)
+
+Behavioral Description:
+The module uses a state machine with states: IDLE, CALC_DIST, CHECK_REACH, PLACE_JOINTS, DONE.
+
+1. IDLE: Wait for start signal
+2. CALC_DIST: Compute distance to target (sqrt(x² + y²)) using fixed-point approximation
+3. CHECK_REACH: Compare total arm length with target distance
+4. PLACE_JOINTS: Iteratively place each joint along the line to target:
+   - If target is reachable: place joints to reach exactly target
+   - If not reachable: place joints along direction to target at max extension
+   - Each joint position = previous_position + (segment_length / total_length) * target_vector
+5. DONE: Set done signal high
+
+Use Q16.16 format throughout (16 integer bits, 16 fractional bits).
+Implement square root approximation for fixed-point distance calculation.
+Handle edge cases: target at origin, single segment, etc.
+
+The module should compute joint positions that satisfy:
+- Distance between consecutive joints equals input segment lengths
+- Final joint is as close as possible to target coordinates
+- All arithmetic in Q16.16 fixed-point format

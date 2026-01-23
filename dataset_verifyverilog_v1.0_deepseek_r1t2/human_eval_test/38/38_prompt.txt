@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'cyclic_codec' that implements cyclic encoding/decoding of strings.
+
+The algorithm operates on groups of 3 characters:
+- Encoding: 'ABC' -> 'BCA', 'AB' -> 'AB' (unchanged)
+- Decoding: 'BCA' -> 'ABC', 'AB' -> 'AB' (unchanged)
+
+Inputs:
+  input clk                // Clock signal
+  input rst_n              // Active-low reset
+  input start              // Start pulse (high for one cycle)
+  input mode               // 0=encode, 1=decode
+  input [7:0] char_in      // Input character (ASCII byte)
+  input valid_in           // Input character valid
+  output reg [7:0] char_out  // Output character
+  output reg valid_out     // Output character valid
+  output reg done          // High when entire string is processed
+
+Parameters:
+  MAX_LEN = 16: Maximum string length
+
+Behavior:
+- The module processes input characters one-by-one when valid_in is high
+- Input is processed in groups of 3 and output is shifted accordingly
+- For encoding: output order is char1, char2, char0 for each group of 3
+- For decoding: output order is char2, char0, char1 for each group of 3
+- After all input characters are processed (no more valid_in for MAX_LEN cycles), done goes high
+
+State Machine States:
+- IDLE: Waiting for start signal
+- PROCESSING: Reading characters, buffering, and outputting
+- DONE: All characters processed
+
+Implementation Notes:
+- Use a buffer of 3 characters (shift register)
+- Output happens with 3-cycle delay to allow grouping
+- For incomplete groups (last 1-2 chars), output as-is
+- The done signal indicates when to stop reading input
+
+Interface Pattern: Individual signals for char_in and char_out (single byte)
+Reset Sequence: Clear buffer, counters, and state to IDLE
+Output Sampling: Read char_out when valid_out is high. Check done to know when complete.

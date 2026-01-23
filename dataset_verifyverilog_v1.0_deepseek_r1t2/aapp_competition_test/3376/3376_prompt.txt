@@ -1,0 +1,107 @@
+module nudgemon_go (
+    input clk,
+    input rst_n,
+    input start,
+    // Family definitions: 4 families max, each with up to 4 kinds
+    input [3:0] family_sizes,  // 4 bits per family: s_i
+    input [31:0] evolution_costs,  // 4 families * 8-bit costs packed
+    input [31:0] catch_times,  // 4 catches * 8-bit times
+    input [15:0] catch_names,  // 4 catches * 4-bit family+type indices
+    output reg [15:0] max_xp,
+    output reg done
+);
+    // Internal parameters
+    parameter NUM_FAMILIES = 4;
+    parameter MAX_KINDS_PER_FAMILY = 4;
+    parameter MAX_CATCHES = 16;
+    parameter WINDOW_DURATION = 16;
+    
+    // State machine states
+    localparam IDLE = 0;
+    localparam PARSE_FAMILIES = 1;
+    localparam PARSE_CATCHES = 2;
+    localparam COMPUTE_EVOLUTIONS = 3;
+    localparam FIND_OPTIMAL_WINDOW = 4;
+    localparam OUTPUT_RESULT = 5;
+    
+    reg [2:0] state;
+    reg [7:0] timer;
+    reg [7:0] best_start_time;
+    reg [15:0] best_xp;
+    
+    // Memory for family data
+    reg [7:0] family_kinds [0:3];  // Number of kinds per family
+    reg [7:0] costs [0:15];  // Evolution costs for all families
+    reg [7:0] catch_time_list [0:15];  // Catch times
+    reg [3:0] catch_family [0:15];  // Which family for each catch
+    reg [3:0] catch_type [0:15];  // Type within family
+    
+    // Candy counters and Nudgémon counts
+    reg [7:0] candy [0:3];  // Candy per family
+    reg [7:0] mon_counts [0:15];  // Count of each Nudgémon kind
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            max_xp <= 0;
+            timer <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= PARSE_FAMILIES;
+                        timer <= 0;
+                    end
+                end
+                
+                PARSE_FAMILIES: begin
+                    // Extract family sizes and costs from inputs
+                    // Simplified: assume packed input format
+                    if (timer < NUM_FAMILIES) begin
+                        family_kinds[timer] <= family_sizes[timer*4 +: 4];
+                        timer <= timer + 1;
+                    end else begin
+                        state <= PARSE_CATCHES;
+                        timer <= 0;
+                    end
+                end
+                
+                PARSE_CATCHES: begin
+                    // Parse catches from inputs
+                    if (timer < MAX_CATCHES) begin
+                        catch_time_list[timer] <= catch_times[timer*8 +: 8];
+                        catch_family[timer] <= catch_names[timer*4 +: 2];  // 2 bits for family
+                        catch_type[timer] <= catch_names[timer*4 + 2 +: 2]; // 2 bits for type
+                        timer <= timer + 1;
+                    end else begin
+                        state <= COMPUTE_EVOLUTIONS;
+                        timer <= 0;
+                    end
+                end
+                
+                COMPUTE_EVOLUTIONS: begin
+                    // Compute maximum evolutions for each window start
+                    // This is a simplified implementation
+                    if (timer < 8'hFF - WINDOW_DURATION) begin
+                        // Evaluate window starting at timer
+                        // Reset counters
+                        candy[0] <= 0; candy[1] <= 0; candy[2] <= 0; candy[3] <= 0;
+                        // Count catches and candies in window
+                        // Compute evolutions using greedy algorithm
+                        // Update best_xp if better
+                        timer <= timer + 1;
+                    end else begin
+                        state <= OUTPUT_RESULT;
+                    end
+                end
+                
+                OUTPUT_RESULT: begin
+                    max_xp <= best_xp;
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule

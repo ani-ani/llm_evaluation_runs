@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'bus_excursion' that calculates the minimum time for all pupils to reach the destination.
+
+The module should implement a binary search algorithm (run for 32 iterations) to find the solution in fixed-point arithmetic. The mathematical formula for the time `t` is derived from the condition that the bus must transport all pupils such that the last pupil arrives exactly at time `t`. The relationship is: `t = (L / v2) / (n - (n - 1) * a)`, where `a = (v2 - v1) / (v1 + v2)`, `n = ceil(pupils / k)`. However, since we are in fixed-point, we will perform a binary search on `t`.
+
+The problem will be scaled to fit 16-bit inputs:
+- `n`: 4 bits (Max 16 pupils)
+- `l`: 10 bits (Max distance 1024)
+- `v1`, `v2`: 8 bits (Max speed 255)
+- `k`: 4 bits (Max seats 16)
+
+Use Q16.16 fixed-point format for all arithmetic. Inputs `l`, `v1`, `v2` will be passed as Q16.16 values (already multiplied by 65536).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] l // Distance in Q16.16
+input [15:0] v1 // Pupil speed in Q16.16
+input [15:0] v2 // Bus speed in Q16.16
+input [3:0] n // Number of groups (ceil(pupils/k))
+
+Outputs:
+output reg [31:0] result // Minimum time in Q32.32 format (to accommodate sum)
+output reg done // High when computation complete
+
+Specification:
+- Latency: Approximately 32 clock cycles for binary search iterations, plus a few cycles for state transitions.
+- State Machine: IDLE -> CALCULATE (binary search loop) -> DONE.
+- Binary Search Loop (32 iterations):
+  1. Initialize low=0, high=l.
+  2. In each iteration: 
+     - mid = (low + high) / 2.
+     - Calculate `S = l - mid`.
+     - Calculate `T = mid * (n * 2 - 1) - l`. (Note: `mid` and `l` are 16.16, so `mid * (n*2-1)` results in 32.16 or similar, need to handle 64-bit intermediate storage or scale carefully).
+     - Compare `T * v1` vs `S * v2`. If `T * v1 > S * v2`, then `mid` is too large, set `high = mid`. Else `low = mid`.
+- After loop, compute final result: `result = (mid / v2) + ((l - mid) / v1)`. This result should be in Q32.32.
+- Use combinational logic for the multiplication and comparison inside the loop.
+- The module must handle the fixed-point scaling correctly. Specifically, intermediate products like `mid * (n*2-1)` will be computed as `mid * {16'b0, n*2-1}` resulting in 32.16 format. We need to normalize this for comparison.
+
+Testbench requirements:
+- Scale inputs: Example input "3 6 1 2 1" -> n=3, l=6.0, v1=1.0, v2=2.0.
+  In Q16.16: n=3, l=393216, v1=65536, v2=131072.
+- Run simulation for 100 cycles to ensure completion.
+- Verify result against expected value (4.7142857143 -> ~4.714).

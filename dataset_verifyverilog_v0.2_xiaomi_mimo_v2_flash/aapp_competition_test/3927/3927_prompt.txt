@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'weight_reveal' that computes the maximum number of weights that can be uniquely identified after a single query.
+
+Problem Simplification:
+- Input n: 4 to 10 weights
+- Each weight value: 1 to 15
+- The algorithm uses DP to find if subsets of size k with sum m are unique
+- Core insight: A weight of value v is uniquely identifiable if we can form a query that forces a subset containing all k weights of value v
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset (synchronous)
+input start // Start computation
+input [3:0] n_in // Number of weights (4-10)
+input [4:0] value_in // Current weight value input
+input input_valid // High when value_in is valid
+
+Outputs:
+output reg [4:0] max_reveal // Maximum number of weights identifiable
+output reg done // High when computation complete
+
+Internal Logic:
+1. State Machine: IDLE, LOAD_VALUES, COMPUTE_DP, CHECK_UNIQUE, DONE
+2. Registers:
+   - count[16][4:0]: Count of each value (max 10)
+   - total_sum [7:0]: Sum of all weights
+   - dp[16][11][256]: DP table [sum][count][mask] - sparse, use valid flags
+   - binom[11][11]: Precomputed binomial coefficients
+3. Algorithm:
+   - Load counts of each value
+   - Compute DP: dp[s][c] = number of ways to get sum s with c items
+   - For each value v with count c:
+     - Check if dp[v*c][c] == binom[c][c] (all v's can form unique subset)
+     - Check if dp[total_sum - v*c][n-c] == binom[c][c] (remaining items form unique subset)
+   - Track maximum c
+
+Spec:
+- Use combinational blocks within sequential states
+- Latency: ~200 cycles (worst case)
+- Data path: 8-bit sum, 4-bit counts
+- Update max_reveal when unique configuration found
+- Signal done when state reaches DONE

@@ -1,0 +1,60 @@
+Module Specification: Necklace Split Checker
+
+Create a Verilog module that determines if a circular necklace can be split into k segments of equal weight.
+
+Module Name: NecklaceSplit
+
+Parameters:
+- MAX_N = 16: Maximum number of beads
+- BEAD_WIDTH = 16: Bit width for bead weights (supports up to 65535)
+- K_WIDTH = 4: Bit width for k (supports up to 8 friends)
+- N_WIDTH = 4: Bit width for n (supports up to 16 beads)
+- RESULT_WIDTH = 1: Bit width for result (1=YES, 0=NO)
+
+Ports:
+Inputs:
+- clk: Clock signal (rising edge triggered)
+- rst_n: Active-low synchronous reset
+- start: Start pulse (assert for 1 clock cycle to begin computation)
+- k_i[3:0]: Number of friends (valid range 1-8)
+- n_i[3:0]: Number of beads (valid range 1-16)
+- bead_weights[15:0][15:0]: Array of bead weights. Only first n_i elements are valid.
+
+Outputs:
+- done: Asserted high for 1 clock cycle when computation is complete
+- result[0:0]: Computation result (1 = YES, necklace can be split; 0 = NO)
+
+Behavior:
+1. On reset (rst_n=0): All state cleared, done=0, result=0
+2. On start pulse: Begin computation
+3. Computation steps:
+   a. Calculate total sum of all n beads
+   b. If total_sum % k_i != 0 → result = 0 (impossible)
+   c. Else, compute target = total_sum / k_i
+   d. For each possible start position (0 to n-1):
+      - Try to greedily form k_i segments
+      - Each segment must sum exactly to target
+      - If successful, set result = 1 and stop checking
+   e. If no start position works, result = 0
+4. Assert done for 1 cycle when finished
+5. Must complete within 200 clock cycles
+
+Implementation Guidelines:
+- Use a finite state machine with states: IDLE, CALC_SUM, CHECK_DIV, TRY_START, CHECK_SEG, DONE
+- Use iterative logic for sum calculation and segment checking
+- Since n ≤ 16 and k ≤ 8, nested loops are acceptable
+- Handle circular indexing using modulo operation
+- Use behavioral division and modulo (tools will optimize for small constants)
+
+Testbench Requirements:
+- The testbench will write bead weights element-by-element to bead_weights array
+- The testbench will provide k_i and n_i as scalar inputs
+- The testbench will pulse start and wait for done
+- The testbench will read result and interpret 1 as YES, 0 as NO
+
+Clock and Timing:
+- Clock period: 10ns (100MHz)
+- Reset: minimum 2 cycles of rst_n=0
+- Start pulse: 1 cycle
+- Computation time: up to 200 cycles
+- Done pulse: 1 cycle

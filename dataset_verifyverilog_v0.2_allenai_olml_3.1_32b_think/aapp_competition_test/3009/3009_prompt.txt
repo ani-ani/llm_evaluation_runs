@@ -1,0 +1,66 @@
+Design a sequential Verilog module named 'energy_balancer' that finds the shortest closed curve separating lamps into two sets with equal total energy.
+
+Problem Adaptation:
+- Maximum 8 lamps (N=8)
+- Coordinates: 1-99 (8-bit values)
+- Energy values: -2000 to 2000 (use Q16.16 fixed-point for calculations)
+- Goal: Find min perimeter convex hull of valid subsets where sum(inside) = sum(outside)
+
+Module Interface:
+module energy_balancer (
+    input clk,                    // Clock signal
+    input rst_n,                  // Active-low reset
+    input start,                  // Start computation
+    input [7:0] coord_x [0:7],    // X coordinates of 8 lamps
+    input [7:0] coord_y [0:7],    // Y coordinates of 8 lamps
+    input [31:0] energy [0:7],    // Energy values in Q16.16 format
+    input [2:0] num_lamps,        // Number of active lamps (1-8)
+    output reg [31:0] min_perimeter, // Minimum perimeter in Q16.16
+    output reg valid,             // Result is valid
+    output reg impossible         // No solution exists
+);
+
+Implementation Requirements:
+1. State Machine States: IDLE, PRECOMPUTE, SUBSET_ITERATION, CONVEX_HULL, COMPARE, DONE
+
+2. Algorithm Steps:
+   a. Precompute total energy and check if valid (must be even)
+   b. Iterate through all subsets 0..2^N-1
+   c. For each subset, check if sum(subset) = total/2
+   d. If valid, compute convex hull perimeter
+   e. Track minimum perimeter across all valid subsets
+
+3. Convex Hull Computation:
+   - Use monotone chain algorithm
+   - Sort points by X then Y (use bitonic sort or simple comparison)
+   - Build lower and upper hull
+   - Compute perimeter: sum of distances between consecutive hull points
+   - Distance formula: sqrt((x2-x1)^2 + (y2-y1)^2)
+   - Use Q16.16 for all calculations
+
+4. Fixed-Point Arithmetic:
+   - Input energies: Q16.16 (multiply by 65536)
+   - Coordinates: integer (0-99), convert to Q16.16 for math
+   - Squared distances: up to (99^2 + 99^2) ≈ 19602, fits in 32-bit
+   - Square root: use approximation or lookup table
+
+5. Optimization:
+   - Precompute subset sums in parallel (8 lamps = 256 subsets)
+   - Use combinational blocks for subset validation
+   - Pipeline convex hull computation
+   - Early termination if current perimeter > min_found
+
+6. Timing:
+   - Latency: ~1000 cycles worst case
+   - Output: min_perimeter in Q16.16 (divide by 65536 for decimal)
+
+7. Special Cases:
+   - If total energy is odd → impossible = 1
+   - If no valid subset exists → impossible = 1
+   - Minimum perimeter: 0 if all points co-linear (but lamp footprints don't overlap)
+
+8. Reset Behavior:
+   - On rst_n=0, all state registers clear
+   - min_perimeter = 0, valid=0, impossible=0
+
+Provide detailed module implementation with state machine, helper functions for subset sum and convex hull.

@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'hogwarts_staircases' that implements a simplified version of the Hogwarts staircase manipulation problem.
+
+**Simplified Problem**: Given a 6-floor building (N=6), transform an initial staircase configuration to a target configuration using a sequence of red (R) and green (G) button presses. The hardware will execute a hardcoded sequence of presses.
+
+**Input/Output Representation**: 
+- The state of the building is represented by a 64-bit adjacency matrix (since N=6, 6*6=36 edges, but we use a 64-bit register for alignment, treating indices 0-35 as valid edges).
+- An edge between floor i and j corresponds to bits at indices (i*6 + j) and (j*6 + i). However, to simplify, we will treat the graph as directed pairs or simply a set of valid pairs. Let's use a 64-bit register where bit K corresponds to edge (K/6, K%6). Only edges where i < j are physically present.
+- Inputs: `current_state` (64 bits), `target_state` (64 bits).
+- Output: `sequence_output` (8 bits) representing 'R'/'G' and floor index, or a handshake interface.
+
+**Module Interface**:
+- `clk`: System clock
+- `rst_n`: Active low reset
+- `start`: High to start the transformation process
+- `current_state [63:0]`: Initial configuration (bitmask)
+- `target_state [63:0]`: Desired configuration (bitmask)
+- `output [7:0] action_type`: ASCII code for 'R' (0x52) or 'G' (0x47), or 0x00 if idle
+- `output [2:0] floor_num`: Floor number (0-5) for the action
+- `output valid`: High when action_type and floor_num are valid
+- `output done`: High when sequence is complete or max steps reached
+
+**Hardware Logic**:
+1. **State Register**: Stores the current graph configuration (64 bits).
+2. **Operation Logic**: A combinational block that performs the 'press button' operation. 
+   - Input: Current state, Floor F, Color C (Red/Green).
+   - Operation: 
+     - For Red on floor F: For every edge (F, J) in the current state, move it to (F, (J+1)%6). Handle collision: If new edge (F, (J+1)%6) exists and (J+1)%6 != F, move to (F, (J+2)%6). This applies to all edges connected to F.
+     - For Green on floor F: Inverse of Red (equivalent to Red pressed N-2=4 times). Since N=6, Green = Red repeated 4 times. To simplify, we can implement Green by calling the Red operation logic 4 times in sequence.
+3. **Controller (FSM)**: 
+   - Since generating the sequence dynamically in hardware is complex (requires search), we will implement a 'lookup table' approach or a fixed heuristic. 
+   - **Adaptation**: The module will be designed to execute a sequence stored in an internal ROM. However, to be a valid benchmark, the module should compute *something*. 
+   - **Revised Logic**: The module implements a 'Search Unit' that runs a Breadth-First Search (BFS) on the state space to find the sequence. 
+   - **Scaling**: N=6 means 2^36 possible states (too large for full BFS in small FPGA). 
+   - **Final Adaptation**: The module implements a **Greedy Descent** controller. It repeatedly applies the best move (Red or Green on any floor) that minimizes the Hamming distance to the target. It runs for a max of 128 steps (configurable). This guarantees a solution within the limit for small problems and is hardware-implementable.
+
+**FSM States**:
+- `IDLE`: Wait for start.
+- `CALCULATE`: Iterate through all 12 actions (6 floors * R/G), calculate new state, compare with target.
+- `EXECUTE`: Apply the best action, update current state.
+- `CHECK`: Check if current == target.
+- `DONE`: Signal completion.
+
+**Detailed Module Specs**:
+- `N = 6`
+- `MAX_STEPS = 128`
+- Registers: `curr_state [63:0]`, `best_diff [5:0]`, `best_action [3:0]`, `step_count [7:0]`.
+- Combinational Logic: `next_state_calc [63:0]` (generated based on `best_action`).
+- The `calculate` state will take multiple cycles to avoid a massive combinational path. It will iterate through 12 actions sequentially.
+
+**Constraints**:
+- Max latency: ~128 cycles * 12 ops = ~1500 cycles.
+- Resource usage: Moderate (64-bit logic).
+- The module must strictly adhere to the input format and produce the sequence.

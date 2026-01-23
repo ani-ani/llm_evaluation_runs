@@ -1,0 +1,82 @@
+Design a sequential Verilog module named 'oostende_beach' that solves the Oostende Beach problem for a small number of huts.
+
+Problem Statement:
+Given an array of huts with people counts, find the optimal food truck position `k` (0-indexed) that minimizes the difference between left and right queues.
+Left queue for position `k`: `sum(a[0...k-1]) + floor(a[k]/2)`
+Right queue for position `k`: `sum(a[k+1...n-1]) + ceil(a[k]/2)`
+If multiple positions minimize the difference, choose the smallest `k`.
+
+Constraints:
+- N (number of huts) = 8
+- Max people per hut = 1023 (10 bits)
+- Input/Output values are standard integers (no fixed-point needed here as we are counting people).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High for 1 cycle to start computation or update
+input [2:0] update_idx // Index of hut to update (0 to 7)
+input [9:0] update_val // New number of people for the hut
+
+Outputs:
+output reg [2:0] optimal_k // The optimal position (0 to 7)
+output reg done // High for 1 cycle when optimal_k is valid
+
+Behavior:
+1. On reset, initialize all huts to 0.
+2. When `start` is high, update `huts[update_idx]` with `update_val`.
+3. Then, iterate through all possible positions `k` from 0 to N-1.
+4. For each `k`, calculate:
+   - `left_sum`: Sum of `huts[0]` to `huts[k-1]`.
+   - `center_left`: `huts[k] / 2` (integer division).
+   - `center_right`: `(huts[k] + 1) / 2` (equivalent to ceil division for integers).
+   - `right_sum`: Sum of `huts[k+1]` to `huts[N-1]`.
+   - `left_queue = left_sum + center_left`
+   - `right_queue = right_sum + center_right`
+   - `diff = |left_queue - right_queue|`
+5. Track the position `k` that yields the minimum `diff`. If `diff` is equal to the current minimum, keep the smaller `k` (which is naturally handled by iterating `k` in increasing order).
+6. After checking all positions, output the result.
+7. Use a state machine with states: IDLE, UPDATE_ARRAY, CALCULATE_LOOP, DONE.
+8. The calculation loop will take multiple cycles. Assume `N=8`, so the loop takes up to 8 cycles. The sum calculation inside the loop can be unrolled or pipelined. For this problem, a simple iterative state machine that computes sums and comparisons in sequence is sufficient.
+9. Since we have small `N=8`, we can compute `total_sum` first, then `left_sum` and `right_sum` can be derived. `total_sum` is `sum(huts)`. `left_sum` at step `k` is `left_sum_prev + huts[k-1]`. `right_sum` is `total_sum - left_sum - huts[k]`.
+
+Detailed Sequence:
+- State IDLE: Wait for start. If start, go to UPDATE_ARRAY.
+- State UPDATE_ARRAY: Update `huts[update_idx]` with `update_val`. Go to CALCULATE_LOOP.
+- State CALCULATE_LOOP:
+   - Step 0: Calculate `total_sum` (sum of all huts). Initialize `k=0`, `min_diff=MAX`, `best_k=0`, `left_sum=0`.
+   - Step 1..N:
+     - Calculate `center_left = huts[k] / 2`.
+     - Calculate `center_right = huts[k] - center_left` (or `huts[k] - floor(huts[k]/2)` which is ceil).
+     - Calculate `right_sum = total_sum - left_sum - huts[k]`.
+     - Calculate `left_queue = left_sum + center_left`.
+     - Calculate `right_queue = right_sum + center_right`.
+     - Calculate `diff = |left_queue - right_queue|`.
+     - If `diff < min_diff`, update `min_diff` and `best_k`.
+     - Update `left_sum = left_sum + huts[k]`.
+     - Increment `k`.
+   - After `k=N`, go to State DONE.
+- State DONE: Assert `done` signal. Wait for `start` to go low, then return to IDLE.
+
+Note on Integer Division:
+- `huts[k] / 2`: Use right shift by 1.
+- `ceil(huts[k]/2)`: If `huts[k]` is even, it is `huts[k]/2`. If odd, it is `huts[k]/2 + 1`. In integer arithmetic: `(huts[k] + 1) >> 1`.
+
+Timing:
+- Update array: 1 cycle.
+- Calculate total sum: 1 cycle (can be unrolled or pipelined, assume combinational or 1 cycle state).
+- Loop for k=0 to 7: 8 cycles. Inside each cycle, calculations should be combinational.
+- Total latency: ~10 cycles from start to done.
+
+State Encoding:
+- IDLE: 0
+- UPDATE: 1
+- CALC_TOTAL: 2
+- CALC_LOOP: 3
+- DONE: 4
+
+Widths:
+- Huts: 10 bits (max 1023).
+- Sums: Max `8 * 1023 = 8184`. Needs 14 bits.
+- Differences: Max range. 14 bits is safe.
+- Indices: 3 bits.

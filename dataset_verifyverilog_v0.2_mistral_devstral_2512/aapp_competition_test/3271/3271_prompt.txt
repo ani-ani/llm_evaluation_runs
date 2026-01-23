@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'inversion_counter' that calculates the number of permutations of length N with exactly C inversions (confused pairs).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] N // number of elements (1-16)
+input [7:0] C // target inversion count (0-255)
+
+Outputs:
+output reg [31:0] result // number of sequences modulo 1000000007
+output reg done // high when computation complete
+
+Specification:
+- The module computes the result using dynamic programming: dp[n][c] = number of permutations of n elements with c inversions
+- DP recurrence: dp[n][c] = sum over i=0 to min(c, n-1) of dp[n-1][c-i]
+- Base case: dp[0][0] = 1, dp[0][>0] = 0
+- All calculations modulo 1000000007 (0x3B9ACA07)
+- Latency: Maximum 10000 clock cycles (worst case N=16, C=256)
+- Use state machine with states: IDLE, INIT, COMPUTE, DONE
+- In IDLE: wait for start signal
+- In INIT: initialize dp[0][0] = 1
+- In COMPUTE: iteratively compute dp values for n=1 to N, c=0 to C
+- In DONE: assert done and hold result
+- Since N and C are bounded, we can unroll the inner loops or use a state machine to iterate through n and c
+- The dp array needs to store only previous and current row (O(C) space)
+- Use 2D memory: dp_prev[0:255] and dp_curr[0:255], each 32-bit
+- For each n from 1 to N: dp_curr[c] = sum of dp_prev[c-i] for i=0 to min(c, n-1)
+- After processing all n, result = dp_curr[C]
+
+Behavioral Description:
+The module maintains two row buffers (dp_prev and dp_curr) for DP computation. State machine proceeds as:
+1. IDLE: Wait for start
+2. INIT: Clear buffers, set dp_prev[0] = 1
+3. COMPUTE: For each n from 1 to N:
+   - For each c from 0 to C:
+     - Calculate sum of dp_prev[c-i] for i=0 to min(c, n-1)
+     - Store in dp_curr[c] with modulo operation
+   - Swap dp_prev and dp_curr
+4. DONE: Output dp_prev[C] (after final swap)
+
+Optimization: Use combinational adder tree or sequential accumulation within each (n,c) iteration. Since we need to sum up to n terms (max 16), we can accumulate over i in a sub-state.

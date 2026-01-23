@@ -1,0 +1,71 @@
+Design a sequential Verilog module named 'uw_distance_calculator' that computes the minimum Unterwave distance between human and alien star systems, adapting the problem for hardware implementation with small fixed-size graphs.
+
+**Problem Adaptation:**
+- Maximum graph size: N = 8 nodes (parameterizable)
+- Gravity values: Input as 32-bit integers (scaled down from original range)
+- Graph connectivity: Adjacency matrix (8x8)
+- Algorithm: Computes all-pairs shortest paths (Floyd-Warshall style), then calculates UW distance for each human-alien pair using the formula involving Capacitance, Potential, and Inductance
+- Device placement: Searches all possible single-node modifications to minimize distance
+
+**Fixed-Point Arithmetic:**
+Use Q16.16 format for intermediate calculations (16 integer bits, 16 fractional bits).
+Input gravity values are interpreted as integer values (pre-scaled).
+The distance formula requires:
+- Cap = g_i + g_{i-1}
+- Pot = g_i - g_{i-1}
+- Ind = g_i * g_{i-1}
+- Term = Pot * (Cap^2 - Ind)
+- Distance = |Sum(Term)|
+
+**Module Interface:**
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] node_count // Actual number of nodes (2-8)
+input [31:0] gravity_in // Gravity value for current node
+input node_valid // Valid gravity input
+input [7:0] adjacency_in // Adjacency vector for current node (bit i = connected to node i)
+input adj_valid // Valid adjacency input
+input [2:0] type_in // Node type: 0=human, 1=alien, 2=neutral
+input type_valid // Valid type input
+
+Outputs:
+output reg [31:0] min_distance // Minimum UW distance found (absolute value)
+output reg result_valid // High when computation complete
+
+**Control Flow:**
+1. Load all node data (gravity, adjacency, type) sequentially
+2. Compute all-pairs shortest paths (stored internally)
+3. For each valid human-alien pair:
+   a. Extract path
+   b. Calculate UW distance using formula
+   c. Check if distance < current min
+4. For each node (as device placement candidate):
+   a. Temporarily modify gravities (node-1, neighbors+1)
+   b. Re-compute distances for human-alien pairs
+   c. Update min if lower
+   d. Restore original gravities
+5. Output final minimum distance
+
+**State Machine States:**
+- IDLE: Wait for start
+- LOAD_GRAVITY: Read gravity values
+- LOAD_ADJACENCY: Read adjacency matrices
+- LOAD_TYPE: Read node types
+- FLOYD_WARSHALL: Compute shortest paths (unrolled loops)
+- CALCULATE_DISTANCES: Iterate human-alien pairs
+- PLACE_DEVICE: Try device at each node
+- DONE: Output result
+
+**Implementation Notes:**
+- Use internal BRAM/FIFO for storing node data (8 elements max)
+- Path reconstruction: Store predecessors or generate path via step-by-step
+- Since N is small, can use combinational logic for distance calculation
+- Device placement modifies gravity array in-place temporarily
+- Use non-restoring division or approximation for fixed-point if needed (though formula is mostly multiply/add)
+- Result is unsigned 32-bit integer (absolute sum)
+
+**Latency:** Approximately 500-1000 clock cycles depending on N.
+
+The module must be synthesizable and follow standard Verilog practices.

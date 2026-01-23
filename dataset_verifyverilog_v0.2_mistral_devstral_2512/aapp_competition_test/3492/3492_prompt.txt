@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'max_matching' that computes maximum bipartite matching with intermediate nodes (transportation firms).
+
+Module Specification:
+- Implements a scaled-down version with at most 4 suppliers, 4 factories, 4 transport firms
+- Uses state machine to find augmenting paths iteratively
+- Processes one test case at a time with manual input loading
+
+Inputs:
+input clk                           // Clock signal
+input rst_n                         // Active-low reset (initializes all state)
+input start                         // Start computation for current configuration
+input load_en                       // Enable loading of graph data
+input [3:0] load_idx                // Index for loading: 0-3=suppliers, 4-7=factories, 8-11=transport count, 12+=transport states
+input [9:0] load_data               // Data to load: for transport states, {firm_idx[1:0], state_idx[3:0], isSupplier[0], isFactory[0]}
+                                     // load_data format:
+                                     //   When load_idx=8-11: load_data[9:8]=firm_idx, load_data[7:0]=num_states
+                                     //   When load_idx>=12: load_data[9:8]=firm_idx, load_data[7:4]=state_idx, load_data[3]=isSupplier, load_data[2]=isFactory
+
+Outputs:
+output reg [3:0] max_match         // Maximum number of factories that can be supplied
+output reg done                    // High when computation complete
+output reg valid                   // High when max_match contains valid result
+
+Internal State:
+- Uses adjacency matrix to represent connections
+- Graph structure: suppliers → transport firms → factories
+- Maximum matching found using augmenting path algorithm
+- Bounded by 4 iterations (one per factory)
+
+Algorithm Description:
+1. LOAD phase: Use load_en and load_idx to populate:
+   - Supplier states (indices 0-3)
+   - Factory states (indices 4-7)
+   - Transport firm state lists (loaded sequentially)
+
+2. COMPUTE phase (when start asserted):
+   - Build adjacency: which suppliers can reach which factories through available transport firms
+   - Find maximum bipartite matching using simple augmenting path search
+   - Iteratively try to match each factory
+
+3. DONE phase: Output matching count
+
+States: IDLE, LOAD_DATA, BUILD_GRAPH, FIND_MATCHING, UPDATE_MATCHING, DONE
+
+Latency: Maximum 64 clock cycles after start (bounded by 4 factories × 16 cycles each)
+
+Implementation Notes:
+- Maximum 10 states total, indexed 0-9
+- Each transport firm can visit up to 8 states
+- Use internal RAM for adjacency: [3:0][3:0] for supplier-factory direct connections
+- Track matching with arrays: [3:0] for factory_to_supplier mapping
+- Simple DFS-style search for augmenting paths, bounded to avoid infinite loops

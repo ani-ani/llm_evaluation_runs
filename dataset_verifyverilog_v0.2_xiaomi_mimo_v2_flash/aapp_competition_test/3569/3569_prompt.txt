@@ -1,0 +1,45 @@
+Design a combinational Verilog module named 'max_hits' that computes the maximum number of hit opponents from a fixed origin.
+
+Problem Adaptation:
+- Limit to 8 circles (N=8)
+- Coordinates and radii in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Range: coordinates ±2000, radius 1-1000 (covers scaled examples)
+- Output: Maximum hit count (0-8) as integer
+
+Inputs:
+input clk // Clock for atan2 computation pipeline
+input rst_n // Active-low reset
+input [7:0] valid_mask // Bitmask indicating which circles are valid
+input [31:0] circle_x [0:7] // Q16.16 x-coordinates
+input [31:0] circle_y [0:7] // Q16.16 y-coordinates  
+input [31:0] circle_r [0:7] // Q16.16 radii
+
+Outputs:
+output reg [3:0] max_hits // Maximum number of circles hit by single ray
+output reg done // High when computation complete
+
+Computation Strategy:
+1. For each valid circle, compute angular interval [theta1, theta2] where ray intersects
+2. Interval endpoints are atan2 of tangent points from origin to circle
+3. Normalize intervals to [0, 2π) and handle wraparound
+4. Sort all interval endpoints and sweep to find maximum overlap
+
+Implementation:
+- Pipeline stages: angle computation → normalization → sorting → sweep
+- Use coordinate rotation (CORDIC-like) for atan2 approximation
+- Sort up to 16 endpoints (8 circles × 2 endpoints) using 8-stage comparator network
+- Sweep maintains count of active intervals
+- Latency: 32 clock cycles
+
+State Machine:
+- IDLE: Wait for start signal
+- COMPUTE_ANGLES: Calculate tangent angles for each circle
+- NORMALIZE: Map angles to [0, 2π) range
+- SORT: Sort endpoints using insertion sort network
+- SWEEP: Count overlaps and track maximum
+- DONE: Present result
+
+Fixed-point details:
+- Q16.16 format for all geometric calculations
+- atan2 result in Q16.16 radians (0 to 2π = 0x0006487F)
+- Intermediate calculations use 48-bit accumulators to prevent overflow

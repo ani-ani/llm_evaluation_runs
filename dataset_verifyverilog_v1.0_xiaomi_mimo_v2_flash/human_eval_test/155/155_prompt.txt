@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'even_odd_count' that counts the number of even and odd decimal digits in a 32-bit signed integer.
+
+The module must:
+- Accept a 32-bit signed integer input
+- Handle negative numbers (use absolute value for digit counting)
+- Process digits sequentially using modulo 10 and division by 10
+- Return two 4-bit counts: even_count (0-10) and odd_count (0-10)
+- Work for numbers up to 10 decimal digits (fits in 32-bit signed)
+
+Interface Specification:
+Inputs:
+  input clk           // Clock signal
+  input rst_n         // Active-low reset
+  input start         // Start pulse (1 cycle high) - loads number and begins processing
+  input signed [31:0] num  // 32-bit signed integer input
+
+Outputs:
+  output reg [3:0] even_count  // Count of even digits (0-10)
+  output reg [3:0] odd_count   // Count of odd digits (0-10)
+  output reg done              // High for 1 cycle when computation complete
+
+Behavioral Description:
+1. On reset (rst_n=0), clear even_count, odd_count, done, and internal state
+2. When start=1, load the input number into an internal register
+3. Use state machine with states: IDLE, PROCESSING, DONE
+4. In PROCESSING state:
+   - Take absolute value of current number (handle negative)
+   - Extract last digit: digit = current_num % 10
+   - Check if digit is even: is_even = (digit % 2 == 0)
+   - Increment appropriate counter
+   - Divide current_num by 10: current_num = current_num / 10
+   - Repeat until current_num == 0
+5. When computation complete (current_num == 0), transition to DONE state
+6. In DONE state: assert done=1 for 1 cycle, then return to IDLE
+
+Timing:
+- Latency: Maximum 10 clock cycles + 2 cycles for setup and done
+- Start signal must be held high for 1 cycle
+- Result is valid when done=1
+
+Constraints:
+- Use 32-bit arithmetic for intermediate values
+- Counters need only 4 bits (max 10 digits)
+- Module must work with Icarus Verilog
+- No break statements inside always blocks
+- Use non-blocking assignments for sequential logic
+
+Example:
+Input: -345821 (decimal)
+Even digits: 4, 8, 2 -> count = 3
+Odd digits: 3, 5, 1 -> count = 3
+Output: even_count=3, odd_count=3
+
+Input: 0
+Even digits: 0 -> count = 1
+Odd digits: none -> count = 0
+Output: even_count=1, odd_count=0

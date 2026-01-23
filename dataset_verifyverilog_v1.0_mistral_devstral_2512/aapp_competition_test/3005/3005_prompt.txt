@@ -1,0 +1,64 @@
+### Verilog Module Specification: MaximalFactoring
+
+#### Overview
+This module computes the weight of the maximal factoring of a string up to 16 characters using a dynamic programming approach with a state machine. It processes the input string in multiple cycles and outputs the minimal weight.
+
+#### Interface
+
+```verilog
+module MaximalFactoring (
+    input wire clk,           // Clock signal (rising edge triggered)
+    input wire rst_n,         // Active-low synchronous reset
+    input wire start,         // Start pulse (assert for 1 cycle to begin computation)
+    input wire [7:0] string_in [0:15], // Input string as 16 bytes (ASCII codes for A-Z). Unused positions should be 0.
+    input wire [4:0] length_in,        // Actual string length (1-16)
+    output reg [4:0] result,  // Result: weight of maximal factoring (5 bits, max 16)
+    output reg done           // Asserted high for 1 cycle when result is valid
+);
+```
+
+#### Detailed Description
+
+##### Internal Registers and Memories
+- `dp[0:255]`: 256x5-bit memory storing DP values, indexed as `{i[3:0], j[3:0]}` for substring from i to j (0-indexed).
+- `str[0:15]`: 16x8-bit register array to store the input string.
+- `n`: 5-bit register storing the actual length.
+- `L`, `i`, `j`, `k`, `d`: 4-bit registers for loops (current length, start, end, split index, divisor).
+- `min_val`, `temp_sum`: 5-bit registers for DP value comparisons.
+- `loop_counter`: 4-bit general-purpose counter.
+- `state`: 3-bit state register.
+
+##### State Machine
+States are defined as:
+- `IDLE` (0): Wait for start signal.
+- `LOAD` (1): Load string_in into str and length_in into n.
+- `INIT` (2): Initialize dp for length 1 (dp[i][i] = 1).
+- `MAIN_LOOP` (3): Iterate L from 2 to n, and i from 0 to n-L.
+- `COMPUTE_SPLIT` (4): For current i,j, iterate k from i to j-1 to compute dp[i][k] + dp[k+1][j].
+- `CHECK_REPETITION` (5): Check if substring s[i..j] can be represented as a repetition of a shorter substring (periodic). Iterate divisors d from 1 to L/2, check L % d == 0, then verify periodicity by comparing characters. If periodic, compare dp[i][i+d-1] with min_val.
+- `UPDATE_DP` (6): Store min_val into dp[{i,j}].
+- `DONE` (7): Set result = dp[{0,n-1}] and pulse done.
+
+##### Key Operations
+- **Repetition Check**: For each divisor d of L (d < L), verify that s[i + r] = s[i + r + d] for all r in 0..d-1 and repetitions. This requires character comparisons and a loop for p from 1 to L/d-1.
+- **Character Access**: Characters are accessed as str[offset] for offset from 0 to 15.
+- **Timing**: The computation may take up to a few thousand cycles (worst-case ~65k cycles). The done signal is asserted for one cycle when finished.
+- **Reset**: On rst_n=0, all registers and dp memory are cleared, done=0, result=0.
+
+##### Notes
+- The module assumes strings of length up to 16; longer strings will be truncated or padded with zeros.
+- The alphabet is A-Z (ASCII 65-90); other characters may produce incorrect results.
+- The design uses a combinational lookup for divisors (no stored table) by checking d from 1 to L/2 and testing L % d == 0 via repeated subtraction.
+- The DP table is implemented as a single-ported memory; read/write operations are sequenced within states.
+
+#### Example Usage
+- Assert start for one clock cycle while string_in and length_in are valid.
+- Wait for done to go high.
+- Sample result on the same cycle.
+- To process a new string, reset the module or assert start again after done.
+
+#### Implementation Hints
+- Use a case statement for the state machine.
+- For memory access, compute index as {i, j} (concatenation).
+- For periodicity checks, use nested loops with counters for r and p.
+- Ensure all signals are properly sized to avoid synthesis warnings.

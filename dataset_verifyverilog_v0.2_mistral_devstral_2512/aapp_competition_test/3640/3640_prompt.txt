@@ -1,0 +1,49 @@
+Design a combinational Verilog module named 'meow_factor' that computes the minimum edit distance to transform an input string into a string containing 'meow' as a substring. The module supports 4 operations: insert, delete, replace, and swap adjacent characters.
+
+**Adaptations for Hardware:**
+- Input string length: fixed at 8 characters (MAX_LEN = 8)
+- Target substring: fixed as 'm', 'e', 'o', 'w' (4 characters)
+- Characters are represented as 8-bit ASCII values
+- Empty/sentinel positions use value 8'h00
+- Combinational implementation with unrolled DP loops
+- Output represents minimum operations needed (0-15 range)
+
+**Algorithm (simplified DP with parallelism):**
+1. Compute edit distance between input string and all possible 4-character substrings of 'meow'
+2. For each position i in input string, compute cost to match 'm', 'e', 'o', 'w' starting at i
+3. Use 2D cost matrix dp[i][j] where i=input position, j=match state (0-4)
+4. Operations cost: insert=1, delete=1, replace=1, swap=1
+5. Unroll inner loops for small sizes
+6. Use combinational tree to find minimum across all starting positions
+
+**Interface:**
+Inputs:
+input clk // Not used for combinational, but included for consistency
+input rst_n // Active-low reset (optional)
+input [7:0] char_0, char_1, char_2, char_3, char_4, char_5, char_6, char_7 // 8-character input string (ASCII values). Unused positions should be 8'h00
+
+Outputs:
+output [7:0] meow_factor // Minimum operations needed (0-15)
+output valid // High when calculation is valid
+
+**Behavioral Description:**
+1. The module first identifies which characters in the input string match positions in 'meow'.
+2. For each possible starting position in the input, compute the cost to build 'meow' from that point.
+3. Use dynamic programming approach where dp[i][j] represents minimum operations to match first j characters of 'meow' using first i characters of input.
+4. The DP recurrence considers:
+   - Match: if input[i] matches meow[j], cost = dp[i-1][j-1]
+   - Replace: cost = dp[i-1][j-1] + 1
+   - Insert: cost = dp[i][j-1] + 1
+   - Delete: cost = dp[i-1][j] + 1
+   - Swap: if adjacent characters can be swapped to improve match
+5. Since the string is small (8 chars), we can unroll the DP computation.
+6. The final result is the minimum cost across all possible alignments of 'meow' within the input string.
+7. Use combinational logic with case statements for character comparison.
+8. Output saturates at 15 to fit in 8-bit result.
+
+**Special Case Handling:**
+- If 'meow' already exists as a substring, output should be 0
+- If input is shorter than 4 characters, calculate cost to insert remaining characters
+- Swap operation allows transposition of adjacent mismatched characters
+
+The implementation should use a series of always_comb blocks to compute DP matrices, then find the minimum value using a reduction tree.

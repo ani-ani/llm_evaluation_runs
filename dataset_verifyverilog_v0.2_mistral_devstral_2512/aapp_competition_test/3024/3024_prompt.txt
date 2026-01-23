@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'palindrome_partition' that finds the maximal k for partitioning a fixed-width string into palindrome parts.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0][7:0] str_data // 8-character string, each character 8 bits (ASCII digits '0'-'9')
+input [3:0] str_len // actual length of string (1-8)
+
+Outputs:
+output reg [3:0] max_k // maximal number of parts (1-8)
+output reg done // high when computation complete
+
+Specification:
+- The module implements a greedy algorithm to find maximal k
+- Process: iteratively find smallest matching prefix/suffix, remove them, increment k
+- State machine states: IDLE, CHECK_MATCH, UPDATE_POINTERS, DONE
+- Latency: Result valid within 64 clock cycles after start (worst case: 8 chars, 8 passes)
+- Each pass takes max 8 cycles for matching
+- Uses two pointers: left_idx and right_idx representing current substring boundaries
+- In each pass, find smallest i >= 1 where s[left_idx:left_idx+i] == s[right_idx-i+1:right_idx+1]
+- Increment k, advance left_idx by i, decrement right_idx by i
+- Continue until left_idx > right_idx or k reaches 8
+- For string '652526' with length 6: k=4 (6|52|52|6)
+- For string '12121131221' with length 11 (truncated to 8: '12121131') but we'll test with original logic on actual length
+
+Matching logic:
+- For current substring s[l:r] (inclusive indices)
+- Try i=1,2,...,r-l+1
+- Check if s[l:l+i] equals s[r-i+1:r+1]
+- Take smallest valid i to maximize k
+- All comparisons are done character-by-character
+
+Character comparison:
+- Each character is 8-bit ASCII value for digits ('0'=0x30, '1'=0x31, etc.)
+- Compare byte-by-byte for each potential i
+
+Use parameters:
+- MAX_LEN = 8 (max string length)
+- MAX_K = 8 (max partitions)
+
+States:
+- IDLE: Wait for start signal
+- CHECK_MATCH: Check if current substrings match for current i
+- UPDATE_POINTERS: Update indices and increment k
+- DONE: Set done signal high
+
+Output max_k is the final count of palindrome parts.

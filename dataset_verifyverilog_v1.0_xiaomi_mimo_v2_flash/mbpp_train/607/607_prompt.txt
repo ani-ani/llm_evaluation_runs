@@ -1,0 +1,63 @@
+## Simplified String Pattern Matcher
+
+Implement a module that searches for a literal substring pattern within a text string and returns the start and end indices of the first match.
+
+### Simplification
+- **Pattern Type**: Literal substring matching only (no regex metacharacters)
+- **String Length**: Text up to 64 characters, Pattern up to 16 characters
+- **Character Encoding**: 8-bit ASCII (0-255)
+- **Result**: Start and end indices (0-63 range)
+- **No Match**: Returns start=64, end=64 (invalid index beyond max length)
+
+### Interface Specification
+
+#### Inputs:
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start pulse (assert for 1 cycle to begin search)
+- `text_length`: 6-bit input (actual length of text, 1-64)
+- `pattern_length`: 4-bit input (actual length of pattern, 1-16)
+- `text_char[0:63]`: 64-element array, each element 8 bits (ASCII character)
+- `pattern_char[0:15]`: 16-element array, each element 8 bits (ASCII character)
+
+#### Outputs:
+- `start_index`: 6-bit output (0-63, or 64 for no match)
+- `end_index`: 6-bit output (0-63, or 64 for no match)
+- `found`: 1-bit output (high when match is found)
+- `done`: 1-bit output (asserted high for 1 cycle when search completes)
+
+#### Timing:
+1. Assert `start` for 1 clock cycle to begin search
+2. Module processes character-by-character (takes up to 64*16 cycles)
+3. `done` goes high for 1 cycle when complete
+4. `found` indicates if pattern was found
+5. `start_index` and `end_index` contain the result
+6. On `found=1`: `end_index = start_index + pattern_length`
+7. On `found=0`: `start_index = 64`, `end_index = 64`
+
+#### Reset Behavior:
+- On `rst_n=0`: All outputs = 0, internal state cleared
+- Minimum 2 clock cycles of reset required
+
+### Algorithm
+Implement a simple sliding window approach:
+1. Iterate through text from position 0 to (text_length - pattern_length)
+2. At each position, compare pattern_char[i] with text_char[pos+i]
+3. If all characters match, set start_index=pos, end_index=pos+pattern_length, found=1
+4. If no match found after scanning all positions, set found=0
+
+### Example Operation
+Text: "The quick brown fox" (length=19)
+Pattern: "fox" (length=3)
+Result: start_index=16, end_index=19, found=1
+
+Text: "abc"
+Pattern: "xyz"
+Result: start_index=64, end_index=64, found=0
+
+### Implementation Notes
+- Use a state machine with states: IDLE, SEARCHING, MATCHING, COMPLETE
+- Use counters for text position and pattern position
+- Max operations: 64*16 = 1024 cycles (worst case)
+- All indices are 0-based
+- Pattern must fit within text: if pattern_length > text_length, found=0 immediately

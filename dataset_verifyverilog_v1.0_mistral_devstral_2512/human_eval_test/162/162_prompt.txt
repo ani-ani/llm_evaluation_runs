@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'simple_hash' that implements a simplified hashing algorithm for a fixed-width string.
+
+**Problem Scaling:**
+- Input string is fixed at 8 characters (maximum). Empty string is handled separately.
+- Each character is 8 bits (ASCII).
+- Output is a 32-bit hash value (simulating a short hash like MD5 prefix).
+- The algorithm uses a polynomial rolling hash approach: $H = ((H << 5) + H) + char$ (equivalent to $H = H * 33 + char$).
+- Result is formatted as a 32-bit integer (which the testbench will treat as a hex string).
+
+**Interface Specification:**
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start computation (pulse high for 1 cycle)
+  input [7:0] char_in    // Current character input (8-bit ASCII)
+  input [2:0] index      // Index of the character (0 to 7)
+  input valid_char       // High if char_in is valid for this index, Low for empty/filler
+
+Outputs:
+  output reg [31:0] hash // 32-bit hash result
+  output reg done        // High for 1 cycle when computation is complete
+
+**Behavioral Description:**
+1. **Reset:** On `rst_n = 0`, reset `hash` to 32'h00000000 and `done` to 0. Return to IDLE state.
+2. **State Machine:**
+   - **IDLE:** Wait for `start` pulse. If `start` is high, initialize `hash` to 32'h00000000 and transition to PROCESSING.
+   - **PROCESSING:** Iterate through indices 0 to 7. The module receives characters one by one. For each cycle where `valid_char` is high:
+     - Update `hash`: `hash <= (hash << 5) + hash + char_in` (i.e., `hash = hash * 33 + char_in`)
+     - This can be done in 8 cycles (one per index) or a single combinational stage if inputs are registered. Given the sequential nature requested, implement a counter that runs 8 cycles. *Correction*: To simplify input feeding, the testbench will present all characters simultaneously (via array) or sequentially. Let's use a **Parallel Feed** mechanism where the testbench sets up the array, and the FSM processes it internally. 
+     - *Revised FSM Logic:*
+       1. Wait for `start`.
+       2. Reset internal hash accumulator.
+       3. Loop `i` from 0 to 7:
+          - Read `char[i]` (Assuming the input is an array `input [7:0] chars [0:7]`).
+          - Update hash: `hash_next = (hash << 5) + hash + chars[i]`.
+       4. After 8 iterations, assert `done`.
+
+**Updated Interface (to match testbench compatibility):**
+Inputs:
+  input clk
+  input rst_n
+  input start
+  input [7:0] chars [0:7]  // 8-character string input
+  input [7:0] length       // Actual length of string (0 to 8). If 0, result is invalid/None.
+
+Outputs:
+  output reg [31:0] hash
+  output reg done
+  output reg is_empty      // High if length was 0 (simulating Python's None return)
+
+**Implementation Details:**
+- Use a 3-bit counter (`i`) to iterate 0-7.
+- The update logic is: `next_hash = (current_hash << 5) + current_hash + chars[i]`.
+- If `length` is 0, set `is_empty` high and `hash` to 0 immediately upon start, then done.
+- Latency: 9 clock cycles (1 for init + 8 for processing) after `start`.
+- Use non-blocking assignments for registered outputs.
+- Ensure the logic fits in a small FPGA/LUT.

@@ -1,0 +1,62 @@
+module tree_control #(
+    parameter MAX_N = 8
+) (
+    input [2:0] n,
+    input [15:0] a [0:MAX_N-1],
+    input [2:0] parent [0:MAX_N-2],
+    input [15:0] weight [0:MAX_N-2],
+    output reg [15:0] ans [0:MAX_N-1]
+);
+
+reg [15:0] d [0:MAX_N-1];
+reg [15:0] diff;
+reg is_anc;
+reg found;
+integer i, j, u, v;
+
+always @(*) begin
+    // Compute distances from root (vertex 0)
+    d[0] = 16'd0;
+    for (i = 1; i < MAX_N; i = i + 1) begin
+        if (i < n) begin
+            d[i] = d[parent[i-1]] + weight[i-1];
+        end else begin
+            d[i] = 16'd0;
+        end
+    end
+    
+    // Compute answers for each vertex v
+    for (v = 0; v < MAX_N; v = v + 1) begin
+        ans[v] = 16'd0;
+        if (v >= n) begin
+            continue;
+        end
+        for (u = 0; u < n; u = u + 1) begin
+            if (u == v) begin
+                continue;
+            end
+            is_anc = 1'b0;
+            if (v == 0) begin
+                is_anc = 1'b1; // Root is ancestor of all
+            end else begin
+                j = u;
+                found = 1'b0;
+                while (j != 0 && !found) begin
+                    if (j == v) begin
+                        is_anc = 1'b1;
+                        found = 1'b1;
+                    end
+                    j = parent[j-1];
+                end
+            end
+            if (is_anc) begin
+                diff = d[u] - d[v];
+                if (diff <= a[u]) begin
+                    ans[v] = ans[v] + 16'd1;
+                end
+            end
+        end
+    end
+end
+
+endmodule

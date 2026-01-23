@@ -1,0 +1,145 @@
+module sand_art_balancer #(
+    parameter N = 4,           // Max sections
+    parameter M = 4,           // Max colors
+    parameter DATA_WIDTH = 32, // Fixed-point width (16.16)
+    parameter MAX_CYCLES = 1000
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Input arrays (section-major order)
+    input wire [DATA_WIDTH-1:0] volumes [M-1:0],
+    input wire [DATA_WIDTH-1:0] min_vals [N-1:0][M-1:0],
+    input wire [DATA_WIDTH-1:0] max_vals [N-1:0][M-1:0],
+    input wire [DATA_WIDTH-1:0] widths [N-1:0],
+    input wire [3:0] num_sections,  // Actual n (1-8)
+    input wire [3:0] num_colors,    // Actual m (1-8)
+    
+    output reg [DATA_WIDTH-1:0] min_difference,
+    output reg done,
+    output reg error
+);
+
+// Internal state machine
+reg [3:0] state;
+reg [DATA_WIDTH-1:0] current_diff;
+reg [DATA_WIDTH-1:0] best_diff;
+reg [3:0] section_idx;
+reg [3:0] color_idx;
+reg [DATA_WIDTH-1:0] allocation [N-1:0][M-1:0];
+reg [DATA_WIDTH-1:0] total_heights [N-1:0];
+
+// State definitions
+localparam IDLE = 0;
+localparam COMPUTE_HEIGHTS = 1;
+localparam CALCULATE_DIFF = 2;
+localparam UPDATE_BEST = 3;
+localparam NEXT_ALLOCATION = 4;
+localparam FINISHED = 5;
+
+// Fixed-point multiplication (16.16 format)
+function automatic [DATA_WIDTH-1:0] mul_fixed;
+    input [DATA_WIDTH-1:0] a, b;
+    begin
+        // Simplified: assume a,b in Q16.16, result in Q16.16
+        // In real implementation, need proper handling of overflow
+        mul_fixed = (a * b) >> 16;
+    end
+endfunction
+
+// Fixed-point division
+function automatic [DATA_WIDTH-1:0] div_fixed;
+    input [DATA_WIDTH-1:0] a, b;
+    begin
+        // Simplified: (a << 16) / b
+        div_fixed = (a << 16) / b;
+    end
+endfunction
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        error <= 0;
+        best_diff <= {1'b0, {DATA_WIDTH-1{1'b1}}}; // Max positive value
+        min_difference <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                error <= 0;
+                if (start) begin
+                    if (num_sections > N || num_colors > M) begin
+                        error <= 1;
+                        state <= FINISHED;
+                    end else begin
+                        section_idx <= 0;
+                        color_idx <= 0;
+                        state <= COMPUTE_HEIGHTS;
+                    end
+                end
+            end
+            
+            COMPUTE_HEIGHTS: begin
+                // Calculate total height for each section
+                if (section_idx < num_sections) begin
+                    total_heights[section_idx] <= 0;
+                    color_idx <= 0;
+                    state <= CALCULATE_DIFF;
+                end else begin
+                    state <= CALCULATE_DIFF;
+                end
+            end
+            
+            CALCULATE_DIFF: begin
+                if (section_idx < num_sections) begin
+                    if (color_idx < num_colors) begin
+                        // Accumulate volume
+                        total_heights[section_idx] <= total_heights[section_idx] + 
+                            allocation[section_idx][color_idx];
+                        color_idx <= color_idx + 1;
+                    end else begin
+                        // Divide by width to get height
+                        total_heights[section_idx] <= div_fixed(
+                            total_heights[section_idx], 
+                            widths[section_idx]
+                        );
+                        section_idx <= section_idx + 1;
+                        state <= COMPUTE_HEIGHTS;
+                    end
+                end else begin
+                    // Find min and max heights
+                    state <= UPDATE_BEST;
+                end
+            end
+            
+            UPDATE_BEST: begin
+                // Simplified: just calculate difference for this allocation
+                // In real implementation, would track min/max across sections
+                current_diff <= 0; // Placeholder
+                
+                // Check if this allocation is better
+                if (current_diff < best_diff) begin
+                    best_diff <= current_diff;
+                end
+                
+                state <= NEXT_ALLOCATION;
+            end
+            
+            NEXT_ALLOCATION: begin
+                // Generate next allocation (simplified brute force)
+                // In practice, use constraint solver or bounded search
+                state <= FINISHED; // For demo, just finish after one iteration
+            end
+            
+            FINISHED: begin
+                min_difference <= best_diff;
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'heap_subset' that computes the maximum size of a subset satisfying the heap property in a fixed-size tree.
+
+INPUT SPECIFICATIONS:
+- Tree: Fixed at 8 nodes (N=8), maximum depth 4
+- Values: Q8.8 fixed-point format (8 integer, 8 fractional bits)
+- Parent array: 8 entries, each 3 bits (0-7)
+- Values array: 8 entries, each 16 bits (Q8.8 format)
+
+Module Interface:
+module heap_subset (
+    input clk,
+    input rst_n,
+    input start,
+    // Parent array (8 nodes)
+    input [2:0] parent_0, parent_1, parent_2, parent_3,
+    input [2:0] parent_4, parent_5, parent_6, parent_7,
+    // Value array (Q8.8 format)
+    input [15:0] value_0, value_1, value_2, value_3,
+    input [15:0] value_4, value_5, value_6, value_7,
+    output reg [3:0] result,  // Max subset size (0-8)
+    output reg done
+);
+
+ALGORITHM DESCRIPTION:
+Implements dynamic programming with the following states:
+- IDLE: Waiting for start signal
+- BUILD: Construct adjacency list and compute DP
+- DONE: Result ready
+
+DP State Definition:
+For each node, compute DP[node][max_value_index] where:
+- Node can be included if its value > threshold
+- Threshold comes from ancestors in the path
+- Use 8x8 DP table (nodes x possible thresholds)
+
+Simplified Algorithm (for 8-node limit):
+1. For each node, trace its path to root (max depth 4)
+2. For each possible threshold value (among all node values)
+3. Count nodes that can be included: node.value > threshold AND all ancestors in path have values > threshold
+4. Take maximum over all threshold choices
+
+Clock Cycles: 256 cycles (32 cycles per node × 8 nodes)
+Use state machine with 3 states: IDLE, BUILD (254 cycles), DONE
+
+Internal Structure:
+- Path trace: Build ancestor list for each node (0-3 ancestors)
+- Threshold selection: Consider each node's value as potential threshold
+- Validation: Check heap property for all nodes in candidate subset
+- Accumulation: Track maximum valid subset size
+
+Output: result in range 0-8 representing maximum valid subset cardinality

@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'bracket_validator' that checks if a string of angle brackets is correctly balanced.
+
+Inputs:
+  input clk: Clock signal
+  input rst_n: Active-low reset
+  input start: Start signal (high for one cycle)
+  input [7:0] char_in: ASCII character input (8 bits)
+  input valid_in: High when char_in is valid
+
+Outputs:
+  output reg result: 1 if brackets are correct, 0 otherwise
+  output reg done: High for one cycle when validation is complete
+
+Specifications:
+- The module processes a stream of characters.
+- It supports a maximum string length of 8 characters.
+- It uses a stack-based approach:
+  - '<' pushes to stack
+  - '>' pops from stack if not empty, else invalidates
+  - Stack underflow -> invalid
+  - Non-empty stack at end -> invalid
+- The stack can be implemented as a shift register (8 levels deep, 1-bit wide).
+- ASCII values: '<' is 0x3C, '>' is 0x3E.
+- Result should be held until next start.
+- Must work with Icarus Verilog.
+
+Behavior:
+1. Wait in IDLE state until 'start' is high.
+2. In PROCESSING state:
+   - Read 'char_in' when 'valid_in' is high.
+   - If char is '<', push 1'b1 to stack.
+   - If char is '>', check stack:
+     - If stack top is 1, pop (shift out).
+     - If stack is empty (all 0s), set result to 0 and go to DONE.
+   - Increment character counter.
+3. When input stream ends (valid_in goes low or 8 chars processed):
+   - Check if stack is empty.
+   - If empty, result = 1; else result = 0.
+   - Go to DONE state.
+4. In DONE state:
+   - Assert 'done' high.
+   - Hold result.
+   - Return to IDLE when 'start' is asserted again.
+
+Interface:
+  - Inputs: clk, rst_n, start, char_in[7:0], valid_in
+  - Outputs: result, done
+
+Latency: Approximately 8-10 clock cycles after start for a full string.

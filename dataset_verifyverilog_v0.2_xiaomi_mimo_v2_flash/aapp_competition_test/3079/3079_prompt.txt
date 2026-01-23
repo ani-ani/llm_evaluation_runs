@@ -1,0 +1,104 @@
+Design a sequential Verilog module named 'slavko_word' that determines the most beautiful word Slavko can form given Mirko's fixed strategy.
+
+Problem Context:
+- Mirko always takes the rightmost remaining letter.
+- Slavko wants to form the lexicographically smallest word.
+- N is even. Total turns = N/2 for each.
+
+Inputs:
+input clk             // Clock signal
+input rst_n           // Active-low reset
+input start           // Start computation (loads N and sequence)
+input [7:0] char_in   // Input character (ASCII value)
+
+Outputs:
+output reg [79:0] slavko_word_out // Packed 8-character word (8 bits each)
+output reg [2:0] length_out       // Length of the word (N/2)
+output reg winnable               // 1 if Slavko can win (strictly better word exists)
+output reg done                  // High when computation is complete
+
+Constraints:
+- Limit N to maximum 8 characters.
+- Mirko's strategy: Rightmost letter.
+- Slavko's strategy: Scan remaining letters. If a letter strictly smaller than the current best candidate (or starting from 'z') exists, Slavko can choose it.
+- The sequence is loaded into a buffer.
+- State Machine:
+  1. IDLE: Wait for start.
+  2. LOAD: Accept N characters (where N <= 8).
+  3. MIRKO_PICK: Remove rightmost character (decrement available count).
+  4. SLAVKO_PICK: Scan for best character. If 'winnable' flag is not set, check if any char < current Slavko char is available. If yes, update Slavko word and set winnable.
+  5. DONE: Output results.
+
+Logic:
+- Maintain a frequency array of size 26 for available letters.
+- Maintain a buffer of the loaded sequence.
+- Since N is small (<=8), we can use a simple state machine to simulate the game turns.
+
+Detailed Behavior:
+1. On LOAD, store characters and populate frequency array.
+2. In MIRKO_PICK, decrement frequency of the character at the current rightmost index.
+3. In SLAVKO_PICK, iterate through the frequency array (a to z). 
+   - Maintain a 'current_best' character for Slavko (initially 'z' + 1).
+   - If a character exists in frequency array (count > 0) AND char < current_best:
+     - This is a valid move. Update current_best.
+     - Append to Slavko's word.
+     - Decrement frequency.
+     - Set winnable flag (because we found a letter better than just mirroring Mirko or previous choices).
+   - If no such character exists (i.e., only 'z' or equal letters left), Slavko must take the smallest available or equal letter.
+   - *Correction*: The standard logic for this specific game is:
+     - Slavko wants to minimize his word.
+     - Mirko takes rightmost.
+     - At any Slavko turn, if there is ANY letter strictly smaller than the best letter Slavko has collected so far (or simply strictly smaller than the current minimal candidate) available, Slavko can win.
+     - Actually, the standard solution: Maintain available counts. 
+       - Slavko's word = "".
+       - For i in 0 to N/2 - 1:
+         - Remove rightmost char C from sequence (Mirko).
+         - Check if there exists any char X in available set such that X < C.
+         - If yes, Slavko picks the smallest X. Word += X. Remove X.
+         - If no, Slavko picks the smallest available char (which is >= C). Word += C. (Note: If Slavko picks C, he doesn't win against C, but maybe against others? No, the problem says "more beautiful word". If Slavko picks C, his word ends up being equal to Mirko's potential if Mirko picked it. But Mirko picks rightmost. Let's stick to the strict "Can Slavko win" logic).
+         - *Refined Logic*: 
+           - Slavko tracks 'limit' = the character Slavko has just played (or 'z' initially).
+           - If Slavko finds any character < limit available, he can strictly improve.
+           - Wait, the goal is the "most beautiful word" (lexicographically smallest).
+           - Algorithm: 
+             - Sort available characters? No, order matters.
+             - Standard solution for "Slavko wins" is:
+               - Maintain freq array.
+               - Iterate turns.
+               - Mirko removes rightmost: freq[removed]--.
+               - Slavko checks min_char in freq.
+               - If min_char < rightmost_char_available (or simply if Slavko can pick something that helps him win):
+                 - The winning condition: Slavko wins if at some point, the smallest available character is smaller than the character Mirko would eventually be forced to give Slavko.
+                 - Actually, simpler for "Most Beautiful Word":
+                   - Slavko always picks the smallest available character.
+                   - If this results in a word lexicographically smaller than Mirko's "forced" word, he wins.
+                   - Mirko's strategy (rightmost) is deterministic.
+                   - Slavko's best strategy: Always pick the smallest available letter.
+                   - Resulting word: Always smallest possible.
+                   - We need to check if this word is strictly smaller than what Mirko would produce (which is essentially the reverse of the input?
+                   
+Let's refine the Prompt for the Module:
+- Input: N (even, <= 8). Sequence of chars.
+- Output: The smallest word Slavko can form.
+- Win check: Is this word strictly lexicographically smaller than the "mirror" word? 
+  - Actually, "Mirko is a much better player... Slavko wants to know if it is possible to win".
+  - Mirko takes rightmost.
+  - Slavko takes optimal.
+  - Comparison: Compare Slavko's word vs Mirko's word.
+  - Mirko's word is formed by the letters he takes.
+  - We need to simulate both players.
+
+Simplified Module Logic (Sequential FSM):
+1. IDLE: Wait for start.
+2. LOAD: Store input chars into buffer[7:0][7:0]. Count N.
+3. SETUP: Initialize freq[25:0] based on buffer.
+4. PLAY_LOOP (Repeat N/2 times):
+   - MIRKO_STATE: Find rightmost available char in buffer. Append to Mirko's word. Decrement freq.
+   - SLAVKO_STATE: Find smallest char in freq (a-z). Append to Slavko's word. Decrement freq.
+   - Update indices/pointers.
+5. COMPARE: Compare Slavko's word with Mirko's word.
+   - If Slavko < Mirko: winnable = 1.
+   - Else: winnable = 0.
+6. DONE.
+
+This is a full simulation, valid for N<=8.

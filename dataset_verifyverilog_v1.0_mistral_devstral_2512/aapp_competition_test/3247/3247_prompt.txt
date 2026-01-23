@@ -1,0 +1,153 @@
+module knight_arrangements(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [1:0] n,      // 00: n=1, 01: n=2, 10: n=3, 11: n=4
+    input wire [31:0] m,
+    output reg [31:0] result,
+    output reg done
+);
+
+    // Parameters
+    parameter MOD = 1000000009;
+    
+    // State definitions
+    localparam IDLE = 0;
+    localparam CHECK_M = 1;
+    localparam INIT_V0 = 2;
+    localparam EXP_START = 3;
+    localparam MULT_V_T = 4;
+    localparam MULT_T_T = 5;
+    localparam UPDATE_EXP = 6;
+    localparam SUM_VECTOR = 7;
+    localparam DONE = 8;
+    
+    // State variables
+    reg [3:0] state, next_state;
+    reg [31:0] exponent;
+    reg [7:0] state_size;    // 2^(2*n)
+    reg [7:0] i, j, k;       // Loop counters
+    
+    // Vector and matrix storage
+    reg [31:0] V [0:255];     // Current state vector
+    reg [31:0] T [0:65535];   // Transition matrix (256x256 max)
+    reg [31:0] T_temp [0:65535]; // Temporary for squaring
+    reg [31:0] V_temp [0:255];   // Temporary for vector multiplication
+    
+    // Precomputed data for each n
+    // For n=1: state_size=4, V0 and T would be defined
+    // For n=2: state_size=16
+    // For n=3: state_size=64
+    // For n=4: state_size=256
+    // We'll initialize these in an initial block
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 0;
+            done <= 0;
+            exponent <= 0;
+        end else begin
+            state <= next_state;
+            
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        // Initialize state size based on n
+                        case (n)
+                            2'b00: state_size <= 4;   // n=1
+                            2'b01: state_size <= 16;  // n=2
+                            2'b10: state_size <= 64;  // n=3
+                            2'b11: state_size <= 256; // n=4
+                            default: state_size <= 4;
+                        endcase
+                        done <= 0;
+                    end
+                end
+                
+                CHECK_M: begin
+                    if (m == 1) begin
+                        // For m=1, result = 2^n
+                        case (n)
+                            2'b00: result <= 2;      // 2^1
+                            2'b01: result <= 4;      // 2^2
+                            2'b10: result <= 8;      // 2^3
+                            2'b11: result <= 16;     // 2^4
+                        endcase
+                    end
+                end
+                
+                INIT_V0: begin
+                    // Initialize V0 from precomputed data
+                    // This would depend on n
+                    // For now, we assume V0 is loaded
+                end
+                
+                EXP_START: begin
+                    exponent <= (m - 2);
+                end
+                
+                MULT_V_T: begin
+                    // V = V * T (vector-matrix multiplication)
+                    // V_temp[i] = sum_{j} V[j] * T[j][i]
+                    // This is done in a loop in the state machine
+                end
+                
+                MULT_T_T: begin
+                    // T = T * T (matrix multiplication)
+                    // T_temp[i][j] = sum_{k} T[i][k] * T[k][j]
+                end
+                
+                UPDATE_EXP: begin
+                    exponent <= exponent >> 1;
+                end
+                
+                SUM_VECTOR: begin
+                    // result = sum_{i} V[i] mod MOD
+                    // This would be computed in a loop
+                end
+                
+                DONE: begin
+                    done <= 1;
+                end
+            endcase
+        end
+    end
+    
+    // State transition logic
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: if (start) next_state = CHECK_M;
+            CHECK_M: begin
+                if (m == 1) next_state = DONE;
+                else next_state = INIT_V0;
+            end
+            INIT_V0: next_state = EXP_START;
+            EXP_START: next_state = (exponent == 0) ? SUM_VECTOR : MULT_V_T;
+            MULT_V_T: next_state = MULT_T_T;
+            MULT_T_T: next_state = UPDATE_EXP;
+            UPDATE_EXP: next_state = (exponent == 0) ? SUM_VECTOR : MULT_V_T;
+            SUM_VECTOR: next_state = DONE;
+            DONE: next_state = IDLE;
+        endcase
+    end
+    
+    // Precomputed data initialization
+    initial begin
+        // Initialize V0 and T for each n
+        // This would be generated from the Python precomputation
+        // For n=1, state_size=4
+        // V0: [1,1,1,1] for all valid (mask1,mask2) pairs
+        // T: transitions between states
+        // Similarly for n=2,3,4
+        // Due to size, we would generate this automatically
+    end
+    
+    // Matrix multiplication modules would be implemented here
+    // For brevity, we show the structure
+    
+endmodule
+
+// Additional helper modules for matrix operations would be needed
+// For example: matrix_vector_multiply, matrix_matrix_multiply

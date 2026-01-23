@@ -1,0 +1,50 @@
+Verilog module specification for maximum gnome damage (scaled version):
+
+INTERFACE:
+  Inputs:
+    clk        : Clock signal, rising edge triggered
+    rst_n      : Active-low synchronous reset
+    start      : Start pulse (assert for 1 cycle to begin computation)
+    n[7:0]     : Number of gnomes (0-255)
+    m[3:0]     : Maximum number of groups (0-15)
+    k[7:0]     : Lightning bolt damage per turn (0-255)
+  Outputs:
+    result[15:0]: Maximum damage (unsigned)
+    done        : Asserted high for 1 cycle when result is valid
+
+FUNCTIONAL DESCRIPTION:
+  The module computes the maximum possible damage using the following algorithm:
+  1. If n <= m, result = n*(n+1)/2.
+  2. Otherwise, iterate t from m down to 0:
+     a) Compute lower bound for T: L1 = ceil((n - t*(k-1))/k)
+        Compute upper bound for T: U1 = floor((n - t)/k)
+        Compute mandatory minimum T: L2 = m - t
+        L = max(L1, L2); U = U1
+     b) If L <= U, then for each T in {L, U}:
+        - R = n - k*T
+        - D1 = n*T - k*T*(T-1)/2
+        - If t>0: a = R/t; b = R%t; D2 = a*t*(t+1)/2 + b*(b+1)/2
+          Else: D2 = 0
+        - damage = D1 + D2
+        - Update best damage if larger.
+  3. After loop, output best damage.
+
+IMPLEMENTATION NOTES:
+  - Use a state machine to sequence the operations.
+  - Intermediate values should be stored in registers.
+  - All arithmetic uses unsigned integers.
+  - Division and modulo by t (which is small) can be implemented with combinational logic or a small loop.
+  - The computation is fully completed within a bounded number of clock cycles (since m <= 8).
+  - After done is asserted, the result remains available until next start.
+
+RESET BEHAVIOR:
+  On rst_n = 0: state machine resets to IDLE, done = 0, result = 0, all internal counters cleared.
+  Minimum 2 clock cycles of reset required.
+
+TIMING:
+  - Assert start for 1 clock cycle.
+  - Computation completes within at most 1000 clock cycles (for m=8).
+  - done goes high for 1 cycle when result is ready.
+  - Sample result on the same cycle done is high.
+
+PORT NAMES MUST MATCH EXACTLY.

@@ -1,0 +1,56 @@
+Design a Verilog module that solves the string explosion problem for small strings.
+
+Problem: Given an input string and an explosion string, repeatedly remove all occurrences of the explosion string from the input string (and any newly formed strings) until no more explosions exist. If the final string is empty, output "FRULA", otherwise output the final string.
+
+Constraints (scaled down):
+- Maximum input string length: 8 characters
+- Maximum explosion string length: 4 characters
+- Characters: 8-bit ASCII (letters and digits)
+- Explosion string characters are all distinct
+
+Module interface:
+
+Module name: string_explosion
+
+Parameters:
+  MAX_STR_LEN = 8   (maximum length of input/result strings)
+  MAX_EXP_LEN = 4   (maximum length of explosion string)
+
+Inputs:
+  clk        : clock, rising edge
+  rst_n      : active-low reset, synchronous
+  start      : start signal, pulse for one cycle to begin computation
+  input_str  : array of MAX_STR_LEN bytes, the input string. Only the first input_len bytes are valid.
+  input_len  : number of valid characters in input_str (1 to MAX_STR_LEN)
+  explosion_str : array of MAX_EXP_LEN bytes, the explosion string. Only the first explosion_len bytes are valid.
+  explosion_len : number of valid characters in explosion_str (1 to MAX_EXP_LEN)
+
+Outputs:
+  result_str : array of MAX_STR_LEN bytes, the resulting string (valid when done=1)
+  result_len : number of valid characters in result_str (0 to MAX_STR_LEN). If 0, the result is empty and should be interpreted as "FRULA".
+  done       : asserted high for one cycle when computation is complete, and result is valid.
+
+Behavior:
+  On reset (rst_n=0), all outputs are 0, internal state is cleared.
+  When start is asserted (high for one cycle), the module begins processing the input string.
+  The module processes characters sequentially:
+    - Each character is pushed onto an internal stack.
+    - After each push, the top explosion_len characters of the stack are compared with explosion_str.
+    - If they match, the top explosion_len characters are removed from the stack.
+  After processing all input_len characters, the stack contents form the result string.
+  The module asserts done for one cycle, and presents the result in result_str and result_len.
+  If result_len == 0, the final string is empty, and the output should be "FRULA" (this is interpreted by the testbench).
+
+Implementation details:
+  - Use a finite state machine (FSM) with states: IDLE, PROCESS, DONE.
+  - Use an internal stack (register array) of size MAX_STR_LEN.
+  - Use a stack pointer (sp) indicating the next free position.
+  - Use a counter for the input index.
+  - For each character, push and then check for explosion in the same cycle (if explosion_len <= 4, comparison can be done in one cycle by unrolling).
+  - The comparison: for i=0 to explosion_len-1, check stack[sp-1-i] == explosion_str[explosion_len-1-i].
+  - If all match, then sp = sp - explosion_len.
+  - After processing all characters, copy stack[0:sp-1] to result_str[0:sp-1] and set result_len = sp.
+
+Note: The explosion string may be shorter than the stack, but we only check when sp >= explosion_len.
+
+The module should be synthesizable and operate at a reasonable clock frequency.

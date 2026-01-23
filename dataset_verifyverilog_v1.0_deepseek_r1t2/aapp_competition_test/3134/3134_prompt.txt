@@ -1,0 +1,196 @@
+module matrix_recovery (
+    input clk, rst_n, start,
+    input [3:0] n, m,  // Matrix dimensions (max 8x8)
+    input [7:0] row_parity,  // Row parities (up to 8 bits)
+    input [7:0] col_parity,  // Column parities (up to 8 bits)
+    output reg [7:0] matrix_out [0:7],  // Output 8x8 matrix (only first n rows and m columns are valid)
+    output reg done,
+    output reg error
+);
+
+    // State definitions
+    localparam IDLE = 3'b000;
+    localparam CHECK = 3'b001;
+    localparam INITIALIZE = 3'b010;
+    localparam FIX_PARITY = 3'b011;
+    localparam DONE = 3'b100;
+    localparam ERROR = 3'b101;
+    
+    // Internal registers
+    reg [2:0] state, next_state;
+    reg [2:0] row_idx, col_idx;  // Current row and column being processed
+    reg [7:0] matrix [0:7];      // 8x8 matrix storage
+    reg [7:0] row_parity_check;  // Computed row parities
+    reg [7:0] col_parity_check;  // Computed column parities
+    reg [2:0] flip_count;        // Count of flips needed
+    reg [2:0] flip_row, flip_col; // Row and column for flipping
+    
+    // State transition
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            error <= 0;
+            row_idx <= 0;
+            col_idx <= 0;
+        end else begin
+            state <= next_state;
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: begin
+                if (start) next_state = CHECK;
+            end
+            
+            CHECK: begin
+                // Check if XOR condition is satisfied
+                if (^row_parity[0+:8] != ^col_parity[0+:8])
+                    next_state = ERROR;
+                else
+                    next_state = INITIALIZE;
+            end
+            
+            INITIALIZE: begin
+                // Initialize matrix with all 1s
+                if (row_idx < n) begin
+                    next_state = INITIALIZE;
+                end else begin
+                    next_state = FIX_PARITY;
+                end
+            end
+            
+            FIX_PARITY: begin
+                // Fix parity mismatches by flipping bits to 0
+                if (row_idx < n && col_idx < m) begin
+                    next_state = FIX_PARITY;
+                end else if (row_idx >= n && col_idx >= m) begin
+                    // Check if all parities are now satisfied
+                    if (row_parity_check[0+:n] == row_parity[0+:n] && 
+                        col_parity_check[0+:m] == col_parity[0+:m])
+                        next_state = DONE;
+                    else
+                        next_state = ERROR;
+                end else begin
+                    next_state = FIX_PARITY;
+                end
+            end
+            
+            DONE, ERROR: begin
+                next_state = DONE;  // Stay in done/error state
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+    
+    // Main logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset all registers
+            done <= 0;
+            error <= 0;
+            row_idx <= 0;
+            col_idx <= 0;
+            flip_count <= 0;
+            flip_row <= 0;
+            flip_col <= 0;
+            // Initialize matrix to 0
+            for (integer i = 0; i < 8; i = i + 1) begin
+                matrix[i] <= 8'h00;
+            end
+        end else begin
+            case (state)
+                CHECK: begin
+                    // Initialize row and column parity checks
+                    row_parity_check <= 8'h00;
+                    col_parity_check <= 8'h00;
+                    row_idx <= 0;
+                    col_idx <= 0;
+                end
+                
+                INITIALIZE: begin
+                    // Fill matrix with 1s, row by row
+                    if (row_idx < n) begin
+                        // Set all bits in current row to 1 (for valid columns)
+                        if (col_idx < m) begin
+                            matrix[row_idx][col_idx] <= 1'b1;
+                            col_idx <= col_idx + 1;
+                        end else begin
+                            col_idx <= 0;
+                            row_idx <= row_idx + 1;
+                        end
+                    end else begin
+                        // Reset indices for next phase
+                        row_idx <= 0;
+                        col_idx <= 0;
+                        // Compute initial parities
+                        for (integer i = 0; i < n; i = i + 1) begin
+                            row_parity_check[i] <= ^matrix[i][0+:m];
+                        end
+                        for (integer j = 0; j < m; j = j + 1) begin
+                            col_parity_check[j] <= ^{matrix[0][j], matrix[1][j], matrix[2][j], matrix[3][j], 
+                                                      matrix[4][j], matrix[5][j], matrix[6][j], matrix[7][j]};
+                        end
+                    end
+                end
+                
+                FIX_PARITY: begin
+                    // Find and fix parity mismatches by flipping bits to 0
+                    // Strategy: Start from bottom-right to minimize binary value
+                    if (row_idx < n && col_idx < m) begin
+                        // Calculate current row and column indices (starting from bottom-right)
+                        integer current_row = n - 1 - row_idx;
+                        integer current_col = m - 1 - col_idx;
+                        
+                        // Check if this bit needs to be flipped
+                        if (current_row >= 0 && current_col >= 0 && 
+                            row_parity_check[current_row] != row_parity[current_row] &&
+                            col_parity_check[current_col] != col_parity[current_col]) begin
+                            // Flip bit to 0
+                            matrix[current_row][current_col] <= 1'b0;
+                            // Update parity checks
+                            row_parity_check[current_row] <= ~row_parity_check[current_row];
+                            col_parity_check[current_col] <= ~col_parity_check[current_col];
+                        end
+                        
+                        // Move to next position
+                        if (col_idx < m - 1) begin
+                            col_idx <= col_idx + 1;
+                        end else begin
+                            col_idx <= 0;
+                            row_idx <= row_idx + 1;
+                        end
+                    end else if (row_idx < n) begin
+                        // Process remaining rows
+                        row_idx <= row_idx + 1;
+                    end else if (col_idx < m) begin
+                        // Process remaining columns
+                        col_idx <= col_idx + 1;
+                    end
+                end
+                
+                DONE: begin
+                    done <= 1;
+                    error <= 0;
+                    // Output the matrix
+                    for (integer i = 0; i < 8; i = i + 1) begin
+                        matrix_out[i] <= matrix[i];
+                    end
+                end
+                
+                ERROR: begin
+                    done <= 1;
+                    error <= 1;
+                    // Output all zeros in case of error
+                    for (integer i = 0; i < 8; i = i + 1) begin
+                        matrix_out[i] <= 8'h00;
+                    end
+                end
+            endcase
+        end
+    end
+endmodule

@@ -1,0 +1,20 @@
+module beautiful_sequence (input [3:0] count_0, count_1, count_2, count_3, output reg valid, output reg [7:0] length, output reg [3:0] seq_out_0, seq_out_1, seq_out_2, seq_out_3, seq_out_4, seq_out_5, seq_out_6, seq_out_7, seq_out_8, seq_out_9, seq_out_10, seq_out_11, seq_out_12, seq_out_13, seq_out_14, seq_out_15);
+assign valid = ( (count_0 == 4'd1 && count_1 == 4'd0 && count_2 == 4'd0 && count_3 == 4'd0) || (count_1 == 4'd1 && count_0 == 4'd0 && count_2 == 4'd0 && count_3 == 4'd0) || (count_2 == 4'd1 && count_0 == 4'd0 && count_1 == 4'd0 && count_3 == 4'd0) || (count_3 == 4'd1 && count_0 == 4'd0 && count_1 == 4'd0 && count_2 == 4'd0) || (count_0 == 4'd0 && count_1 == 4'd0 && count_2 == 4'd0 && count_3 == 4'd0) ) ? 1'b1 : 1'b0;
+assign length = valid ? (count_0 + count_1 + count_2 + count_3) : 4'd0;
+assign seq_out_0 = valid && (length == 1) ? ( (count_0 == 4'd1 && count_1 == 4'd0 && count_2 == 4'd0 && count_3 == 4'd0) ? 4'd0 : (count_1 == 4'd1 && count_0 == 4'd0 && count_2 == 4'd0 && count_3 == 4'd0) ? 4'd1 : (count_2 == 4'd1 && count_0 == 4'd0 && count_1 == 4'd0 && count_3 == 4'd0) ? 4'd2 : (count_3 == 4'd1 && count_0 == 4'd0 && count_1 == 4'd0 && count_2 == 4'd0) ? 4'd3 : 4'd0) : 4'd0;
+assign seq_out_1 = 4'd0;
+assign seq_out_2 = 4'd0;
+assign seq_out_3 = 4'd0;
+assign seq_out_4 = 4'd0;
+assign seq_out_5 = 4'd0;
+assign seq_out_6 = 4'd0;
+assign seq_out_7 = 4'd0;
+assign seq_out_8 = 4'd0;
+assign seq_out_9 = 4'd0;
+assign seq_out_10 = 4'd0;
+assign seq_out_11 = 4'd0;
+assign seq_out_12 = 4'd0;
+assign seq_out_13 = 4'd0;
+assign seq_out_14 = 4'd0;
+assign seq_out_15 = 4'd0;
+endmodule

@@ -1,0 +1,62 @@
+Design a sequential Verilog module named 'cookie_hits_wall' that computes which polygon vertex hits a vertical wall first given projectile motion and rotation.
+
+**Problem Adaptation:**
+- Use Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Max vertices n=5
+- Angular velocity, velocity, and angles scaled to fit 32-bit representation
+- Use iterative simulation with fixed time steps
+
+**Physics Model:**
+- Projectile motion: $y(t) = y_0 + v_{y0}t - 0.5*g*t^2$
+- $x(t) = x_0 + v_{x0}t$
+- Rotation: $x' = x \cos(\theta) - y \sin(\theta)$, $y' = x \sin(\theta) + y \cos(\theta)$
+- Wall is at x=W
+
+**Inputs:**
+- `clk`: Clock signal
+- `rst_n`: Active-low reset
+- `start`: Start computation
+- `n`: [2:0] Number of vertices (3 to 5)
+- `omega`: [31:0] Angular velocity in rad/s (Q16.16)
+- `v0`: [31:0] Initial speed in m/s (Q16.16)
+- `theta_deg`: [31:0] Initial launch angle in degrees (Q16.16)
+- `wall_x`: [31:0] Wall x-coordinate (Q16.16)
+- `vertices`: 5x2 array of [31:0] Q16.16 values [x, y] for each vertex (only first n used)
+
+**Outputs:**
+- `result_index`: [2:0] Index of first vertex to hit (1-based)
+- `result_time`: [31:0] Time of impact in seconds (Q16.16)
+- `done`: High when computation complete
+- `valid`: High when result is valid
+
+**Behavior:**
+1. In IDLE state, wait for `start` signal
+2. Reset all state variables
+3. In PROCESSING state:
+   - Use a time step dt = 0.01s (approx 0x0000028F in Q16.16)
+   - For each step, update center of mass position: $x_c(t), y_c(t)$
+   - For each vertex:
+     - Apply rotation by angle $\phi(t) = \omega * t$ (clockwise)
+     - Transform from local coordinates to global: $x_{global} = x_c + x_{rotated}$, $y_{global} = y_c + y_{rotated}$
+     - Check if $x_{global} \ge wall_x$
+   - Track the vertex that crosses the wall first (earliest time)
+   - Continue simulation up to 1000 steps (10 seconds max)
+4. In DONE state: Output results
+
+**State Machine:**
+- IDLE: Wait for start
+- SETUP: Initialize variables
+- SIMULATE: Run time-stepped simulation
+- DONE: Output result
+
+**Implementation Details:**
+- Use Q16.16 format for all arithmetic
+- Sine/Cosine approximations for rotation angles (use pre-computed lookup or small angle approx)
+- Multiplication: upper 32 bits of 64-bit product, shifted appropriately
+- Division is not needed if time steps are fixed
+- The module must calculate launch velocity components: $v_x = v_0 \cos(\theta)$, $v_y = v_0 \sin(\theta)$
+- Initial center of mass: average of all input vertices
+- Clockwise rotation matrix applied to vertices relative to center
+
+**Testability:**
+The module should be synthesizable and testable with cocotb.

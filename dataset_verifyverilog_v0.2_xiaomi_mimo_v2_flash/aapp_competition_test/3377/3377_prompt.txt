@@ -1,0 +1,216 @@
+Design a sequential Verilog module named 'peg_planner' that generates a safe wet plan for placing and removing climbing pegs.
+
+Problem Context:
+- Strategic points 1..n require specific dependencies (pegs) to be placed.
+- A 'dry plan' gives a sequence of operations (+/-).
+- 'Wet plan' constraint: A peg can only be removed if the exact same set of pegs are present as when it was originally placed.
+- Target: Output a safe wet plan sequence.
+
+Constraints (Scaled for Hardware):
+- Number of points n <= 16 (4-bit input).
+- Max dependencies per point = 4.
+- Dry plan length t <= 64 (6-bit counter).
+- Output sequence length <= 128 (7-bit counter).
+- Use 4-bit indices for points (0-15, mapping to 1-16).
+
+Inputs:
+input clk                // Clock signal
+input rst_n              // Active-low reset
+input start              // Start processing the dry plan
+input [3:0] n            // Number of strategic points
+input [3:0] t            // Length of dry plan
+input [3:0] dry_step_idx // Current index in dry plan (0 to t-1)
+input [3:0] dry_op       // Operation from dry plan (point index 1-16, 0=idle)
+input [3:0] dep_count_in // Number of dependencies for current point
+input [3:0] dep_val      // Dependency value (one by one, valid when dep_ready=1)
+input dep_ready          // Valid dependency input
+
+Outputs:
+output reg [3:0] wet_op       // Operation for wet plan (point index, 0=end)
+output reg wet_op_valid       // High when wet_op is valid
+output reg [6:0] wet_step_cnt // Number of steps in wet plan
+output reg done               // High when all processing is complete
+output reg error              // High if constraint violation found
+
+Behavior:
+1. Wait for 'start' signal.
+2. Ingest dependencies for all points. Store them in a lookup table (16x4x4bit).
+3. Process the dry plan step by step, controlled by 'dry_step_idx' and 'dry_op'.
+   - Maintain a current_set of active pegs (bitmask).
+   - Maintain a placed_at_state for each peg (stores the mask when placed).
+   - When dry_op is 'place X':
+     - If X is already placed, mark error.
+     - Check dependencies: if (current_set & dependency_mask[X]) != dependency_mask[X], mark error.
+     - Record placed_at_state[X] = current_set.
+     - Add X to current_set.
+     - Output +X to wet plan.
+   - When dry_op is 'remove X':
+     - Check wet safety: if current_set != placed_at_state[X], mark error.
+     - Remove X from current_set.
+     - Output -X to wet plan.
+   - (Note: For this simplified version, we assume the dry plan is valid in terms of dependencies, but we check wet safety and reconstruction). 
+4. The output sequence should mimic the dry plan but with extra steps added to ensure safety if needed (simplified: the dry plan is transformed. If a dry remove is unsafe, we must somehow restore the state? The problem says 'update her plans'. A simple safe plan is simply to never remove pegs until the very end, or to remove only when safe. We will output the safe sequence). 
+5. For this problem, the strategy is to output the operations of the dry plan. The test cases show that the output is a subsequence or modification. Wait, the example output for case 1 is `1 2 3 1 4 5`. This corresponds to: +1, +2, +3, -1, +4, +5. The dry plan had extra steps (removing 2,3). The wet plan skips those unsafe removals. The goal is to output a valid wet plan. 
+6. Implementation Strategy:
+   - The module will read the dry plan steps sequentially (simulated by inputs).
+   - It will maintain the current set of pegs.
+   - It will output 'place X' if the dry plan says place X.
+   - It will output 'remove X' only if the dry plan says remove X AND `current_set == placed_at_state[X]`.
+   - If the dry plan attempts an unsafe remove, we simply skip it (or output nothing and wait for the next op). The problem implies updating the plan. Skipping unsafe removals effectively leaves the pegs in place, which is safe.
+   - The output must be a sequence of integers.
+   - We will store the generated sequence in a small buffer (up to 128 steps) and dump it on completion.
+   
+Refined Logic:
+- Input: `dry_op` stream.
+- State:
+  - `cur_set` (16 bit mask).
+  - `placed_state` (16 x 16 bit array).
+  - `wet_seq` buffer (128 x 4 bit).
+- Process:
+  - If `dry_op` > 0:
+    - If `dry_op` not in `cur_set` (Place):
+      - Check deps (assume valid for dry plan).
+      - `placed_state[dry_op] = cur_set`.
+      - `cur_set |= (1 << (dry_op-1))`.
+      - Append `dry_op` to wet_seq.
+    - Else (Remove):
+      - If `cur_set == placed_state[dry_op]`:
+        - Append `(dry_op + 16)` to wet_seq (to distinguish remove vs place, or use negative if supported, but prompt says int. Let's use 1..16 for place, 17..32 for remove, or just output the sequence. The example output is `1 2 3 1 4 5`. It doesn't explicitly show `-1`. It seems the output format is just the sequence of pegs involved in the safe plan? No, the prompt says 'meaning that a peg is being placed or removed'. The example output `1 2 3 1 4 5` corresponds to: +1, +2, +3, -1, +4, +5. So 1 is used twice. The first time is place, second is remove. How does the receiver know? The state of the peg changes. But usually such outputs are explicit. 
+      - Re-reading the prompt: 'Each of the following t lines must contain an integer i, meaning that a peg is being placed or removed from point i.'
+      - The example output is `6` steps: `1 2 3 1 4 5`.
+      - This sequence of numbers `1 2 3 1 4 5` has '1' appearing twice. Usually, the first appearance is add, the second is remove. But what if we need to add 1 again? The problem states 'she can remove a peg at any time and reuse it later'. So 1 can be added, removed, added again.
+      - However, the problem text says: 'Each of the following t lines contains an integer i, meaning that a peg is being placed or removed from point i.'
+      - This implies a toggle mechanism? Or context? 
+      - Let's look at the example dry plan: `1 2 3 1 4 2 3 5`. 
+        - +1, +2, +3, -1, +4, -2, -3, +5.
+      - Example wet plan: `1 2 3 1 4 5`.
+        - +1, +2, +3, -1, +4, +5. (Removed -2, -3 because unsafe).
+      - So the output `1 2 3 1 4 5` matches the dry plan indices. The interpretation is that if a number appears, it flips state. 
+      - BUT, to be safe in hardware, let's assume we must output distinct markers for add and remove. 
+      - Let's check the prompt constraints again. 'Each of the following t lines must contain an integer i'.
+      - Usually, in competitive programming, if an operation toggles or if context is given, it's simply the index. The existence of the index in the sequence implies the operation. 
+      - However, for the Verilog module, we need a clear interface. Let's assume the module outputs `wet_op_index` and `wet_is_add`.
+      - But wait, the testbench needs to verify. 
+      - Let's stick to the most direct interpretation: The output is a sequence of integers. The first time an integer appears, it's a Place. If it appears again, it's a Remove. 
+      - This is hard to verify without state. 
+      - Alternative: The prompt allows flexibility. I will output `wet_op` (0-15 for place, 16-31 for remove). Or just `wet_op` (1-16 for place, -1 to -16 for remove). Verilog `reg` handles signed values if we define it as such, but usually it's unsigned. 
+      - Let's use the standard from the prompt: 'Each of the following t lines must contain an integer i'. 
+      - In the testbench, I will assume `i` > 0 means Place `i`, and `i` < 0 means Remove `abs(i)`. This is the safest and most explicit way for hardware.
+      - Wait, the example output `1 2 3 1 4 5` does not have negative numbers. 
+      - Let's re-read: 'meaning that a peg is being placed or removed from point i.'
+      - Maybe the problem implies that the 'dry plan' format (which has just numbers) is repeated? 
+      - Let's assume the output format is: Positive numbers for Place, and Negative numbers for Remove. 
+      - However, the example output `1 2 3 1 4 5` is strictly positive. 
+      - If I must match the example output exactly, the interpretation is: The operation is implicitly 'Place if not present, Remove if present'. 
+      - This implies the output sequence must maintain the state of the pegs to know if '1' means add or remove.
+      - Let's try to stick to the prompt's description of the *dry plan*: 'Each of the following t lines contains an integer i, meaning that a peg is being placed or removed from point i.'
+      - This implies a toggle. 
+      - The wet plan in the example is `1 2 3 1 4 5`. 
+        - State starts empty.
+        - 1: Empty -> Place 1. State: {1}
+        - 2: Empty -> Place 2. State: {1,2}
+        - 3: Empty -> Place 3. State: {1,2,3}
+        - 1: {1,2,3} -> Remove 1. State: {2,3}
+        - 4: {2,3} -> Place 4 (needs 2,3). State: {2,3,4}
+        - 5: {2,3,4} -> Place 5 (needs 4). State: {2,3,4,5}
+      - This matches the toggle logic.
+
+Final Verilog Logic:
+- We need a `toggle_op` input stream (from dry plan).
+- We maintain `cur_set` (bitmask).
+- We maintain `placed_state` (16x16 bit).
+- We maintain `wet_seq` buffer.
+- When `toggle_op` arrives:
+  - If `cur_set` does NOT contain `toggle_op`:
+    - This is a Place attempt.
+    - Check dependencies (stored in LUT).
+    - If valid: `placed_state[toggle_op] = cur_set`. `cur_set` |= bit. Append `toggle_op` to wet_seq.
+  - Else (contains `toggle_op`):
+    - This is a Remove attempt.
+    - Check safety: `cur_set` == `placed_state[toggle_op]`.
+    - If safe: `cur_set` &= ~bit. Append `toggle_op` to wet_seq.
+    - If unsafe: Do nothing (skip this step in wet plan).
+
+Module Definition:
+- It needs to ingest the dependency table first. Since we have limited inputs, we'll ingest the dry plan and dependencies interleaved or via separate handshakes. To make it a single module, let's use the `start` signal to begin a 'transaction'. 
+- But we need to ingest the dry plan steps. The prompt says `dry_op` is an input. We'll process one dry op per clock cycle (or stream).
+- To handle the dependency table, we add `dep_addr`, `dep_count`, `dep_val` inputs.
+- Wait, the prompt says `dry_step_idx` and `dry_op`. This suggests we might not be streaming but random access? Or just the current step.
+- Given `t` is small (64), we can process step by step.
+- We need to build the dependency graph.
+
+Revised Prompt:
+'Design a sequential Verilog module named 'peg_planner' that generates a safe wet plan...'
+Inputs: `clk`, `rst_n`, `start`, `n`, `t`. 
+To ingest the graph: We need a way to load 16 nodes, each with up to 4 dependencies.
+To ingest the dry plan: We need a stream of operations.
+
+To simplify the interface for the LLM:
+- Let's assume the graph is provided first, then the dry plan.
+- Interface:
+  - `load_graph`: High to load graph data.
+  - `graph_node_idx`: 4 bits (0-15). 
+  - `graph_dep_idx`: 2 bits (0-3).
+  - `graph_dep_val`: 4 bits (node index 1-16).
+  - `dry_op`: 4 bits. Valid when `dry_valid` is high.
+  - `dry_valid`: High for one cycle per dry op.
+
+Output:
+  - `wet_op`: 4 bits.
+  - `wet_is_add`: 1 bit (1=Place, 0=Remove). (This is clearer than toggling).
+  - `wet_valid`: High for one cycle.
+
+Wait, the prompt asks for a specific interface. I'll stick to the one in the prompt but adapt it slightly to be robust.
+
+Prompt Inputs:
+`clk`, `rst_n`, `start`, `n`, `t`.
+`dry_step_idx` (0 to t-1), `dry_op` (value).
+`dep_ready`, `dep_node`, `dep_val`.
+
+The prompt example has `dry_step_idx`. This implies we process steps sequentially.
+
+Let's refine the prompt to be very specific about the flow to avoid ambiguity.
+
+Final Prompt text:
+
+'Design a sequential Verilog module named 'peg_planner' that generates a safe wet plan for a climber.
+
+**Problem:**
+Given a dependency graph (nodes 1..n) and a dry plan (sequence of toggle operations), generate a wet plan. A wet plan must be safe: a peg can only be removed if the state of other pegs is exactly the same as when it was placed.
+
+**Simplified Hardware Constraints:**
+- n <= 16 nodes.
+- Max 4 dependencies per node.
+- Dry plan length t <= 64.
+- Output sequence length <= 128.
+
+**Inputs:**
+- `clk`, `rst_n`, `start`: Standard control.
+- `n`: Number of nodes (1-16).
+- `t`: Number of steps in dry plan.
+- `dry_op_valid`: High when a dry operation is available.
+- `dry_op_val`: The toggle operation (node index 1-16). Valid when `dry_op_valid` is high.
+- `dep_valid`: High when a dependency definition is available.
+- `dep_node`: The node index that has this dependency (1-16).
+- `dep_val`: The required peg index (1-16). Multiple `dep_val` inputs will come for the same `dep_node`.
+
+**Outputs:**
+- `done`: High when all wet operations are generated.
+- `wet_op_valid`: High for one cycle when a wet operation is generated.
+- `wet_op_val`: The node index involved in the operation.
+- `wet_is_add`: 1 if placing a peg, 0 if removing.
+
+**Internal Logic:**
+1. **State Machine**: IDLE -> LOAD_GRAPH -> PROCESS_DRY_PLAN -> DONE.
+2. **Graph Storage**: Store dependencies in a 16x4 lookup table. Use a dependency valid count for each node.
+3. **Wet Plan Generation**: Maintain current peg set (16-bit mask) and placement state (16x16-bit array).
+   - Iterate through dry plan steps (triggered by `dry_op_valid`).
+   - Determine if the current dry step is a Place or Remove (toggle logic).
+   - **Place**: Check dependencies. If valid, record `placement_state[node] = current_set`, update `current_set`, output Place.
+   - **Remove**: Check if `current_set == placement_state[node]`. If yes, update `current_set`, output Remove. If no, skip (do nothing).
+4. **Output**: Generate `wet_op_val`, `wet_is_add`, and `wet_op_valid`.
+
+**Timing:**
+- Result valid 1-2 cycles after input processing (combinational logic).
+- Use `done` to signal completion.
+- Use `error` signal if dependency violation occurs in dry plan (though dry plan is assumed valid, we check).

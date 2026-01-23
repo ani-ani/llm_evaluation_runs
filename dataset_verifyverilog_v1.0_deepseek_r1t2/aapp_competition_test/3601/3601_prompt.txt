@@ -1,0 +1,179 @@
+module DeliveryTimeSolver (
+    input clk,
+    input rst_n,
+    input start,
+    // Misha's segment (2 points)
+    input [15:0] A_x, A_y,
+    input [15:0] B_x, B_y,
+    input [31:0] L_M, // Length * 256
+    // Nadia's segment (2 points)
+    input [15:0] C_x, C_y,
+    input [15:0] D_x, D_y,
+    input [31:0] L_N, // Length * 256
+    // Output
+    output reg [31:0] result, // Delivery time * 65536 (Q16.16)
+    output reg done,
+    output reg impossible
+);
+
+// Parameters
+localparam FRAC = 8;
+localparam SCALE = 256;
+localparam SCALE_SQ = 65536;
+localparam MAX_ITER = 24; // Binary search iterations
+
+// States
+localparam IDLE = 0,
+           INIT_BIN = 1,
+           FEAS_CHECK = 2,
+           UPDATE_BIN = 3,
+           FINISH = 4,
+           IMPOSSIBLE = 5;
+
+reg [3:0] state;
+reg [31:0] low, high, mid; // T_fixed values
+reg [31:0] t1, t2;
+reg [7:0] s;
+reg [7:0] u;
+reg [15:0] Mx, My, Nx, Ny;
+reg signed [31:0] dx, dy;
+reg [31:0] dist_sq;
+reg [31:0] threshold, T_sq;
+reg [31:0] cycles;
+reg feas_flag;
+reg [31:0] result_reg;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        impossible <= 0;
+        result <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                impossible <= 0;
+                if (start) begin
+                    low <= 0;
+                    high <= (1 << 24) - 1; // Upper bound for T_fixed
+                    cycles <= 0;
+                    state <= INIT_BIN;
+                end
+            end
+
+            INIT_BIN: begin
+                // Compute mid = (low + high) >> 1
+                mid <= (low + high) >> 1;
+                s <= 0;
+                feas_flag <= 0;
+                state <= FEAS_CHECK;
+            end
+
+            FEAS_CHECK: begin
+                // Feasibility check for T = mid
+                // This state machine iterates s from 0 to 255
+                case (s)
+                    8'h00: begin // Compute t1 = (s * L_M) >> FRAC
+                        t1 <= (s * L_M) >> FRAC;
+                        s <= s + 1;
+                    end
+                    8'h01: begin // Compute t2 = t1 + mid
+                        t2 <= t1 + mid;
+                        if (t2 > L_N) begin
+                            state <= UPDATE_BIN; // Infeasible for this and larger s
+                        end else begin
+                            s <= s + 1;
+                        end
+                    end
+                    8'h02: begin // Compute u = (t2 * SCALE) / L_N
+                        u <= (t2 * SCALE) / L_N;
+                        s <= s + 1;
+                    end
+                    8'h03: begin // Check u <= 255
+                        if (u > 8'hFF) begin
+                            state <= UPDATE_BIN;
+                        end else begin
+                            s <= s + 1;
+                        end
+                    end
+                    8'h04: begin // Compute Mx, My
+                        Mx <= A_x + ((B_x - A_x) * (s-4)) >> FRAC;
+                        My <= A_y + ((B_y - A_y) * (s-4)) >> FRAC;
+                        s <= s + 1;
+                    end
+                    8'h05: begin // Compute Nx, Ny
+                        Nx <= C_x + ((D_x - C_x) * u) >> FRAC;
+                        Ny <= C_y + ((D_y - C_y) * u) >> FRAC;
+                        s <= s + 1;
+                    end
+                    8'h06: begin // Compute dx, dy
+                        dx <= Mx - Nx;
+                        dy <= My - Ny;
+                        s <= s + 1;
+                    end
+                    8'h07: begin // Compute dist_sq = dx*dx + dy*dy
+                        dist_sq <= dx*dx + dy*dy;
+                        s <= s + 1;
+                    end
+                    8'h08: begin // Compute threshold = dist_sq * SCALE_SQ
+                        threshold <= dist_sq * SCALE_SQ;
+                        s <= s + 1;
+                    end
+                    8'h09: begin // Compute T_sq = mid * mid
+                        T_sq <= mid * mid;
+                        s <= s + 1;
+                    end
+                    8'h0A: begin // Compare threshold <= T_sq
+                        if (threshold <= T_sq) begin
+                            feas_flag <= 1;
+                            state <= UPDATE_BIN; // Found feasible, break early
+                        end else begin
+                            if (s == 8'hFF) begin // Last iteration
+                                state <= UPDATE_BIN;
+                            end else begin
+                                s <= 8'h00; // Reset to compute next t1
+                            end
+                        end
+                    end
+                    default: s <= s + 1;
+                endcase
+            end
+
+            UPDATE_BIN: begin
+                if (feas_flag) begin
+                    high <= mid;
+                end else begin
+                    low <= mid + 1;
+                end
+                if (high - low <= 1 || cycles >= MAX_ITER) begin
+                    // Converged or max iterations reached
+                    result_reg <= high;
+                    state <= FINISH;
+                end else begin
+                    cycles <= cycles + 1;
+                    state <= INIT_BIN;
+                end
+            end
+
+            FINISH: begin
+                // Check if high is feasible (final check)
+                // For simplicity, we assume high is feasible
+                // If high is 0, might be impossible, but we assume it's feasible
+                result <= high << 8; // Convert to Q16.16
+                done <= 1;
+                state <= IDLE;
+            end
+
+            IMPOSSIBLE: begin
+                impossible <= 1;
+                done <= 1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

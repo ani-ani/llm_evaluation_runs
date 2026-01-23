@@ -1,0 +1,96 @@
+module largest_non_square (
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] arr_0, arr_1, arr_2, arr_3, arr_4, arr_5, arr_6, arr_7,
+    output reg [15:0] result,
+    output reg done
+);
+
+// State definitions
+localparam [2:0] IDLE = 3'd0;
+localparam [2:0] INIT = 3'd1;
+localparam [2:0] CHECK = 3'd2;
+localparam [2:0] UPDATE = 3'd3;
+localparam [2:0] NEXT = 3'd4;
+localparam [2:0] DONE = 3'd5;
+
+reg [2:0] state;
+reg [2:0] current_index;
+reg [15:0] max_val;
+reg [15:0] current_val;
+reg [7:0] y;  // Counter for square root (0-181)
+
+wire [15:0] y_squared = y * y;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 1'b0;
+        result <= 16'd0;
+        max_val <= 16'sd32768;  // Min value for comparison
+        current_index <= 2'd0;
+        current_val <= 16'd0;
+        y <= 8'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) state <= INIT;
+            end
+            INIT: begin
+                max_val <= 16'sd32768;  // Min value for comparison
+                current_index <= 2'd0;
+                current_val <= arr_0;
+                y <= 8'd0;
+                state <= CHECK;
+            end
+            CHECK: begin
+                if (current_val[15]) begin  // Negative numbers are not perfect squares
+                    state <= UPDATE;
+                end else begin
+                    if (y_squared == current_val) begin
+                        state <= NEXT;  // Is a perfect square, skip
+                    end else if (y_squared > current_val) begin
+                        state <= UPDATE;  // Not a perfect square
+                    end else begin
+                        y <= y + 8'd1;  // Continue checking
+                    end
+                end
+            end
+            UPDATE: begin
+                if ($signed(current_val) > $signed(max_val)) begin
+                    max_val <= current_val;
+                end
+                state <= NEXT;
+            end
+            NEXT: begin
+                if (current_index < 2'd7) begin
+                    current_index <= current_index + 2'd1;
+                    case (current_index)
+                        2'd0: current_val <= arr_0;
+                        2'd1: current_val <= arr_1;
+                        2'd2: current_val <= arr_2;
+                        2'd3: current_val <= arr_3;
+                        2'd4: current_val <= arr_4;
+                        2'd5: current_val <= arr_5;
+                        2'd6: current_val <= arr_6;
+                        2'd7: current_val <= arr_7;
+                    endcase
+                    y <= 8'd0;
+                    state <= CHECK;
+                end else begin
+                    state <= DONE;
+                end
+            end
+            DONE: begin
+                result <= max_val;
+                done <= 1'b1;
+                state <= IDLE;
+            end
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

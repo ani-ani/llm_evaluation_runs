@@ -1,0 +1,151 @@
+module max_product (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [7:0] arr_5,
+    input wire [7:0] arr_6,
+    input wire [7:0] arr_7,
+    input wire [3:0] len,
+    output reg [31:0] result,
+    output reg done
+);
+
+    // Internal state
+    reg [3:0] i, j;
+    reg [31:0] current_prod;
+    reg [31:0] mpis [0:7];
+    reg [2:0] state;
+    
+    // State definitions
+    localparam IDLE = 3'b000;
+    localparam INIT = 3'b001;
+    localparam INNER_LOOP = 3'b010;
+    localparam UPDATE_MPI = 3'b011;
+    localparam FIND_MAX = 3'b100;
+    localparam DONE_STATE = 3'b101;
+    
+    // Array storage
+    reg [7:0] arr [0:7];
+    
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            // Reset state
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            i <= 0;
+            j <= 0;
+            current_prod <= 0;
+            // Clear mpis array
+            mpis[0] <= 0;
+            mpis[1] <= 0;
+            mpis[2] <= 0;
+            mpis[3] <= 0;
+            mpis[4] <= 0;
+            mpis[5] <= 0;
+            mpis[6] <= 0;
+            mpis[7] <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start && len > 0) begin
+                        // Store input array
+                        arr[0] <= arr_0;
+                        arr[1] <= arr_1;
+                        arr[2] <= arr_2;
+                        arr[3] <= arr_3;
+                        arr[4] <= arr_4;
+                        arr[5] <= arr_5;
+                        arr[6] <= arr_6;
+                        arr[7] <= arr_7;
+                        i <= 0;
+                        state <= INIT;
+                    end
+                end
+                
+                INIT: begin
+                    // Initialize mpis[i] = arr[i]
+                    if (i < len) begin
+                        mpis[i] <= {24'b0, arr[i]};
+                        i <= i + 1;
+                    end else begin
+                        i <= 0;
+                        j <= 0;
+                        state <= INNER_LOOP;
+                    end
+                end
+                
+                INNER_LOOP: begin
+                    // Outer loop: i from 0 to len-1
+                    if (i < len) begin
+                        // Initialize inner loop
+                        current_prod <= {24'b0, arr[i]};
+                        j <= i + 1;
+                        state <= UPDATE_MPI;
+                    end else begin
+                        // Done with all loops, find max
+                        result <= 0;
+                        i <= 0;
+                        state <= FIND_MAX;
+                    end
+                end
+                
+                UPDATE_MPI: begin
+                    // Inner loop: j from i+1 to len-1
+                    if (j < len) begin
+                        // Check if increasing (arr[j-1] <= arr[j])
+                        if (arr[j-1] <= arr[j]) begin
+                            // Update current_prod and mpis[j]
+                            current_prod <= current_prod * {24'b0, arr[j]};
+                            // Wait one cycle for multiplication
+                            state <= 3'b110;
+                        end else begin
+                            // Not increasing, break inner loop
+                            i <= i + 1;
+                            state <= INNER_LOOP;
+                        end
+                    end else begin
+                        // Inner loop complete
+                        i <= i + 1;
+                        state <= INNER_LOOP;
+                    end
+                end
+                
+                3'b110: begin
+                    // Update mpis[j] and increment j
+                    if (current_prod > mpis[j]) begin
+                        mpis[j] <= current_prod;
+                    end
+                    j <= j + 1;
+                    state <= UPDATE_MPI;
+                end
+                
+                FIND_MAX: begin
+                    // Find max value in mpis array
+                    if (i < len) begin
+                        if (mpis[i] > result) begin
+                            result <= mpis[i];
+                        end
+                        i <= i + 1;
+                    end else begin
+                        state <= DONE_STATE;
+                    end
+                end
+                
+                DONE_STATE: begin
+                    done <= 1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

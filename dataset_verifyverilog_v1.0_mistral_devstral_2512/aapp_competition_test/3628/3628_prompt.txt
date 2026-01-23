@@ -1,0 +1,45 @@
+Module: find_permutations
+Description: Given n (1-8) and a sequence a_1..a_n (values 1..n), finds two permutations pi and sigma of {1..n} such that pi_i + sigma_i ≡ a_i (mod n). If no solution exists, asserts impossible.
+
+Interface:
+- Inputs:
+  - clk: clock, rising edge triggered
+  - rst_n: active-low synchronous reset
+  - start: pulse for one cycle to start computation
+  - n: 4-bit integer, number of elements (1..8)
+  - a_0 to a_7: 8-bit integers, the input sequence (only first n are used)
+- Outputs:
+  - pi_0 to pi_7: 8-bit integers, the first permutation (only first n are valid)
+  - sigma_0 to sigma_7: 8-bit integers, the second permutation (only first n are valid)
+  - done: asserted high for one cycle when computation completes
+  - impossible: asserted high if no solution exists
+
+Timing:
+- Assert start for one clock cycle.
+- The module will search for a solution using backtracking (depth-first search).
+- The search may take up to thousands of cycles, but will complete for n ≤ 8.
+- When done is high, if impossible is low, then pi_0..pi_{n-1} and sigma_0..sigma_{n-1} contain a valid solution.
+- If impossible is high, no solution exists.
+
+Behavior:
+- On reset, all outputs are zero, done and impossible are low.
+- After start, the module stores the inputs and begins search.
+- The search uses a depth-first search over possible assignments of pi values.
+- It maintains used_pi and used_sigma bit masks to ensure permutations.
+- When a complete assignment is found, it outputs the permutations and asserts done.
+- If the search exhausts all possibilities, it asserts impossible and done.
+- The module is combinational after the search; the output is stable when done is high.
+
+Implementation details:
+- The module uses parameters: N=8 (maximum size).
+- It uses internal registers for state, depth, used masks, next candidate, and assignments.
+- It computes c_i = (a_i == 1) ? (n-1) : (a_i - 2) to transform the problem into modular arithmetic on 0..n-1.
+- It computes s_i = (c_i - pi_i) mod n.
+
+Constraints:
+- n must be ≤ 8.
+- a_i must be between 1 and n.
+- The search depth is at most n.
+- The number of clock cycles is bounded by the number of nodes in the search tree, which is at most sum_{k=0}^{n} P(n,k) ≤ 109600 for n=8.
+
+This module demonstrates a hardware implementation of a backtracking search for a permutation problem.

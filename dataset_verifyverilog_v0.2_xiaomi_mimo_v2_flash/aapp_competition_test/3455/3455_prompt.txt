@@ -1,0 +1,61 @@
+Design a sequential Verilog module named 'lane_switch_safety' that computes the maximum safety factor for an autonomous car switching from lane 0 to lane N-1.
+
+The module processes sensor data to find gaps between cars in each lane and determines if a safe lane switch is possible. All calculations use Q16.16 fixed-point format (16 integer bits, 16 fractional bits).
+
+**Parameters:**
+- NUM_LANES = 4 (lanes 0 to 3)
+- MAX_CARS_PER_LANE = 8
+- SENSOR_RANGE = 256
+
+**Inputs:**
+- input clk // clock signal
+- input rst_n // active-low reset
+- input start // start computation
+- input [3:0] total_cars_input // total number of cars in input (max 15)
+- input [1:0] car_lane [0:15] // lane number for each car (0-3)
+- input [7:0] car_length [0:15] // length of each car (1-255)
+- input [17:0] car_distance [0:15] // Q16.16 distance from sensor start to back of car
+
+**Outputs:**
+- output reg [31:0] safety_factor_result // Q16.16 format result
+- output reg result_valid // high when result is valid
+- output reg impossible // high if switch impossible
+- output reg done // high when computation complete
+
+**Latency:** Maximum 1000 clock cycles after start asserted.
+
+**Behavioral Description:**
+1. Reset state: Initialize to IDLE state
+2. On start: Transition to PROCESSING state
+3. Process input data:
+   - Organize cars by lane
+   - For each lane (0 to 3), identify gaps between cars
+   - The ACM car starts in lane 0 at position 10 (Q16.16: 0x000A0000) with length 10
+   - For lane switches, the destination lane must have a gap >= car length
+   - Safety factor for a gap = gap size - car length (gap on both sides)
+   - Track minimum safety factor across all lane switches
+4. If no valid path exists to lane 3, set impossible = 1
+5. Return minimum safety factor across the path
+
+**Gap Detection:**
+- Sort cars by distance in each lane
+- Consider boundaries: 0 and SENSOR_RANGE (256)
+- Gap between back of car i and front of car i+1: distance[i+1] - (distance[i] + length[i])
+- For the ACM car entering lane 0, check gap before first car and after last car
+- Safety factor = min(gap_before, gap_after) - car_length/2
+
+**Fixed-Point Math:**
+- All distances and lengths are scaled by 65536 (2^16)
+- Q16.16 format: value = integer_part * 65536 + fractional_part
+- Example: 2.5 = 0x00028000 (2 * 65536 + 32768)
+- Division by 2: shift right by 1 bit
+
+**State Machine States:**
+- IDLE: Wait for start signal
+- READ_INPUT: Parse and organize car data by lane
+- FIND_GAPS: For each lane, compute available gaps
+- CHECK_SWITCH: Verify if switch between adjacent lanes is possible
+- CALC_SAFETY: Compute safety factors for valid paths
+- DONE: Final result ready
+
+The module must handle the example case: 4 lanes, ACM car at (lane 0, len 10, dist 10), other cars as specified, resulting in safety factor 2.5.

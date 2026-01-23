@@ -1,0 +1,116 @@
+module max_sub_array_repeated (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] arr_0,
+    input wire [15:0] arr_1,
+    input wire [15:0] arr_2,
+    input wire [15:0] arr_3,
+    input wire [15:0] arr_4,
+    input wire [15:0] arr_5,
+    input wire [15:0] arr_6,
+    input wire [15:0] arr_7,
+    input wire [3:0] n,           // Array length (1-8)
+    input wire [3:0] k,           // Repeat count (1-3)
+    output reg [31:0] result,
+    output reg done
+);
+
+    // State machine states
+    localparam IDLE = 2'b00;
+    localparam COMPUTE = 2'b01;
+    localparam FINISHED = 2'b10;
+
+    // Internal registers
+    reg [1:0] state;
+    reg [7:0] iter_count;         // Total iterations: n * k
+    reg [31:0] max_so_far;
+    reg signed [31:0] max_ending_here;
+    reg [3:0] arr_index;
+    reg [2:0] cycle_delay;        // Pipeline delay counter
+
+    // Wire to hold current array element
+    reg signed [15:0] current_val;
+
+    // Array lookup (combinational)
+    always @(*) begin
+        case(arr_index)
+            4'd0: current_val = arr_0;
+            4'd1: current_val = arr_1;
+            4'd2: current_val = arr_2;
+            4'd3: current_val = arr_3;
+            4'd4: current_val = arr_4;
+            4'd5: current_val = arr_5;
+            4'd6: current_val = arr_6;
+            4'd7: current_val = arr_7;
+            default: current_val = 16'sd0;
+        endcase
+    end
+
+    // Main state machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 1'b0;
+            result <= 32'd0;
+            max_so_far <= 32'h80000000;  // -2^31
+            max_ending_here <= 32'sd0;
+            iter_count <= 8'd0;
+            arr_index <= 4'd0;
+            cycle_delay <= 3'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= COMPUTE;
+                        iter_count <= 8'd0;
+                        arr_index <= 4'd0;
+                        max_so_far <= 32'h80000000;
+                        max_ending_here <= 32'sd0;
+                        cycle_delay <= 3'd0;
+                    end
+                end
+
+                COMPUTE: begin
+                    if (cycle_delay == 3'd0) begin
+                        // First cycle of new element
+                        if (iter_count < (n * k)) begin
+                            // Calculate new max_ending_here
+                            if (max_ending_here + current_val > 32'sd0) begin
+                                max_ending_here <= max_ending_here + current_val;
+                            end else begin
+                                max_ending_here <= 32'sd0;
+                            end
+                            cycle_delay <= 3'd1;
+                        end else begin
+                            // All iterations complete
+                            state <= FINISHED;
+                            cycle_delay <= 3'd0;
+                        end
+                    end else if (cycle_delay == 3'd1) begin
+                        // Update max_so_far with pipelined result
+                        if (max_ending_here > max_so_far) begin
+                            max_so_far <= max_ending_here;
+                        end
+                        cycle_delay <= 3'd2;
+                    end else if (cycle_delay == 3'd2) begin
+                        // Prepare for next iteration
+                        iter_count <= iter_count + 1'b1;
+                        arr_index <= (arr_index + 1'b1) % n;
+                        cycle_delay <= 3'd0;
+                    end
+                end
+
+                FINISHED: begin
+                    result <= max_so_far;
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

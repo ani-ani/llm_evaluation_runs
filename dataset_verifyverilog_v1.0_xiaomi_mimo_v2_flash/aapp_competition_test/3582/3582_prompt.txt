@@ -1,0 +1,48 @@
+Module: MentorAssignment
+Purpose: Find optimal mentor assignment for 8 Gagglers forming a single cycle
+
+Interface Specification (testbench will use these exact names):
+
+Inputs:
+  - clk         : Clock signal (rising edge triggered)
+  - rst_n       : Active-low synchronous reset
+  - start       : Start pulse (assert for 1 cycle to begin computation)
+  - a[0:7]      : 8-element input array, each element 3 bits (values 1-8)
+                  Current mentors: a[i] is mentor of Gaggler i+1
+                  Access pattern: a[0], a[1], ... a[7]
+
+Outputs:
+  - b[0:7]      : 8-element output array, each element 3 bits (values 1-8)
+                  New assignment: b[i] is new mentor of Gaggler i+1
+                  Must form a single cycle covering all 8 nodes
+  - done        : Asserted high for 1 cycle when computation completes
+
+Requirements:
+  1. Output b must be a permutation of {1,2,3,4,5,6,7,8} where each value appears exactly once
+  2. The directed graph defined by b must form exactly ONE cycle (strongly connected)
+  3. Among all valid assignments, b must be optimal according to tie-breaking rule:
+     - Compare assignments lexicographically from i=0 to 7
+     - At each index i, preference order is:
+       a) b[i] == a[i] (keep original mentor) - BEST
+       b) b[i] != a[i] but smaller number - MEDIUM
+       c) b[i] != a[i] but larger number - WORST
+     - Once a difference is found, the assignment with the preferred value at that index wins
+
+Implementation Notes:
+  - Use state machine to enumerate candidate assignments
+  - Must check cycle validity: following b from any node must visit all 8 nodes before returning
+  - Custom comparator required for tie-breaking rule
+  - Reset clears all internal state, outputs b=0, done=0
+  - Computation time: ≤1000 clock cycles (for testbench timeout)
+
+Timing:
+  - Assert start for 1 clock cycle
+  - done goes high when best assignment found and stored in b
+  - Sample b on same cycle done is high
+  - Minimum 2 cycles of reset required
+
+Example (Sample Input 2 adapted to 8 nodes):
+  If a = [3,3,1,4,5,6,7,8] (1->3, 2->3, 3->1, others self-mentor)
+  Expected best b = [3,1,2,4,5,6,7,8] (forms cycle 1->3->2->1, others fixed)
+
+This specification assumes n=8 is fixed. For other n, module would need reparameterization.

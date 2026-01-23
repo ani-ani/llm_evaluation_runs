@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'jelly_raid' that implements a simplified pathfinding problem where a child tries to reach a target without being spotted by patrolling masters.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] start_row, start_col // Starting position (0-7)
+input [2:0] target_row, target_col // Target position (0-7)
+input [7:0] map_data [0:7][0:7] // Grid map: 0=walkable, 1=blocked (8x8 grid)
+input [2:0] m1_path [0:3] // Master 1 patrol path (4 positions)
+input [2:0] m2_path [0:3] // Master 2 patrol path (4 positions)
+
+Outputs:
+output reg [7:0] min_turns // Minimum turns to reach target
+output reg possible // 1 if reachable, 0 otherwise
+
+Specifications:
+- The child can move up, down, left, right, or stay still each turn.
+- Masters move one step per turn along their path, reversing at ends (patrol cycle length = 8 steps for 4-node path).
+- Detection: Child is caught if on same row or column as a master with no '#' between them.
+- State Machine: IDLE, COMPUTING, DONE.
+- Latency: Result valid 256 clock cycles after start (max depth for 8x8 grid).
+- Use a simplified BFS approach: explore all reachable non-spotted positions per turn.
+- Output 'possible' is 0 if target not reached within 256 cycles.
+- min_turns stores the answer, capped at 255.
+
+Behavioral Description:
+1. In IDLE state, wait for start signal.
+2. In COMPUTING state, maintain a 'reachable set' of positions for the current turn.
+3. Initialize reachable set with start position.
+4. For each turn t from 0 to 255:
+   - Check if target is in reachable set. If yes, set min_turns = t, transition to DONE.
+   - Calculate master positions for turn t (using modulo arithmetic for patrol reversal).
+   - Prune reachable set: remove any position where child would be spotted by a master.
+   - Generate next_reachable set: for each valid position, add neighbors (up, down, left, right, stay) if walkable.
+   - Update reachable set = next_reachable.
+5. If loop finishes without finding target, possible = 0, transition to DONE.
+
+Note: This is a highly simplified search engine for a small 8x8 grid.

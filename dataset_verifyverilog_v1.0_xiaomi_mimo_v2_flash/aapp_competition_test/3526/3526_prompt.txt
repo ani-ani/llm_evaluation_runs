@@ -1,0 +1,118 @@
+module HintCounter (
+    // Clock and control
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Problem size (1-8 problems, 1-4 hints)
+    input wire [7:0] n,  // Number of problems
+    input wire [7:0] m,  // Number of hints
+    
+    // Hints (4 hints max, packed into individual ports)
+    // Each hint: l (left bound, 1-indexed), r (right bound, 1-indexed), type (0=same, 1=different)
+    input wire [7:0] l_0, l_1, l_2, l_3,
+    input wire [7:0] r_0, r_1, r_2, r_3,
+    input wire type_0, type_1, type_2, type_3,
+    
+    // Output: count of valid sequences modulo 10^9+7
+    output reg [31:0] result,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 2'b00;
+localparam COMPUTE = 2'b01;
+localparam DONE = 2'b10;
+
+// Registers for iteration
+reg [1:0] state;
+reg [7:0] seq;          // Current sequence (0 to 2^n-1)
+reg [2:0] hint_idx;     // Current hint index (0 to m-1)
+reg [31:0] count;       // Valid sequence counter
+reg [7:0] max_seq;      // Maximum sequence value (2^n - 1)
+
+// Helper: Current hint data
+wire [7:0] current_l;
+wire [7:0] current_r;
+wire current_type;
+
+assign current_l = (hint_idx == 0) ? l_0 :
+                   (hint_idx == 1) ? l_1 :
+                   (hint_idx == 2) ? l_2 : l_3;
+assign current_r = (hint_idx == 0) ? r_0 :
+                   (hint_idx == 1) ? r_1 :
+                   (hint_idx == 2) ? r_2 : r_3;
+assign current_type = (hint_idx == 0) ? type_0 :
+                      (hint_idx == 1) ? type_1 :
+                      (hint_idx == 2) ? type_2 : type_3;
+
+// Mask generation: creates bit mask for range [l-1:r-1]
+// Example: l=2, r=4 => mask = 2^4 - 2^1 = 14 (binary: 00001110)
+wire [8:0] full_mask = (9'd1 << current_r) - (9'd1 << (current_l - 1));
+wire [7:0] mask = full_mask[7:0] & ((1 << n) - 1);  // Mask to n bits
+
+// Extract bits from current sequence
+wire [7:0] masked_bits = seq & mask;
+wire bits_all_0 = (masked_bits == 8'b0);
+wire bits_all_1 = (masked_bits == mask);
+
+// Hint validation logic
+wire hint_pass = current_type ? 
+                 ~(bits_all_0 | bits_all_1) :  // different: not all same
+                 (bits_all_0 | bits_all_1);    // same: all same
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        seq <= 8'd0;
+        hint_idx <= 3'd0;
+        count <= 32'd0;
+        result <= 32'd0;
+        done <= 1'b0;
+        max_seq <= 8'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    state <= COMPUTE;
+                    seq <= 8'd0;
+                    hint_idx <= 3'd0;
+                    count <= 32'd0;
+                    done <= 1'b0;
+                    // Compute 2^n - 1 using bit shift
+                    // For n=8: (1<<8)-1 = 0-1 = 255 (correct)
+                    // For n=5: (1<<5)-1 = 32-1 = 31 (correct)
+                    max_seq <= (1 << n) - 1;
+                end
+            end
+            
+            COMPUTE: begin
+                if (seq > max_seq) begin
+                    // All sequences processed
+                    state <= DONE;
+                    result <= count % 32'd1000000007;
+                    done <= 1'b1;
+                end else if (hint_idx >= m) begin
+                    // All hints passed for current sequence
+                    count <= count + 1'b1;
+                    seq <= seq + 1'b1;
+                    hint_idx <= 3'd0;
+                end else if (hint_pass) begin
+                    // Current hint passed, check next
+                    hint_idx <= hint_idx + 1'b1;
+                end else begin
+                    // Current hint failed, skip to next sequence
+                    seq <= seq + 1'b1;
+                    hint_idx <= 3'd0;
+                end
+            end
+            
+            DONE: begin
+                // Wait for reset
+            end
+        endcase
+    end
+end
+
+endmodule

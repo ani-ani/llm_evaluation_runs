@@ -1,0 +1,125 @@
+module text_lowercase_underscore(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] char_array [0:15],  // 16-character fixed-width string
+    input wire [3:0] length,              // Actual string length (1-16)
+    output reg result,
+    output reg done
+);
+
+    // State machine states
+    localparam IDLE = 3'b000;
+    localparam CHECK_START = 3'b001;
+    localparam CHECK_UNDERSCORE = 3'b010;
+    localparam CHECK_END = 3'b011;
+    localparam FINISHED = 3'b100;
+    
+    reg [2:0] state, next_state;
+    reg [3:0] pos;           // Current position in string
+    reg [7:0] current_char;
+    reg valid_sofar;         // Tracks if pattern matched so far
+    
+    // State transition
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            pos <= 4'd0;
+            result <= 1'b0;
+            done <= 1'b0;
+            valid_sofar <= 1'b0;
+        end else begin
+            state <= next_state;
+            
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        pos <= 4'd0;
+                        valid_sofar <= 1'b1;
+                        done <= 1'b0;
+                    end
+                end
+                
+                CHECK_START: begin
+                    // Check first character is lowercase letter
+                    if (length == 4'd0 || current_char < 8'h61 || current_char > 8'h7a) begin
+                        valid_sofar <= 1'b0;
+                    end
+                    pos <= pos + 1;
+                end
+                
+                CHECK_UNDERSCORE: begin
+                    // Check for underscore and at least one more char
+                    if (current_char != 8'h5f || pos >= length) begin
+                        valid_sofar <= 1'b0;
+                    end
+                    pos <= pos + 1;
+                end
+                
+                CHECK_END: begin
+                    // Check remaining chars are lowercase letters
+                    if (current_char < 8'h61 || current_char > 8'h7a) begin
+                        valid_sofar <= 1'b0;
+                    end
+                    pos <= pos + 1;
+                end
+                
+                FINISHED: begin
+                    result <= valid_sofar;
+                    done <= 1'b1;
+                end
+            endcase
+        end
+    end
+    
+    // Current character selection
+    always @(*) begin
+        if (pos < length && pos < 16) begin
+            current_char = char_array[pos];
+        end else begin
+            current_char = 8'h00;
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: begin
+                if (start) next_state = CHECK_START;
+            end
+            
+            CHECK_START: begin
+                // Look for underscore (end of first sequence)
+                if (current_char == 8'h5f && pos > 0 && valid_sofar) begin
+                    next_state = CHECK_UNDERSCORE;
+                end else if (pos >= length) begin
+                    next_state = FINISHED; // No underscore found
+                end
+            end
+            
+            CHECK_UNDERSCORE: begin
+                // Must have at least one char after underscore
+                if (pos >= length) begin
+                    next_state = FINISHED; // String ends at underscore
+                end else begin
+                    next_state = CHECK_END;
+                end
+            end
+            
+            CHECK_END: begin
+                // Process until end of string
+                if (pos >= length) begin
+                    next_state = FINISHED;
+                end
+            end
+            
+            FINISHED: begin
+                next_state = IDLE;
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+
+endmodule

@@ -1,0 +1,47 @@
+Design a sequential Verilog module named 'sorted_list_sum' that implements a filtered and sorted string array processor.
+
+The module processes an array of 8 strings, where each string is exactly 8 characters long (8-bit ASCII values). The operations performed are:
+1. Filter: Remove strings with odd length. In this problem, 'length' is represented by the value of the string (treated as a number). A value is considered 'odd length' if its Least Significant Bit (LSB) is 1.
+2. Sort: Sort the remaining strings (values) in ascending order. The sorting criteria are:
+   - Primary: Length (value) ascending.
+   - Secondary (tie-breaker): Alphabetical order. Since inputs are treated as numbers, this is numerical ascending order.
+   - Note: All inputs are effectively 'numbers' representing ASCII strings. The LSB determines if it's kept.
+
+Interface Specification:
+Inputs:
+  input clk        // Clock signal
+  input rst_n      // Active-low reset
+  input start      // Start computation (high for 1 cycle)
+  input [7:0] strings_in [0:7]  // Array of 8 strings, each 8 bits (characters)
+
+Outputs:
+  output reg [7:0] result [0:7]  // Result array of 8 elements (even-length strings sorted, zeros for removed)
+  output reg done                 // High when computation is complete
+
+Latency: 50 clock cycles after start is asserted.
+
+Behavior:
+The module must first identify valid strings (even length/LSB=0). Then, it must sort these valid strings.
+Since the output array size is dynamic (0 to 8 elements), the specification requires filling the output array with the sorted valid elements at the beginning, and filling the remaining slots with zeros (or don't cares, but testbench expects 0).
+
+Sorting Logic (Simplified Bubble Sort):
+Implement a state machine with states: IDLE, FILTER, SORT_PASS, DONE.
+- IDLE: Wait for start.
+- FILTER: Read 8 inputs. Check LSB. If 0, store in a temporary buffer (max 8 entries).
+- SORT_PASS: Perform bubble sort passes on the temporary buffer. Since we have max 8 entries, we need 7 passes. Each pass compares adjacent elements and swaps if out of order.
+  - Comparison rule: Compare lengths (values). If lengths are equal, compare the numerical values (alphabetical).
+- DONE: Copy sorted results to output register 'result' and assert done.
+
+Implementation Details:
+- Use a 32-bit temporary buffer (8x4 bytes) or simply 8 separate registers for sorting.
+- Bit width: 8 bits for string data.
+- You may unroll the sorting logic or use a loop counter.
+- Output array 'result' is 8 elements of 8 bits each. Unused elements must be set to 8'h00.
+
+Example:
+Input: [8'h01, 8'h02, 8'h03, 8'h04] (values 1, 2, 3, 4)
+Filter: LSBs are 1, 0, 1, 0. Keep 2 and 4.
+Sort: Keep 2, 4.
+Output: [8'h02, 8'h04, 8'h00, 8'h00, ...]
+
+Note: The module handles 8-bit values, not full strings. 'Odd length' check is LSB==1. 'Sort' is numerical ascending.

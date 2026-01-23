@@ -1,0 +1,77 @@
+module remove_odd(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] char_in,          // Input character (ASCII)
+    input wire [3:0] str_len,          // Length of input string (1-16)
+    output reg [7:0] char_out,         // Output character
+    output reg out_valid,              // Output valid signal
+    output reg done                    // Completion signal
+);
+
+// Removes characters at odd positions (1-indexed)
+// Keeps characters at EVEN positions: 2, 4, 6, ...
+// Positions: pos 1 (skip), pos 2 (keep), pos 3 (skip), pos 4 (keep)...
+
+reg [3:0] state;
+reg [3:0] pos_counter;   // Current position (1 to str_len)
+
+// State definitions
+localparam IDLE = 4'd0;
+localparam PROCESS = 4'd1;
+localparam DONE = 4'd2;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        pos_counter <= 4'd0;
+        char_out <= 8'd0;
+        out_valid <= 1'b0;
+        done <= 1'b0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    state <= PROCESS;
+                    pos_counter <= 4'd1;  // Start at position 1
+                    out_valid <= 1'b0;
+                    done <= 1'b0;
+                end
+            end
+            
+            PROCESS: begin
+                if (pos_counter <= str_len) begin
+                    // Check if position is even (keep) or odd (skip)
+                    if (pos_counter[0] == 1'b0) begin  // Even position
+                        char_out <= char_in;
+                        out_valid <= 1'b1;
+                    end else begin  // Odd position
+                        out_valid <= 1'b0;
+                    end
+                    pos_counter <= pos_counter + 1'b1;
+                end else begin
+                    // All characters processed
+                    out_valid <= 1'b0;
+                    done <= 1'b1;
+                    state <= DONE;
+                end
+            end
+            
+            DONE: begin
+                done <= 1'b0;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule
+
+// INTERFACE SPECIFICATION:
+// Inputs: clk, rst_n, start, char_in, str_len
+// Outputs: char_out, out_valid, done
+// Timing: Assert start for 1 cycle, then feed characters one per cycle
+// Process: For each input cycle, position increments; out_valid pulses for even positions
+// Reset: rst_n=0 clears all state; minimum 2 cycles recommended

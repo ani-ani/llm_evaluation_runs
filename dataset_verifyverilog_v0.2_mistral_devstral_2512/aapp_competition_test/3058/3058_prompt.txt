@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'evolution_solver' that solves the parallel evolution problem for a scaled-down constraint set.
+
+**Module Interface:**
+`input clk`: Clock signal.
+`input rst_n`: Active-low reset.
+`input start`: High for one cycle to start the search.
+`input [15:0][15:0][7:0] fossils`: Array of 16 fossil sequences, each max 16 chars. Each char is 8 bits (ASCII).
+`input [4:0] num_fossils`: Number of valid fossils (0-16).
+`input [15:0][7:0] target`: Target sequence, max 16 chars.
+
+`output reg [15:0] result_mask1`: Bitmask for fossils in path 1.
+`output reg [15:0] result_mask2`: Bitmask for fossils in path 2.
+`output reg valid`: High when a valid partition is found.
+`output reg impossible`: High when all possibilities exhausted without finding a solution.
+
+**Behavior:**
+The module should implement a depth-first search (DFS) using a state machine to assign each fossil to one of two paths. Each path must be a valid evolutionary chain. A valid chain means that for any two sequences in the chain, one must be a subsequence of the other, and they must be sortable into an increasing order of length/insertion.
+
+To keep the implementation feasible, we will use a pre-computed adjacency matrix or helper logic to check if sequence A is a subsequence of sequence B. 
+
+**State Machine States:**
+1. `IDLE`: Wait for start.
+2. `INIT`: Prepare initial state (empty paths).
+3. `TRY_ASSIGN`: Try to assign the next fossil to path 1, then path 2.
+4. `CHECK_SUBSEQUENCE`: Verify if the assignment maintains the chain property.
+5. `BACKTRACK`: Undo assignment if invalid.
+6. `SOLUTION`: Found a valid assignment.
+7. `IMPOSSIBLE`: No solution found.
+
+**Logic for `CHECK_SUBSEQUENCE`:**
+A candidate fossil `F` can be added to a path `P` if: For every fossil `P_i` already in `P`, `P_i` is a subsequence of `F` OR `F` is a subsequence of `P_i`. Since we need a chain, the set of fossils in a path must be totally ordered by the subsequence relation. The hardware will check this condition for all fossils currently assigned to the target path.
+
+**Output Format:**
+`result_mask1` and `result_mask2` are bitmasks where bit `i` corresponds to the `i`-th fossil in the input array.
+
+**Latency:**
+The computation can take multiple cycles (up to a bounded limit based on N=16). The `done` signal (renamed to `valid` or `impossible`) will indicate completion.
+
+**Specification Details:**
+- Use 8-bit ASCII characters (A=0x41, C=0x43, M=0x4D).
+- Max string length: 16 characters.
+- Max number of fossils: 16.
+- The module should be synthesizable and rely on finite state machine logic.

@@ -1,0 +1,184 @@
+module soda_bottles(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,              // Number of bottles (1-16)
+    input wire [7:0] a [15:0],       // Soda amounts
+    input wire [7:0] b [15:0],       // Bottle volumes
+    output reg [3:0] k,              // Minimal number of bottles
+    output reg [15:0] t,             // Minimal pouring time
+    output reg done
+);
+
+// State machine states
+localparam IDLE = 3'd0;
+localparam COMPUTE_S = 3'd1;
+localparam SORT = 3'd2;
+localparam DP_INIT = 3'd3;
+localparam DP_UPDATE = 3'd4;
+localparam FIND_RESULT = 3'd5;
+localparam COMPLETE = 3'd6;
+
+reg [2:0] state;
+reg [3:0] i, j, k_idx;
+reg [15:0] S;                      // Total soda
+reg [7:0] a_sorted [15:0];         // Sorted soda amounts
+reg [7:0] b_sorted [15:0];         // Sorted bottle volumes
+reg [15:0] dp_addr;                // Address for DP table
+reg [11:0] dp_write_data;          // Data to write to DP table
+reg [11:0] dp_read_data;           // Data read from DP table
+reg dp_write_en;                   // DP table write enable
+reg [15:0] max_v;                  // Maximum v for DP
+reg [11:0] best_sum;               // Best sum for current k
+reg [3:0] found_k;                 // Found k value
+reg [15:0] found_t;                // Found t value
+
+// DP table: [k][v] where k=0-15, v=0-S (max 4080)
+// Stored as 12-bit values (sum of a_i)
+// Address = {k_idx[3:0], v[11:0]} (v truncated to 12 bits since S<4096)
+reg [11:0] dp_table [0:4095];      // 4K entries, each 12 bits
+
+integer idx;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        k <= 0;
+        t <= 0;
+        S <= 0;
+        dp_write_en <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= COMPUTE_S;
+                    i <= 0;
+                    S <= 0;
+                end
+            end
+            
+            COMPUTE_S: begin
+                // Compute total soda S
+                S <= S + a[i];
+                if (i == n-1) begin
+                    i <= 0;
+                    state <= SORT;
+                end else begin
+                    i <= i + 1;
+                end
+            end
+            
+            SORT: begin
+                // Bubble sort by b_i in descending order
+                if (i < n-1) begin
+                    if (b[i] < b[i+1]) begin
+                        // Swap
+                        a_sorted[i] <= a[i+1];
+                        a_sorted[i+1] <= a[i];
+                        b_sorted[i] <= b[i+1];
+                        b_sorted[i+1] <= b[i];
+                    end else begin
+                        a_sorted[i] <= a[i];
+                        a_sorted[i+1] <= a[i+1];
+                        b_sorted[i] <= b[i];
+                        b_sorted[i+1] <= b[i+1];
+                    end
+                    i <= i + 1;
+                end else begin
+                    i <= 0;
+                    j <= 0;
+                    k_idx <= 0;
+                    state <= DP_INIT;
+                end
+            end
+            
+            DP_INIT: begin
+                // Initialize DP table to -1 (invalid)
+                if (k_idx < 16) begin
+                    if (j <= S) begin
+                        dp_table[{k_idx[3:0], j[11:0]}] <= 12'hFFF; // -1
+                        j <= j + 1;
+                    end else begin
+                        j <= 0;
+                        k_idx <= k_idx + 1;
+                    end
+                end else begin
+                    // Set dp[0][0] = 0
+                    dp_table[16'd0] <= 12'd0;
+                    i <= 0;  // bottle index
+                    k_idx <= 0;  // k index for DP update
+                    j <= S;  // v index (start from S)
+                    state <= DP_UPDATE;
+                end
+            end
+            
+            DP_UPDATE: begin
+                // Update DP for each bottle
+                if (i < n) begin
+                    // Update in reverse order for k and v
+                    if (k_idx > 0) begin
+                        if (j > 0) begin
+                            // Check if dp[k-1][v] is valid
+                            dp_read_data <= dp_table[{k_idx[3:0] - 1'd1, j[11:0]}];
+                            if (dp_table[{k_idx[3:0] - 1'd1, j[11:0]}] != 12'hFFF) begin
+                                // Compute new v = min(S, j + b_sorted[i])
+                                max_v <= (j + b_sorted[i] > S) ? S : (j + b_sorted[i]);
+                                // Read current dp[k][max_v] for comparison
+                                dp_read_data <= dp_table[{k_idx[3:0], max_v[11:0]}];
+                                // Write if better
+                                if (dp_table[{k_idx[3:0], max_v[11:0]}] < (dp_table[{k_idx[3:0] - 1'd1, j[11:0]}] + a_sorted[i])) begin
+                                    dp_table[{k_idx[3:0], max_v[11:0]}] <= dp_table[{k_idx[3:0] - 1'd1, j[11:0]}] + a_sorted[i];
+                                end
+                            end
+                            j <= j - 1;
+                        end else begin
+                            j <= S;
+                            k_idx <= k_idx - 1;
+                        end
+                    end else begin
+                        // Done for this bottle
+                        i <= i + 1;
+                        k_idx <= 15;  // Start from high k
+                        j <= S;
+                    end
+                end else begin
+                    // Done with all bottles
+                    state <= FIND_RESULT;
+                    k_idx <= 1;  // Start searching from k=1
+                    best_sum <= 0;
+                    found_k <= 0;
+                end
+            end
+            
+            FIND_RESULT: begin
+                // Find minimal k such that dp[k][S] is valid
+                if (k_idx <= n) begin
+                    dp_read_data <= dp_table[{k_idx[3:0], S[11:0]}];
+                    if (dp_table[{k_idx[3:0], S[11:0]}] != 12'hFFF) begin
+                        found_k <= k_idx;
+                        found_t <= S - dp_table[{k_idx[3:0], S[11:0]}];
+                        state <= COMPLETE;
+                    end else begin
+                        k_idx <= k_idx + 1;
+                    end
+                end else begin
+                    // Should not happen, but fallback
+                    found_k <= n;
+                    found_t <= 0;
+                    state <= COMPLETE;
+                end
+            end
+            
+            COMPLETE: begin
+                k <= found_k;
+                t <= found_t;
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

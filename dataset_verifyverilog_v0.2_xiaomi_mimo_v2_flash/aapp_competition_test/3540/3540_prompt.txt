@@ -1,0 +1,152 @@
+Design a sequential Verilog module named 'puzzle_solver' that finds the minimum number of moves to solve a 4x4 toroidal sliding puzzle.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] grid_initial // Initial grid state. 4x4 cells, 2 bits per cell (00=R, 01=G, 10=B, 11=Y). Flattened row-major.
+
+Outputs:
+output reg [3:0] result // Minimum number of moves (0-12)
+output reg done // High when computation complete
+
+Specifications:
+1. The goal state is defined as:
+   Row 0: R R R R (2'b00)
+   Row 1: G G G G (2'b01)
+   Row 2: B B B B (2'b10)
+   Row 3: Y Y Y Y (2'b11)
+   Encoded as 32'h00_01_02_03_00_01_02_03_00_01_02_03_00_01_02_03 (assuming column-major or specific mapping, let's use row-major for the 32-bit vector: 4 rows, each 8 bits? No, 4 colors = 2 bits, 4x4=16 cells, 32 bits. Let's standardize the encoding: bits [31:0]. Cell (r,c) is at {r,c} index. Let's use: bits [31:30] = cell (0,0), [29:28] = (0,1) ... [1:0] = (3,3). Or maybe easier to shift. Let's use:
+  bits [31:0] = {cell(0,0), cell(0,1), cell(0,2), cell(0,3), cell(1,0)... cell(3,3)}. Yes.
+  Goal state: 32'h00_00_00_00_01_01_01_01_10_10_10_10_11_11_11_11 (Wait, 2 bits per cell).
+  Let's define goal state constant: 32'h0000_0101_0202_0303_0000_0101_0202_0303 is wrong width. 
+  16 cells * 2 bits = 32 bits. 
+  Goal: 
+  Row 0: 00 00 00 00 -> 8'b00000000
+  Row 1: 01 01 01 01 -> 8'b01010101
+  Row 2: 10 10 10 10 -> 8'b10101010
+  Row 3: 11 11 11 11 -> 8'b11111111
+  So Goal = 32'hFF_AA_55_00? Let's just define it clearly in the code.
+
+2. Algorithm: BFS (Breadth-First Search).
+   - Use a queue to store states. Max states for depth 12 is large, but we can bound the queue size (e.g., 2048 entries) to fit in FPGA block RAM.
+   - Use a visited array (RAM) to avoid cycles. Since we only need to store reached states, we can use a hash map or simply a large array of 32-bit keys and visited flags. A 16kbit Block RAM can store 512 entries of 32-bit key + valid bit. This is sufficient for small depth.
+   - Move generation: For any state, generate 8 neighbors (Row Left, Row Right, Col Up, Col Down for 4 rows/cols). Actually, it's 4 moves types: Row Shift Left/Right (applies to one specific row), Col Shift Up/Down (applies to one specific column). Wait, the problem says "move one row left or right, or one column up or down". This implies we can shift a specific row or column. To solve efficiently, we need to shift the row that has the wrong colors.
+   - BFS State: 32-bit grid + 4-bit depth. 
+   - We need to implement this with a state machine.
+   - Steps:
+     IDLE: Wait for start.
+     INIT: Write initial state to queue.
+     PROCESS: Pop state from queue. Check if goal. If yes, output depth. If depth >= 12, discard. Else, generate 8 neighbors (4 rows * 2 directions + 4 cols * 2 directions). For each neighbor, check if visited. If not, mark visited and push to queue.
+   - Hardware constraints: We need a RAM for Queue and a RAM for Visited list.
+   - Since we can't use dynamic memory, we will use LUTRAM/BlockRAM.
+   - Queue size: 64 entries (sufficient for depth 12 given branching factor 8, but prune visited).
+   - Visited size: 512 entries (32-bit key + 1 valid bit). 32*512 = 16kbit.
+
+3. Shift Logic:
+   - Row Left: `row_data = {row_data[13:0], row_data[15:14]}` (for 16-bit row)
+   - Row Right: `row_data = {row_data[1:0], row_data[15:2]}`
+   - Col Up/Down: More complex. We need to extract the column, rotate, and insert back.
+   - To save logic, we can just hardcode the bit swaps for all 8 moves on the 32-bit vector.
+   - Example: Shift Row 0 Left. Bits [31:30] -> [29:28], ..., [2:1] -> [31:30].
+   - This can be done with a 32-bit bitwise rotation if we view the rows as contiguous.
+   - Let's define row shifts:
+     R0: bits [31:16] -> rotate left by 2 bits.
+     R1: bits [15:8] -> rotate left by 2 bits.
+     R2: bits [7:0] -> rotate left by 2 bits.
+     Wait, 4 rows of 4 cells = 16 cells. 16 * 2 = 32 bits. 
+     Let's group by 4 cells (8 bits) per row. 
+     Row 0: [31:24], Row 1: [23:16], Row 2: [15:8], Row 3: [7:0].
+     Shift Row i Left: Rotate left by 2 bits in that byte.
+     Shift Row i Right: Rotate right by 2 bits in that byte.
+
+   - Column shifts: This is harder. Col 0: bits {31:30, 23:22, 15:14, 7:6}. 
+     Col 0 Up: Move 31:30 to 23:22, 23:22 to 15:14, 15:14 to 7:6, 7:6 to 31:30.
+     We can implement column shifts by rotating the entire 32-bit word with specific bit masks.
+     Let's define a helper function in hardware logic to extract/insert columns.
+     Given the small size, we can just hardcode the 8 move operations.
+
+4. State Machine State Definition:
+   - S_IDLE
+   - S_RESET_VISITED // Clear visited RAM (takes cycles)
+   - S_ENQUEUE_START // Push initial state
+   - S_POP // Pop from queue
+   - S_CHECK_GOAL
+   - S_GEN_MOVES // Generate 8 neighbors, check visited, push
+   - S_DONE
+
+5. Module Interface:
+   - Need RAM ports for Queue (Read/Write) and Visited (Read/Write).
+   - Use BlockRAM inference style (array of registers).
+
+6. Fixed Point: Not applicable (integer colors).
+
+7. Latency: 
+   - BFS on 4x4 torus is fast. < 1000 cycles.
+   - Result valid after 'done' goes high.
+
+8. Testbench: 
+   - Map 'R','G','B','Y' to 0,1,2,3.
+   - Run test cases.
+   - Check result.
+
+Let's refine the module spec.
+
+Module: puzzle_solver
+Inputs: clk, rst_n, start, grid_initial [31:0]
+Outputs: result [3:0], done
+
+Internal:
+- State reg [3:0]: IDLE, RESET, ENQUEUE_INIT, POP, CHECK, GEN, VERIFY, PUSH, FINISH
+- Queue RAM: 64 entries of 36 bits (32 data + 4 depth). Address 6 bits.
+- Visited RAM: 512 entries of 33 bits (32 key + 1 valid). Address 9 bits.
+- Front, Rear pointers for queue.
+- Visited hit logic.
+
+Logic Detail:
+- Move Generation: 
+  For a popped state S, generate 8 neighbors.
+  Let's stick to shifting rows and columns. 
+  Rows: R0, R1, R2, R3. Left/Right.
+  Cols: C0, C1, C2, C3. Up/Down.
+  
+  Row Left (Row 0): 
+    temp = S[31:24]; 
+    result[31:24] = {temp[29:24], temp[31:30]};
+  Row Right (Row 0):
+    result[31:24] = {temp[1:0], temp[31:2]};
+  
+  Col Up (Col 0):
+    Extract bits: [31, 23, 15, 7].
+    Shift: [23, 15, 7, 31].
+    Reconstruct.
+    We can do this via bit manipulation.
+
+Actually, to make it performant in hardware, we should use a single 'current_state' register and a 'next_state' generator that computes all 8 moves in parallel or sequentially. Given the small size, sequential generation in 8 cycles is fine.
+
+Refined State Machine:
+- IDLE
+- RESET_VISITED: Loop 0 to 511, clear valid bit.
+- INIT_QUEUE: Write initial state to queue[0], set Front=0, Rear=1.
+- MAIN_LOOP: While Front < Rear.
+  - POP: Read queue[Front]. Increment Front. Store popped state/depth.
+  - GOAL_CHECK: Compare popped state with goal. If match, goto FINISH.
+  - IF depth == 12: continue (discard).
+  - GENERATE_MOVES: Iterate 8 times (i=0 to 7).
+    - Compute next_state_bits based on move i.
+    - Visited Lookup: Compute hash/index (simple modulo 512). Read RAM.
+    - If not visited: Set visited, Enqueue (write to queue[Rear], Rear++).
+  - If Rear >= 64 (queue full), handle error or stop (though problem guarantees solvable < 13).
+- FINISH: Set result = popped_depth, done=1.
+
+Visisted RAM Hashing:
+Since we have 32-bit states, a direct mapped cache of 512 entries is efficient. 
+Index = state[8:0] XOR state[17:9] XOR state[26:18] (simple mixing).
+Or just state[8:0] (least significant bits). 
+Collisions will happen but for this problem scale, it's acceptable or we can do linear probing if we had more time, but for 12 depth, we just need to avoid immediate cycles. Direct map is best for hardware speed.
+
+Edge Cases:
+- Queue full: Since guaranteed solution < 13, and we prune visited, queue size 64 should be enough.
+- Visited collision: Might mark a state visited that is actually different (collision). This can prevent finding a solution if a valid path goes through a collision. However, 512 entries for small depth usually works. To be safer, we can use 1024 entries (9kbit) or 2048. Let's use 1024 (10 bits address). 
+
+Let's write the detailed spec.

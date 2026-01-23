@@ -1,0 +1,107 @@
+module DanceComplexity(
+    input clk,
+    input rst_n,
+    input start,
+    input [99:0] x_value,  // Integer value of the binary string (stored in least significant n bits)
+    input [6:0] n,          // Length of the string (1-100)
+    output reg [31:0] ans,
+    output reg done
+);
+    // Parameters
+    parameter MOD = 1000000007;
+    parameter IDLE = 3'd0;
+    parameter COMPUTE_X_MOD = 3'd1;
+    parameter GET_POWER = 3'd2;
+    parameter MULTIPLY_ACCUM = 3'd3;
+    parameter DONE = 3'd4;
+    
+    // State register
+    reg [2:0] state;
+    
+    // Working registers
+    reg [29:0] x_mod_reg;    // x mod MOD
+    reg [29:0] power;         // 2^(n-1) mod MOD
+    reg [29:0] remainder;     // Result accumulator
+    reg [29:0] temp;          // Temporary for multiplication
+    
+    // Counters
+    reg [6:0] i;             // Counter for x_mod computation (99 to 0)
+    reg [4:0] j;             // Counter for multiplication (0 to 29)
+    
+    // Precomputed power table: 2^(0) to 2^(99) mod MOD
+    reg [29:0] power_table [0:99];
+    
+    // Initialize power_table
+    integer idx;
+    initial begin
+        for (idx = 0; idx < 100; idx = idx + 1) begin
+            power_table[idx] = (1 << idx) % MOD;
+        end
+    end
+    
+    // State machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            ans <= 0;
+            x_mod_reg <= 0;
+            power <= 0;
+            remainder <= 0;
+            temp <= 0;
+            i <= 0;
+            j <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        state <= COMPUTE_X_MOD;
+                        x_mod_reg <= 0;
+                        i <= 99;  // Start from MSB
+                    end
+                end
+                
+                COMPUTE_X_MOD: begin
+                    // x_mod_reg = (x_mod_reg * 2 + x_value[i]) % MOD
+                    x_mod_reg <= (x_mod_reg + x_mod_reg + x_value[i]) % MOD;
+                    i <= i - 1;
+                    if (i == 0) begin
+                        state <= GET_POWER;
+                    end
+                end
+                
+                GET_POWER: begin
+                    if (n > 0) begin
+                        power <= power_table[n-1];
+                    end else begin
+                        power <= 0;  // Shouldn't happen per problem constraints
+                    end
+                    state <= MULTIPLY_ACCUM;
+                    j <= 0;
+                    remainder <= 0;
+                    temp <= x_mod_reg;
+                end
+                
+                MULTIPLY_ACCUM: begin
+                    if (power[j]) begin
+                        remainder <= (remainder + temp) % MOD;
+                    end
+                    temp <= (temp + temp) % MOD;  // temp = temp * 2 mod MOD
+                    j <= j + 1;
+                    if (j == 29) begin
+                        state <= DONE;
+                    end
+                end
+                
+                DONE: begin
+                    ans <= remainder;
+                    done <= 1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+endmodule

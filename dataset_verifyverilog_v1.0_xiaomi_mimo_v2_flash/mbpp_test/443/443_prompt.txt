@@ -1,0 +1,77 @@
+module largest_neg(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] arr_0,
+    input [7:0] arr_1,
+    input [7:0] arr_2,
+    input [7:0] arr_3,
+    input [7:0] arr_4,
+    input [7:0] arr_5,
+    output reg [7:0] result,
+    output reg done
+);
+
+    // State machine states
+    localparam IDLE = 2'b00;
+    localparam COMPUTE = 2'b01;
+    localparam FINISH = 2'b10;
+    
+    reg [1:0] state;
+    reg [2:0] index;
+    reg signed [7:0] current_max;
+    reg signed [7:0] arr_reg [0:5];
+    
+    integer i;
+    
+    // Load input registers on start
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            state <= IDLE;
+            done <= 0;
+            result <= 8'sd0;
+            index <= 3'd0;
+            current_max <= 8'sd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        // Load inputs into registers
+                        arr_reg[0] <= arr_0;
+                        arr_reg[1] <= arr_1;
+                        arr_reg[2] <= arr_2;
+                        arr_reg[3] <= arr_3;
+                        arr_reg[4] <= arr_4;
+                        arr_reg[5] <= arr_5;
+                        // Initialize with first element
+                        current_max <= $signed(arr_0);
+                        index <= 3'd1;
+                        state <= COMPUTE;
+                    end
+                end
+                
+                COMPUTE: begin
+                    if (index < 6) begin
+                        // Compare: since we want largest negative, 
+                        // we're actually finding minimum value
+                        if ($signed(arr_reg[index]) < current_max) begin
+                            current_max <= $signed(arr_reg[index]);
+                        end
+                        index <= index + 1'b1;
+                    end else begin
+                        state <= FINISH;
+                    end
+                end
+                
+                FINISH: begin
+                    result <= current_max;
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule

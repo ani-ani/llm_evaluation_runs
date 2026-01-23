@@ -1,0 +1,54 @@
+Design a sequential Verilog module named `make_palindrome` that computes the shortest palindrome beginning with the input string.
+
+**Interface Specification:**
+Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low reset
+  - `start`: High for one cycle to reset and start the sequence.
+  - `char_in`: 8-bit input character (ASCII).
+  - `valid_in`: High when `char_in` is valid.
+  - `finish_in`: High when input string is complete.
+
+Outputs:
+  - `char_out`: 8-bit output character.
+  - `valid_out`: High when `char_out` is valid.
+  - `done`: High for one cycle when the entire result is output.
+
+**Behavioral Description:**
+
+**Constraints:**
+- Maximum string length: 8 characters.
+- All characters are 8-bit ASCII.
+- The module must handle strings of length 0 to 8.
+
+**Algorithm Logic:**
+1.  **Input Phase (STATE_INPUT):**
+    -   On `start`, reset internal buffer and length counter.
+    -   While `valid_in` is high, store `char_in` into an internal buffer `buffer[0:7]` at the current `length` index. Increment `length`.
+    -   Transition to `STATE_PROCESS` when `finish_in` is high (or when `length` reaches 8).
+
+2.  **Processing Phase (STATE_PROCESS):**
+    -   Determine the shortest palindrome.
+    -   Check suffixes starting from the end of the string.
+    -   Iterate `i` from `length` down to 1:
+        -   Check if the substring `buffer[length-i : length-1]` is a palindrome.
+        -   If a palindrome is found, the characters to append are `buffer[0 : length-i-1]` reversed.
+    -   If `length` is 0, transition immediately to OUTPUT.
+    -   Store the number of characters to append and the start index in the buffer for the output phase.
+    -   Transition to `STATE_OUTPUT`.
+
+3.  **Output Phase (STATE_OUTPUT):**
+    -   First, stream out the original string from `buffer[0]` to `buffer[length-1]`.
+    -   Then, stream out the suffix to append (reversed).
+    -   After the last character is output, transition to `STATE_DONE`.
+
+4.  **Done Phase (STATE_DONE):**
+    -   Assert `done` signal for one cycle.
+    -   Return to `STATE_IDLE`.
+
+**State Machine States:**
+- `STATE_IDLE`: Waiting for `start`.
+- `STATE_INPUT`: Buffering input characters.
+- `STATE_PROCESS`: Computing palindrome suffix.
+- `STATE_OUTPUT`: Streaming result.
+- `STATE_DONE`: Signaling completion.

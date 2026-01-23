@@ -1,0 +1,125 @@
+module move_num #(
+    parameter MAX_LEN = 16,      // Maximum string length
+    parameter CHAR_WIDTH = 8     // ASCII character width
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Input string: array of characters
+    input wire [CHAR_WIDTH-1:0] str_in [0:MAX_LEN-1],
+    input wire [4:0] len_in,     // Actual length of input string (1-16)
+    
+    // Output string: array of characters
+    output reg [CHAR_WIDTH-1:0] str_out [0:MAX_LEN-1],
+    output reg [4:0] len_out,    // Length of output string
+    output reg done              // Completion signal
+);
+
+    // State machine states
+    typedef enum logic [1:0] {
+        IDLE = 2'b00,
+        PROCESS = 2'b01,
+        FINISH = 2'b10
+    } state_t;
+    
+    state_t current_state, next_state;
+    
+    // Internal counters and buffers
+    reg [4:0] read_idx;          // Current input position
+    reg [4:0] write_letters_idx; // Next position for letter
+    reg [4:0] write_digits_idx;  // Next position for digit (starts from end)
+    
+    // Character classification
+    wire is_digit;
+    assign is_digit = (str_in[read_idx] >= 8'h30) && (str_in[read_idx] <= 8'h39);
+    
+    // Temporary storage for digits (written in reverse order, then reversed)
+    reg [CHAR_WIDTH-1:0] digit_buffer [0:MAX_LEN-1];
+    reg [4:0] digit_count;
+    
+    // Output buffer
+    reg [CHAR_WIDTH-1:0] temp_out [0:MAX_LEN-1];
+    reg [4:0] temp_len;
+    
+    integer i;
+    
+    // State transition
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            current_state <= IDLE;
+        end else begin
+            current_state <= next_state;
+        end
+    end
+    
+    // Next state logic and datapath
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            read_idx <= 0;
+            write_letters_idx <= 0;
+            digit_count <= 0;
+            done <= 0;
+            len_out <= 0;
+            // Clear buffers
+            for (i = 0; i < MAX_LEN; i = i + 1) begin
+                temp_out[i] <= 0;
+                digit_buffer[i] <= 0;
+            end
+        end else begin
+            case (current_state)
+                IDLE: begin
+                    done <= 0;
+                    if (start && len_in > 0) begin
+                        read_idx <= 0;
+                        write_letters_idx <= 0;
+                        digit_count <= 0;
+                        next_state <= PROCESS;
+                    end else begin
+                        next_state <= IDLE;
+                    end
+                end
+                
+                PROCESS: begin
+                    if (read_idx < len_in) begin
+                        // Process current character
+                        if (is_digit) begin
+                            // Store digit in buffer (temporary order)
+                            digit_buffer[digit_count] <= str_in[read_idx];
+                            digit_count <= digit_count + 1;
+                        end else begin
+                            // Write letter immediately
+                            temp_out[write_letters_idx] <= str_in[read_idx];
+                            write_letters_idx <= write_letters_idx + 1;
+                        end
+                        read_idx <= read_idx + 1;
+                        next_state <= PROCESS;
+                    end else begin
+                        // Done reading, now write digits in reverse order
+                        // Build final output by reversing digit buffer
+                        for (i = 0; i < digit_count; i = i + 1) begin
+                            temp_out[write_letters_idx + i] <= digit_buffer[digit_count - 1 - i];
+                        end
+                        temp_len <= write_letters_idx + digit_count;
+                        next_state <= FINISH;
+                    end
+                end
+                
+                FINISH: begin
+                    // Copy to output
+                    for (i = 0; i < MAX_LEN; i = i + 1) begin
+                        str_out[i] <= temp_out[i];
+                    end
+                    len_out <= temp_len;
+                    done <= 1;
+                    next_state <= IDLE;
+                end
+                
+                default: begin
+                    next_state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule

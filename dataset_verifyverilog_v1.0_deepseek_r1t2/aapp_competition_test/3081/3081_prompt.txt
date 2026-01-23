@@ -1,0 +1,49 @@
+MODULE SPECIFICATION:
+
+Problem: Airline fleet minimization using bipartite matching between flights
+
+SCALED PARAMETERS:
+- n = 4 (airports)
+- m = 4 (flights) 
+- Data width = 32 bits for time values
+- Result width = 8 bits (max planes needed)
+
+INTERFACE:
+  Inputs:
+    - clk: Clock signal
+    - rst_n: Active-low reset
+    - start: Start computation (1 cycle pulse)
+    - data_in[31:0]: Input data stream (inspection times, flight times, flights)
+    - data_valid: Input data valid flag
+    - data_type[1:0]: Type of current data (00=inspection, 01=flight_time, 10=flight_data)
+  
+  Outputs:
+    - result[7:0]: Minimum number of planes needed
+    - done: Computation complete flag
+    - error: Input error flag (e.g., invalid data)
+
+INTERNAL ARCHITECTURE:
+1. Input Parser: Sequentially stores inspection times (4), flight times (16), flights (12)
+2. Flight Sorter: Bubble sort by departure time (4 flights)
+3. Edge Calculator: Computes bipartite graph edges between sorted flights
+4. Matching Engine: Brute-force maximum matching for m=4
+5. Result Calculator: 4 - max_matching
+
+TIMING:
+- Reset: 2 clock cycles
+- Input loading: 32 cycles (4+16+12 data points)
+- Sorting: ~12 cycles
+- Edge calculation: 16 cycles (4x4 matrix)
+- Matching: 625 cycles (5^4 possibilities)
+- Total: ~670 cycles max
+
+DATA FORMATTING:
+- Inspection times: 32-bit integers (airport 0-3)
+- Flight times: 32-bit integers, row-major order (from_airport * 4 + to_airport)
+- Flight data: 3 numbers per flight (s, f, t) where s,f are 0-3 after subtracting 1
+
+STATE MACHINE STATES:
+IDLE, LOAD, SORT, BUILD_EDGES, MATCHING, DONE
+
+NOTE: The module expects input data in specific order without n,m values.
+Testbench must skip first two numbers of input.

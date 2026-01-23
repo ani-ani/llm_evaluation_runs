@@ -1,0 +1,77 @@
+Design a sequential Verilog module named 'house_purchase_counter' that counts numbers in a range that satisfy: no digit 4, and count of {6,8} equals count of other digits (excluding 0-3,5,7,9). For hardware feasibility, we scale the problem to 8-digit numbers (max 255) using digit DP approach.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] L // lower bound (8-bit, scaled from original)
+input [7:0] R // upper bound (8-bit, scaled from original)
+
+Outputs:
+output reg [31:0] result // count of valid numbers modulo 10^9+7
+output reg done // high when computation complete
+
+Module Specification:
+- The module implements a digit DP (dynamic programming) state machine
+- It counts numbers from L to R inclusive that satisfy:
+  * No digit '4' appears
+  * Number of digits in {6,8} equals number of digits in {0,1,2,3,5,7,9}
+- Since L and R are 8-bit values (0-255), the DP tracks:
+  * Position (0-3 digits, since 255 needs at most 3 digits)
+  * Count of lucky digits (6,8)
+  * Count of non-lucky digits
+  * Tight constraint for upper bound
+- States: IDLE, START_COMPUTE, PROCESS_DIGITS, DONE
+- Latency: Approximately 256 clock cycles worst case
+- Use a lookup table or iterative computation to count valid numbers
+- The DP state includes: current digit position, lucky_count, unlucky_count, tight_flag
+- Lucky digits: 6 and 8
+- Non-lucky digits (allowed): 0,1,2,3,5,7,9 (note: 4 is forbidden)
+- Valid condition: lucky_count == unlucky_count at the end
+- Handle edge case: leading zeros (should not count as digits)
+- Output result modulo 1000000007
+
+Behavioral description:
+1. When start goes high, reset all state variables
+2. Convert L and R to digit arrays (max 3 digits each)
+3. Run digit DP for range [L, R] = count(R) - count(L-1)
+4. For count(N): iterate through all numbers from 0 to N, check validity
+5. Use state machine to process digits MSB to LSB
+6. Track position, lucky_count, unlucky_count, and whether current prefix matches upper bound
+7. At each position, try all possible digits (0-9 except 4)
+8. Update counts and recurse/continue
+9. When all positions processed, increment result if lucky_count == unlucky_count
+10. For large N, use memoization or iterative DP
+11. Since max 255, we can actually brute-force in hardware with 256 iterations
+12. Alternative: Use parallel checking of all 256 values
+
+Implementation approach:
+- Use a counter from 0 to 255
+- For each value, check if it's in [L,R] and valid
+- Valid check: no '4', and lucky_count == digit_count - lucky_count
+- So: lucky_count * 2 == digit_count, or lucky_count == digit_count/2
+- But digit_count includes leading zeros? No, house numbers have no leading zeros
+- For 0: count=1, lucky=0, not valid
+- For 8: count=1, lucky=1, not valid (1 != 0.5)
+- For 68: count=2, lucky=2, not valid (2 != 1)
+- For 67: count=2, lucky=1, valid (1 == 1)
+- For 686: count=3, lucky=3, not valid
+- For 678: count=3, lucky=2, not valid
+- For 1067: count=4, lucky=2, valid
+
+Simplified for 8-bit:
+- Check numbers 0-255
+- Convert to decimal digits
+- Check no '4'
+- Check lucky_count == non_lucky_count
+- Count those in range [L,R]
+
+State machine:
+- IDLE: wait for start
+- INIT: initialize counter, result
+- CHECK: check if current number in [L,R] and valid
+- INCREMENT: increment counter
+- DONE: output result
+
+Timing: 256 cycles max
+Result stored in 32-bit register for modulo 10^9+7

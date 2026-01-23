@@ -1,0 +1,228 @@
+module route_division (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] N,          // Number of customers (2 < N <= 8)
+    input [9:0] x_arr [0:7], // X coordinates of customers
+    input [9:0] y_arr [0:7], // Y coordinates of customers
+    output reg [10:0] result, // The minimized maximum delivery time
+    output reg done          // Pulsed high when computation is complete
+);
+
+parameter MAX_N = 8;
+parameter COORD_WIDTH = 10;
+parameter DIST_WIDTH = 11;
+
+// State encoding
+localparam IDLE = 4'b0000;
+localparam LOAD_INPUTS = 4'b0001;
+localparam INIT_VARS = 4'b0010;
+localparam LOOP_START = 4'b0011;
+localparam PROCESS_PAIR = 4'b0100;
+localparam INC_J = 4'b0101;
+localparam CHECK_J = 4'b0110;
+localparam INC_I = 4'b0111;
+localparam SET_J = 4'b1000;
+localparam CHECK_I = 4'b1001;
+localparam COMP_DONE = 4'b1010;
+localparam UPDATE_BEST = 4'b1011;
+localparam INCR_PARTITION = 4'b1100;
+localparam CHECK_DONE = 4'b1101;
+localparam DONE_STATE = 4'b1110;
+
+reg [3:0] current_state, next_state;
+
+// Internal registers
+reg [3:0] N_reg;
+reg [10:0] best_result;
+reg [MAX_N-1:0] partition_counter;
+reg [2:0] i;  // index for points
+reg [2:0] j;  // index for points
+reg [10:0] max_A;
+reg [10:0] max_B;
+reg [10:0] max_diam;
+reg [MAX_N-1:0] max_partition;
+
+// Combinational signals for compute
+wire [9:0] x_i = x_arr[i];
+wire [9:0] x_j = x_arr[j];
+wire [9:0] y_i = y_arr[i];
+wire [9:0] y_j = y_arr[j];
+
+wire group_i = partition_counter[i];
+wire group_j = partition_counter[j];
+
+wire [9:0] diff_x = (x_i > x_j) ? (x_i - x_j) : (x_j - x_i);
+wire [9:0] diff_y = (y_i > y_j) ? (y_i - y_j) : (y_j - y_i);
+wire [10:0] dist = diff_x + diff_y;
+
+wire [10:0] new_max_A = (group_i == 0 && group_j == 0) ? ((max_A > dist) ? max_A : dist) : max_A;
+wire [10:0] new_max_B = (group_i == 1 && group_j == 1) ? ((max_B > dist) ? max_B : dist) : max_B;
+
+// State transition and output logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        current_state <= IDLE;
+        done <= 0;
+        result <= 0;
+        best_result <= 0;
+        partition_counter <= 0;
+        i <= 0;
+        j <= 0;
+        max_A <= 0;
+        max_B <= 0;
+        max_diam <= 0;
+        max_partition <= 0;
+        N_reg <= 0;
+    end else begin
+        current_state <= next_state;
+
+        case (current_state)
+            IDLE: begin
+                done <= 0;
+            end
+
+            LOAD_INPUTS: begin
+                N_reg <= N;
+                max_partition <= (1 << N) - 1;
+            end
+
+            INIT_VARS: begin
+                best_result <= 11'h7FF;
+                partition_counter <= 0;
+            end
+
+            LOOP_START: begin
+                i <= 0;
+                j <= 1;
+                max_A <= 0;
+                max_B <= 0;
+            end
+
+            PROCESS_PAIR: begin
+                max_A <= new_max_A;
+                max_B <= new_max_B;
+            end
+
+            INC_J: begin
+                j <= j + 1;
+            end
+
+            INC_I: begin
+                i <= i + 1;
+            end
+
+            SET_J: begin
+                j <= i + 1;
+            end
+
+            COMP_DONE: begin
+                max_diam <= (max_A > max_B) ? max_A : max_B;
+            end
+
+            UPDATE_BEST: begin
+                if (max_diam < best_result) begin
+                    best_result <= max_diam;
+                end
+            end
+
+            INCR_PARTITION: begin
+                partition_counter <= partition_counter + 1;
+            end
+
+            DONE_STATE: begin
+                result <= best_result;
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = current_state;
+
+    case (current_state)
+        IDLE: begin
+            if (start) next_state = LOAD_INPUTS;
+        end
+
+        LOAD_INPUTS: begin
+            next_state = INIT_VARS;
+        end
+
+        INIT_VARS: begin
+            next_state = LOOP_START;
+        end
+
+        LOOP_START: begin
+            if (N_reg < 2) begin
+                next_state = COMP_DONE;
+            end else begin
+                next_state = PROCESS_PAIR;
+            end
+        end
+
+        PROCESS_PAIR: begin
+            next_state = INC_J;
+        end
+
+        INC_J: begin
+            next_state = CHECK_J;
+        end
+
+        CHECK_J: begin
+            if (j < N_reg) begin
+                next_state = PROCESS_PAIR;
+            end else begin
+                next_state = INC_I;
+            end
+        end
+
+        INC_I: begin
+            next_state = SET_J;
+        end
+
+        SET_J: begin
+            next_state = CHECK_I;
+        end
+
+        CHECK_I: begin
+            if (i < N_reg - 1) begin
+                next_state = CHECK_J;
+            end else begin
+                next_state = COMP_DONE;
+            end
+        end
+
+        COMP_DONE: begin
+            next_state = UPDATE_BEST;
+        end
+
+        UPDATE_BEST: begin
+            next_state = INCR_PARTITION;
+        end
+
+        INCR_PARTITION: begin
+            next_state = CHECK_DONE;
+        end
+
+        CHECK_DONE: begin
+            if (partition_counter == max_partition) begin
+                next_state = DONE_STATE;
+            end else begin
+                next_state = LOOP_START;
+            end
+        end
+
+        DONE_STATE: begin
+            if (!start) begin
+                next_state = IDLE;
+            end
+        end
+
+        default: next_state = IDLE;
+    endcase
+end
+
+endmodule

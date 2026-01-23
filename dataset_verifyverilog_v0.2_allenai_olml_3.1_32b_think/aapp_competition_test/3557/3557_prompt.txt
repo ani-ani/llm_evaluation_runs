@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'train_chaos' that computes the maximum chaos during a train robbery simulation.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] p_in // passenger count in current coach (scaled 0-7)
+input [2:0] idx_in // index of coach to blow up (1-based, scaled 0-7)
+
+Outputs:
+output reg [15:0] max_chaos // maximum chaos observed
+output reg done // high when computation complete
+
+Specifications:
+- Maximum coaches N = 8
+- Passenger count per coach scaled: 0-7 (representing 0-100 in original)
+- Chaos of a segment = ceil(total_passengers / 10) * 10
+- Scaled: Chaos = ceil(passengers / 10) * 10. Since passengers <= 7, chaos is 0 if 0, 10 otherwise.
+- Total chaos = (sum of segment chaoses) * (number of segments)
+
+Algorithm:
+1. Store passengers in array p[0..7]
+2. Store explosion order in array order[0..7]
+3. Initialize: all coaches separate (8 segments)
+4. For each explosion k (0 to 7):
+   a. Mark coach order[k] as destroyed (set p[order[k]-1] = 0)
+   b. Update segments: destroyed coaches split segments
+   c. Calculate chaos for each segment (0 if sum=0, 10 if sum>0)
+   d. Sum all segment chaoses, multiply by number of non-empty segments
+   e. Track maximum chaos
+   f. Restore passenger count for next step (or process incrementally)
+
+Implementation Strategy:
+- Use state machine: IDLE, LOAD, PROCESS, COMPUTE, DONE
+- LOAD: Load 8 passengers and 8 order indices into registers
+- PROCESS: Iteratively blow up coaches (8 cycles)
+- Each cycle: Update connectivity and compute chaos
+- Use adjacency matrix to track connected components
+- Chaos calculation: Sum > 0 => 10, else 0
+- Store max_chaos in register
+
+State Machine States:
+- IDLE: Wait for start
+- LOAD_PASSENGERS: Read 8 passenger values
+- LOAD_ORDER: Read 8 order indices
+- BLOW_UP: Process one explosion (8 iterations)
+- CALC_CHAOS: Compute total chaos for current state
+- UPDATE_MAX: Update max_chaos if needed
+- DONE: Signal completion
+
+Output:
+- max_chaos: 16-bit result (max possible: 8 segments * 10 * 8 = 640)
+- done: Asserted in DONE state

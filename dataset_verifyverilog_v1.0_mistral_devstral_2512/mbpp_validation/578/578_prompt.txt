@@ -1,0 +1,97 @@
+// Problem: Interleave 3 lists of the same length into a single flat list.
+// Hardware Adaptation: Read 3 fixed-size arrays (max 8 elements) and output interleaved values.
+
+module interleave_3_arrays (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] len,           // Number of valid elements (1-8)
+    input wire [7:0] arr1 [0:7],    // Input array 1
+    input wire [7:0] arr2 [0:7],    // Input array 2
+    input wire [7:0] arr3 [0:7],    // Input array 3
+    output reg [7:0] result,        // Interleaved output value
+    output reg valid,               // High when result is valid
+    output reg done                 // High for 1 cycle when finished
+);
+
+    reg [3:0] index;                // Current input element index (0 to len-1)
+    reg [1:0] state;                // State: 0=Idle, 1=Output1, 2=Output2, 3=Output3
+    reg [4:0] out_count;            // Total output count (max 24 for len=8)
+    reg processing;                 // Flag indicating processing in progress
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            result <= 8'b0;
+            valid <= 1'b0;
+            done <= 1'b0;
+            index <= 4'b0;
+            state <= 2'b0;
+            out_count <= 5'b0;
+            processing <= 1'b0;
+        end else begin
+            // Default outputs
+            valid <= 1'b0;
+            done <= 1'b0;
+
+            if (!processing) begin
+                if (start) begin
+                    // Start processing
+                    processing <= 1'b1;
+                    index <= 4'b0;
+                    state <= 2'b01;     // Start with state 1 (Output1)
+                    out_count <= 5'b0;
+                end
+            end else begin
+                // Increment output count for every valid output
+                if (state != 2'b00) begin
+                    out_count <= out_count + 1'b1;
+                end
+
+                case (state)
+                    2'b01: begin
+                        // Output arr1[index]
+                        result <= arr1[index];
+                        valid <= 1'b1;
+                        state <= 2'b10;     // Next: Output2
+                    end
+                    2'b10: begin
+                        // Output arr2[index]
+                        result <= arr2[index];
+                        valid <= 1'b1;
+                        state <= 2'b11;     // Next: Output3
+                    end
+                    2'b11: begin
+                        // Output arr3[index]
+                        result <= arr3[index];
+                        valid <= 1'b1;
+                        
+                        // Check if this was the last element
+                        if (index == len - 1) begin
+                            // Check if we just finished the very last output
+                            if (out_count == (len * 3) - 1) begin
+                                done <= 1'b1;
+                                processing <= 1'b0;
+                                state <= 2'b00;
+                            end else begin
+                                // Wait one cycle before done (issue done next cycle)
+                                state <= 2'b00; // Idle but keep processing flag high
+                            end
+                        end else begin
+                            index <= index + 1'b1;
+                            state <= 2'b01; // Next: Output1 for next index
+                        end
+                    end
+                    default: begin // 2'b00 - Special idle/done state
+                        // This state handles the delay cycle after final element
+                        if (processing) begin
+                            done <= 1'b1;
+                            processing <= 1'b0;
+                        end
+                    end
+                endcase
+            end
+        end
+    end
+
+endmodule

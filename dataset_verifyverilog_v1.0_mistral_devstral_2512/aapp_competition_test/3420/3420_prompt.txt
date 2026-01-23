@@ -1,0 +1,49 @@
+Module: BookPresentationMinimizer
+
+Parameters:
+- MAX_BOYS = 4
+- MAX_GIRLS = 4
+- MAX_EDGES = 16
+
+Inputs:
+- clk: logic, system clock, rising edge active
+- rst_n: logic, active-low synchronous reset
+- start: logic, start signal, pulse high for one cycle to begin computation
+- B: logic [3:0], number of boys (1 to 4)
+- G: logic [3:0], number of girls (1 to 4)
+- edge_count: logic [5:0], number of edges (1 to 16)
+- edges_boy: array [0:MAX_EDGES-1] of logic [3:0], boy index for each edge
+- edges_girl: array [0:MAX_EDGES-1] of logic [3:0], girl index for each edge
+
+Outputs:
+- result: logic [4:0], minimum number of presentations (vertex cover size)
+- done: logic, asserted for one cycle when computation is complete
+
+Description:
+The module computes the minimum number of presentations required for a book circle, which is equivalent to the minimum vertex cover size of a bipartite graph where boys and girls are vertices and each book is an edge between a boy and a girl.
+
+Algorithm:
+1. Upon start, initialize min_cover to B+G (maximum possible).
+2. Iterate over all subsets of the (B+G) vertices (subset from 0 to 2^(B+G)-1).
+   a. For each subset, check if it covers all edges:
+      For each edge i (0 to edge_count-1):
+         - Check if the boy (edges_boy[i]) is in the subset (bit at position boy = 1)
+         - OR if the girl (edges_girl[i]) is in the subset (bit at position (B + girl) = 1)
+      If any edge is not covered, the subset is not a vertex cover.
+   b. If the subset is a vertex cover, compute its size (popcount of the subset bits).
+   c. Update min_cover if this size is smaller.
+3. After checking all subsets, output min_cover and assert done.
+
+Implementation Notes:
+- The state machine must handle the enumeration of subsets and edge checking.
+- The maximum number of subsets is 2^(B+G). For B=4, G=4, this is 256.
+- The maximum number of edges is 16.
+- The computation may take many cycles, so the testbench should allow sufficient timeout.
+- The module should ignore edges beyond edge_count.
+- The result width is 5 bits because the maximum vertex cover size is at most 8 (for B=4, G=4).
+
+Timing:
+- Start must be asserted for at least one clock cycle.
+- The module will take multiple clock cycles to compute the result.
+- Done will be asserted for one clock cycle when the result is valid.
+- After done, the module returns to IDLE state and can be started again.

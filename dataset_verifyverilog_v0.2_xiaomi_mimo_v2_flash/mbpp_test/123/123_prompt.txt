@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'amicable_sum' that computes the sum of amicable numbers from 2 to a specified limit (scaled to max 100 for hardware feasibility).
+
+The algorithm computes sum of proper divisors for each number, then checks if two numbers form an amicable pair (where sum of divisors of A equals B, sum of divisors of B equals A, and A != B). It accumulates valid amicable numbers.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation (high for one cycle)
+input [7:0] limit // upper bound for search, must be >=2 and <=100
+
+Outputs:
+output reg [15:0] result // final sum of amicable numbers found
+output reg done // high when computation complete
+output reg error // high if invalid input (limit < 2)
+
+Specify latency: 101 clock cycles (one per number from 2 to 100) plus 1 cycle for final sum. Result valid at DONE state.
+
+Behavior:
+Use state machine with states: IDLE, CHECK_INPUT, PROCESS, VALIDATE, SUM_UP, DONE.
+
+1. IDLE: Wait for start signal. When start goes high, transition to CHECK_INPUT.
+
+2. CHECK_INPUT: Check if limit >= 2. If invalid (limit < 2), set error=1 and go to DONE. Otherwise go to PROCESS.
+
+3. PROCESS: For each number from 2 to limit (max 100), compute sum of proper divisors. Use a nested loop: for num 2-100, for potential divisor 1 to num/2, if num % divisor == 0, add to sum. This takes multiple cycles per number, but total cycles bounded by 101*128 = ~12928. To simplify, compute one divisor per cycle: Use a counter for current number (curr_num) and divisor (div). Start div = 1, increment. When div < curr_num/2, check division. Sum divisors in a register. When div reaches curr_num, store divisor sum in a temp register (div_sum[curr_num]). Reset div for next num. Transition to VALIDATE when all num processed up to limit.
+
+4. VALIDATE: For each processed number (2 to limit), check amicable pairs: If div_sum[i] = j (where j>i, j<=limit), check if div_sum[j] == i. If yes, add i and j to amicable_set. Use a small register file (100x16) to mark added pairs. Process one pair per cycle.
+
+5. SUM_UP: Accumulate all marked amicable numbers into result. Iterate through 2 to limit, add to result if marked. One number per cycle.
+
+6. DONE: Output result and done=1. Wait for reset.
+
+Use parameter NUM_MAX = 100 for loop bounds. Ensure modulo operation uses built-in % or iterative subtraction. For area optimization, share logic for factor sum calculation.

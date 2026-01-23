@@ -1,0 +1,143 @@
+// Module Name: grid_path_solver
+// Description:
+//   Sequential hardware accelerator for finding the maximum cost path in an N*N grid.
+//   Supports N = 2 to 8. Costs are 8-bit unsigned integers.
+//   Algorithm: Dynamic Programming.
+//   Output: Maximum sum (16-bit) and Path Length (4-bit).
+//   Note: Division for average is performed by the testbench.
+//
+// Interface:
+//   - System: clk, rst_n (active low)
+//   - Memory Load: din (8-bit data), addr (6-bit address), write (load enable)
+//     Address format: row * 8 + col (row-major, stride 8 for max 8x8)
+//   - Control: start (pulse high), N (grid size, 3-bit)
+//   - Output: max_sum (16-bit), path_len (4-bit), valid (pulse high)
+//
+// Algorithm Steps:
+//   1. IDLE: Wait for start. Handle 'write' to store 'din' into cost_mem[addr].
+//   2. START: Initialize dp[0][0] = cost_mem[0].
+//   3. ROW_FILL: Fill dp[0][j] = dp[0][j-1] + cost_mem[j] for j=1..N-1.
+//   4. COL_FILL: Fill dp[i][0] = dp[i-1][0] + cost_mem[i*8] for i=1..N-1.
+//   5. FILL: Fill dp[i][j] = max(dp[i-1][j], dp[i][j-1]) + cost_mem[i*8+j] for i,j=1..N-1.
+//   6. OUTPUT: Assign max_sum = dp[N-1][N-1], path_len = 2*N - 1, assert valid.
+
+module grid_path_solver (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] din,
+    input wire [5:0] addr,
+    input wire write,
+    input wire [2:0] N,
+    output reg [15:0] max_sum,
+    output reg [3:0] path_len,
+    output reg valid
+);
+    // Internal Memory for Cost Matrix (64 entries x 8-bit)
+    reg [7:0] cost_mem [0:63];
+    
+    // DP Table Registers (8x8 grid, 16-bit sums to handle max ~3800)
+    reg [15:0] dp [0:7][0:7];
+    
+    // State Machine Definition
+    localparam IDLE = 3'b000;
+    localparam START = 3'b001;
+    localparam ROW_FILL = 3'b010;
+    localparam COL_FILL = 3'b011;
+    localparam FILL = 3'b100;
+    localparam OUTPUT = 3'b101;
+    
+    reg [2:0] state;
+    reg [2:0] i, j; // Loop counters
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            valid <= 0;
+            max_sum <= 0;
+            path_len <= 0;
+        end else begin
+            valid <= 0; // Auto-clear valid
+            
+            case (state)
+                IDLE: begin
+                    // Handle synchronous memory loading
+                    if (write) begin
+                        cost_mem[addr] <= din;
+                    end
+                    
+                    if (start) begin
+                        // Initialize counters for computation
+                        i <= 0;
+                        j <= 0;
+                        state <= START;
+                    end
+                end
+                
+                START: begin
+                    // Initialize top-left cell
+                    dp[0][0] <= cost_mem[0];
+                    j <= 1;
+                    state <= ROW_FILL;
+                end
+                
+                ROW_FILL: begin
+                    if (j < N) begin
+                        // Fill row 0: dp[0][j] = dp[0][j-1] + cost_mem[j]
+                        dp[0][j] <= dp[0][j-1] + cost_mem[j];
+                        j <= j + 1;
+                    end else begin
+                        // Row fill done, move to column fill
+                        i <= 1;
+                        state <= COL_FILL;
+                    end
+                end
+                
+                COL_FILL: begin
+                    if (i < N) begin
+                        // Fill col 0: dp[i][0] = dp[i-1][0] + cost_mem[i*8]
+                        // i*8 is equivalent to {i, 3'b000}
+                        dp[i][0] <= dp[i-1][0] + cost_mem[{i, 3'b000}];
+                        i <= i + 1;
+                    end else begin
+                        // Column fill done, move to inner cells
+                        i <= 1;
+                        j <= 1;
+                        state <= FILL;
+                    end
+                end
+                
+                FILL: begin
+                    if (i < N) begin
+                        if (j < N) begin
+                            // Fill dp[i][j] = max(dp[i-1][j], dp[i][j-1]) + cost_mem[i*8+j]
+                            if (dp[i-1][j] > dp[i][j-1])
+                                dp[i][j] <= dp[i-1][j] + cost_mem[{i, j}];
+                            else
+                                dp[i][j] <= dp[i][j-1] + cost_mem[{i, j}];
+                            j <= j + 1;
+                        end else begin
+                            // End of row, increment i, reset j
+                            j <= 1;
+                            i <= i + 1;
+                        end
+                    end else begin
+                        // Calculation complete, go to output
+                        state <= OUTPUT;
+                    end
+                end
+                
+                OUTPUT: begin
+                    max_sum <= dp[N-1][N-1];
+                    // Calculate path length: 2*N - 1
+                    // {N, 1'b0} is N*2
+                    path_len <= {N, 1'b0} - 1;
+                    valid <= 1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+endmodule

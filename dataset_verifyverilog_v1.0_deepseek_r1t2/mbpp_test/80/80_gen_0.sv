@@ -1,0 +1,1 @@
+module tetrahedral_number(\n    input [7:0] n,\n    output [15:0] result\n);\n    wire [8:0] n_ext = {1'b0, n};\n    wire [23:0] product = n_ext * (n_ext + 9'd1) * (n_ext + 9'd2);\n    assign result = product / 24'd6;\nendmodule

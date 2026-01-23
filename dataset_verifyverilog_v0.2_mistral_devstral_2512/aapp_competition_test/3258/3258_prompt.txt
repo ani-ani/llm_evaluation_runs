@@ -1,0 +1,28 @@
+Design a combinational Verilog module named 'cat_chase_verifier' that checks if a given sequence of velocities allows a cat to eat all mice in time. The problem is scaled to support up to 4 mice.
+
+The module takes 4 mice coordinates (x, y), deadlines (s), and the velocity for each step. All distances and times are handled in fixed-point Q16.16 format (16 integer bits, 16 fractional bits).
+
+Inputs:
+input [3:0] valid_mice_mask // Bitmask indicating which mice indices (0-3) are actually present in the sequence. Bit 0 is mouse 0.
+input [4:0][15:0] x_coords // x-coordinates of mice 0-4 (Q16.16)
+input [4:0][15:0] y_coords // y-coordinates of mice 0-4 (Q16.16)
+input [4:0][15:0] deadlines // 's' values (time limits) for mice 0-4 (Q16.16)
+input [4:0][15:0] velocities // Velocity to use for each step in the sequence (Q16.16)
+
+Outputs:
+output reg success // High if the sequence is valid (all mice reached in time)
+
+Behavior:
+The module calculates the cumulative distance and time for the sequence. 
+Start at origin (0,0).
+Iterate through the 4 positions in the sequence. If a position is marked valid by valid_mice_mask:
+1. Calculate distance from current location to the target mouse (sqrt(dx^2 + dy^2)). To keep hardware simple, use Manhattan distance approximation OR direct Euclidean if inputs are pre-scaled. Let's assume Euclidean inputs are provided pre-scaled for hardware simplicity, or use Manhattan distance for the hardware check (as is common in constrained HDL problems). Let's specify: Use Manhattan distance |dx| + |dy| for simplification.
+2. Calculate travel time = distance / velocity. Use integer division with scaling.
+3. Update current time = current time + travel time.
+4. Check if current time <= deadline for this mouse.
+5. If check fails, success = 0.
+6. If all valid mice succeed, success = 1.
+
+Note: Inputs are Q16.16. Distance and Time calculations should maintain precision. For time calculation (dist/vel), we can approximate by (dist << 16) / vel to keep result in Q16.16.
+
+The module is purely combinational.

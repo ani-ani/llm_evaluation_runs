@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'chocolate_cutter' that calculates the maximum possible area of the smallest piece of an n x m chocolate bar after exactly k cuts.
+
+The problem is adapted for hardware synthesis with scaled parameters:
+- n, m, k are up to 10 bits (max 1023)
+- x and y cuts are distributed such that x + y = k, with 0 <= x <= n-1 and 0 <= y <= m-1
+- The area of a piece with x horizontal cuts and y vertical cuts is: (n / (x+1)) * (m / (y+1))
+- Integer division is used for the dimensions of the pieces.
+- The module must iterate through all valid pairs (x, y) to find the maximum area.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [9:0] n // Width of chocolate (1 to 1023)
+input [9:0] m // Height of chocolate (1 to 1023)
+input [9:0] k // Number of cuts (0 to 1023)
+
+Outputs:
+output reg [39:0] result // Maximum minimum area (up to ~10^12 needs 40 bits)
+output reg done // High when computation complete
+
+Latency: The module takes approximately (n + 2) clock cycles to complete, depending on the loop implementation.
+
+Behavioral Description:
+1. Check validity: If k > (n - 1) + (m - 1), the operation is impossible. The module should output -1 (represented as 40'hFFFF_FFFF_FFFF) and set done high.
+2. Iterate x from 0 to min(k, n-1). For each x:
+   a. Calculate y = k - x.
+   b. Check if y <= m - 1. If valid:
+      i. Calculate width = n / (x + 1)
+      ii. Calculate height = m / (y + 1)
+      iii. Calculate area = width * height
+      iv. Update max_area if current area is larger.
+3. Output the max_area.
+
+Implementation details:
+- Use a state machine: IDLE, CHECK_VALIDITY, ITERATE_X, CALCULATE_Y, CALCULATE_AREA, UPDATE_RESULT, DONE.
+- Use counters for the iteration.
+- Use a temporary register to store the current maximum area.
+- Division and multiplication should be handled in the datapath (iterative or combinational logic blocks).

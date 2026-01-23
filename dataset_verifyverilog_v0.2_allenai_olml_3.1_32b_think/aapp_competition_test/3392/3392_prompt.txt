@@ -1,0 +1,73 @@
+Design a sequential Verilog module named 'forest_growth' that finds the largest connected group of trees with equal height in an N×N grid, where trees grow at different continuous rates.
+
+The problem adaptation:
+- Grid size: N=8 (parameterizable)
+- Heights and speeds: 8-bit unsigned integers (0-255 range, scaled down from 1-10^6)
+- Time t is a parameter or computed per pair
+- Two trees have equal height at time t if: h1 + v1*t = h2 + v2*t
+- This means (h1 - h2) = t*(v2 - v1), so t = (h1 - h2)/(v2 - v1) for v1 ≠ v2
+- For the group to be connected with equal heights, all adjacent pairs must have the same t
+- We need to find the largest connected component where all nodes share a common t value
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0] heights [0:63] // 8x8 grid flattened, 64 elements
+input [7:0] speeds [0:63] // 8x8 grid flattened, 64 elements
+
+Outputs:
+output reg [7:0] max_group_size // maximum size found
+output reg done // high when computation complete
+
+Specification:
+- Latency: Approximately 1000-2000 clock cycles (sequential processing)
+- Use state machine: IDLE, CHECK_CELL, PROPAGATE_COMPONENT, UPDATE_MAX, DONE
+- Algorithm approach:
+  1. For each cell (i,j) as potential root, compute t values for all neighbors
+  2. For adjacent cells with same t, form connected component
+  3. Use visited flags to avoid recomputation
+  4. Track maximum component size
+
+- Fixed-point note: For t calculation, we need to handle division. Since inputs are small, we can precompute t values for each edge and store as comparison flags.
+- For v1 == v2 case: trees have equal height only if h1 == h2 (t=0)
+- For v1 != v2: compute t and check if integer-like or use rational comparison
+
+Implementation details:
+- Store grid in BRAM-style arrays
+- Use BFS queue for component expansion (max 64 elements)
+- Use bit masks for visited tracking
+- Each component search: O(N²) worst case
+- Total: O(N⁴) but N=8 so 4096 iterations acceptable
+
+State machine:
+- IDLE: Wait for start, initialize visited array
+- CHECK_CELL: Pick next unvisited cell as root, compute its component
+- PROPAGATE: BFS expansion - check 4 neighbors, verify equal height condition
+- UPDATE_MAX: Compare component size with max
+- DONE: Set done flag
+
+For equal height condition between cells a and b:
+Condition: h_a + v_a*t = h_b + v_b*t
+=> (h_a - h_b) = t*(v_b - v_a)
+We need to find if there exists t >= 0 such that this holds.
+- If v_a == v_b: require h_a == h_b, any t works
+- If v_a != v_b: t = (h_a - h_b)/(v_b - v_a), need t >= 0
+  For component of size > 2, all pairs must yield same t
+
+Simplified approach for hardware:
+- For root cell, compute t_ideal as rational number or use bit-level comparison
+- For component expansion: when adding neighbor, verify it has same (h,v) pair as root or compatible ratio
+- Actually, for a valid component, all cells must have identical (h,v) OR form a chain with consistent t
+- Maximum component likely comes from cells with identical (h,v) pairs
+- For adjacent identical (h,v): they always have equal height at any t
+- So we can find largest connected component of identical (h,v) pairs
+- For different (h,v) pairs: only valid if they satisfy common t, which is rarer
+
+Thus, primary algorithm:
+1. Group cells by (h,v) pairs
+2. Find connected component size for each group
+3. Maximum is answer
+4. Also check cross-group compatibility if time permits
+
+Module must compute this and output max_group_size.

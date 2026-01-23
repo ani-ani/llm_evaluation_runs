@@ -1,0 +1,35 @@
+Module: boar_collision
+
+Description:
+Computes the probability that a boar (disk) can charge distance d without hitting any trees (disks) in a 2D plane. Uses 16 discrete directions and checks for collisions with up to 8 trees.
+
+Interface:
+  Inputs:
+    clk         : Clock signal (rising edge triggered)
+    rst_n       : Active-low synchronous reset
+    start       : Start pulse (assert for 1 cycle to begin computation)
+    n           : 3-bit number of trees (0 to 8)
+    tree0_x, tree0_y, tree0_r : 16-bit signed/unsigned for tree 0 parameters
+    ... up to tree7_x, tree7_y, tree7_r
+    b           : 16-bit unsigned boar radius
+    d           : 16-bit unsigned charge distance
+  
+  Outputs:
+    probability : 32-bit fixed-point (16.16) representing probability (0 to 1)
+    done        : Asserted high for 1 cycle when computation is complete
+
+  Timing:
+    - Assert start for 1 clock cycle
+    - done will go high within 200 cycles
+    - Sample probability on the same cycle done is high
+  
+  Reset behavior:
+    - On rst_n=0: done=0, probability=0, internal state cleared
+    - Minimum 2 clock cycles of reset required
+
+Implementation details:
+  - Use 16 precomputed direction vectors (cos/sin in 16.16 fixed-point)
+  - For each direction, check collision with all trees using integer arithmetic
+  - Collision detection: check if line segment from origin to end point comes within (tree_radius + b) of tree center
+  - Use 64-bit arithmetic for squared distance comparisons
+  - Count safe directions, compute probability = safe_count / 16

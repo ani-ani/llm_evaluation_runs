@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'max_path_average' that computes the maximum average cost path in a 3x3 matrix, moving only right or down from top-left to bottom-right.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] cost_0_0, cost_0_1, cost_0_2 // row 0 costs
+input [7:0] cost_1_0, cost_1_1, cost_1_2 // row 1 costs
+input [7:0] cost_2_0, cost_2_1, cost_2_2 // row 2 costs
+
+Outputs:
+output reg [31:0] result // Q16.16 fixed-point result
+output reg done // high when computation complete
+
+Specification:
+The module uses a sequential DP approach to find maximum total cost, then divides by (2*N-1) = 5 to get average.
+Since N=3, the path length is always 5 cells (3 right, 2 down or vice versa).
+
+Q16.16 Format: Multiply decimal by 65536. Example: 5.2 = 5.2 * 65536 = 340787.
+
+Algorithm:
+1. Store costs in a 3x3 register array
+2. Use DP state machine: dp[i][j] = max(dp[i-1][j], dp[i-1][j]) + cost[i][j]
+3. Process cells in order: (0,0) -> (0,1) -> (0,2) -> (1,0) -> (1,1) -> (1,2) -> (2,0) -> (2,1) -> (2,2)
+4. For boundary cells (first row/col), only one path exists
+5. After computing dp[2][2] (total cost), divide by 5 using fixed-point division
+6. Division: result = (total_cost << 16) / 5
+
+State Machine States:
+- IDLE: Wait for start signal, initialize dp array
+- ROW0: Process first row (0,0) to (0,2)
+- ROW1: Process second row (1,0) to (1,2)
+- ROW2: Process third row (2,0) to (2,2)
+- DIVIDE: Compute result = (total_cost << 16) / 5
+- DONE: Set done signal high
+
+Latency: 20 clock cycles after start asserted (9 cells + 10 division cycles + 1 done).
+
+Behavioral Description:
+- On rst_n low: reset all registers, done=0, result=0
+- On start rising edge: load costs into internal array, begin DP
+- IDLE -> ROW0: dp[0][0] = cost[0][0]
+- ROW0 states: dp[0][1] = dp[0][0] + cost[0][1], dp[0][2] = dp[0][1] + cost[0][2]
+- ROW1: dp[1][0] = dp[0][0] + cost[1][0], then dp[1][1] = max(dp[0][1], dp[1][0]) + cost[1][1], dp[1][2] = max(dp[0][2], dp[1][1]) + cost[1][2]
+- ROW2: dp[2][0] = dp[1][0] + cost[2][0], then dp[2][1] = max(dp[1][1], dp[2][0]) + cost[2][1], dp[2][2] = max(dp[1][2], dp[2][1]) + cost[2][2]
+- DIVIDE: Use sequential shift-and-subtract division to compute (dp[2][2] << 16) / 5
+- DONE: Assert done, hold result
+
+Assume: All input costs are 8-bit unsigned (0-255). Maximum total cost is 9*255 = 2295, which fits in 12 bits. Division result will be Q16.16 format.

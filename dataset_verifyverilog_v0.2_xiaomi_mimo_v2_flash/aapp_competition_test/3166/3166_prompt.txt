@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'fair_ranking_solver' that finds the smallest set of players to disqualify (S') such that the remaining graph is acyclic (can be ranked fairly) and |S'| < k. The problem is adapted to small input sizes for hardware feasibility.
+
+Input Constraints:
+- n (number of players) <= 8
+- k (original disqualified count) <= 4
+- The solution k' will be strictly less than k, so we search for k' = 0, 1, 2, ... up to k-1.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] n // Number of players (valid 2-8)
+input [2:0] k // Original disqualified count (valid 2-4)
+input [7:0] adj_matrix [0:7][0:7] // Adjacency matrix (8x8 array of 8-bit values). adj_matrix[i][j] = 1 if i beats j.
+input [7:0] s_mask // Bitmask representing the set S. Bit i set means player i is in S (cannot be in S').
+
+Outputs:
+output reg [2:0] min_disqualify_size // The size k' of the smallest set S' found.
+output reg found // High when a solution is found. If high, min_disqualify_size is valid.
+output reg impossible // High if no solution exists (or if we checked all sizes < k and found none).
+
+Behavior:
+The module should implement a sequential search algorithm:
+1. Initialize state IDLE. Wait for start signal.
+2. Set current_search_size = 0.
+3. While current_search_size < k:
+   - Generate all subsets of players (excluding those in S) with size = current_search_size.
+   - For each subset, check if removing them makes the graph acyclic.
+     - To check acyclicity: Perform a topological sort (or cycle detection) on the induced subgraph of remaining players.
+   - If a valid subset is found, output its size, set found=1, and stop.
+4. If no subset found for any size < k, set impossible=1.
+
+Implementation Details:
+- Use a state machine: IDLE, CHECK_SUBSET, VERIFY_GRAPH, NEXT_SUBSET, DONE, IMPOSSIBLE.
+- Since n is small (max 8), we can iterate through subsets using a counter.
+- Graph verification: Use Kahn's algorithm (compute in-degrees, peel nodes) or DFS cycle detection.
+- The adjacency matrix is 8x8. We need to mask out players in S and the candidate S'.
+- We need to generate combinations. Since we are in hardware, we can iterate through bit patterns.
+- For a given size `size`, we iterate through all integers from 0 to 2^n. If popcount == size and (mask & s_mask) == 0 (disjoint from S), then verify.
+- Verification module: Takes the adjacency matrix and a mask of removed players. Returns 1 if acyclic.
+- Latency: The module will take many cycles. We specify that it completes within a reasonable bound for small n (e.g., < 10,000 cycles).
+
+Test Case Adaptation:
+- Since n can be up to 2000 in the original problem, we limit n to 8 in the Verilog spec.
+- The testbench will provide 8x8 matrices. For inputs larger than 8, the behavior is undefined (or we just truncate/ignore).
+- The output should be the size of S'.

@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'newman_conway' that computes the nth number in the Newman-Conway sequence.
+
+The Newman-Conway sequence is defined as:
+- P(1) = 1
+- P(2) = 1
+- P(n) = P(P(n-1)) + P(n-P(n-1)) for n > 2
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation (pulse high for one cycle)
+input [4:0] n // input n (1-16), 5 bits to support up to n=16
+
+Outputs:
+output reg [4:0] result // P(n), 5 bits sufficient (P(16)=9)
+output reg done // high when computation complete
+
+Latency: Result valid approximately 20 clock cycles after start asserted.
+
+Implementation Details:
+- Use state machine with states: IDLE, COMPUTE, DONE
+- Store computed values in a lookup table (array of 16 x 5-bit values)
+- Process sequentially: fill table from index 1 to n
+- For each index i from 3 to n: compute P(i) = P(P(i-1)) + P(i-P(i-1))
+- Handle edge cases: n=1 or n=2 returns 1 immediately
+- Maximum n supported: 16 (fits in 5 bits)
+
+Algorithm:
+1. When start=1, load n and reset internal table pointer
+2. If n=1 or n=2, set result=1, done=1 immediately
+3. Otherwise, iterate from 3 to n, computing each P(i) using previously stored values
+4. When computed index reaches n, output result and set done=1
+5. Return to IDLE state
+
+Use these register declarations:
+reg [4:0] p_table [0:15]; // lookup table for P(1) through P(16)
+reg [4:0] current_n; // tracks which value we're computing
+reg [2:0] state; // state machine state
+
+States:
+- 0: IDLE (waiting for start)
+- 1: CHECK_BASE (check if n=1 or n=2)
+- 2: COMPUTE (compute next P(i) value)
+- 3: DONE (output complete)
+
+Behavioral description:
+In IDLE state: when start=1, load n into current_n and transition to CHECK_BASE
+In CHECK_BASE: if current_n <= 2, set result=1, done=1, transition to DONE; else set table[1]=1, table[2]=1, initialize index=3, transition to COMPUTE
+In COMPUTE: use table values to compute P(current_n), store in table, increment index, when index > current_n, copy to result, set done=1, transition to DONE
+In DONE: wait for start to go low, then transition to IDLE
+
+The module should reset all internal registers on rst_n=0.

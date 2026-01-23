@@ -1,0 +1,209 @@
+module potato_optimizer (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] N,          // Number of farmers (2-8)
+    input [3:0] L,          // Required bags in one store (1-7)
+    input [7:0] a [0:7],    // Potatoes per bag (1-100)
+    input [19:0] c [0:7],   // Cost per bag (1-1000000)
+    output reg [31:0] result, // Fixed-point 16.16 product P1*P2
+    output reg done
+);
+
+// Parameters
+parameter MAX_BAGS = 8;
+parameter MAX_POTATOES = 500;
+parameter DATA_WIDTH = 8;
+parameter COST_WIDTH = 20;
+parameter RESULT_WIDTH = 32;
+
+// States
+localparam IDLE = 3'b000;
+localparam COMPUTE = 3'b001;
+localparam CALCULATE = 3'b010;
+localparam DONE = 3'b011;
+
+reg [2:0] state;
+
+// Internal signals
+reg [7:0] total_potatoes;
+reg [19:0] total_cost;
+reg [3:0] bag_count;
+
+// DP arrays: [number_of_bags][total_potatoes]
+// We only need to store current and previous states
+reg [19:0] dp_cost [0:MAX_BAGS][0:MAX_POTATOES];  // Minimum cost for given bags and potatoes
+reg dp_valid [0:MAX_BAGS][0:MAX_POTATOES];        // Valid state flag
+
+// Computation registers
+reg [3:0] current_bag;
+reg [7:0] current_potatoes;
+reg [19:0] current_cost;
+
+// Result calculation
+reg [31:0] best_product;  // 16.16 format
+reg [3:0] check_k;        // Current k being checked
+reg [7:0] check_t;        // Current t being checked
+
+integer i, j;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset state
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        total_potatoes <= 0;
+        total_cost <= 0;
+        bag_count <= 0;
+        current_bag <= 0;
+        current_potatoes <= 0;
+        current_cost <= 0;
+        best_product <= 32'h7FFFFFFF;  // Initialize to max value
+        check_k <= 0;
+        check_t <= 0;
+        
+        // Clear DP arrays
+        for (i = 0; i <= MAX_BAGS; i = i + 1) begin
+            for (j = 0; j <= MAX_POTATOES; j = j + 1) begin
+                dp_cost[i][j] <= 0;
+                dp_valid[i][j] <= 0;
+            end
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Compute totals
+                    total_potatoes <= 0;
+                    total_cost <= 0;
+                    bag_count <= N;
+                    for (i = 0; i < N; i = i + 1) begin
+                        total_potatoes <= total_potatoes + a[i];
+                        total_cost <= total_cost + c[i];
+                    end
+                    
+                    // Initialize DP
+                    // dp[0][0] = 0 (cost 0 for 0 bags, 0 potatoes)
+                    for (i = 0; i <= MAX_BAGS; i = i + 1) begin
+                        for (j = 0; j <= MAX_POTATOES; j = j + 1) begin
+                            dp_valid[i][j] <= 0;
+                        end
+                    end
+                    dp_cost[0][0] <= 0;
+                    dp_valid[0][0] <= 1;
+                    
+                    current_bag <= 0;
+                    state <= COMPUTE;
+                end
+            end
+            
+            COMPUTE: begin
+                if (current_bag < N) begin
+                    // Process bag current_bag
+                    // Update DP table for this bag
+                    for (i = MAX_BAGS; i >= 1; i = i - 1) begin
+                        for (j = MAX_POTATOES; j >= a[current_bag]; j = j - 1) begin
+                            if (dp_valid[i-1][j - a[current_bag]]) begin
+                                if (!dp_valid[i][j] || (dp_cost[i-1][j - a[current_bag]] + c[current_bag] < dp_cost[i][j])) begin
+                                    dp_cost[i][j] <= dp_cost[i-1][j - a[current_bag]] + c[current_bag];
+                                    dp_valid[i][j] <= 1;
+                                end
+                            end
+                        end
+                    end
+                    current_bag <= current_bag + 1;
+                end else begin
+                    // Done processing all bags
+                    check_k <= 0;
+                    check_t <= 0;
+                    best_product <= 32'h7FFFFFFF;
+                    state <= CALCULATE;
+                end
+            end
+            
+            CALCULATE: begin
+                // Check all possible divisions where one store has exactly L bags
+                if (check_k <= N) begin
+                    // Case 1: Store 1 has L bags
+                    if (check_k == L) begin
+                        for (j = 0; j <= MAX_POTATOES; j = j + 1) begin
+                            if (dp_valid[check_k][j] && dp_valid[N - check_k][total_potatoes - j]) begin
+                                if (j > 0 && (total_potatoes - j) > 0) begin
+                                    // Calculate P1 * P2 = (cost1/potatoes1) * (cost2/potatoes2)
+                                    // = (cost1 * cost2) / (potatoes1 * potatoes2)
+                                    // Using fixed-point: multiply by 2^16 for 16.16 format
+                                    
+                                    // Calculate cost1 and cost2
+                                    // cost1 = dp_cost[check_k][j]
+                                    // cost2 = total_cost - dp_cost[check_k][j]
+                                    
+                                    // We'll do integer division with scaling
+                                    // To avoid overflow, we'll do: (cost1 * cost2 * 2^16) / (j * (total_potatoes - j))
+                                    
+                                    // Use intermediate registers to avoid timing issues
+                                    reg [39:0] numerator;
+                                    reg [39:0] denominator;
+                                    reg [31:0] product;
+                                    
+                                    numerator = dp_cost[check_k][j] * (total_cost - dp_cost[check_k][j]);
+                                    numerator = numerator << 16;  // Scale by 2^16
+                                    denominator = j * (total_potatoes - j);
+                                    
+                                    if (denominator != 0) begin
+                                        product = numerator / denominator;
+                                        if (product < best_product) begin
+                                            best_product <= product;
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    
+                    // Case 2: Store 2 has L bags (store 1 has N-L bags)
+                    if (check_k == N - L && L != N - L) begin  // Avoid duplicate if L = N-L
+                        for (j = 0; j <= MAX_POTATOES; j = j + 1) begin
+                            if (dp_valid[check_k][j] && dp_valid[N - check_k][total_potatoes - j]) begin
+                                if (j > 0 && (total_potatoes - j) > 0) begin
+                                    // Similar calculation as above
+                                    reg [39:0] numerator;
+                                    reg [39:0] denominator;
+                                    reg [31:0] product;
+                                    
+                                    numerator = dp_cost[check_k][j] * (total_cost - dp_cost[check_k][j]);
+                                    numerator = numerator << 16;
+                                    denominator = j * (total_potatoes - j);
+                                    
+                                    if (denominator != 0) begin
+                                        product = numerator / denominator;
+                                        if (product < best_product) begin
+                                            best_product <= product;
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    
+                    check_k <= check_k + 1;
+                end else begin
+                    // All combinations checked
+                    result <= best_product;
+                    done <= 1;
+                    state <= DONE;
+                end
+            end
+            
+            DONE: begin
+                done <= 0;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

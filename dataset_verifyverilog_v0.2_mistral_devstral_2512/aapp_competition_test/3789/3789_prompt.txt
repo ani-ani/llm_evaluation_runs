@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'gem_smash_solver' that implements a simplified gem smashing optimization using a max-flow/min-cut approach for a fixed number of gems.
+
+The problem is scaled down: N is fixed at 16 gems with values in the range [-2048, 2047].
+
+**Module Specification:**
+- The module processes 16 gems in a 2-stage pipeline.
+- Stage 1: Compute the total value of positive gems and prepare the flow network nodes.
+- Stage 2: Run a simplified Max Flow algorithm (BFS-based augmenting path search) to find the minimum cut.
+
+**Inputs:**
+- `input clk`: System clock
+- `input rst_n`: Active-low reset
+- `input start`: Start signal to begin calculation
+- `input [15:0][15:0] gem_values`: Array of 16 gem values (signed, 2's complement). Each value is 16 bits wide.
+
+**Outputs:**
+- `output reg [31:0] max_earnings`: Maximum yen earned (unsigned 32-bit)
+- `output reg done`: High when calculation is complete
+
+**Behavior:**
+The gem smashing operation corresponds to finding the minimum cut in a flow network.
+- **Graph Construction:**
+  - Source node `S` (index 16), Sink node `T` (index 17).
+  - Nodes `0` to `15` represent gems 1 to 16.
+  - Edge `S -> i`: Capacity `gem_values[i]` if `gem_values[i] > 0`, else 0.
+  - Edge `i -> T`: Capacity `-gem_values[i]` if `gem_values[i] < 0`, else 0.
+  - Edges `i -> j`: Capacity infinity (use a large constant like 2^20) if `gem_values[j] > 0` and `j` is a multiple of `i` (i.e., `(j+1) % (i+1) == 0`).*
+
+**Algorithm (Simplified Max Flow):**
+- The module must implement a loop that finds augmenting paths from S to T in the residual graph.
+- Use BFS to find a path in the residual graph.
+- If a path is found, push flow (amount = 1, effectively using unit capacity logic with multiple iterations or simplified structure).
+- Since we need to handle capacities up to 2048, we can't use unit flow only. However, for the simplified benchmark, we will restrict the flow algorithm to run for a fixed number of iterations (e.g., 64 BFS steps).
+
+*Note on Multiples:* In hardware, checking divisibility is complex. For this scaled problem, we will pre-calculate the connections or use a fixed lookup logic: "Node i connects to j if j is a multiple of i". Since N=16, we can generate these edges statically.
+
+**Timing:**
+- `done` goes high approx 200 cycles after `start`.
+
+The module should use a finite state machine (FSM) for control.

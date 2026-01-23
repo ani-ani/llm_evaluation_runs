@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'reberland_suffix' that finds all distinct valid suffixes for a word according to Reberland language rules.
+
+The problem constraints are adapted as follows:
+- Maximum string length: 16 characters
+- Characters are lowercase English letters ('a'-'z')
+- Root must be at least 4 characters long
+- Suffixes are 2 or 3 characters long
+- No two consecutive suffixes can be identical
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] char_in // Current character from string (5 bits for 'a'-'z', 0 represents 'a', 25 represents 'z'
+input [3:0] len_in // Length of the input string (1 to 16)
+
+Outputs:
+output reg valid // High when a valid suffix is found
+output reg [4:0] suffix_out // Encoded valid suffix (concatenated characters)
+output reg [3:0] suffix_len // Length of the suffix (2 or 3)
+output reg done // High when computation is complete
+
+Behavior:
+The module should read the string character by character into an internal buffer. It must implement a Depth-First Search (DFS) style traversal working backwards from the end of the string to the root (index 4). 
+
+The internal logic must track:
+1. A stack or state machine to manage traversal states
+2. The last suffix used to check the "no consecutive identical suffixes" rule
+3. A memory structure to store distinct valid suffixes (can be a set of registers)
+
+Algorithm:
+1. Reset: Clear all internal buffers and the set of valid suffixes.
+2. Load: When 'start' is high, read characters into a buffer.
+3. Process: 
+   - Begin traversal from the end of the string (length N).
+   - Try appending a suffix of length 2 (N-2 to N-1). If (N-2) >= 4 (root constraint), add to valid set.
+   - Recursively explore previous positions: if the substring from (pos-2) to (pos) is different from the previous suffix (pos to pos+2), allow a move to pos-2.
+   - Try appending a suffix of length 3 (N-3 to N-1). If (N-3) >= 4, add to valid set.
+   - Recursively explore: if (pos-3) to (pos) is different from previous suffix (pos to pos+3), allow move to pos-3.
+   - The process stops when position <= 4 (root constraint).
+
+Implementation Details:
+- Use a state machine: IDLE, LOAD, PROCESS, OUTPUT, DONE.
+- The PROCESS state should implement the traversal. Since Verilog is parallel, you can use a stack of states (simulated with registers) or simply unroll the logic for a max depth of ~12 steps (since 16 chars - 4 root = 12 chars max for suffixes).
+- Distinct suffixes: Store up to 16 valid suffixes found. Each suffix can be represented as a 48-bit value (3 chars * 16 bits/char, padded) or simply 2-3 specific registers.
+- Latency: Variable, but 'done' will go high within approximately 50-100 clock cycles after start.
+
+Output Format:
+The module outputs valid suffixes one by one. 'valid' is high when a new unique suffix is identified. 'suffix_out' contains the encoded characters (concatenated). 'suffix_len' contains the length. 
+*Note: For the testbench, we will verify the set of suffixes by collecting them over multiple cycles.*

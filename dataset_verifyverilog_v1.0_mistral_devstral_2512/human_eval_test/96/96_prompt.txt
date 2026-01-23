@@ -1,0 +1,87 @@
+Design a sequential Verilog module named 'count_up_to' that implements a prime number generator.
+
+**Problem Adaptation:**
+- Input N is scaled to maximum 64 (6-bit input).
+- The module computes all prime numbers strictly less than N.
+- Maximum number of output primes is 18 (primes < 64).
+- Since Verilog arrays cannot be dynamic, the module outputs a fixed-width 144-bit result (18 primes * 8 bits).
+- Primes are packed into the result: result[7:0] = first prime, result[15:8] = second prime, etc.
+- If there are fewer than 18 primes, remaining bytes are filled with 0xFF (255) as padding.
+
+**Interface Specification:**
+Inputs:
+  input clk          // Clock signal
+  input rst_n        // Active-low reset
+  input start        // Start computation (pulse high for 1 cycle)
+  input [5:0] n      // Upper limit (0 to 63)
+
+Outputs:
+  output reg [143:0] result  // Packed primes (18 x 8-bit slots). 
+  output reg done            // High for 1 cycle when computation is complete
+
+**Behavioral Description:**
+1.  **State Machine:** Implement a Moore FSM with states:
+    *   `IDLE`: Wait for `start` signal.
+    *   `CHECK_PRIME`: Check if current number `i` (from 2 to N-1) is prime.
+    *   `UPDATE_RESULT`: If prime, pack it into `result` and increment prime count.
+    *   `INCREMENT`: Move to next number `i`. If `i >= n`, go to `DONE`.
+    *   `DONE`: Set `done` high for 1 cycle, then return to `IDLE`.
+
+2.  **Primality Test:**
+    *   To check if `i` is prime, test divisibility by divisors `d` from 2 up to `i-1`.
+    *   Maintain a divisor `d` in a register. 
+    *   If `i % d == 0`, then `i` is not prime.
+    *   If `d` reaches `i-1` without finding a divisor, `i` is prime.
+    *   *Optimization for hardware:* Since `i` is small (< 64), a simple modulo operation (`i % d`) can be implemented with a counter or hardcoded logic. For this spec, use a helper state or combinational logic to compute `remainder = i - d * floor(i/d)`. Given small range, we can use repeated subtraction to compute `i % d` inside `CHECK_PRIME` state.
+
+3.  **Storage:**
+    *   Maintain a register `prime_count` (4 bits, max 18).
+    *   Maintain a register `current_number` (6 bits, 2 to 63).
+    *   Maintain a register `divisor` (6 bits).
+    *   Maintain `result_reg` (144 bits).
+
+4.  **Latency:**
+    *   The module will take a bounded number of cycles to complete. Max operations approx: (Sum of (i-2) for i=2 to 63) = ~60,000 cycles worst case. 
+    *   Expect result valid within 20,000 to 30,000 clock cycles (it won't check all divisors for every number, it stops early). For the testbench, allow up to 50,000 cycles.
+
+5.  **Reset:**
+    *   On reset (`rst_n` low), all registers clear to 0. `result` clears. `done` goes low.
+
+**Implementation Detail:**
+- Use a sequential loop for the primality test. 
+- Inside `CHECK_PRIME` state: 
+    *   If `divisor >= current_number`, then it's prime. Go to `UPDATE_RESULT`.
+    *   Else, compute remainder: `remainder = current_number - divisor`. 
+    *   If `remainder == 0`: Not prime (divisible by `divisor`). Go to `INCREMENT`.
+    *   If `remainder < divisor`: Not divisible, increment `divisor` (subtract `remainder` from `divisor` wait, standard trial division requires checking `current_number % divisor == 0`). 
+    *   *Simplified Division:* 
+        Start with `rem = current_number`.
+        While `rem >= divisor`: `rem = rem - divisor`.
+        If `rem == 0`, it's divisible. 
+        Since we are in a state machine, we can do this subtraction one step per cycle or multiple per cycle. To keep cycle count reasonable, we should do this in a sub-loop or pre-calculate. 
+        *Refined State `CHECK_PRIME` Logic:*
+          1. `remainder = current_number`.
+          2. State `DIVIDE_LOOP`: If `remainder < divisor`, division done. If `remainder == 0`, not prime. Else `remainder = remainder - divisor` and stay in loop.
+        This adds more states but keeps logic simple.
+
+**Simplified Division for Hardware:**
+In `CHECK_PRIME` state:
+  - If `current_number < 4`: handled specially (2, 3 are prime).
+  - For `d` from 2 to `current_number-1`:
+    - Compute `temp = current_number`. 
+    - While `temp >= d`: `temp = temp - d`.
+    - If `temp == 0`, not prime.
+    - Else, `d++`.
+
+This requires nested loops in the FSM.
+
+**Final FSM Plan:**
+- `IDLE`: Wait start.
+- `PREPARE_CHECK`: Set `d=2`, `is_prime=1`.
+- `DIV_LOOP`: If `current_number <= d`, go to `CHECK_COMPLETE` (it's prime if we didn't break). Wait, logic error. If `d` reaches `current_number`, it passed all checks. 
+- `CHECK_DIVISIBILITY`: Compute `current_number % d`. 
+  - If `0`: Not prime. Go to `INCREMENT`.
+  - Else: `d++`. If `d >= current_number`, go to `CHECK_COMPLETE` (Prime found). Else go to `DIV_LOOP`.
+- `CHECK_COMPLETE`: If prime, add to result.
+- `INCREMENT`: `current_number++`. If `current_number >= n`, go to `DONE`. Else go to `PREPARE_CHECK`.
+- `DONE`: Assert done, go to `IDLE`.

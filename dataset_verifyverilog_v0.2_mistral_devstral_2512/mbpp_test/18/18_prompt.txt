@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'string_filter' that removes characters from the first string which are present in the second string.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation (strobe signal)
+input [127:0] str_in // Input string as 16 bytes (128-bit)
+input [127:0] filter_str // Filter string as 16 bytes (128-bit)
+input [4:0] str_len // Actual length of input string (0-16)
+
+Outputs:
+output reg [127:0] result // Output string as 16 bytes (128-bit)
+output reg [4:0] result_len // Length of result string (0-16)
+output reg done // High when computation complete
+
+Behavioral Description:
+The module implements character filtering using a 256-entry lookup table (LUT) for the filter characters.
+
+String Representation:
+- Each string is represented as 16 bytes in a 128-bit register
+- Bytes are packed from least-significant to most-significant: result[7:0] = first character, result[15:8] = second character, etc.
+- Characters are ASCII values (8-bit)
+- str_len indicates how many characters from the LSB end are valid
+
+Algorithm (Sequential FSM):
+1. IDLE state: Wait for start signal
+2. On start, initialize LUT from filter_str:
+   - Read each byte from filter_str (0 to 15)
+   - Set corresponding LUT index to 1
+3. PROCESSING state: Iterate through str_in characters
+   - Read each character from str_in
+   - Check LUT[character]
+   - If LUT[character] == 0, copy to output buffer
+   - Continue until str_len characters processed
+4. DONE state: Pack output buffer into result and set result_len
+
+Timing:
+- 1 cycle for initialization (reading filter_str and building LUT)
+- 16 cycles for processing str_in (one character per cycle)
+- 1 cycle for packing output
+- Total latency: 18 cycles after start
+
+Implementation Details:
+- LUT: 256x1 reg array for filter character lookup
+- Output buffer: 16x8 reg array for intermediate results
+- Processing index: 0 to 15
+- Output write index: 0 to 15
+- Use state machine states: IDLE, INIT_LUT, PROCESSING, PACKING, DONE
+- On reset, clear all registers and return to IDLE
+
+Example:
+str_in = "probasscurve" (16 chars) -> bytes: 0x70,0x72,0x6F,0x62,0x61,0x73,0x73,0x63,0x75,0x72,0x76,0x65
+filter_str = "pros" -> bytes: 0x70,0x72,0x6F,0x73
+result should be "bacuve" -> bytes: 0x62,0x61,0x63,0x75,0x76,0x65

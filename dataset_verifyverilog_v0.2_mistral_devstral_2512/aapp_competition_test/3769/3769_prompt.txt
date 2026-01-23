@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'func_count' that calculates the number of distinct functions f satisfying the equation f(kx mod p) = k f(x) mod p. The implementation must handle three cases:
+1. k = 0: Result is p^(p-1) mod M
+2. k = 1: Result is p^p mod M
+3. k > 1: Result is p^((p-1)/o) mod M, where o is the multiplicative order of k modulo p.
+
+This module will use Q16.16 fixed-point arithmetic for modular multiplication and exponentiation, scaled down for hardware constraints.
+
+**Inputs:**
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] p_in // Modulus p (scaled: 3 <= p <= 1024)
+input [15:0] k_in // Multiplier k (scaled: 0 <= k <= 1024)
+
+**Outputs:**
+output reg [31:0] result // Result in Q16.16 format (integer result in upper 16 bits)
+output reg done // High when computation is finished
+
+**Behavior:**
+- The module uses a state machine: IDLE, CHECK_K, CALC_ORDER, MOD_EXP, POWER_LOOP, DONE.
+- **FIXED-POINT SPECIFICATION:** All internal arithmetic uses Q16.16 format.
+  - Input values p and k are integers, so they are represented as (p << 16) and (k << 16).
+  - Intermediate modular multiplication: (A * B) mod P is calculated as (((A >> 16) * (B >> 16)) % (P >> 16)) << 16.
+  - Modular exponentiation uses the square-and-multiply algorithm, limited to 16 iterations for small inputs.
+- **Latency:** The result is valid approximately 100-200 clock cycles after 'start' is asserted, depending on the order calculation loop.
+- **Constraints:** Input p and k are scaled to fit in 16 bits. The internal logic treats the upper 16 bits of the 32-bit registers as integers.
+
+**Detailed State Machine:**
+1. **IDLE**: Waits for 'start' signal. Resets internal registers.
+2. **CHECK_K**: Checks if k is 0 or 1.
+   - If k == 0: Jump to POWER_LOOP to calculate p^(p-1).
+   - If k == 1: Jump to POWER_LOOP to calculate p^p.
+   - Else: Jump to CALC_ORDER.
+3. **CALC_ORDER**: Computes the multiplicative order 'o' of k modulo p.
+   - Loop: Multiply current value by k, mod by p, increment counter.
+   - Stop when current value == 1.
+   - Store 'o'. Calculate exponent 'e = (p-1)/o'.
+4. **MOD_EXP**: Performs modular exponentiation (base = p, exponent = e or p or p-1).
+   - Uses binary exponentiation (square and multiply).
+   - Result is stored in 'result' register.
+5. **POWER_LOOP**: Helper state to compute p^exp.
+6. **DONE**: Sets 'done' high.
+
+**Note:** Since p can be up to 1,000,000, but we are scaling down, assume inputs are pre-scaled or use 32-bit arithmetic for intermediate products to avoid overflow, casting back to Q16.16 for storage. For this specific problem, we will assume the inputs are small enough (p <= 2048) to fit in 16-bit integer part, and we will handle multiplication overflow by using 32-bit temporary variables.

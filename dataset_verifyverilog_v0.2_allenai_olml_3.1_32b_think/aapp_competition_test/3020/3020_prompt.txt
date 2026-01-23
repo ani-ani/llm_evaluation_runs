@@ -1,0 +1,64 @@
+Design a sequential Verilog module named 'carryless_sqrt' that computes the smallest positive integer a such that a ⊗ a = N (carryless square root).
+
+Since N can have up to 25 digits in the original problem, we scale down to support N up to 12 digits (requiring 40 bits). The candidate a will have at most 6 digits.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [39:0] n // N value in BCD format, max 12 digits
+input [3:0] num_digits // actual number of digits in N (1-12)
+
+Outputs:
+output reg [23:0] result // result a in BCD format (6 digits, 4 bits each)
+output reg [3:0] result_digits // actual number of digits in result
+output reg done // high when computation complete
+output reg found // high if solution found
+
+Behavior: The module should search for the smallest a (1 to 999999) such that a ⊗ a = N. It must implement carryless multiplication logic. The module uses a state machine with states: IDLE, SEARCH, VERIFY, DONE.
+
+In IDLE: Wait for start signal
+In SEARCH: Iterate through candidate values (1 to 999999), verify each
+In VERIFY: Perform carryless multiplication a * a and compare with N
+In DONE: Set result and done signal
+
+Carryless multiplication of two 6-digit numbers (max) requires computing each digit c_k = Σ(a_i * b_j) mod 10 for k = 0..11. Each term is 0-9 * 0-9 = 0-81. Sum of up to 7 terms (for k=5 or 6), max ~567.
+
+Search strategy: Since we need smallest a, we can iterate a from 1 to 999999, but this is too many cycles. Instead, implement a digit-by-digit construction (similar to how carryless square root is computed digit by digit).
+
+Simplified approach: Support only up to 12 digits in N, and search a up to 9999. Use brute force for simplicity.
+
+Actually, better approach: Use digit-by-digit search. For each digit position of a (from most significant to least), try digits 0-9 and verify if the prefix produces a valid prefix of N.
+
+Final design: Support N up to 12 digits (40 bits). a up to 6 digits (24 bits). Brute force search with optimized verification.
+
+To make it practical for hardware: Limit to 4 digits of a (result), so N max 8 digits.
+
+Revised: Support N up to 8 digits (32 bits), a up to 4 digits (16 bits). Still need to check 10,000 values worst case.
+
+Simplified: Support N up to 6 digits (24 bits), a up to 3 digits (12 bits). 1000 candidates.
+
+For the testbench, we'll target this range.
+
+Behavioral description:
+1. In SEARCH state, iterate candidate from 1 to 999
+2. In VERIFY state, compute candidate ⊗ candidate using carryless multiplication
+3. Compare result with N digit-by-digit
+4. If match, record and go to DONE. If no match after 999, go to DONE with found=0
+
+Carryless multiplication algorithm for 3-digit numbers:
+Let a = a2 a1 a0, b = b2 b1 b0
+c0 = (a0*b0) mod 10
+c1 = (a0*b1 + a1*b0) mod 10
+c2 = (a0*b2 + a1*b1 + a2*b0) mod 10
+c3 = (a1*b2 + a2*b1) mod 10
+c4 = (a2*b2) mod 10
+
+For a squared, b = a, so:
+c0 = a0^2 mod 10
+c1 = 2*a0*a1 mod 10
+c2 = (2*a0*a2 + a1^2) mod 10
+c3 = 2*a1*a2 mod 10
+c4 = a2^2 mod 10
+
+Implement this with pipelined calculations over multiple cycles to fit in hardware.

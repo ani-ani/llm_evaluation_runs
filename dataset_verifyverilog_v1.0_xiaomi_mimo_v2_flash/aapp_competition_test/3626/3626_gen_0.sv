@@ -1,0 +1,41 @@
+module rectangle_intersect (
+    input signed [7:0] x1_0, y1_0, x2_0, y2_0,
+    input signed [7:0] x1_1, y1_1, x2_1, y2_1,
+    input signed [7:0] x1_2, y1_2, x2_2, y2_2,
+    input signed [7:0] x1_3, y1_3, x2_3, y2_3,
+    input signed [7:0] x1_4, y1_4, x2_4, y2_4,
+    input signed [7:0] x1_5, y1_5, x2_5, y2_5,
+    input signed [7:0] x1_6, y1_6, x2_6, y2_6,
+    input signed [7:0] x1_7, y1_7, x2_7, y2_7,
+    output reg intersect
+);
+    wire signed [7:0] x1 [0:7];
+    wire signed [7:0] y1 [0:7];
+    wire signed [7:0] x2 [0:7];
+    wire signed [7:0] y2 [0:7];
+    
+    assign x1[0] = x1_0; assign y1[0] = y1_0; assign x2[0] = x2_0; assign y2[0] = y2_0;
+    assign x1[1] = x1_1; assign y1[1] = y1_1; assign x2[1] = x2_1; assign y2[1] = y2_1;
+    assign x1[2] = x1_2; assign y1[2] = y1_2; assign x2[2] = x2_2; assign y2[2] = y2_2;
+    assign x1[3] = x1_3; assign y1[3] = y1_3; assign x2[3] = x2_3; assign y2[3] = y2_3;
+    assign x1[4] = x1_4; assign y1[4] = y1_4; assign x2[4] = x2_4; assign y2[4] = y2_4;
+    assign x1[5] = x1_5; assign y1[5] = y1_5; assign x2[5] = x2_5; assign y2[5] = y2_5;
+    assign x1[6] = x1_6; assign y1[6] = y1_6; assign x2[6] = x2_6; assign y2[6] = y2_6;
+    assign x1[7] = x1_7; assign y1[7] = y1_7; assign x2[7] = x2_7; assign y2[7] = y2_7;
+
+    always @(*) begin
+        integer i, j;
+        intersect = 0;
+        for (i = 0; i < 8; i = i + 1) begin
+            for (j = i+1; j < 8; j = j + 1) begin
+                if ((x1[i] < x2[j]) && (x1[j] < x2[i]) && 
+                    (y1[i] < y2[j]) && (y1[j] < y2[i])) begin
+                    if (!((x1[i] <= x1[j] && x2[i] >= x2[j] && y1[i] <= y1[j] && y2[i] >= y2[j]) || 
+                           (x1[j] <= x1[i] && x2[j] >= x2[i] && y1[j] <= y1[i] && y2[j] >= y2[i]))) begin
+                        intersect = 1;
+                    end
+                end
+            end
+        end
+    end
+endmodule

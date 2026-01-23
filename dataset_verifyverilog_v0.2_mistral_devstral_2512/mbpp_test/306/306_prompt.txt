@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'max_sum_increasing_subseq' that computes the maximum sum of an increasing subsequence from prefix until index i and also including a given kth element which is after i (k > i).
+
+Module Specification:
+- Use N=8 fixed array size
+- Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+- Input array elements represent numbers multiplied by 65536
+- The module uses a state machine to compute dp[i][k] where dp[i][j] stores max sum including elements up to index i and element j
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] i_index // source index (0-7)
+input [2:0] k_index // target index (0-7, must be > i_index)
+input [15:0] a [0:7] // input array in Q16.16 format
+
+Outputs:
+output reg [15:0] result // maximum sum in Q16.16 format
+output reg done // high when computation complete
+
+Latency: Maximum 64 cycles (8x8 DP table computation) after start asserted.
+
+Behavioral Description:
+The module implements a dynamic programming approach:
+1. Initialize dp[0][j] for all j: if a[j] > a[0] then dp[0][j] = a[j] + a[0], else dp[0][j] = a[j]
+2. For i from 1 to 7: compute dp[i][j] for all j:
+   - If a[j] > a[i] and j > i: dp[i][j] = max(dp[i-1][i] + a[j], dp[i-1][j])
+   - Otherwise: dp[i][j] = dp[i-1][j]
+3. After computing up to i_index, return dp[i_index][k_index]
+
+State Machine States:
+- IDLE: Wait for start signal
+- INIT: Initialize first row (i=0)
+- ROW_PROCESS: Process each row from i=1 to i_index
+- DONE: Result ready
+
+Use a 8x8 RAM to store dp table (8 rows, 8 columns, each 16-bit). The computation proceeds row by row.

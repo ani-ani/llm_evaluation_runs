@@ -1,0 +1,77 @@
+Design a sequential Verilog module named 'word_ladder_optimizer' that solves a scaled-down word ladder puzzle.
+
+PROBLEM SPECIFICATION:
+- Fixed 4-letter words (A-Z only)
+- Maximum 8 words in dictionary (including start and end)
+- Find one word to add to dictionary that minimizes steps from start to end
+- If no improvement possible, output 0
+- If impossible even with addition, output 0 and steps=-1
+- Output lexicographically first word if multiple optimal solutions
+
+INPUT INTERFACE:
+- Clock and reset signals
+- Start signal to begin computation
+- Dictionary stored in 8 registers, each 32-bit (4 chars * 8 bits/char)
+- First word (index 0) = start word
+- Second word (index 1) = end word
+
+OUTPUT INTERFACE:
+- result_word [31:0]: 4-character word (ASCII) or 0x30303030 ('0')
+- result_steps [7:0]: minimum steps count, or 0xFF for -1
+- done: computation complete signal
+
+INTERNAL ARCHITECTURE:
+1. State Machine: IDLE → BUILD_GRAPH → SEARCH_PATHS → FIND_OPTIMAL → DONE
+2. Graph Representation: 8x8 adjacency matrix (1 bit per connection)
+3. BFS Engine: Iterative breadth-first search with 8-node queue
+4. Word Comparator: 4-character parallel comparison logic
+5. Single-Character Difference Detector: 4-bit XOR reduction tree
+6. Optimal Word Finder: Combinational check of all 26^3 candidate words (simplified to check only dictionary-adjacent positions)
+
+COMPUTATION STEPS:
+- Cycle 1-16: Build adjacency matrix (check all word pairs)
+- Cycle 17-32: Compute baseline path length (BFS from start to end without addition)
+- Cycle 33-100: Try adding each possible word (check all 4-position * 26-letter combinations that differ by 1 char from existing words)
+- Cycle 101-110: Find optimal solution (min steps, lexicographically first)
+- Cycle 111: Output result
+
+BEHAVIORAL DESCRIPTION:
+The module performs a complete search of the problem space:
+1. First, it computes shortest path from start to end using existing dictionary
+2. Then, it systematically evaluates adding each possible one-letter-different word
+3. For each candidate word, it re-runs BFS to find new shortest path
+4. Finally, it selects the word that gives the minimum steps (or 0 if no improvement)
+5. If baseline is impossible (result_steps = -1) and no addition helps, output 0/-1
+
+PARAMETERS:
+- MAX_WORDS = 8: Maximum words in dictionary
+- WORD_LEN = 4: Fixed word length
+- ALPHABET = 26: A-Z
+
+SIGNAL WIDTHS:
+- Dictionary entries: 32-bit (4 bytes)
+- Word comparison: 32-bit XOR + popcount
+- Adjacency matrix: 64-bit (8x8 packed)
+- Steps counter: 8-bit (max 255 steps)
+- State register: 4-bit (8 states maximum)
+
+SUBMODULES REQUIRED:
+1. difference_counter: Count differing characters between two 32-bit words
+2. bfs_path_finder: Find shortest path length in 8-node graph
+3. candidate_generator: Generate potential words to add
+4. lexicographic_comparator: Compare two 32-bit words alphabetically
+
+LATENCY: Approximately 150 clock cycles from start to done.
+
+EXAMPLE TRANSFORMATION:
+Input: CAT, DOG, COT (3 words)
+Baseline: CAT→?→DOG (no path, steps = -1)
+Candidate COG (differs from DOG by 1 char):
+  New dictionary: CAT, DOG, COT, COG
+  Path: CAT→COT→COG→DOG (steps = 3)
+Output: COG, 3
+
+The module must handle all three example cases correctly:
+1. 3 words (CAT, DOG, COT) → COG, 3
+2. 2 words (CAT, DOG) → 0, -1 (no improvement possible)
+3. 4 words (CAT, DOG, COT, COG) → 0, 3 (already optimal)

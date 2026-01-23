@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'envelope_optimizer' that finds the minimum wasted paper for a greeting card company.
+
+Problem Adaptation:
+- Input: 5 card types with dimensions (w, h) and quantities (q)
+- K types of envelopes allowed (1 <= K <= 5)
+- Cards cannot be rotated
+- Waste = sum of (envelope_area - card_area) * quantity for all cards
+- Goal: minimize total waste
+
+Algorithm:
+1. Compute envelope requirements for any subset of cards: For a subset S, the envelope must be at least max(width) wide and max(height) tall.
+2. For each subset of cards (2^5 = 32 subsets), pre-compute the waste if all cards in that subset use the same envelope.
+3. Use DP to find minimum waste for partitioning all cards into at most K subsets: dp[mask][k] = min waste for cards in 'mask' using k envelopes.
+4. Answer is dp[(1<<5)-1][K].
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] card_width [0:4] // array of 5 card widths
+input [15:0] card_height [0:4] // array of 5 card heights
+input [15:0] card_qty [0:4] // array of 5 card quantities
+input [2:0] k_envelopes // number of envelope types allowed (1-5)
+
+Outputs:
+output reg [31:0] min_waste // minimum total waste
+output reg done // high when computation complete
+
+Latency: Approximately 32 (subset computation) + 32*5*5 (DP computation) = ~832 clock cycles after start asserted.
+
+Internal Processing:
+- Use state machine: IDLE, PRECOMPUTE_SUBSETS, DP_INIT, DP_LOOP, DONE
+- Precompute waste for each of 32 subsets: waste[mask] = sum of card_area_for_subset * quantity
+- DP table: dp[32][6] where dp[i][j] is min waste for subset i with j envelopes
+- Initialize dp[0][0] = 0, others = infinity
+- For each subset i from 1 to 31:
+  - For each j from 1 to K:
+    - For each submask s of i:
+      - dp[i][j] = min(dp[i][j], dp[i-s][j-1] + waste[s])
+- Result is dp[31][K]
+
+Signal widths:
+- card_width/height: 14 bits (max 10000 < 2^14 = 16384)
+- card_qty: 14 bits (max 10000)
+- card_area: 28 bits (14+14)
+- waste per card type: 28 + 14 = 42 bits
+- total waste: 45 bits (allow for accumulation of 32 cards * 2^42)
+- min_waste output: 48 bits to be safe
+
+Important: Module must handle the computation of maximum width/height for any subset.
+Use combinational logic for waste calculation per subset and sequential DP updates.

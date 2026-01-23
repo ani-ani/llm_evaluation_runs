@@ -1,0 +1,61 @@
+Design a sequential Verilog module named 'yahtzee_solver' that implements a simplified Sequential Yahtzee game solver.
+
+The module must find the maximum possible score using a fixed sequence of dice rolls, where:
+- 5 dice are used per round
+- 13 sequential categories must be filled
+- Each round allows up to 3 rolls (initial + up to 2 re-rolls)
+- Maximum 65 input dice rolls available
+- Dice values are 1-6
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [5:0] num_rolls // Number of available dice rolls (6-65)
+input [2:0] dice_in [0:64] // Array of 65 dice rolls, each 3 bits (values 1-6)
+
+Outputs:
+output reg [11:0] max_score // Maximum achievable score (0-1000 range)
+output reg done // High when computation complete
+
+Latency: Approximately 2000 clock cycles (processing all possible re-roll combinations)
+
+Algorithm Specification:
+1. Parse input dice array sequentially into 13 rounds
+2. For each round, consider all possible re-roll strategies:
+   - Keep 0-5 dice after first roll
+   - Keep 0-5 dice after second roll
+   - This means checking 2^5 = 32 combinations per re-roll decision
+3. For each possible hand (5 dice), calculate score for current category:
+   - Categories 0-5: Ones through Sixes (sum of matching dice)
+   - Category 6: 3-of-a-Kind (sum all if 3+ same, else 0)
+   - Category 7: 4-of-a-Kind (sum all if 4+ same, else 0)
+   - Category 8: Full House (25 points if 3 same + 2 same)
+   - Category 9: Small Straight (30 points if 4 consecutive)
+   - Category 10: Long Straight (40 points if 5 consecutive)
+   - Category 11: Chance (sum all dice)
+   - Category 12: Yahtzee (50 points if all 5 same)
+
+4. Use DP approach: dp[round][dice_index] = max_score achievable
+   - For each round, try all valid subsets of dice for re-rolls
+   - Compute best possible hand after max 3 rolls
+   - Move to next round
+
+5. State Machine States:
+   - IDLE: Wait for start signal
+   - RESET: Initialize DP table
+   - ROUND_LOOP: Process each of 13 rounds
+   - ROLL_STRATEGY: Evaluate all re-roll combinations (2^5 × 2^5 = 1024 paths)
+   - SCORE_CALC: Calculate score for current category and hand
+   - UPDATE_DP: Update DP state
+   - DONE: Output result
+
+Implementation Details:
+- Use Q16.16 fixed-point internally if needed, but scores are integers
+- Hand representation: 5 dice values [2:0] each
+- Score calculations use combinational logic per category
+- Maximum theoretical score is ~1000, so 12-bit output is sufficient
+- Use lookup tables for straight detection
+- Use bit masks for counting duplicates
+
+The module must be synthesizable and use bounded memory only.

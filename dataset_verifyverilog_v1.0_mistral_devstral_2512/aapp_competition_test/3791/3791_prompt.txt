@@ -1,0 +1,124 @@
+module PermutationShiftOptimizer(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] p_0, p_1, p_2, p_3, p_4, p_5, p_6, p_7,  // 4-bit values (1-8)
+    input wire [3:0] n,  // Number of valid elements (2-8)
+    output reg [15:0] min_deviation,
+    output reg [3:0] best_shift,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 2'b00;
+localparam LOAD = 2'b01;
+localparam COMPUTE = 2'b10;
+localparam DONE = 2'b11;
+
+reg [1:0] state;
+reg [3:0] shift_counter;  // 0 to n-1
+reg [3:0] element_counter; // 0 to n-1
+reg [15:0] current_deviation;
+reg [15:0] temp_min;
+reg [3:0] temp_shift;
+
+// Internal storage for permutation (0-indexed for easier math)
+reg [3:0] perm [0:7];
+
+// Combinational logic for permutation value access
+wire [3:0] perm_val;
+assign perm_val = perm[element_counter];
+
+// Combinational logic for target position
+generate
+    genvar i;
+endgenerate
+
+wire [3:0] target_pos;
+// Calculate target position: (element_counter + shift_counter) % n
+wire [4:0] sum_pos = element_counter + shift_counter;
+assign target_pos = (sum_pos >= n) ? (sum_pos - n) : sum_pos;
+
+// Combinational logic for absolute difference
+wire [4:0] diff;
+wire [4:0] abs_diff;
+assign diff = perm_val - target_pos - 1'b1;  // +1 offset since values are 1-indexed
+assign abs_diff = diff[4] ? (~diff + 1'b1) : diff;
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        min_deviation <= 16'hFFFF;
+        best_shift <= 4'b0;
+        shift_counter <= 4'b0;
+        element_counter <= 4'b0;
+        current_deviation <= 16'b0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= LOAD;
+                    shift_counter <= 4'b0;
+                    element_counter <= 4'b0;
+                    min_deviation <= 16'hFFFF;
+                    best_shift <= 4'b0;
+                end
+            end
+            
+            LOAD: begin
+                // Load permutation from inputs into internal array
+                case (element_counter)
+                    4'd0: perm[0] <= p_0;
+                    4'd1: perm[1] <= p_1;
+                    4'd2: perm[2] <= p_2;
+                    4'd3: perm[3] <= p_3;
+                    4'd4: perm[4] <= p_4;
+                    4'd5: perm[5] <= p_5;
+                    4'd6: perm[6] <= p_6;
+                    4'd7: perm[7] <= p_7;
+                endcase
+                
+                element_counter <= element_counter + 1'b1;
+                if (element_counter == n - 1'b1) begin
+                    state <= COMPUTE;
+                    element_counter <= 4'b0;
+                    current_deviation <= 16'b0;
+                end
+            end
+            
+            COMPUTE: begin
+                // Calculate deviation for current shift
+                if (element_counter < n) begin
+                    current_deviation <= current_deviation + abs_diff;
+                    element_counter <= element_counter + 1'b1;
+                end else begin
+                    // Finished this shift, check if it's the minimum
+                    if (current_deviation < min_deviation) begin
+                        min_deviation <= current_deviation;
+                        best_shift <= shift_counter;
+                    end
+                    
+                    // Move to next shift
+                    shift_counter <= shift_counter + 1'b1;
+                    element_counter <= 4'b0;
+                    current_deviation <= 16'b0;
+                    
+                    if (shift_counter == n - 1'b1) begin
+                        state <= DONE;
+                        done <= 1'b1;
+                    end
+                end
+            end
+            
+            DONE: begin
+                done <= 1'b0;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

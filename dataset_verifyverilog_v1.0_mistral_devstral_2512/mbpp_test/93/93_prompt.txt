@@ -1,0 +1,63 @@
+Design a sequential Verilog module that computes a^b (a to the power of b) iteratively.
+
+MODULE SPECIFICATION:
+
+Inputs:
+  - clk        : Clock signal (rising edge triggered)
+  - rst_n      : Active-low synchronous reset
+  - start      : Start pulse (assert for 1 cycle to begin computation)
+  - base       : 8-bit unsigned base value (a)
+  - exponent   : 5-bit unsigned exponent value (b) - max 31 iterations
+
+Outputs:
+  - result     : 32-bit unsigned result (a^b)
+  - done       : Asserted high for 1 cycle when computation is complete
+
+FUNCTIONAL BEHAVIOR:
+  - Computes result = base^exponent
+  - Uses iterative multiplication: result = result * base, repeated exponent times
+  - Special cases handled:
+    * exponent = 0: result = 1 (handled by initialization)
+    * base = 0: result = 0 (handled by multiplication logic)
+    * exponent = 1: result = base (one iteration)
+  - Maximum iterations: 31 (for exponent=31)
+  - Result width: 32 bits (sufficient for 255^31, but will saturate/clamp if overflow)
+
+TIMING:
+  - Assert start for 1 clock cycle to initiate computation
+  - Computation takes (exponent + 2) clock cycles:
+    * 1 cycle to load initial state
+    * exponent cycles for multiplication iterations
+    * 1 cycle to assert done
+  - done is high for exactly 1 cycle
+  - Result is valid when done is high
+
+RESET BEHAVIOR:
+  - On rst_n=0: result=0, done=0, all internal state cleared
+  - Minimum 2 clock cycles of reset required
+  - After reset: module ready to receive start signal
+
+IMPLEMENTATION GUIDANCE:
+  - Use a finite state machine (FSM) with states: IDLE, COMPUTE, COMPLETE
+  - Use a counter to track iterations
+  - Use accumulator register for result
+  - In IDLE: wait for start signal
+  - In COMPUTE: multiply accumulator by base, decrement counter
+  - In COMPLETE: assert done, return to IDLE
+
+EXAMPLE OPERATIONS:
+  Test 1: base=3, exponent=4
+    - Expected result: 81 (3^4 = 3*3*3*3)
+    - Iterations: 4 multiplications
+    
+  Test 2: base=2, exponent=3
+    - Expected result: 8 (2^3 = 2*2*2)
+    - Iterations: 3 multiplications
+    
+  Test 3: base=5, exponent=5
+    - Expected result: 3125 (5^5 = 5*5*5*5*5)
+    - Iterations: 5 multiplications
+
+INTERFACE EXACT NAMES:
+  Inputs: clk, rst_n, start, base[7:0], exponent[4:0]
+  Outputs: result[31:0], done

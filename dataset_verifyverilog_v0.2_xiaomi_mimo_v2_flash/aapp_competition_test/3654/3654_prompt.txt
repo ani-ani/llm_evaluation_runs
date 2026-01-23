@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'mta_rock_solver' that implements the Mischievous Troublemakers' Association rock arrangement analysis.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] k // faction number (1-100)
+input [15:0] n // number of lawns to check (1-16, scaled down from 1,000,000)
+
+Outputs:
+output reg [7:0] result // number of lawns with wonderful rectangles
+output reg done // high when computation complete
+
+Specification:
+The module computes how many lawns in the first n lawns of faction k can form wonderful rectangles.
+
+A wonderful rectangle is p x q where both p and q are prime numbers.
+
+Sequence F_k(n) definition (scaled to 16-bit arithmetic):
+- F_k(1) = 42
+- F_k(2) = 11*k + 77
+- F_k(n) = 2*F_k(n-1) - F_k(n-2) + 10*k, for n > 2
+
+For each n from 1 to input n:
+1. Compute F_k(n)
+2. Check if F_k(n) can be expressed as p * q where p and q are prime
+3. If yes, increment result counter
+
+Prime Checking:
+- Since F_k(n) is computed with 16-bit arithmetic, check primes up to 255
+- Valid primes: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293
+- Use a lookup table for primes up to 256
+
+Algorithm:
+1. State machine: IDLE, CHECK_LAWN, COMPUTE_SEQUENCE, VERIFY_RECTANGLE, UPDATE_COUNT, DONE
+2. Iterate from n_current = 1 to n
+3. Compute F_k(n_current) iteratively using state variables
+4. For each F_k(n_current), check if it can be factorized into p*q where p and q are prime
+5. If valid factorization exists, increment result
+
+Latency: approximately 16 * (sequence computation + factorization check) clock cycles after start asserted.
+
+Detailed Implementation:
+- Use state machine to iterate through n values
+- Maintain current_F, prev_F, and iteration counter
+- Factorization: check all primes p where p <= sqrt(F_k(n_current))
+- Check if q = F_k(n_current)/p is also prime
+- If found, increment result counter
+- Continue until all n lawns checked
+
+Fixed-point consideration: All values are integer arithmetic, 16-bit width sufficient for scaled problem.

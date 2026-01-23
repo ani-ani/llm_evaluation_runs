@@ -1,0 +1,74 @@
+## Fragment Assembly Module Specification
+
+### Problem Summary
+Given n fragments located at factorial nodes k_i!, find the node P that minimizes the sum of path lengths in a prime factor tree where node x connects to x/f(x) (f(x) is lowest prime factor).
+
+### Adapted Requirements (Scaled for HDL)
+- **MAX_K**: 16 (k_i values range 0-16)
+- **MAX_FRAGMENTS**: 8
+- **Primes**: 2,3,5,7,11,13 (all primes ≤ 16)
+
+### Interface Specification
+
+#### Inputs:
+- `clk`: Clock signal (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start pulse (1 cycle) to begin computation
+- `k_values`: 8-element array, each element [15:0], representing k_i
+- `n`: [3:0] Number of valid elements in k_values (1-8)
+
+#### Outputs:
+- `result`: [31:0] Minimal sum of path lengths
+- `done`: Pulse high for 1 cycle when result is valid
+
+#### Internal Architecture:
+1. **Precomputation Block** (initial block):
+   - `factor[k][p]`: Exponent of prime p in k (17 x 6 array)
+   - `dist_to_root[k]`: Sum of Ω(i) for i=2..k (17 elements)
+   
+2. **State Machine** (5 states):
+   - IDLE: Wait for start
+   - COUNT: Build histogram of k values
+   - COMPUTE_DIST: Calculate distance to root (P=1)
+   - FIND_BRANCH: Identify prime branch with > n/2 fragments
+   - MOVING: Compute improved distance
+   - DONE: Output result
+
+3. **Data Structures**:
+   - `count[0:16]`: Fragment frequency per k value
+   - `freq[0:5]`: Frequency per prime branch
+
+### Algorithm Details
+
+#### Precomputation:
+For each k from 2 to 16:
+- Copy previous factorization
+- Factorize k: while temp % prime == 0, increment factor[k][prime_idx]
+- Compute dist_to_root[k] = dist_to_root[k-1] + sum of factor[k][*]
+
+#### Runtime:
+1. Count fragments per k value
+2. Compute initial distance: sum(count[k] * dist_to_root[k])
+3. If count[1] > n/2, answer = 0 (P=1 optimal)
+4. Otherwise, find prime branch where range contains > n/2 fragments
+5. Compute improved distance by moving P to that branch
+
+### Timing
+- Reset: 2 clock cycles minimum
+- Computation: < 100 cycles for MAX_K=16
+- Timeout: 1000 cycles (10μs at 100MHz)
+
+### Implementation Notes
+- All arrays are fixed-size
+- No dynamic memory allocation
+- Loop bounds are constant
+- Arithmetic uses 32-bit width (sufficient for scaled problem)
+- Prime factorization uses precomputed LUT
+
+### Example Test Cases:
+1. Input: [2,1,4], n=3 → Output: 5
+2. Input: [3,1,4,4], n=4 → Output: 6
+3. Input: [1,5,6], n=3 → Output: 10 (scaled from 76)
+
+### Verification:
+Use attached cocotb testbench for comprehensive testing.

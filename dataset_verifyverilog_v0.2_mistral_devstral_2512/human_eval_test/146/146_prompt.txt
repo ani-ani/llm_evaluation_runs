@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'special_filter' that counts elements in an array satisfying two conditions: 1) absolute value > 10, 2) first and last digits are odd.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] array_len // Number of elements (0 to 8)
+input [15:0] nums [0:7] // Array of 8 signed 16-bit numbers
+
+Outputs:
+output reg [3:0] result // Count of valid elements (max 8)
+output reg done // High when computation complete
+
+Latency: 1024 clock cycles worst-case (128 cycles per element).
+
+Behavior:
+1. State Machine: IDLE, PROCESSING, DONE
+2. In PROCESSING: Process one number at a time
+3. For each number:
+   a. Take absolute value (handle negative)
+   b. Check if abs > 10
+   c. If yes: Extract first digit (most significant decimal digit) and last digit (least significant decimal digit)
+   d. Check if both digits are odd (1,3,5,7,9)
+   e. Increment count if both conditions met
+4. Use internal counters for array index and digit extraction loops
+5. Digit extraction: Use repeated division by 10 (implement as subtract-and-count loop)
+6. Last digit: abs % 10 (modulo via subtraction loop)
+7. First digit: Repeatedly divide by 10 until < 10
+8. Odd check: digit % 2 != 0
+
+Constraints:
+- Max 8 numbers in array
+- Each number fits in 16-bit signed (-32768 to 32767)
+- Process sequentially to save resources
+- Use bounded loops (max 5 iterations for digit extraction)
+
+Test case conversions:
+- [15, -73, 14, -15] -> [15, 73, 14, 15] -> 1 valid (15: 1 and 5 odd)
+- [33, -2, -3, 45, 21, 109] -> [33, 2, 3, 45, 21, 109] -> 2 valid (33: 3 and 3 odd; 109: 1 and 9 odd)
+- [71, -2, -33, 75, 21, 19] -> [71, 2, 33, 75, 21, 19] -> 3 valid (71: 7 and 1 odd; 33: 3 and 3 odd; 75: 7 and 5 odd; 21: 2 is even, so 3 total? Wait, 21: 2 even, so count=3)
+
+Note: For negative numbers, use two's complement absolute value: if sign bit set, subtract from 0.

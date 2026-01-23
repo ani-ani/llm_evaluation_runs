@@ -1,0 +1,46 @@
+Design a Verilog module that determines if an undirected graph can be oriented to be strongly connected.
+
+MODULE NAME: graph_orientation_4bit
+
+INTERFACE SPECIFICATION:
+  Inputs:
+    - clk       : Clock signal (rising edge triggered)
+    - rst_n     : Active-low synchronous reset
+    - start     : Start computation pulse (1 cycle)
+    - m         : [2:0] Number of edges (1-4)
+    - edges     : 4x8-bit packed edge inputs. Each edge is {u[3:0], v[3:0]}
+                  edge_0: {u0[3:0], v0[3:0]}
+                  edge_1: {u1[3:0], v1[3:0]}
+                  edge_2: {u2[3:0], v2[3:0]}
+                  edge_3: {u3[3:0], v3[3:0]}
+  
+  Outputs:
+    - yes_no    : 1-bit result (1=possible, 0=impossible)
+    - orient    : 4x8-bit oriented edges. Each edge is {from[3:0], to[3:0]}
+                  orient_0: {from0[3:0], to0[3:0]}
+                  orient_1: {from1[3:0], to1[3:0]}
+                  orient_2: {from2[3:0], to2[3:0]}
+                  orient_3: {from3[3:0], to3[3:0]}
+    - done      : Asserted high when computation completes
+
+FUNCTIONAL REQUIREMENTS:
+  1. The graph must be 2-edge-connected (no bridges) for orientation to be possible
+  2. Brute-force search: try all 2^M possible orientations
+  3. For each orientation, compute reachability matrix using Floyd-Warshall
+  4. If any orientation results in strong connectivity (all nodes reachable), output YES
+  5. If none found, output NO
+
+IMPLEMENTATION NOTES:
+  - Use 3-bit counter for orientation enumeration (0 to 2^M-1)
+  - Implement Floyd-Warshall with 4x4 distance matrix
+  - Use 3 nested loops: k=0..3, i=0..3, j=0..3
+  - Strong connectivity check: all dist[i][j] must be 1
+  - Scale: N=4 nodes, M≤4 edges
+  - Node indices: 0-3 (maps to 1-4 in problem)
+  - Timing: ~1000 cycles worst case for M=4
+
+STATE MACHINE:
+  IDLE -> CHECK_START -> BUILD_ORIENT -> FLOYD_INIT -> FLOYD_K_LOOP -> 
+  FLOYD_IJ_LOOP -> CHECK_STRONG -> NEXT_ORIENT -> OUTPUT -> DONE
+
+CRITICAL: Each output orient_i must be assigned individually, not as array.

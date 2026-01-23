@@ -1,0 +1,114 @@
+module word_search (
+  input clk,
+  input rst_n,
+  input start,
+  input [63:0] query_word,  // 8 characters, 8 bits each
+  output reg [15:0] result,
+  output reg done
+);
+
+  // Database storage (8 words, each 8 bytes)
+  reg [63:0] database [0:7];
+  
+  // State definitions
+  localparam IDLE = 2'b00;
+  localparam COMPARE = 2'b01;
+  localparam NEXT = 2'b10;
+  localparam DONE = 2'b11;
+  
+  // Internal registers
+  reg [2:0] index;        // 3-bit index for 8 words
+  reg [15:0] count;       // number of words compared
+  reg [15:0] lcp_sum;     // sum of LCP lengths
+  reg [1:0] state, next_state;
+  
+  // Current database word being compared
+  wire [63:0] current_word;
+  assign current_word = database[index];
+  
+  // LCP computation - unrolled for 8 characters
+  reg [3:0] lcp_temp;
+  always @(*) begin
+    lcp_temp = 0;
+    // Compare each character pair
+    if (query_word[7:0] == current_word[7:0]) begin
+      lcp_temp = 1;
+      if (query_word[15:8] == current_word[15:8]) begin
+        lcp_temp = 2;
+        if (query_word[23:16] == current_word[23:16]) begin
+          lcp_temp = 3;
+          if (query_word[31:24] == current_word[31:24]) begin
+            lcp_temp = 4;
+            if (query_word[39:32] == current_word[39:32]) begin
+              lcp_temp = 5;
+              if (query_word[47:40] == current_word[47:40]) begin
+                lcp_temp = 6;
+                if (query_word[55:48] == current_word[55:48]) begin
+                  lcp_temp = 7;
+                  if (query_word[63:56] == current_word[63:56]) begin
+                    lcp_temp = 8;
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  
+  // State machine
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      state <= IDLE;
+      count <= 0;
+      lcp_sum <= 0;
+      index <= 0;
+      result <= 0;
+      done <= 0;
+    end else begin
+      state <= next_state;
+      case (state)
+        IDLE: if (start) begin
+          count <= 0;
+          lcp_sum <= 0;
+          index <= 0;
+          done <= 0;
+        end
+        COMPARE: begin
+          count <= count + 1;
+          lcp_sum <= lcp_sum + lcp_temp;
+        end
+        NEXT: begin
+          if (index < 7) index <= index + 1;
+        end
+        DONE: begin
+          result <= count + lcp_sum;
+          done <= 1;
+        end
+      endcase
+    end
+  end
+  
+  // Next state logic
+  always @(*) begin
+    next_state = state;
+    case (state)
+      IDLE: if (start) next_state = COMPARE;
+      COMPARE: begin
+        if (lcp_temp == 8)  // Full match found
+          next_state = DONE;
+        else
+          next_state = NEXT;
+      end
+      NEXT: begin
+        if (index < 7)      // More words to compare
+          next_state = COMPARE;
+        else
+          next_state = DONE;
+      end
+      DONE: next_state = DONE;  // Wait for reset
+    endcase
+  end
+
+endmodule

@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'max_independent_set' that finds the size of a maximum independent set in a small undirected graph.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_nodes // number of vertices (1-8)
+input [7:0] num_edges // number of edges (for validation)
+input [2:0] edge_a [0:7] // array of edge endpoints (up to 8 edges)
+input [2:0] edge_b [0:7] // array of edge endpoints (up to 8 edges)
+
+Outputs:
+output reg [3:0] result // size of maximum independent set (0-8)
+output reg done // high when computation complete
+
+Latency: Result valid approximately 256 clock cycles after start asserted.
+
+Behavioral Description:
+The module implements a brute-force search over all possible vertex subsets. For each subset (represented as an 8-bit mask where bit i = 1 means vertex i is included), it verifies:
+1. The subset is independent: no two vertices in the subset share an edge
+2. The subset is valid: only vertices < num_nodes can be included
+
+Use a state machine with states:
+- IDLE: Wait for start signal
+- PROCESSING: Iterate through all 2^8 subsets, check each for independence
+- DONE: Result is ready
+
+For each subset mask from 0 to 255:
+- Check if only vertices < num_nodes are included (mask & ~((1 << num_nodes) - 1) == 0)
+- For each edge (edge_a[i], edge_b[i]), check if both endpoints are in the subset
+- If valid and independent, update max_size if current subset has more vertices
+
+Implementation approach:
+- Use a counter for the current subset mask (0 to 255)
+- Use a loop through edges to check independence
+- Use a population count (set bit counter) to find subset size
+- Track maximum size found
+
+Required internal logic:
+- Subset validation: mask must not include bits beyond num_nodes
+- Independence check: For each edge, ensure not (mask[edge_a] AND mask[edge_b])
+- Population count: Count set bits in valid subset
+- Max tracking: Compare and update result register
+
+The module should complete after checking all 256 subsets, regardless of actual num_nodes value, for consistent timing.

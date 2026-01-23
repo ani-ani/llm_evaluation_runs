@@ -1,0 +1,130 @@
+Design a sequential Verilog module named 'calorie_optimizer' that implements a simplified dynamic programming solution for maximizing calorie consumption.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [15:0] m // maximum calories in first hour (0-1000)
+input [3:0] n // number of courses (0-10)
+input [15:0] courses [0:9] // array of 10 course calories (each 0-1000)
+
+Outputs:
+output reg [31:0] result // maximum total calories consumed
+output reg done // high when computation complete
+
+Behavioral Description:
+The module computes the maximum calories Stan can eat given his eating pattern constraints.
+
+Stan's eating pattern:
+- First hour he can eat up to m calories
+- Each consecutive hour after, capacity reduces to 2/3 of previous (truncate)
+- If he skips 1 hour, next hour capacity resets to same as before skip
+- If he skips 2 consecutive hours, capacity resets to m
+
+DP State Definition:
+State tracks two parameters:
+1. Consecutive eating hours (0-4, where 0 means no current eating streak)
+2. Consecutive skip hours (0-2, where 0 means no current skip streak)
+
+State encoding: {eating_count[2:0], skip_count[1:0]} (5 bits total, 16 states)
+- State 0: eating_count=0, skip_count=0 (initial or after 2 skips)
+- State 1-4: eating_count=1-4, skip_count=0 (actively eating)
+- State 5-6: eating_count=0, skip_count=1-2 (skipping)
+
+Computation approach:
+1. Precompute eating capacities for 1-4 consecutive hours:
+   - hour 1: m
+   - hour 2: floor(m * 2/3)
+   - hour 3: floor(hour2 * 2/3)
+   - hour 4: floor(hour3 * 2/3)
+
+2. Iterate through courses sequentially using state machine:
+   - At each course, try both options: eat or skip
+   - Update DP table based on state transitions
+
+3. State transitions:
+   - From state 0 (or after 2 skips): 
+     * Eat -> state 1, add min(m, course) (wait, actually we eat the course amount if <= capacity)
+   - From state 1-4 (eating):
+     * Eat -> state (current+1) or cap at 4, add course if course <= capacity
+     * Skip -> state 5 (1 skip), add 0
+   - From state 5 (1 skip):
+     * Eat -> state 1, add course with capacity from before skip
+     * Skip -> state 6 (2 skips), add 0
+   - From state 6 (2 skips):
+     * Eat -> state 1, add min(m, course)
+     * Skip -> stays in state 6, add 0
+
+4. Capacity calculation:
+   - If in eating state N, capacity = m * (2/3)^(N-1) truncated
+   - If coming from skip state and eating, capacity continues from before skip
+   - Need to track capacity value in states
+
+Simplified approach for hardware:
+- Use a state machine with 10 states per course (too many)
+- Better: Use DP array dp[hour][state] where state=0..8
+- State meaning:
+  0: not eating (0 skips or >2 skips) - reset to full capacity
+  1: ate at last hour (1st consecutive)
+  2: ate at last 2 hours (2nd consecutive)  
+  3: ate at last 3 hours (3rd consecutive)
+  4: ate at last 4 hours (4th consecutive)
+  5: skipped 1 hour ago (cap same as before)
+  6: skipped 2 hours ago (cap same as before)
+
+Wait, this is still complex. Let me reconsider with fixed-width approach.
+
+Simplified DP with state compression:
+- Track current capacity (but this is variable)
+- Better: Track pattern of last 2-3 actions
+
+Final simplified approach:
+- Limit n to 8, m to 1000
+- Use 3-bit state: how many consecutive hours eaten (0-4) 
+- Additional state: whether we're in a skip sequence and how long
+- Actually, just need to track: after eating, if we skip, we remember previous capacity
+
+New approach - direct DP with 4 states per hour:
+State 0: Previous decision was eat, current capacity = C
+State 1: Previous decision was skip (1 hour), capacity = C (same as before)
+State 2: Previous decision was skip (2+ hours), capacity = m
+State 3: Fresh start
+
+But capacity C is variable... Need to store it.
+
+FINAL PRACTICAL APPROACH:
+- Precompute capacity lookup: capacity[4] = {m, floor(m*2/3), floor(m*2/3*2/3), floor(m*2/3*2/3*2/3)}
+- State tracks: 
+  * current_streak (0-4) = how many consecutive eats so far
+  * skip_len (0-2) = how many consecutive skips
+  * last_cap_idx (0-3) = which capacity we were at before any skips
+
+For small n (8), we can use a 3D DP table: dp[hour][streak][skip][cap_idx]
+- hour: 0-8
+- streak: 0-4 (0 means no active streak)
+- skip: 0-2
+- cap_idx: 0-3
+
+Size: 9 * 5 * 3 * 4 = 540 states, each storing a value (max calories)
+
+This is feasible in hardware with careful state management.
+
+Implementation:
+1. Precompute capacities: cap[0]=m, cap[1]=m*2/3, cap[2]=cap[1]*2/3, cap[3]=cap[2]*2/3 (all truncated)
+2. Initialize: dp[0][0][0][0] = 0 (before hour 0, state is no streak, no skip, cap_idx 0)
+3. For each hour i from 0 to n-1:
+   - For each state, compute two options:
+     a) Eat: if cap[cap_idx] >= courses[i], add to new state with incremented streak (capped at 4), skip=0, cap_idx same or incremented
+     b) Skip: add 0, increment skip (capped at 2), streak=0, cap_idx adjusted based on skip count
+4. Answer is max over all states after hour n
+
+Verilog Implementation:
+- Sequential module using state machine
+- States: IDLE, LOAD, PROCESS_HOUR, UPDATE_STATE, DONE
+- Processing: iterate through hours and states
+- Use BRAM for DP table or compute in registers
+
+For n≤8 and small states, can unroll or use pipelined processing.
+
+Latency: approximately n * (states per hour) * cycles
+With 540 states total, using 32-bit values, this is large but manageable for synthesis.

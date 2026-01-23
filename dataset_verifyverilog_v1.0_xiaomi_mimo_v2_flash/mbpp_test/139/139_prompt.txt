@@ -1,0 +1,82 @@
+module circle_circumference (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] radius,          // Radius in Q8.8 format (8 integer, 8 fractional bits)
+    output wire [31:0] circumference,   // Result in Q16.16 format (16 integer, 16 fractional bits)
+    output wire done
+);
+
+// Implementation notes:
+// - Fixed-point arithmetic using Q-format
+// - pi constant = 3.141592653589793 * 2^16 = 205887
+// - Formula: 2 * pi * r
+// - Uses sequential computation for division of concerns
+// - All operations within 32-bit width
+
+// Internal state machine
+reg [1:0] state;
+reg [31:0] result_reg;
+reg done_reg;
+
+// Constants (Q16.16 format)
+localparam PI_FIXED = 32'd205887;  // 3.141592653589793 * 65536
+localparam TWO_FIXED = 32'd131072; // 2.0 * 65536
+
+// Computation registers
+reg [31:0] mult1_result;
+reg [31:0] mult2_result;
+
+// State definitions
+localparam IDLE = 2'b00;
+localparam CALC1 = 2'b01;  // Compute 2 * pi
+localparam CALC2 = 2'b10;  // Multiply by radius
+localparam DONE = 2'b11;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result_reg <= 32'd0;
+        done_reg <= 1'b0;
+        mult1_result <= 32'd0;
+        mult2_result <= 32'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done_reg <= 1'b0;
+                if (start) begin
+                    state <= CALC1;
+                    // Calculate 2 * pi (scaled)
+                    mult1_result <= TWO_FIXED * PI_FIXED;
+                end
+            end
+            
+            CALC1: begin
+                state <= CALC2;
+                // Multiply by radius (convert radius to Q16.16 by shifting left 8 bits)
+                mult2_result <= mult1_result * (radius << 8);
+            end
+            
+            CALC2: begin
+                state <= DONE;
+                // Final result (right shift 16 to normalize from Q32.32 to Q16.16)
+                result_reg <= mult2_result >> 16;
+            end
+            
+            DONE: begin
+                done_reg <= 1'b1;
+                if (!start) begin
+                    state <= IDLE;
+                end
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+// Assign outputs
+assign done = done_reg;
+assign circumference = result_reg;
+
+endmodule

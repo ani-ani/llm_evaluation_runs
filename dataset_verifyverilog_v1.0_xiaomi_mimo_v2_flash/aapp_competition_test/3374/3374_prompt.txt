@@ -1,0 +1,177 @@
+module UW_Distance_Optimizer (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] gravity_in [0:7],
+    input [7:0] connections_in [0:7],
+    input human_mask [0:7],
+    input alien_mask [0:7],
+    output reg [15:0] min_distance,
+    output reg done
+);
+
+// Parameters
+parameter MAX_NODES = 8;
+parameter MAX_EDGES = 16;
+
+// State definitions
+parameter IDLE = 4'b0000;
+parameter READ_GRAPH = 4'b0001;
+parameter FIND_PATHS = 4'b0010;
+parameter CALCULATE_DISTANCE = 4'b0011;
+parameter APPLY_DEVICE = 4'b0100;
+parameter UPDATE_MIN = 4'b0101;
+parameter COMPLETE = 4'b0110;
+
+// Internal registers
+reg [3:0] current_state, next_state;
+reg [3:0] node_count;
+reg [3:0] current_node, next_node;
+reg [3:0] path_nodes [0:7]; // Store path nodes
+reg [3:0] path_length;
+reg [2:0] device_node; // Node where device is placed (0-7)
+reg [15:0] current_distance;
+reg [15:0] best_distance;
+reg [2:0] search_depth;
+
+// Adjacency matrix (8x8, stored as 64-bit for efficiency)
+reg [63:0] adjacency;
+
+// UW Distance Calculation Registers
+reg signed [15:0] gravity_seq [0:7];
+reg signed [15:0] cap_seq [0:6];
+reg signed [15:0] pot_seq [0:6];
+reg signed [15:0] ind_seq [0:6];
+reg signed [31:0] intermediate [0:6];
+reg signed [31:0] total_sum;
+reg [3:0] calc_step;
+
+// Device effect registers
+reg signed [15:0] modified_gravity [0:7];
+reg [2:0] affected_nodes [0:7];
+reg [2:0] affected_count;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        current_state <= IDLE;
+        min_distance <= 16'hFFFF;
+        done <= 0;
+    end else begin
+        current_state <= next_state;
+        case (current_state)
+            IDLE: begin
+                if (start) begin
+                    node_count <= 0;
+                    best_distance <= 16'hFFFF;
+                    device_node <= 0;
+                    done <= 0;
+                end
+            end
+            
+            READ_GRAPH: begin
+                // Read gravity values and build adjacency matrix
+                if (node_count < MAX_NODES) begin
+                    // Store gravity values (simplified)
+                    modified_gravity[node_count] <= {8'd0, gravity_in[node_count]};
+                    node_count <= node_count + 1;
+                end
+            end
+            
+            FIND_PATHS: begin
+                // Simplified: find all human-alien pairs
+                // In hardware, this would use BFS/DFS state machine
+                if (current_node < MAX_NODES) begin
+                    if (human_mask[current_node]) begin
+                        // Start search for alien nodes
+                        search_depth <= 0;
+                        path_nodes[0] <= current_node;
+                        path_length <= 1;
+                    end
+                    current_node <= current_node + 1;
+                end
+            end
+            
+            CALCULATE_DISTANCE: begin
+                // Calculate UW distance for current path
+                case (calc_step)
+                    0: begin
+                        // Calculate sequences
+                        for (integer i = 0; i < path_length - 1; i = i + 1) begin
+                            cap_seq[i] <= modified_gravity[path_nodes[i+1]] + modified_gravity[path_nodes[i]];
+                            pot_seq[i] <= modified_gravity[path_nodes[i+1]] - modified_gravity[path_nodes[i]];
+                            ind_seq[i] <= modified_gravity[path_nodes[i+1]] * modified_gravity[path_nodes[i]];
+                        end
+                        calc_step <= 1;
+                    end
+                    1: begin
+                        // Calculate pot * (cap^2 - ind)
+                        for (integer i = 0; i < path_length - 1; i = i + 1) begin
+                            intermediate[i] <= pot_seq[i] * ((cap_seq[i] * cap_seq[i]) - ind_seq[i]);
+                        end
+                        calc_step <= 2;
+                    end
+                    2: begin
+                        // Sum intermediate values
+                        total_sum <= 0;
+                        for (integer i = 0; i < path_length - 1; i = i + 1) begin
+                            total_sum <= total_sum + intermediate[i];
+                        end
+                        calc_step <= 3;
+                    end
+                    3: begin
+                        // Take absolute value
+                        current_distance <= (total_sum[31]) ? -total_sum[15:0] : total_sum[15:0];
+                        calc_step <= 0;
+                    end
+                endcase
+            end
+            
+            APPLY_DEVICE: begin
+                // Apply gravity dispersal device effects
+                // Device at device_node: -1 to that node, +1 to all neighbors
+                modified_gravity[device_node] <= modified_gravity[device_node] - 1;
+                // Apply to neighbors (simplified)
+                if (device_node > 0) modified_gravity[device_node-1] <= modified_gravity[device_node-1] + 1;
+                if (device_node < 7) modified_gravity[device_node+1] <= modified_gravity[device_node+1] + 1;
+            end
+            
+            UPDATE_MIN: begin
+                if (current_distance < best_distance) begin
+                    best_distance <= current_distance;
+                end
+                // Try next device position
+                if (device_node < 7) begin
+                    device_node <= device_node + 1;
+                    // Reset modified_gravity to original values
+                    for (integer i = 0; i < MAX_NODES; i = i + 1) begin
+                        modified_gravity[i] <= {8'd0, gravity_in[i]};
+                    end
+                end
+            end
+            
+            COMPLETE: begin
+                min_distance <= best_distance;
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+// State transition logic
+always @(*) begin
+    next_state = current_state;
+    case (current_state)
+        IDLE: if (start) next_state = READ_GRAPH;
+        READ_GRAPH: if (node_count >= MAX_NODES) next_state = FIND_PATHS;
+        FIND_PATHS: if (current_node >= MAX_NODES) next_state = APPLY_DEVICE;
+        APPLY_DEVICE: next_state = CALCULATE_DISTANCE;
+        CALCULATE_DISTANCE: if (calc_step == 3) next_state = UPDATE_MIN;
+        UPDATE_MIN: begin
+            if (device_node < 7) next_state = APPLY_DEVICE;
+            else next_state = COMPLETE;
+        end
+        COMPLETE: next_state = IDLE;
+    endcase
+end
+
+endmodule

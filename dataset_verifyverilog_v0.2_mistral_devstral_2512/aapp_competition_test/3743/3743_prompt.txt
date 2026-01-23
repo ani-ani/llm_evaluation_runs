@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'aesthetic_path_solver' that computes the maximum number of colors for a path of length n under aesthetic constraints.
+
+The problem simplifies to finding the smallest prime factor of n (or n if n is prime). If n is a power of a single prime p, the answer is p. If n has multiple distinct prime factors, the answer is 1.
+
+Since n can be large (up to 10^12 in original problem), we will scale n to a 32-bit input for this implementation (range 1 to ~4 billion).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] n // The path length (scaled to 32-bit)
+
+Outputs:
+output reg [31:0] result // The maximum number of colors
+output reg done // High when computation is complete
+
+Behavior:
+The module implements a sequential algorithm:
+1. Initialize (IDLE state).
+2. Check if n is 1: if so, result is 1.
+3. Check if n is even: if so, check if n is a power of 2. If yes, result is 2. If no, result is 1 (since n would have factor 2 and another odd factor).
+4. Check odd divisors starting from 3 up to sqrt(n). For each divisor d:
+   - If n % d == 0:
+     - Check if n is a power of d (divide n by d repeatedly until n % d != 0 or n == 1).
+     - If n becomes 1 (meaning original n was a power of d), result = d.
+     - Else (n has other factors), result = 1.
+     - Done.
+   - Else increment d by 2.
+5. If no divisors found up to sqrt(n), n is prime: result = n.
+
+Latency: Result valid approximately 500-1000 clock cycles after start asserted (depends on sqrt(n) iteration count).
+Use state machine with states: IDLE, CHECK_2, HANDLE_POW2, CHECK_ODD, VERIFY_POWER, ITERATE, DONE.
+
+Note: The division and modulo operations in the VERIFY_POWER state might take multiple cycles, so split into sub-states if necessary or assume single-cycle division (since this is a benchmark).

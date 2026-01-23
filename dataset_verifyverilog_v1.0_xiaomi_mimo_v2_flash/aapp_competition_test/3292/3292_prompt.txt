@@ -1,0 +1,273 @@
+module NameRankingCounter #(
+    parameter MAX_NAMES = 8,        // Maximum number of names
+    parameter MAX_LEN = 8,          // Maximum length of each name (characters)
+    parameter MAX_NODES = 32,       // Maximum nodes in trie (>= MAX_NAMES * MAX_LEN)
+    parameter CHAR_WIDTH = 5,       // Bits per character (A-Z fits in 5 bits, 1-26)
+    parameter MOD = 1000000007,     // Modulus
+    parameter FACT_MAX = 8          // Maximum factorial needed (<= MAX_NAMES)
+  ) (
+    input  wire clk,                // Clock
+    input  wire rst_n,              // Active-low synchronous reset
+    input  wire start,              // Start pulse (1 cycle)
+    input  wire [3:0] num_names,    // Number of names (1..MAX_NAMES)
+    input  wire [CHAR_WIDTH-1:0] names [0:MAX_NAMES-1][0:MAX_LEN-1], // Names, padded with 0 for end
+    output reg [31:0] result,       // Result modulo MOD
+    output reg done                 // Result valid pulse
+  );
+
+  // Internal state definition
+  typedef enum logic [3:0] {
+    IDLE,
+    RESET,
+    INSERT_INIT,
+    INSERT_NEXT_NAME,
+    INSERT_NEXT_CHAR,
+    INSERT_FIND_CHILD,
+    INSERT_ALLOCATE,
+    INSERT_LINK,
+    INSERT_MARK_NAME,
+    INSERT_ADVANCE,
+    COMPUTE_INIT,
+    COMPUTE_STACK_INIT,
+    COMPUTE_STACK_POP,
+    COMPUTE_PUSH_CHILDREN,
+    COMPUTE_PROCESS,
+    COMPUTE_UPDATE_RESULT,
+    DONE
+  } state_t;
+
+  state_t current_state, next_state;
+
+  // Trie node storage (statically allocated array)
+  reg [CHAR_WIDTH-1:0] node_char    [0:MAX_NODES-1];  // Character on edge
+  reg                    node_is_name[0:MAX_NODES-1];  // 1 if node represents a complete name
+  reg [4:0]              node_first_child [0:MAX_NODES-1];  // Index of first child (0 = none)
+  reg [4:0]              node_next_sibling[0:MAX_NODES-1];  // Index of next sibling (0 = none)
+
+  // Free list management
+  reg [4:0] next_free_node;         // Next available node index (1..MAX_NODES-1), 0 = root
+  reg [4:0] root_node;              // Fixed root index 0
+  assign root_node = 0;
+
+  // Insertion registers
+  reg [3:0] name_idx;               // Current name index (0..num_names-1)
+  reg [3:0] char_idx;               // Current character index (0..MAX_LEN-1)
+  reg [4:0] current_parent;         // Parent node during insertion
+  reg [4:0] found_child;            // Child node found during search
+  reg [CHAR_WIDTH-1:0] current_char; // Current character being inserted
+  reg search_done;                  // Flag for child search completion
+  reg child_found;                  // Flag if child was found
+
+  // Computation registers
+  reg [4:0] stack [0:MAX_LEN];      // Stack for DFS traversal (node indices)
+  reg [4:0] stack_state [0:MAX_LEN]; // 0 = entering, 1 = leaving
+  reg [3:0] sp;                    // Stack pointer
+  reg [4:0] node_being_processed;   // Node currently being processed
+  reg [4:0] proc_state;             // 0 or 1 (entering/leaving)
+  reg [31:0] size [0:MAX_NODES-1];  // Subtree size for each node (cached)
+  reg [31:0] ways [0:MAX_NODES-1];  // Ways for each node (cached)
+  reg [31:0] temp_size;             // Temporary size accumulator
+  reg [31:0] temp_ways;             // Temporary ways accumulator
+  reg [4:0] child_count;            // Number of children for current node
+  reg [31:0] block_count;           // Total blocks (children + is_name)
+  reg [31:0] multinomial;           // Multinomial coefficient
+  reg [4:0] remaining;              // Remaining children to process in multinomial calc
+  reg [31:0] child_size;            // Size of current child
+  reg [4:0] current_child;          // Current child node in traversal
+  reg [31:0] fact [0:FACT_MAX];     // Precomputed factorials (0! to 7!)
+  reg [31:0] inv_fact [0:FACT_MAX]; // Precomputed modular inverses of factorials
+
+  // Helper function for modular addition
+  function automatic logic [31:0] mod_add (input [31:0] a, b);
+    logic [32:0] sum = a + b;
+    mod_add = sum % MOD;
+  endfunction
+
+  // Helper function for modular multiplication
+  function automatic logic [31:0] mod_mul (input [31:0] a, b);
+    logic [63:0] prod = a * b;
+    mod_mul = prod % MOD;
+  endfunction
+
+  // Helper function for modular division (using precomputed inv_fact)
+  // Not needed directly if we use multinomial with combinations
+
+  // Precompute factorials and inverse factorials (combinational at startup or hardcoded)
+  initial begin
+    fact[0] = 1;
+    for (int i = 1; i <= FACT_MAX; i++) begin
+      fact[i] = fact[i-1] * i;
+    end
+    // Inverse factorials via Fermat's little theorem (MOD is prime)
+    // Since FACT_MAX is small, we can compute offline or use a simple loop
+    inv_fact[0] = 1;
+    for (int i = 1; i <= FACT_MAX; i++) begin
+      inv_fact[i] = inv_fact[i-1] * mod_pow(i, MOD-2); // mod_pow would need to be implemented
+    end
+  end
+
+  // Alternatively, we can compute multinomial using combination chain to avoid division:
+  // multinomial = 1; remaining = total;
+  // for each child size s: multinomial = multinomial * C(remaining, s); remaining -= s;
+  // Where C(n,k) = n!/(k!(n-k)!) = fact[n] * inv_fact[k] * inv_fact[n-k]
+  // Since n and k <= 8, we can precompute a combination table.
+
+  // State machine next state logic
+  always @(*) begin
+    next_state = current_state;
+    case (current_state)
+      IDLE: if (start) next_state = RESET;
+      RESET: next_state = INSERT_INIT;
+      INSERT_INIT: next_state = INSERT_NEXT_NAME;
+      INSERT_NEXT_NAME: if (name_idx >= num_names) next_state = COMPUTE_INIT;
+                        else next_state = INSERT_NEXT_CHAR;
+      INSERT_NEXT_CHAR: if (char_idx >= MAX_LEN || names[name_idx][char_idx] == 0) next_state = INSERT_MARK_NAME;
+                        else next_state = INSERT_FIND_CHILD;
+      INSERT_FIND_CHILD: if (search_done) begin
+                           if (child_found) next_state = INSERT_ADVANCE;
+                           else next_state = INSERT_ALLOCATE;
+                         end else next_state = INSERT_FIND_CHILD; // Continue search
+      INSERT_ALLOCATE: next_state = INSERT_LINK;
+      INSERT_LINK: next_state = INSERT_ADVANCE;
+      INSERT_MARK_NAME: next_state = INSERT_NEXT_CHAR; // Continue with next char (which will skip)
+      INSERT_ADVANCE: next_state = INSERT_NEXT_CHAR;
+      COMPUTE_INIT: next_state = COMPUTE_STACK_INIT;
+      COMPUTE_STACK_INIT: next_state = COMPUTE_STACK_POP;
+      COMPUTE_STACK_POP: if (sp == 0) next_state = COMPUTE_UPDATE_RESULT;
+                         else next_state = COMPUTE_PUSH_CHILDREN;
+      COMPUTE_PUSH_CHILDREN: if (current_child == 0) next_state = COMPUTE_PROCESS;
+                             else next_state = COMPUTE_STACK_POP; // Actually need to push children then pop
+      COMPUTE_PROCESS: if (proc_state == 1) next_state = COMPUTE_STACK_POP;
+                       else next_state = COMPUTE_STACK_POP; // After pushing children, we'll pop again
+      COMPUTE_UPDATE_RESULT: next_state = DONE;
+      DONE: next_state = IDLE;
+      default: next_state = IDLE;
+    endcase
+  end
+
+  // State machine sequential logic
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      current_state <= IDLE;
+      result <= 0;
+      done <= 0;
+      // Reset other registers as needed
+    end else begin
+      current_state <= next_state;
+      case (current_state)
+        IDLE: begin
+          done <= 0;
+          if (start) begin
+            name_idx <= 0;
+            char_idx <= 0;
+            next_free_node <= 1; // Node 0 is root
+            // Reset trie storage
+            for (int i = 0; i < MAX_NODES; i++) begin
+              node_first_child[i] <= 0;
+              node_next_sibling[i] <= 0;
+              node_is_name[i] <= 0;
+            end
+          end
+        end
+        RESET: begin
+          // Additional reset if needed
+        end
+        INSERT_INIT: begin
+          current_parent <= root_node;
+        end
+        INSERT_NEXT_NAME: begin
+          name_idx <= name_idx + 1;
+          char_idx <= 0;
+          current_parent <= root_node;
+        end
+        INSERT_NEXT_CHAR: begin
+          if (char_idx < MAX_LEN && names[name_idx][char_idx] != 0) begin
+            current_char <= names[name_idx][char_idx];
+            search_done <= 0;
+            child_found <= 0;
+            found_child <= 0;
+          end
+          char_idx <= char_idx + 1;
+        end
+        INSERT_FIND_CHILD: begin
+          // Traverse sibling list of current_parent to find child with current_char
+          if (!search_done) begin
+            // We need a temporary register to hold current sibling being examined
+            // This is simplified; real implementation would need a sequential search state
+            // For brevity, we assume a combinational search using a for loop (not synthesizable for large lists)
+            // Since max children per node is small (<=8), we can use a combinational block.
+            // In a real design, we would need a separate state for each comparison.
+            // We'll abstract this detail in the specification.
+          end
+        end
+        INSERT_ALLOCATE: begin
+          // Allocate new node
+          // node_char[found_child] <= current_char; // Actually allocate at next_free_node
+          // node_first_child[next_free_node] <= 0;
+          // node_next_sibling[next_free_node] <= 0;
+          // node_is_name[next_free_node] <= 0;
+          // found_child <= next_free_node;
+          // next_free_node <= next_free_node + 1;
+        end
+        INSERT_LINK: begin
+          // Link new node into parent's child list
+          // node_next_sibling[found_child] <= node_first_child[current_parent];
+          // node_first_child[current_parent] <= found_child;
+        end
+        INSERT_MARK_NAME: begin
+          // Mark node as name if we have consumed at least one character
+          // if (char_idx > 0) node_is_name[found_child] <= 1;
+          // Reset for next name
+        end
+        INSERT_ADVANCE: begin
+          current_parent <= found_child;
+        end
+        COMPUTE_INIT: begin
+          // Initialize computation registers
+          result <= 0;
+          sp <= 0;
+        end
+        COMPUTE_STACK_INIT: begin
+          // Push root onto stack with state 0 (entering)
+          stack[0] <= root_node;
+          stack_state[0] <= 0;
+          sp <= 1;
+        end
+        COMPUTE_STACK_POP: begin
+          if (sp > 0) begin
+            sp <= sp - 1;
+            node_being_processed <= stack[sp-1];
+            proc_state <= stack_state[sp-1];
+          end
+        end
+        COMPUTE_PUSH_CHILDREN: begin
+          // For current node, push all children onto stack with state 0
+          // This requires traversing the child list. Since max children small, we can do sequential push.
+          // We'll need a temporary child pointer and a counter.
+        end
+        COMPUTE_PROCESS: begin
+          // If proc_state == 0 (entering), we have already pushed children; now we push ourselves again with state 1
+          // If proc_state == 1 (leaving), compute size and ways for node_being_processed.
+          // Compute size = (is_name ? 1 : 0) + sum of child sizes
+          // Compute ways = (blocks)! / (prod child sizes! ) * prod child ways
+          // Use combination chain to compute multinomial.
+          // Store size and ways in arrays.
+        end
+        COMPUTE_UPDATE_RESULT: begin
+          // Result is ways[root_node]
+          result <= ways[root_node];
+          done <= 1;
+        end
+        DONE: begin
+          done <= 0;
+        end
+      endcase
+    end
+  end
+
+  // The specification above outlines the high-level design.
+  // Implementation details such as exact search logic, child traversal, and combination calculation
+  // are omitted for brevity but should be filled in by the LLM.
+  // The key is to handle the three phases: trie insertion, tree traversal, and counting with modular arithmetic.
+
+endmodule

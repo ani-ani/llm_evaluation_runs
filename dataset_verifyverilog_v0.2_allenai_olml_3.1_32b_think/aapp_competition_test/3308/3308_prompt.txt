@@ -1,0 +1,64 @@
+Design a sequential Verilog module named 'polygon_kernel_area' that computes the area of the kernel (set of points that can see all edges) of a simple polygon with at most 8 vertices.
+
+The module uses a sequential state machine approach:
+- Process each polygon edge as a half-plane constraint
+- Maintain a convex polygon representing the current kernel
+- Clip the kernel against each edge to find intersection
+- Compute area of final kernel polygon
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] vertex_count // number of vertices (3-8)
+input [31:0] vertex_x [0:7] // x coordinates in Q16.16 format
+input [31:0] vertex_y [0:7] // y coordinates in Q16.16 format
+
+Outputs:
+output reg [31:0] area // area in Q16.16 format
+output reg done // high when computation complete
+output reg error // high if kernel is empty or invalid
+
+Specifications:
+- Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+- Vertex coordinates are stored in arrays of 8 elements
+- Only first 'vertex_count' vertices are valid
+- State machine states: IDLE, INIT_KERNEL, PROCESS_EDGE, CLIP_KERNEL, CALC_AREA, DONE
+- Latency: Maximum 500 clock cycles (allows 8 vertices × ~60 cycles per clip)
+- Kernel polygon is stored as up to 16 vertices (for intermediate clipping)
+- Half-plane test: For edge from V[i] to V[i+1], a point P is inside if cross(V[i+1]-V[i], P-V[i]) >= 0
+- Clipping: Use Sutherland-Hodgman algorithm simplified for convex kernel
+- Area calculation: Use shoelace formula on final kernel vertices
+- Error detection: If kernel becomes empty during clipping, set error=1
+
+Algorithm Details:
+1. INIT_KERNEL: Initialize kernel as the polygon itself (first 3 vertices form triangle)
+2. PROCESS_EDGE: For each edge (V[i] to V[i+1]), clip current kernel against this edge
+3. CLIP_KERNEL: For each kernel vertex, test if inside half-plane. Keep inside vertices, compute intersections for crossing edges
+4. CALC_AREA: Compute area of final kernel using shoelace formula
+5. Output area in Q16.16 format (raw value, do not divide)
+
+Implementation Notes:
+- Use combinational logic for geometric calculations (cross products, line intersections)
+- Store kernel vertices in registers (16 vertices × 64 bits = 1024 bits total)
+- Handle Q16.16 arithmetic carefully for overflows
+- Cross product of two Q16.16 vectors gives Q32.32 result - truncate to Q16.16 for sign test
+- Line intersection: solve parametric equations, check 0 <= t <= 1, 0 <= s <= 1
+- Area is always positive; take absolute value
+- Edge case: if final kernel has < 3 vertices, area = 0 and error = 1
+
+For clipping algorithm:
+For each edge E of polygon:
+  For each edge K of current kernel polygon:
+    - Test if K.p1 is inside half-plane
+    - Test if K.p2 is inside half-plane
+    - If both inside: keep K.p2
+    - If p1 inside, p2 outside: add intersection point
+    - If p1 outside, p2 inside: add intersection point, then K.p2
+    - If both outside: add nothing
+  Update kernel to new vertex list
+
+Intersection calculation for segment (A,B) against edge (V1,V2):
+- Segment: A + t*(B-A), t ∈ [0,1]
+- Edge line: (P-V1) × (V2-V1) = 0
+- Solve for t using cross products

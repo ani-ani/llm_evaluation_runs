@@ -1,0 +1,30 @@
+Module: vacation_planner
+
+Parameters:
+- MAX_N = 8 (maximum nodes)
+
+Inputs:
+- clk: clock signal
+- rst_n: active-low reset
+- start: start computation
+- L[4:0]: input L (1-16)
+- trans_matrix[63:0][15:0]: flattened 8x8 transition matrix in Q8.8 format
+
+Outputs:
+- T[5:0]: result T (0-25) or 6'b111111 for -1
+- done: high when computation complete
+
+Behavior:
+1. On start, initialize state vector: [256, 0, ..., 0] (Q8.8)
+2. For day = 1 to L+9:
+   - Compute new state: new_state[j] = sum_i (state[i] * trans_matrix[i*N+j]) >> 8
+   - If day >= L and day <= L+9:
+     - Check if state[N-1] ∈ [242, 244] (0.95 ± 1/256 tolerance)
+     - If true and no smaller T found, record T = day
+3. After L+9 days, output recorded T or -1
+
+Implementation:
+- Use 32-bit state vector registers for intermediate calculations
+- Combinational state update with sequential registration
+- State machine: IDLE → INIT → UPDATE (loop) → DONE
+- Handle absorbing state (node N-1) with trans_matrix[N*N-1] = 256

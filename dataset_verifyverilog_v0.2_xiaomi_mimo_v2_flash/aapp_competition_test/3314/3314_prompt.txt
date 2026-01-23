@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'wheel_rotations_solver' that determines the minimum number of rotations to make all columns distinct across three wheels.
+
+Problem Adaptation:
+- Maximum string length N = 8 (scaled down from 5000)
+- Input letters are 'A', 'B', 'C' encoded as 2-bit values (A=0, B=1, C=2)
+- Wheels are represented as 8x2-bit arrays
+- We search for relative offsets (0-7) for Wheel 1 and Wheel 2 relative to Wheel 0 (fixed)
+- We calculate cost = |offset1| + |offset2| and find the minimum
+- Maximum possible rotations is 14 (7+7)
+
+Inputs:
+input clk                           // Clock signal
+input rst_n                         // Active-low reset
+input start                         // Start computation
+input [7:0] [1:0] wheel0,           // Wheel 0: 8 positions, 2 bits each (A=0,B=1,C=2)
+input [7:0] [1:0] wheel1,           // Wheel 1: 8 positions, 2 bits each
+input [7:0] [1:0] wheel2            // Wheel 2: 8 positions, 2 bits each
+
+Outputs:
+output reg [3:0] result             // Minimum rotations (0-14), 4 bits
+output reg done                     // High when computation complete
+output reg valid                    // High if solution found (low if -1)
+
+Latency: 16 clock cycles after start asserted (8 offsets for wheel1 x 2 cycles overhead)
+
+Algorithm:
+1. Reset state: IDLE
+2. On start: Transition to PROCESSING
+3. Processing logic:
+   - Iterate offset1 from 0 to 7
+   - For each offset1, iterate offset2 from 0 to 7
+   - Check if configuration (offset1, offset2) is valid
+   - Valid means: For all i in 0..7, letters at column (i+offset1) mod 8 of wheel1 and (i+offset2) mod 8 of wheel2 must be distinct from wheel0[i] and from each other
+   - Track minimum cost = offset1 + offset2
+4. If no valid configuration found, set valid=0 and result=15 (representing -1)
+5. Transition to DONE state
+
+Use a state machine with states: IDLE, PREP_OFFSET1, CHECK_OFFSET2, NEXT_OFFSET2, NEXT_OFFSET1, DONE.
+
+Note: Since N=8 is small, we can unroll the column checking logic using generate blocks or explicit assignments.

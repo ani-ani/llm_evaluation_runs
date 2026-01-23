@@ -1,0 +1,49 @@
+Design a Verilog module to find the first adverb (word ending in 'ly') in a sentence and return its start position, end position, and the matched word.
+
+**INTERFACE SPECIFICATION**:
+
+Inputs:
+  - clk         : Clock signal (rising edge triggered)
+  - rst_n       : Active-low synchronous reset
+  - start       : Start pulse (assert for 1 cycle to begin search)
+  - char_in     : 8-bit ASCII character input (one character per clock cycle)
+  - char_valid  : Indicates char_in is valid (high for each character)
+  - sentence_end: Assert high when all characters have been supplied
+
+Outputs:
+  - found       : High when an adverb is found
+  - start_pos   : 8-bit position where adverb begins (0-255)
+  - end_pos     : 8-bit position where adverb ends (0-255)
+  - adverb      : 16-character buffer containing the matched word (8 bits per character, MSB first)
+  - done        : Asserted high for 1 cycle when search completes
+  - error       : High if no adverb found in the sentence
+
+**Behavioral Requirements**:
+- Search processes one character per clock cycle when char_valid is high
+- An adverb is defined as a word containing 3+ characters ending in "ly"
+- Word boundaries: any non-alphabetic character separates words
+- Only the FIRST adverb should be detected
+- On rst_n=0: all outputs cleared, internal state reset
+- Assert start for 1 clock cycle to begin
+- done goes high after sentence_end is processed
+- adverb buffer stores up to 16 characters (null-padded)
+- start_pos and end_pos are 0-based byte offsets
+
+**Timing**:
+- Input: Feed characters sequentially via char_in/char_valid
+- After each character, set sentence_end high for 1 cycle
+- Computation completes within 256 cycles for max sentence length
+- done pulse indicates completion; sample outputs when done=1
+
+**Example Trace**:
+Input: "clearly!! we..." 
+Cycle 0: char_in='c', char_valid=1
+Cycle 1-6: 'l','e','a','r','l','y'...
+Cycle 7: char_in='!', sentence_end=0 -> stores 'clearly' found
+Cycle 8+: sentence_end=1 -> done=1, found=1, start_pos=0, end_pos=7
+
+**Constraints**:
+- Maximum sentence length: 256 characters
+- Maximum adverb length: 16 characters
+- Character encoding: ASCII (7-bit, stored in 8-bit signals)
+- All positions are byte offsets from start of input

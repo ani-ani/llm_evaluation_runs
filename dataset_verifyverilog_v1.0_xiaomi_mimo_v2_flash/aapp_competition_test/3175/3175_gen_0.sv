@@ -1,0 +1,344 @@
+module max_polygon_area #(
+    parameter N = 8,              // Maximum number of fence segments
+    parameter DATA_WIDTH = 8,     // Width of each length (1-100)
+    parameter RESULT_WIDTH = 32,  // area * 10000 (32-bit integer)
+    parameter CLK_PERIOD = 10     // Clock period in ns
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [DATA_WIDTH-1:0] lengths [N-1:0], // Array of lengths
+    input wire [3:0] valid_length,                // Number of valid lengths (1 to N)
+    output reg [RESULT_WIDTH-1:0] area,           // area * 10000
+    output reg done
+);
+    // State definitions
+    localparam [1:0] IDLE = 2'b00;
+    localparam [1:0] CHECK = 2'b01;
+    localparam [1:0] COMPUTE = 2'b10;
+    localparam [1:0] DONE_STATE = 2'b11;
+
+    reg [1:0] state, next_state;
+
+    // Combination counters
+    reg [2:0] i, j, k, l;          // indices
+    reg [1:0] comb_type;           // 0=triangle, 1=quadrilateral
+    reg [6:0] comb_count;          // total combinations counter
+    reg [3:0] valid_length_reg;    // Registered valid_length
+
+    // Temporary storage for sides
+    reg [DATA_WIDTH-1:0] a, b, c, d;
+
+    // Polygon check signals
+    reg polygon_possible;
+    reg [DATA_WIDTH:0] P;          // perimeter (up to 400)
+    reg [DATA_WIDTH:0] max_side;
+
+    // Area computation
+    reg [63:0] product;            // product for area^2 * 16
+    reg [63:0] sqrt_input;         // product * 6250000 for area*10000
+    reg sqrt_start;
+    wire sqrt_done;
+    wire [31:0] sqrt_result;       // integer sqrt
+
+    // Max area storage
+    reg [31:0] max_area;
+
+    // Integer sqrt module (64-bit to 32-bit)
+    sqrt_int sqrt_inst (
+        .clk(clk),
+        .rst_n(rst_n),
+        .start(sqrt_start),
+        .value_in(sqrt_input),
+        .result(sqrt_result),
+        .done(sqrt_done)
+    );
+
+    // State transition
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) state <= IDLE;
+        else state <= next_state;
+    end
+
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: if (start) next_state = CHECK;
+            CHECK: if (polygon_possible) next_state = COMPUTE; else next_state = CHECK;
+            COMPUTE: if (sqrt_done) next_state = CHECK; else next_state = COMPUTE;
+            DONE_STATE: next_state = IDLE;
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // Helper function: max of four
+    function [DATA_WIDTH:0] max4;
+        input [DATA_WIDTH:0] a, b, c, d;
+        reg [DATA_WIDTH:0] m1, m2;
+        begin
+            m1 = (a > b) ? a : b;
+            m2 = (c > d) ? c : d;
+            max4 = (m1 > m2) ? m1 : m2;
+        end
+    endfunction
+
+    // Combination control and computation
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            i <= 0; j <= 0; k <= 0; l <= 0;
+            comb_type <= 0;
+            comb_count <= 0;
+            max_area <= 0;
+            done <= 0;
+            sqrt_start <= 0;
+            area <= 0;
+            polygon_possible <= 0;
+            valid_length_reg <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    i <= 0; j <= 0; k <= 0; l <= 0;
+                    comb_type <= 0;
+                    comb_count <= 0;
+                    max_area <= 0;
+                    done <= 0;
+                    valid_length_reg <= valid_length;
+                end
+
+                CHECK: begin
+                    // Generate next combination
+                    if (comb_count >= 126) begin // 56 + 70
+                        next_state <= DONE_STATE;
+                    end else begin
+                        // Determine if indices are within valid_length
+                        if (comb_type == 0) begin // triangle
+                            if (i < valid_length_reg && j < valid_length_reg && k < valid_length_reg && i < j && j < k) begin
+                                a <= lengths[i];
+                                b <= lengths[j];
+                                c <= lengths[k];
+                                // Check triangle inequality
+                                if (a + b > c && a + c > b && b + c > a) begin
+                                    polygon_possible <= 1;
+                                end else begin
+                                    polygon_possible <= 0;
+                                    // Advance indices
+                                    if (k < valid_length_reg - 1) k <= k + 1;
+                                    else if (j < valid_length_reg - 2) begin
+                                        j <= j + 1;
+                                        k <= j + 2;
+                                    end else if (i < valid_length_reg - 3) begin
+                                        i <= i + 1;
+                                        j <= i + 2;
+                                        k <= i + 3;
+                                    end else begin
+                                        // Switch to quadrilaterals
+                                        comb_type <= 1;
+                                        i <= 0; j <= 1; k <= 2; l <= 3;
+                                    end
+                                    comb_count <= comb_count + 1;
+                                end
+                            end else begin
+                                // Advance indices to next triangle
+                                if (k < valid_length_reg - 1) k <= k + 1;
+                                else if (j < valid_length_reg - 2) begin
+                                    j <= j + 1;
+                                    k <= j + 2;
+                                end else if (i < valid_length_reg - 3) begin
+                                    i <= i + 1;
+                                    j <= i + 2;
+                                    k <= i + 3;
+                                end else begin
+                                    comb_type <= 1;
+                                    i <= 0; j <= 1; k <= 2; l <= 3;
+                                end
+                                comb_count <= comb_count + 1;
+                            end
+                        end else begin // quadrilateral
+                            if (i < valid_length_reg && j < valid_length_reg && k < valid_length_reg && l < valid_length_reg && i < j && j < k && k < l) begin
+                                a <= lengths[i];
+                                b <= lengths[j];
+                                c <= lengths[k];
+                                d <= lengths[l];
+                                P = a + b + c + d;
+                                max_side = max4(a,b,c,d);
+                                if (max_side < P - max_side) begin
+                                    polygon_possible <= 1;
+                                end else begin
+                                    polygon_possible <= 0;
+                                    // Advance indices
+                                    if (l < valid_length_reg - 1) l <= l + 1;
+                                    else if (k < valid_length_reg - 2) begin
+                                        k <= k + 1;
+                                        l <= k + 2;
+                                    end else if (j < valid_length_reg - 3) begin
+                                        j <= j + 1;
+                                        k <= j + 2;
+                                        l <= j + 3;
+                                    end else if (i < valid_length_reg - 4) begin
+                                        i <= i + 1;
+                                        j <= i + 2;
+                                        k <= i + 3;
+                                        l <= i + 4;
+                                    end else begin
+                                        // All combinations done
+                                        next_state <= DONE_STATE;
+                                    end
+                                    comb_count <= comb_count + 1;
+                                end
+                            end else begin
+                                // Advance indices
+                                if (l < valid_length_reg - 1) l <= l + 1;
+                                else if (k < valid_length_reg - 2) begin
+                                    k <= k + 1;
+                                    l <= k + 2;
+                                end else if (j < valid_length_reg - 3) begin
+                                    j <= j + 1;
+                                    k <= j + 2;
+                                    l <= j + 3;
+                                end else if (i < valid_length_reg - 4) begin
+                                    i <= i + 1;
+                                    j <= i + 2;
+                                    k <= i + 3;
+                                    l <= i + 4;
+                                end else begin
+                                    next_state <= DONE_STATE;
+                                end
+                                comb_count <= comb_count + 1;
+                            end
+                        end
+                    end
+                end
+
+                COMPUTE: begin
+                    if (polygon_possible && !sqrt_start) begin
+                        // Compute product and scale
+                        if (comb_type == 0) begin // triangle
+                            P = a + b + c;
+                            product = P * (P - 2*a) * (P - 2*b) * (P - 2*c);
+                        end else begin // quadrilateral
+                            P = a + b + c + d;
+                            product = (P - 2*a) * (P - 2*b) * (P - 2*c) * (P - 2*d);
+                        end
+                        sqrt_input = product * 6250000; // (10000)^2 / 16 = 6250000
+                        sqrt_start <= 1;
+                    end else if (sqrt_done) begin
+                        sqrt_start <= 0;
+                        if (sqrt_result > max_area) max_area <= sqrt_result;
+                        // Advance to next combination (reuse CHECK logic)
+                        polygon_possible <= 0;
+                        if (comb_count >= 126) begin
+                            next_state <= DONE_STATE;
+                        end else begin
+                            // Advance indices (same as in CHECK state)
+                            if (comb_type == 0) begin
+                                if (k < valid_length_reg - 1) k <= k + 1;
+                                else if (j < valid_length_reg - 2) begin
+                                    j <= j + 1;
+                                    k <= j + 2;
+                                end else if (i < valid_length_reg - 3) begin
+                                    i <= i + 1;
+                                    j <= i + 2;
+                                    k <= i + 3;
+                                end else begin
+                                    comb_type <= 1;
+                                    i <= 0; j <= 1; k <= 2; l <= 3;
+                                end
+                            end else begin
+                                if (l < valid_length_reg - 1) l <= l + 1;
+                                else if (k < valid_length_reg - 2) begin
+                                    k <= k + 1;
+                                    l <= k + 2;
+                                end else if (j < valid_length_reg - 3) begin
+                                    j <= j + 1;
+                                    k <= j + 2;
+                                    l <= j + 3;
+                                end else if (i < valid_length_reg - 4) begin
+                                    i <= i + 1;
+                                    j <= i + 2;
+                                    k <= i + 3;
+                                    l <= i + 4;
+                                end else begin
+                                    next_state <= DONE_STATE;
+                                end
+                            end
+                            comb_count <= comb_count + 1;
+                        end
+                    end
+                end
+
+                DONE_STATE: begin
+                    area <= max_area;
+                    done <= 1;
+                end
+
+                default: begin
+                    // State machine recovery
+                    next_state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule
+
+// Integer square root module (64-bit to 32-bit)
+module sqrt_int (
+    input clk,
+    input rst_n,
+    input start,
+    input [63:0] value_in,
+    output reg [31:0] result,
+    output reg done
+);
+    // Sequential digit-by-digit integer sqrt implementation
+    // 64-bit input -> 32-bit output
+    reg [63:0] value_reg;
+    reg [63:0] rem;
+    reg [31:0] root;
+    reg [5:0] bit_pos; // 0 to 63 for 64-bit
+    reg busy;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            result <= 0;
+            done <= 0;
+            busy <= 0;
+            bit_pos <= 0;
+            rem <= 0;
+            root <= 0;
+            value_reg <= 0;
+        end else begin
+            done <= 0;
+            
+            if (start && !busy) begin
+                // Start new sqrt operation
+                value_reg <= value_in;
+                rem <= 0;
+                root <= 0;
+                bit_pos <= 6'd32; // Start at bit 32 (for 32-bit output)
+                busy <= 1;
+            end else if (busy) begin
+                // Continue sqrt computation
+                if (bit_pos > 0) begin
+                    // Shift remainder left by 2 and bring down next bit
+                    rem <= (rem << 2) | (value_reg >> (2*bit_pos - 2) & 2'b11);
+                    
+                    // Try setting bit
+                    root <= root << 1;
+                    
+                    // Check if we can set the bit
+                    if (rem >= ((root << 1) | 1'b1)) begin
+                        rem <= rem - ((root << 1) | 1'b1);
+                        root <= (root << 1) | 1'b1;
+                    end
+                    
+                    bit_pos <= bit_pos - 1;
+                end else begin
+                    // Computation complete
+                    result <= root;
+                    done <= 1;
+                    busy <= 0;
+                end
+            end
+        end
+    end
+endmodule

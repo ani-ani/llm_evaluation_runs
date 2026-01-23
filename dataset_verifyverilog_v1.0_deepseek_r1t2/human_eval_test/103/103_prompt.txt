@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'rounded_avg' that calculates the rounded average of two positive integers n and m.
+
+Inputs:
+  input clk          // Clock signal
+  input rst_n        // Active-low reset
+  input start        // Start computation (high for 1 cycle)
+  input [15:0] n     // First integer
+  input [15:0] m     // Second integer
+
+Outputs:
+  output reg [15:0] result // The calculated rounded average
+  output reg error         // High if n > m
+  output reg done          // High for 1 cycle when computation is complete
+
+Behavior:
+1.  Wait for 'start' signal.
+2.  If start is high, check if n > m.
+    - If n > m, set error = 1, result = 0 (don't care), and transition to DONE state.
+    - If n <= m, set error = 0 and proceed to calculation.
+3.  Calculation:
+    - Compute sum = n + m (use 17-bit intermediate to avoid overflow if strictly needed, but 16-bit addition is fine if we assume inputs keep sum < 65535, though problem allows max 16-bit inputs. Let's use 17-bit for sum to be safe).
+    - Compute average = sum[16:1] (integer division by 2).
+    - Rounding: Check sum[0]. If sum[0] == 1 (odd sum), add 1 to average. (Round half up).
+4.  Store the final average in 'result'.
+5.  Assert 'done' for one clock cycle.
+
+State Machine:
+- IDLE: Wait for start. (Output done=0, error=0)
+- CHECK: Check n > m. If true -> DONE. Else -> CALC.
+- CALC: Perform addition, shift, and rounding. -> DONE.
+- DONE: Assert done signal for 1 cycle, then return to IDLE.
+
+Latency: 3-4 clock cycles after start.
+
+Important Note: The module outputs the integer result. The testbench will convert this integer to the "0b..." binary string format for verification.
+
+Interface Matching (for Testbench):
+- Clock: `dut.clk`
+- Reset: `dut.rst_n` (active low, asserted high)
+- Start: `dut.start` (pulse high for 1 cycle)
+- Inputs: `dut.n.value`, `dut.m.value`
+- Outputs: `dut.result.value`, `dut.error.value`, `dut.done.value`

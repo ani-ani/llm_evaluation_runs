@@ -1,0 +1,55 @@
+module max_and_circle #(
+    parameter N = 8,               // Number of elements (fixed to 8)
+    parameter MAX_K = 4,           // Maximum number of sections (K <= 4)
+    parameter DATA_WIDTH = 8,      // Bit width of each element
+    parameter RESULT_WIDTH = 16    // Bit width of the result
+)(
+    input wire clk,                // Clock (rising edge)
+    input wire rst_n,              // Active-low synchronous reset
+    input wire start,              // Start pulse (1 cycle)
+    input wire [DATA_WIDTH-1:0] arr [0:N-1], // Input array of N elements
+    input wire [3:0] k,            // Number of sections (1 <= k <= MAX_K)
+    output reg [RESULT_WIDTH-1:0] result, // Maximum AND result
+    output reg done                // Done signal (1 cycle when result valid)
+);
+
+// The module computes the maximum bitwise AND of the powers of K sections
+// in a circular array of N non-negative integers.
+//
+// Algorithm (simplified for small N, K):
+// 1. For each start position (0 to N-1) of the circle:
+//    a. Generate linear order B[0..N-1] where B[i] = A[(start+i) mod N].
+//    b. For each composition of N into K parts (precomputed in ROM):
+//        i. Split B into K segments according to the composition.
+//        ii. For each segment, compute its power = bitwise OR of its elements.
+//        iii. Compute AND of all K powers.
+//        iv. Update maximum AND found so far.
+// 2. After all iterations, output the maximum.
+//
+// Implementation requirements:
+// - Use a finite state machine with states: IDLE, SETUP, NEXT_START, NEXT_COMPOSITION,
+//   COMPUTE_OR, COMPUTE_AND, UPDATE_MAX, DONE.
+// - Precompute all compositions for K=1..4 (use ROM or case statement).
+//   K=1: 1 composition [8]
+//   K=2: 7 compositions (1+7,2+6,...,7+1)
+//   K=3: 21 compositions (all splits of 8 into 3 positive integers)
+//   K=4: 35 compositions (all splits of 8 into 4 positive integers)
+// - The module should work for any k <= MAX_K (4). For k outside 1..4, output 0.
+// - Use counters for start index, composition index, segment index, element index.
+// - Use registers to accumulate OR per segment, AND of segment ORs, and max result.
+// - The result is updated after each composition; the maximum is stored in max_result.
+// - After all compositions for a given start are done, move to next start.
+// - After all starts, go to DONE and assert done for one cycle.
+//
+// Timing:
+// - After start pulse, the module becomes busy and computes the result.
+// - The computation may take many cycles (up to ~10,000 cycles for worst case).
+// - done is asserted for one cycle when result is ready and remains high until next start.
+// - The module should be reset before starting a new computation.
+//
+// Reset behavior:
+// - On rst_n = 0, all state registers are cleared, result = 0, done = 0.
+// - Minimum 2 clock cycles of reset recommended.
+//
+// Note: The LLM must complete the Verilog code, including the state machine,
+// composition ROM, and datapath. The interface must match exactly as above.

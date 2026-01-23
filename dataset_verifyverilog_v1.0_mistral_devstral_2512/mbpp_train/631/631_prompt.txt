@@ -1,0 +1,101 @@
+module replace_spaces(
+  input clk,
+  input rst_n,
+  input start,
+  input [7:0] char_array [0:15],  // 16-character input buffer
+  input [4:0] len,                 // String length (0-16)
+  output reg [7:0] result_array [0:15],  // Output buffer
+  output reg done,
+  output reg valid
+);
+
+  // Parameters
+  parameter MAX_LEN = 16;
+  parameter SPACE_ASCII = 8'd32;    // ' '
+  parameter UNDERSCORE_ASCII = 8'd95; // '_'
+  
+  // State machine states
+  parameter IDLE = 2'b00;
+  parameter PROCESS = 2'b01;
+  parameter FINISHED = 2'b10;
+  
+  // Registers
+  reg [1:0] state;
+  reg [4:0] index;  // Current character index
+  reg [4:0] length; // Stored length
+  
+  integer i;
+  
+  // Output assignment for result_array (combinational for current index)
+  always @(*) begin
+    for (i = 0; i < MAX_LEN; i = i + 1) begin
+      if (i < length && state == FINISHED) begin
+        // Processing completed, output is ready
+        // This is handled in sequential logic below
+      end
+    end
+  end
+  
+  // Main state machine
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      state <= IDLE;
+      done <= 0;
+      valid <= 0;
+      index <= 0;
+      length <= 0;
+      // Clear output array
+      for (i = 0; i < MAX_LEN; i = i + 1) begin
+        result_array[i] <= 8'd0;
+      end
+    end else begin
+      case (state)
+        IDLE: begin
+          done <= 0;
+          valid <= 0;
+          index <= 0;
+          if (start && len > 0 && len <= MAX_LEN) begin
+            length <= len;
+            state <= PROCESS;
+            // Initialize output with input
+            for (i = 0; i < MAX_LEN; i = i + 1) begin
+              if (i < len)
+                result_array[i] <= char_array[i];
+              else
+                result_array[i] <= 8'd0;
+            end
+          end
+        end
+        
+        PROCESS: begin
+          if (index < length) begin
+            // Process current character
+            if (result_array[index] == SPACE_ASCII)
+              result_array[index] <= UNDERSCORE_ASCII;
+            else if (result_array[index] == UNDERSCORE_ASCII)
+              result_array[index] <= SPACE_ASCII;
+            // else keep as is
+            
+            index <= index + 1;
+          end else begin
+            // All characters processed
+            state <= FINISHED;
+            done <= 1;
+            valid <= 1;
+          end
+        end
+        
+        FINISHED: begin
+          done <= 0;
+          // Wait for next start or reset
+          if (!start) begin
+            state <= IDLE;
+          end
+        end
+        
+        default: state <= IDLE;
+      endcase
+    end
+  end
+
+endmodule

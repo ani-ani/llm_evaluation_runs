@@ -1,0 +1,111 @@
+module set_left_most_unset_bit (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [31:0] n,
+    output reg [31:0] result,
+    output reg done
+);
+
+    // State definitions
+    localparam [1:0] IDLE = 2'd0;
+    localparam [1:0] CHECK = 2'd1;
+    localparam [1:0] COMPUTE = 2'd2;
+    localparam [1:0] DONE = 2'd3;
+
+    // Internal registers
+    reg [1:0] state;
+    reg [1:0] next_state;
+    reg [31:0] temp_n;
+    reg [4:0] pos;           // Position counter (0-31)
+    reg [4:0] found_pos;     // Store the leftmost unset bit position
+    reg all_set_flag;        // Flag to indicate all bits are set
+
+    // State transition
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 32'd0;
+            done <= 1'b0;
+            temp_n <= 32'd0;
+            pos <= 5'd0;
+            found_pos <= 5'd0;
+            all_set_flag <= 1'b0;
+        end else begin
+            state <= next_state;
+            
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        temp_n <= n;
+                        pos <= 5'd0;
+                        found_pos <= 5'd0;
+                        // Check if n == 32'hFFFFFFFF (all bits set)
+                        if (n == 32'hFFFFFFFF) begin
+                            all_set_flag <= 1'b1;
+                        end else begin
+                            all_set_flag <= 1'b0;
+                        end
+                    end
+                end
+                
+                CHECK: begin
+                    // Scan from MSB to find leftmost unset bit
+                    if (pos < 31) begin
+                        if (!temp_n[31]) begin
+                            found_pos <= pos;
+                        end
+                        temp_n <= {temp_n[30:0], 1'b1}; // Shift left
+                        pos <= pos + 1'b1;
+                    end else begin
+                        // Check bit 31 one more time
+                        if (!temp_n[31]) begin
+                            found_pos <= pos;
+                        end
+                    end
+                end
+                
+                COMPUTE: begin
+                    // Set the leftmost unset bit
+                    if (!all_set_flag) begin
+                        result <= n | (32'd1 << found_pos);
+                    end else begin
+                        result <= n; // All bits set, return as is
+                    end
+                end
+                
+                DONE: begin
+                    done <= 1'b1;
+                end
+            endcase
+        end
+    end
+
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: begin
+                if (start) next_state = CHECK;
+                else next_state = IDLE;
+            end
+            
+            CHECK: begin
+                if (pos >= 31) next_state = COMPUTE;
+                else next_state = CHECK;
+            end
+            
+            COMPUTE: begin
+                next_state = DONE;
+            end
+            
+            DONE: begin
+                next_state = IDLE;
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+
+endmodule

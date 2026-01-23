@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'sum_of_digits' that computes the sum of digits of each number in a list.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] num_count // Number of numbers in the list (max 8)
+input [63:0] str_data [0:7] // Array of 8 fixed-width strings (64-bit each, representing max 8 ASCII chars)
+
+Outputs:
+output reg [15:0] result // Total sum of all digits (max sum = 8*9*8 = 576, fits in 16 bits)
+output reg done // High when computation complete
+
+Specifications:
+- The module processes a list of up to 8 strings, each representing a number
+- Each string is 64-bit wide (8 bytes of ASCII characters)
+- Supports positive integers (e.g., "10", "56") and negative integers (e.g., "-4", "-70")
+- Ignore non-digit characters (like 'b', 'a')
+- Extract and sum only valid digit characters (0-9)
+- Result is the total sum of all digits across all numbers in the list
+- Latency: Approximately 80 clock cycles (10 cycles per string * 8 strings)
+
+Implementation Details:
+- Use a state machine with states: IDLE, PARSE_CHAR, NEXT_CHAR, NEXT_NUMBER, DONE
+- In IDLE: Wait for start signal
+- In PARSE_CHAR: Read current byte from current string, check if it's a digit (ASCII '0'-'9')
+- If digit: convert ASCII to value and add to running sum
+- In NEXT_CHAR: Move to next character in current string (8 chars max)
+- In NEXT_NUMBER: Move to next number in the list
+- In DONE: Assert done signal
+- Use internal registers:
+  - current_num_index [2:0]: Current number being processed
+  - current_char_index [2:0]: Current character position in string
+  - running_sum [15:0]: Accumulated sum of all digits
+  - temp_sum [7:0]: Sum of digits in current number
+
+Example:
+Input: ["10", "2", "56"] (as 8-byte strings, padded with zeros)
+Expected: 1+0 + 2 + 5+6 = 14
+
+Input: ["10", "20", "-4", "5", "-70"]
+Expected: 1+0 + 2+0 + 4 + 5 + 7+0 = 19
+
+Input: ["10", "20", "4", "5", "b", "70", "a"] (ignore non-digits)
+Expected: 1+0 + 2+0 + 4 + 5 + 7+0 = 19
+
+The module should:
+1. Receive str_data as an array of 8 bytes each (64-bit total per number)
+2. Parse each byte and check if it's between ASCII '0' (0x30) and '9' (0x39)
+3. Convert to numeric value by subtracting 0x30
+4. Accumulate into result
+5. Complete after processing all valid numbers up to num_count

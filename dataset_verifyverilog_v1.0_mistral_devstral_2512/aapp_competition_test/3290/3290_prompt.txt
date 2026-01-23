@@ -1,0 +1,259 @@
+module exploding_kittens (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] N,   // number of players (1-8)
+    input [3:0] E,   // number of Exploding Kittens (0-8)
+    input [3:0] D,   // number of Defuse cards (0-8)
+    input [7:0] e_pos_0, e_pos_1, e_pos_2, e_pos_3, e_pos_4, e_pos_5, e_pos_6, e_pos_7,
+    input [7:0] d_pos_0, d_pos_1, d_pos_2, d_pos_3, d_pos_4, d_pos_5, d_pos_6, d_pos_7,
+    output reg [7:0] winner,  // winner ID (0-7), 255 for no winner
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam INIT = 3'b001;
+localparam LOOP = 3'b010;
+localparam PROCESS = 3'b011;
+localparam NEXT_PLAYER = 3'b100;
+localparam NEXT_POS = 3'b101;
+localparam FINISH = 3'b110;
+
+// Registers for state
+reg [2:0] state, next_state;
+
+// Game registers
+reg [7:0] current_position;
+reg [7:0] max_position;
+reg [2:0] current_player;  // 0-7
+reg [3:0] alive_count;     // number of alive players
+reg [2:0] hand_total [0:7];   // total cards in hand (0-5)
+reg [2:0] hand_defuse [0:7];  // number of Defuse cards in hand (0-5)
+reg alive [0:7];              // 1 if alive
+
+// Combinational signals for card detection
+reg is_exploding, is_defuse;
+always @(*) begin
+    is_exploding = 0;
+    is_defuse = 0;
+    // Check Exploding positions
+    if (E > 0 && e_pos_0 == current_position) is_exploding = 1;
+    if (E > 1 && e_pos_1 == current_position) is_exploding = 1;
+    if (E > 2 && e_pos_2 == current_position) is_exploding = 1;
+    if (E > 3 && e_pos_3 == current_position) is_exploding = 1;
+    if (E > 4 && e_pos_4 == current_position) is_exploding = 1;
+    if (E > 5 && e_pos_5 == current_position) is_exploding = 1;
+    if (E > 6 && e_pos_6 == current_position) is_exploding = 1;
+    if (E > 7 && e_pos_7 == current_position) is_exploding = 1;
+    // Check Defuse positions
+    if (D > 0 && d_pos_0 == current_position) is_defuse = 1;
+    if (D > 1 && d_pos_1 == current_position) is_defuse = 1;
+    if (D > 2 && d_pos_2 == current_position) is_defuse = 1;
+    if (D > 3 && d_pos_3 == current_position) is_defuse = 1;
+    if (D > 4 && d_pos_4 == current_position) is_defuse = 1;
+    if (D > 5 && d_pos_5 == current_position) is_defuse = 1;
+    if (D > 6 && d_pos_6 == current_position) is_defuse = 1;
+    if (D > 7 && d_pos_7 == current_position) is_defuse = 1;
+end
+
+// Helper: find next alive player from given index
+reg [2:0] next_alive_idx;
+always @(*) begin
+    next_alive_idx = current_player;
+    for (integer i = 1; i <= 8; i = i + 1) begin
+        // Check up to 8 players (max 8)
+        reg [2:0] candidate = current_player + i;
+        if (candidate >= N) candidate = candidate - N; // wrap
+        if (alive[candidate]) begin
+            next_alive_idx = candidate;
+            break;
+        end
+    end
+end
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: if (start) next_state = INIT;
+        INIT: next_state = LOOP;
+        LOOP: begin
+            if (alive_count <= 1 || current_position > max_position)
+                next_state = FINISH;
+            else
+                next_state = PROCESS;
+        end
+        PROCESS: next_state = NEXT_PLAYER;
+        NEXT_PLAYER: next_state = NEXT_POS;
+        NEXT_POS: next_state = LOOP;
+        FINISH: next_state = FINISH; // stay done
+        default: next_state = IDLE;
+    endcase
+end
+
+// Main logic (sequential)
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset all
+        integer i;
+        for (i = 0; i < 8; i = i + 1) begin
+            hand_total[i] <= 0;
+            hand_defuse[i] <= 0;
+            alive[i] <= 0;
+        end
+        current_position <= 0;
+        max_position <= 0;
+        current_player <= 0;
+        alive_count <= 0;
+        winner <= 8'hFF;
+        done <= 0;
+    end else begin
+        case (state)
+            INIT: begin
+                // Initialize player states
+                integer i;
+                for (i = 0; i < 8; i = i + 1) begin
+                    if (i < N) begin
+                        alive[i] <= 1;
+                        hand_total[i] <= 0;
+                        hand_defuse[i] <= 0;
+                    end else begin
+                        alive[i] <= 0;
+                        hand_total[i] <= 0;
+                        hand_defuse[i] <= 0;
+                    end
+                end
+                alive_count <= N;
+                current_player <= 0;
+                current_position <= 0;
+                // Compute max_position from ports
+                max_position <= 0;
+                if (E > 0 && e_pos_0 > max_position) max_position <= e_pos_0;
+                if (E > 1 && e_pos_1 > max_position) max_position <= e_pos_1;
+                if (E > 2 && e_pos_2 > max_position) max_position <= e_pos_2;
+                if (E > 3 && e_pos_3 > max_position) max_position <= e_pos_3;
+                if (E > 4 && e_pos_4 > max_position) max_position <= e_pos_4;
+                if (E > 5 && e_pos_5 > max_position) max_position <= e_pos_5;
+                if (E > 6 && e_pos_6 > max_position) max_position <= e_pos_6;
+                if (E > 7 && e_pos_7 > max_position) max_position <= e_pos_7;
+                if (D > 0 && d_pos_0 > max_position) max_position <= d_pos_0;
+                if (D > 1 && d_pos_1 > max_position) max_position <= d_pos_1;
+                if (D > 2 && d_pos_2 > max_position) max_position <= d_pos_2;
+                if (D > 3 && d_pos_3 > max_position) max_position <= d_pos_3;
+                if (D > 4 && d_pos_4 > max_position) max_position <= d_pos_4;
+                if (D > 5 && d_pos_5 > max_position) max_position <= d_pos_5;
+                if (D > 6 && d_pos_6 > max_position) max_position <= d_pos_6;
+                if (D > 7 && d_pos_7 > max_position) max_position <= d_pos_7;
+                done <= 0;
+                winner <= 8'hFF;
+            end
+
+            PROCESS: begin
+                // Process card at current_position for current_player
+                if (alive[current_player]) begin
+                    if (is_exploding) begin
+                        if (hand_defuse[current_player] > 0) begin
+                            // Use Defuse
+                            hand_defuse[current_player] <= hand_defuse[current_player] - 1;
+                            hand_total[current_player] <= hand_total[current_player] - 1;
+                        end else begin
+                            // Player leaves
+                            alive[current_player] <= 0;
+                            alive_count <= alive_count - 1;
+                        end
+                    end else if (is_defuse) begin
+                        // Draw Defuse
+                        hand_defuse[current_player] <= hand_defuse[current_player] + 1;
+                        hand_total[current_player] <= hand_total[current_player] + 1;
+                        // Discard if over limit
+                        if (hand_total[current_player] + 1 > 5) begin
+                            // Need to discard (hand_total+1 - 5) = 1 card
+                            // Discard neutral first if available
+                            if (hand_total[current_player] - hand_defuse[current_player] > 0) begin
+                                // Have neutral cards, discard one neutral
+                                // Neutral count decreases by 1, but we don't store it explicitly
+                                // Hand total becomes 5, defuse unchanged
+                                hand_total[current_player] <= 5;
+                            end else begin
+                                // Only Defuse cards, discard one Defuse
+                                hand_defuse[current_player] <= hand_defuse[current_player]; // actually decreases by 1? Wait: we added 1, then need to discard 1 Defuse, so net defuse unchanged? Let's compute:
+                                // Before: total = t, defuse = d, neutral = t-d.
+                                // After draw: total = t+1, defuse = d+1, neutral = t-d.
+                                // Need to discard 1 card. If neutral >0, discard neutral: total becomes 5, defuse remains d+1? No, discarding neutral does not change defuse. So final defuse = d+1, total=5. If neutral=0, discard Defuse: defuse becomes d, total=5.
+                                // So we need to adjust correctly.
+                                // We'll compute in combinational, but here we can do:
+                                // Actually easier: after draw, total becomes t+1, then we discard 1.
+                                // Let's compute neutral count: neutral = (t+1) - (d+1) = t-d.
+                                // If neutral >0, discard neutral: total becomes (t+1)-1 = t, defuse remains d+1? Wait, we need total=5, so we discard 1 card, which could be neutral or defuse.
+                                // If t < 5, after draw t+1 <=5, no discard needed. So we only enter discard when t==5.
+                                // So if t==5, then after draw total=6, need to discard 1.
+                                // Neutral = 5 - d (since t=5). So if 5-d >0, discard neutral: total becomes 5, defuse remains d+1? But after draw, defuse is d+1, neutral is 5-d. Discarding neutral reduces neutral by 1, so defuse unchanged, total becomes 5. So final defuse = d+1, total=5.
+                                // If 5-d ==0 (all Defuse), discard a Defuse: defuse becomes (d+1)-1 = d, total=5.
+                                // So we need to implement this logic.
+                                // We'll do it in a combinational block and use temporary variables.
+                            end
+                        end
+                        // We'll handle discard in a separate always block? To keep code simple, we can compute discard in PROCESS state using combinational logic.
+                        // Since we are in sequential block, we can compute the next hand state based on current values.
+                        // Let's compute next_hand_total and next_hand_defuse for this player.
+                        // We'll use temporary variables.
+                    end else begin
+                        // Neutral card
+                        hand_total[current_player] <= hand_total[current_player] + 1;
+                        // Discard if over limit
+                        if (hand_total[current_player] + 1 > 5) begin
+                            // Total becomes 6, need to discard 1
+                            // Neutral count after draw: (hand_total[current_player] - hand_defuse[current_player]) because total+1, defuse unchanged, so neutral = (total+1) - defuse = (total - defuse) +1 = neutral_before +1.
+                            // If neutral_before >0, discard neutral: total becomes 5, defuse unchanged.
+                            // If neutral_before ==0, discard Defuse: defuse decreases by 1, total becomes 5.
+                            // So we can check if (hand_total[current_player] - hand_defuse[current_player]) > 0.
+                            // If yes, discard neutral: total <=5, defuse unchanged.
+                            // Else, discard Defuse: defuse <= defuse -1, total <=5.
+                            if (hand_total[current_player] - hand_defuse[current_player] > 0) begin
+                                hand_total[current_player] <= 5;
+                            end else begin
+                                hand_defuse[current_player] <= hand_defuse[current_player] - 1;
+                                hand_total[current_player] <= 5;
+                            end
+                        end
+                    end
+                end
+            end
+
+            NEXT_PLAYER: begin
+                // Move to next alive player
+                if (alive_count > 1) begin
+                    current_player <= next_alive_idx;
+                end
+            end
+
+            NEXT_POS: begin
+                current_position <= current_position + 1;
+            end
+
+            FINISH: begin
+                done <= 1;
+                // Determine winner
+                if (alive_count == 1) begin
+                    // Find the alive player
+                    for (integer i = 0; i < 8; i = i + 1) begin
+                        if (alive[i]) winner <= i;
+                    end
+                end else begin
+                    winner <= 8'hFF; // no winner
+                end
+            end
+        endcase
+    end
+end
+
+endmodule

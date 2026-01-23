@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'stone_game' that determines the winner of a simplified stone game.
+
+Problem Adaptation:
+- Input: An array of up to 8 integers representing stone piles (values 0-15).
+- Rules: Players take turns removing 1 stone. A player loses if they cannot move (all piles empty) or if the move creates duplicate pile values (except the starting configuration is checked for validity).
+- Hardware Implementation: 
+  1. Use a bubble sort network (or iterative state machine) to sort the input array.
+  2. Use a state machine to check for invalid starting configurations:
+     - More than one pair of duplicates.
+     - A duplicate value is 0.
+     - A duplicate value V has V-1 also present in the array.
+  3. If valid, calculate the sum of (piles[i] - i) for i=0 to 7. If the sum is odd, Player 1 (First) wins; otherwise Player 2 (Second) wins.
+  4. Scale inputs: N=8, Values=4 bits (0-15).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] num_piles // Number of valid piles (1-8)
+input [7:0][3:0] piles // 8 piles, each 4 bits (unused piles should be 0)
+
+Outputs:
+output reg winner // 1 if Player 1 wins (sjfnb), 0 if Player 2 wins (cslnb)
+output reg valid // 1 if the input configuration is valid (no immediate loss)
+output reg done // High when computation complete
+
+Latency: Result valid 60 clock cycles after start asserted (allowing for sorting and checks).
+
+Behavioral Description:
+The module uses a multi-stage state machine:
+- IDLE: Wait for start signal.
+- SORT: Sort the 'piles' array using a bubble-sort-like state machine (swapping adjacent elements if out of order). Takes ~30 cycles for 8 elements.
+- CHECK_INVALID: Scan sorted array to detect invalid states.
+  - Counts duplicates. If count > 1 -> Invalid.
+  - If duplicate value is 0 -> Invalid.
+  - If duplicate value V has V-1 present -> Invalid.
+- CALCULATE: Compute sum of (piles[i] - i). Check parity.
+- DONE: Latch results to output.
+
+Note: The array size is fixed at 8, but 'num_piles' indicates valid inputs. Piles beyond 'num_piles' must be 0.
+Output 'valid' is 0 if invalid state detected, in which case 'winner' implies the loser of the game.

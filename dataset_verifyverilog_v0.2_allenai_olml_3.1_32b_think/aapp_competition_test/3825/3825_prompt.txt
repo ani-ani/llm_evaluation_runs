@@ -1,0 +1,30 @@
+Design a sequential Verilog module named 'roman_digits_solver' that computes the number of distinct integers representable by exactly 'n' roman digits {I=1, V=5, X=10, L=50}.
+
+The module should handle two cases based on the input 'n':
+1. If n <= 20: Compute the exact count using a combinatorial approach. Based on analysis, the formula for small n is equivalent to counting unique sums. The sequence is known to be quadratic-like for small n, but we can simplify the logic by noting the pattern in the Python solutions.
+2. If n > 20: Use the linear approximation formula `Result = 49 * n - 247`.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [29:0] n // The number of digits (supports up to ~1 billion)
+
+Outputs:
+output reg [59:0] result // The number of distinct integers
+output reg done // High when computation is complete
+
+Behavior:
+- The module must use a state machine with states: IDLE, CHECK_RANGE, COMPUTE_SMALL, COMPUTE_LARGE, DONE.
+- In IDLE: Wait for 'start' signal.
+- In CHECK_RANGE: Check if n <= 20. If yes, go to COMPUTE_SMALL. If no, go to COMPUTE_LARGE.
+- In COMPUTE_SMALL: Calculate the result for small n. The Python solutions show a precomputed table for n=0 to 11. We can implement a case statement for n=1 to 20 based on known values or derive it. Since the exact values for n=12..20 are: 341, 390, 439, 488, 537, 586, 635, 684, 733. Note: the output for n=20 is 733.
+- In COMPUTE_LARGE: Calculate `result = 49 * n - 247`. This requires multiplication. 49 * n fits in 36 bits for n < 2^30, so 60-bit output is safe.
+- In DONE: Set 'done' high and wait for reset or start low.
+
+Latency: Result valid 20 clock cycles after start asserted (allowing time for range check and calculation).
+
+Implementation details:
+- Use a 3-bit state register.
+- The multiplication 49 * n can be computed as (n << 6) - (n << 1) which is n*64 - n*2 = n*62... wait. 49 = 32 + 16 + 1 = n*32 + n*16 + n*1. So `n << 5 + n << 4 + n`.
+- The constant 247 needs to be subtracted.

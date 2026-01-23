@@ -1,0 +1,64 @@
+module cookie_distribution (
+    input clk,
+    input rst_n,
+    input start,
+    input [31:0] N,
+    input [31:0] A,
+    input [31:0] B,
+    input [31:0] C,
+    output reg [63:0] result,
+    output reg done
+);
+    // State encoding
+    localparam IDLE = 1'b0;
+    localparam COMPUTE = 1'b1;
+    
+    reg state;
+    
+    // Combinational logic for computation
+    wire [63:0] A_ext = {32'd0, A};
+    wire [63:0] B_ext = {32'd0, B};
+    wire [63:0] C_ext = {32'd0, C};
+    wire [63:0] N_ext = {32'd0, N};
+    
+    wire [63:0] T = A_ext + B_ext + C_ext;
+    wire [63:0] M = max3(A_ext, B_ext, C_ext);
+    wire [63:0] two_M = M << 1;
+    wire [63:0] T_plus_N = T + N_ext;
+    wire condition = (two_M <= T_plus_N);
+    wire [63:0] part = T - M;
+    wire [63:0] two_part = part << 1;
+    wire [63:0] else_result = two_part + N_ext;
+    wire [63:0] computed_result = condition ? T : else_result;
+    
+    // Max function
+    function automatic [63:0] max3;
+        input [63:0] a, b, c;
+        begin
+            max3 = (a > b) ? ((a > c) ? a : c) : ((b > c) ? b : c);
+        end
+    endfunction
+    
+    // Sequential logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            result <= 64'd0;
+            done <= 1'b0;
+            state <= IDLE;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= COMPUTE;
+                    end
+                end
+                COMPUTE: begin
+                    result <= computed_result;
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule

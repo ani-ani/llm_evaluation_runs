@@ -1,0 +1,37 @@
+Design a sequential Verilog module named `find_max` that implements the logic to find the string with the maximum number of unique characters. If multiple strings have the same maximum unique count, it should return the one that comes first lexicographically (smallest alphabetical value).
+
+**Simplifications for Hardware:**
+- Input array size: Fixed at 4 strings.
+- String length: Fixed at 8 characters. Unused characters should be treated as null (value 0).
+- Character set: Lowercase 'a'-'z' mapped to values 1-26. 0 is reserved for padding.
+- Lexicographical Order: Since only lowercase letters are used, simple integer comparison of the packed string representation works.
+
+**Interface:**
+- Inputs:
+  - `clk`: Clock signal
+  - `rst_n`: Active-low reset
+  - `start`: Start signal, high for one cycle to begin processing
+  - `strings`: Array of 4 strings. Each string is 8 bytes. In Verilog, this is `input [7:0] strings [0:3][0:7]`. (Note: Testbench will handle the specific indexing).
+- Outputs:
+  - `result`: The winning string. Output is 8 bytes, `output [7:0] result [0:7]`.
+  - `done`: High for one cycle when `result` is valid.
+
+**Behavioral Description:**
+The module acts as a state machine with the following states: IDLE, COUNTING, COMPARING, DONE.
+1. **IDLE**: Waits for `start` signal.
+2. **COUNTING**: Calculates the number of unique characters for each of the 4 input strings.
+   - For each string, scan all 8 bytes. Use logic to detect distinct values (ignoring 0).
+   - A parallel approach is preferred: Compare each character with all others in the same string to find if it is the first occurrence.
+   - Output 4 integers representing unique counts.
+3. **COMPARING**: Compares the 4 unique counts and the strings themselves.
+   - Find the index with the maximum unique count.
+   - If two indices have the same max count, choose the one with the lexicographically smaller string (which effectively means the smaller packed integer value since 'a' < 'b'...).
+   - Select the winning string.
+4. **DONE**: Latch the winning string to the output and assert `done`.
+
+**Verilog Specifics:**
+- Use `reg` variables to store intermediate states.
+- Use `always @(posedge clk or negedge rst_n)` for sequential logic.
+- Avoid complex loops; prefer unrolled logic or small state loops for the counting phase.
+- The counting phase for each string should iterate through its 8 bytes.
+- Ensure the module works with Icarus Verilog (compatible syntax).

@@ -1,0 +1,1 @@
+module hexagon_triangles (\n    input [9:0] a1, a2, a3, a4, a5, a6,\n    output [23:0] result\n);\n    wire [11:0] sum = a1 + a2 + a3;\n    wire [23:0] sum_sq = sum * sum;\n    wire [19:0] a1_sq = a1 * a1;\n    wire [19:0] a3_sq = a3 * a3;\n    wire [19:0] a5_sq = a5 * a5;\n    assign result = sum_sq - a1_sq - a3_sq - a5_sq;\nendmodule

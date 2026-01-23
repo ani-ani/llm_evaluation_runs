@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'orienteering_solver' that solves a scaled-down version of the orienteering problem: determining if a Hamiltonian cycle with exact total length L exists in a small weighted undirected graph.
+
+Problem adaptation:
+- Maximum n = 7 control points (scaled down from 14)
+- Maximum L = 65535 (scaled down from 10^15)
+- Distance matrix is symmetric and satisfies triangle inequality
+- Distances are integers 1-255
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] n // number of control points (2-7)
+input [15:0] L // desired total length
+input [2:0] src_addr // address for distance matrix write
+input [2:0] dst_addr // address for distance matrix write
+input [7:0] dist_in // distance value to store
+input wr_en // write enable for distance matrix
+
+Outputs:
+output reg result // 1 if possible, 0 if impossible
+output reg done // high when computation complete
+
+The module must:
+1. Accept distance matrix via write interface during IDLE state
+2. Generate all (n-1)! permutations of control points 1 through n-1
+3. For each permutation, calculate total path length:
+   - Start at node 0
+   - Follow permutation order
+   - Return to node 0
+   - Sum all edge distances
+4. Compare total length against target L
+5. Set result=1 if exact match found, 0 otherwise
+6. Must complete within 10,000 clock cycles
+
+Implementation details:
+- Use state machine: IDLE, LOAD_MATRIX, PERMUTING, CALCULATING, CHECKING, DONE
+- For n=7, max permutations = 720 (manageable in hardware)
+- Store distance matrix as 8x8 array of 8-bit values (256 entries max)
+- Use iterative permutation generation (Heap's algorithm or similar)
+- Path calculation: 0 -> p[0] -> p[1] -> ... -> p[n-2] -> 0
+- Total distance = d[0][p[0]] + sum(d[p[i]][p[i+1]]) + d[p[n-2]][0]
+- Cycle through all permutations, checking each length
+- Early termination if match found
+
+Latency: Maximum 10,000 cycles after start asserted.
+
+Behavioral Description:
+The module maintains a distance matrix in BRAM-style storage (8x8x8-bit array). 
+During LOAD_MATRIX state, it accepts writes via src_addr/dst_addr/dist_in/wr_en interface.
+In PERMUTING state, it generates permutations of nodes 1..n-1 using a counter-based approach.
+For each permutation, CALCULATING state computes the full cycle length by summing 7 edge distances (worst case).
+CHECKING state compares sum with L, sets result=1 if equal and transitions to DONE.
+If all permutations checked without match, result=0 and transition to DONE.
+Use parameters: MAX_N = 7, MAX_L = 65535, MAX_DIST = 255.

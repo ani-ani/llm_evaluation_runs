@@ -1,0 +1,73 @@
+Design a sequential Verilog module named 'string_explosion' that implements a simplified string explosion chain reaction.
+
+**Problem Adaptation:**
+- Input string: Fixed-width 16 characters (ASCII bytes)
+- Explosion pattern: Fixed-width 8 characters (ASCII bytes)
+- Maximum chain reactions: 8 iterations
+- Characters are uppercase/lowercase letters and digits
+- Explosion pattern has unique characters (no duplicates)
+
+**Module Interface:**
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] str_in [0:15] // Input string as 16 bytes
+input [7:0] exp_in [0:7] // Explosion pattern as 8 bytes
+input [5:0] str_len // Actual length of input string (1-16)
+input [5:0] exp_len // Actual length of explosion pattern (1-8)
+
+Outputs:
+output reg [7:0] result [0:15] // Final string after explosions
+output reg [5:0] result_len // Length of result string
+output reg done // High when computation complete
+output reg empty // High if result is empty (FRULA)
+
+**Behavioral Specification:**
+1. The module implements a stack-based algorithm:
+   - Process each character from input string
+   - Push character onto stack
+   - After each push, check if top of stack matches explosion pattern
+   - If match found, pop pattern length characters (explode)
+   - Repeat until all input characters processed
+
+2. Since pattern has unique characters, we can optimize matching:
+   - Check only when current character matches last char of pattern
+   - Perform parallel comparison of stack top against pattern
+
+3. Chain reaction handling:
+   - After processing all input, check if explosions remain
+   - Run up to 8 iterations max
+   - Each iteration uses same stack-based algorithm on current result
+
+4. State Machine States:
+   - IDLE: Wait for start signal
+   - INIT_LOAD: Initialize stack with input string
+   - CHECK_EXPLOSION: Check for pattern match in stack
+   - EXPLODE: Remove matched pattern from stack
+   - RECHECK: Continue checking for more explosions in current stack
+   - NEXT_ITERATION: Prepare for next chain reaction iteration
+   - DONE: Computation complete
+
+5. Parallel Matching Logic:
+   - When checking for explosion, compare top exp_len characters
+   - Use parallel comparators: if (stack[stack_ptr-1:stack_ptr-exp_len] == exp_in[0:exp_len-1])
+   - All characters must match for explosion to trigger
+
+**Implementation Details:**
+- Stack depth: 16 characters (max result size)
+- Use blocking assignments for combinational logic
+- Non-blocking for registered outputs
+- Explosion pattern guaranteed unique, so matches are unambiguous
+- Result should be stored in array in correct order
+- Done signal stays high until reset
+
+**Example Flow:**
+Input: "mirkovC4nizCC44" (len=16), Explosion: "C4" (len=2)
+- Process: m,i,r,k,o,v,C,4,n,i,z,C,C,4,4
+- Stack after processing: m,i,r,k,o,v,n,i,z (C4 exploded twice)
+- Final result: "mirkovniz" (len=9)
+
+**Reset Behavior:**
+On rst_n = 0, clear all registers, return to IDLE, set done=0, empty=0, result_len=0.

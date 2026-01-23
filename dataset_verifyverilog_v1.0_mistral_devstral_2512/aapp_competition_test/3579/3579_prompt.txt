@@ -1,0 +1,248 @@
+Create a Verilog module that computes the Median of All Densities (MAD) for a small grid up to 4x2 cells. The module should be sequential with clock and reset, and accept the grid dimensions, area bounds, and flattened grid values. It should output the median density as a 32-bit fixed-point number in Q16.16 format.
+
+MODULE SPECIFICATION:
+
+module mad_calculator (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] h, w,          // grid dimensions (h <= 4, w <= 2)
+    input [3:0] a, b,          // area bounds (1 <= a <= b <= 8)
+    input [63:0] grid,         // flattened 4x2 grid: grid[7:0]=row0col0, grid[15:8]=row0col1, ...
+    output reg [31:0] median,  // median density in Q16.16 format
+    output reg done            // asserted for one cycle when computation finishes
+);
+
+// Parameters
+parameter MAX_H = 4;
+parameter MAX_W = 2;
+parameter MAX_RECT = 30;      // maximum number of rectangles for 4x2 grid
+
+// Internal storage
+reg [7:0] grid_2d [0:MAX_H-1][0:MAX_W-1];
+reg [31:0] ps [0:MAX_H][0:MAX_W]; // prefix sums
+reg [3:0] top, bottom, left, right;
+reg [5:0] rect_count;             // number of valid rectangles
+reg [31:0] rect_sum [0:MAX_RECT-1];
+reg [3:0] rect_area [0:MAX_RECT-1];
+
+// State machine states
+localparam S_IDLE = 0;
+localparam S_COMPUTE_PS = 1;
+localparam S_INIT_RECT = 2;
+localparam S_CHECK_RECT = 3;
+localparam S_COMPUTE_RECT = 4;
+localparam S_STORE_RECT = 5;
+localparam S_NEXT_ITER = 6;
+localparam S_SORT_INIT = 7;
+localparam S_SORT_INNER_LOOP = 8;
+localparam S_SORT_COMPARE = 9;
+localparam S_SORT_SWAP = 10;
+localparam S_SORT_INCREMENT_J = 11;
+localparam S_SORT_INCREMENT_I = 12;
+localparam S_MEDIAN = 13;
+localparam S_COMPUTE_DENSITY = 14;
+localparam S_DONE = 15;
+
+reg [4:0] state, next_state;
+reg [3:0] i, j;                  // loop counters for prefix sum
+reg [5:0] sort_i, sort_j;        // counters for bubble sort
+reg [31:0] comp_sum1, comp_sum2;
+reg [3:0] comp_area1, comp_area2;
+reg [63:0] product1, product2;
+reg [31:0] temp_sum, temp_area;
+reg [31:0] median_temp, divisor_temp;
+
+// State transition and datapath
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= S_IDLE;
+        done <= 0;
+        median <= 0;
+        rect_count <= 0;
+        top <= 0; bottom <= 0; left <= 0; right <= 0;
+        i <= 0; j <= 0;
+        sort_i <= 0; sort_j <= 0;
+    end else begin
+        case (state)
+            S_IDLE: begin
+                if (start) begin
+                    // Flatten grid into 2D array
+                    grid_2d[0][0] <= grid[7:0];
+                    grid_2d[0][1] <= grid[15:8];
+                    grid_2d[1][0] <= grid[23:16];
+                    grid_2d[1][1] <= grid[31:24];
+                    grid_2d[2][0] <= grid[39:32];
+                    grid_2d[2][1] <= grid[47:40];
+                    grid_2d[3][0] <= grid[55:48];
+                    grid_2d[3][1] <= grid[63:56];
+                    state <= S_COMPUTE_PS;
+                    i <= 0; j <= 0;
+                end
+            end
+
+            S_COMPUTE_PS: begin
+                // Compute prefix sum ps[i][j] = sum of grid[0:i-1][0:j-1]
+                if (i <= h && j <= w) begin
+                    if (i == 0 || j == 0) begin
+                        ps[i][j] <= 0;
+                    end else begin
+                        ps[i][j] <= ps[i-1][j] + ps[i][j-1] - ps[i-1][j-1] + grid_2d[i-1][j-1];
+                    end
+                    if (j < w) begin
+                        j <= j + 1;
+                    end else begin
+                        j <= 0;
+                        if (i < h) begin
+                            i <= i + 1;
+                        end else begin
+                            state <= S_INIT_RECT;
+                            i <= 0; j <= 0;
+                        end
+                    end
+                end
+            end
+
+            S_INIT_RECT: begin
+                top <= 0;
+                bottom <= 0;
+                left <= 0;
+                right <= 0;
+                rect_count <= 0;
+                state <= S_CHECK_RECT;
+            end
+
+            S_CHECK_RECT: begin
+                // Current rectangle defined by top, bottom, left, right is valid
+                state <= S_COMPUTE_RECT;
+            end
+
+            S_COMPUTE_RECT: begin
+                // Compute area and sum for current rectangle
+                temp_area <= (bottom - top + 1) * (right - left + 1);
+                temp_sum <= ps[bottom+1][right+1] - ps[top][right+1] - ps[bottom+1][left] + ps[top][left];
+                state <= S_STORE_RECT;
+            end
+
+            S_STORE_RECT: begin
+                // Store if area within bounds
+                if (temp_area >= a && temp_area <= b && rect_count < MAX_RECT) begin
+                    rect_sum[rect_count] <= temp_sum;
+                    rect_area[rect_count] <= temp_area;
+                    rect_count <= rect_count + 1;
+                end
+                state <= S_NEXT_ITER;
+            end
+
+            S_NEXT_ITER: begin
+                // Increment rectangle counters (nested loops)
+                if (right < w-1) begin
+                    right <= right + 1;
+                    state <= S_CHECK_RECT;
+                end else if (left < w-1) begin
+                    left <= left + 1;
+                    right <= left + 1;
+                    state <= S_CHECK_RECT;
+                end else if (bottom < h-1) begin
+                    bottom <= bottom + 1;
+                    left <= 0;
+                    right <= 0;
+                    state <= S_CHECK_RECT;
+                end else if (top < h-1) begin
+                    top <= top + 1;
+                    bottom <= top + 1;
+                    left <= 0;
+                    right <= 0;
+                    state <= S_CHECK_RECT;
+                end else begin
+                    // All rectangles enumerated
+                    if (rect_count == 0) begin
+                        median <= 0;
+                        state <= S_DONE;
+                    end else begin
+                        state <= S_SORT_INIT;
+                    end
+                end
+            end
+
+            S_SORT_INIT: begin
+                sort_i <= 0;
+                state <= S_SORT_INNER_LOOP;
+            end
+
+            S_SORT_INNER_LOOP: begin
+                if (sort_i < rect_count - 1) begin
+                    sort_j <= 0;
+                    state <= S_SORT_COMPARE;
+                end else begin
+                    state <= S_MEDIAN;
+                end
+            end
+
+            S_SORT_COMPARE: begin
+                // Prepare for comparison
+                comp_sum1 <= rect_sum[sort_j];
+                comp_sum2 <= rect_sum[sort_j+1];
+                comp_area1 <= rect_area[sort_j];
+                comp_area2 <= rect_area[sort_j+1];
+                state <= S_SORT_SWAP;
+            end
+
+            S_SORT_SWAP: begin
+                // Compare densities: rect_sum[sort_j] / rect_area[sort_j] vs rect_sum[sort_j+1] / rect_area[sort_j+1]
+                // Cross-multiply to avoid division: compare sum1*area2 and sum2*area1
+                product1 <= comp_sum1 * comp_area2;
+                product2 <= comp_sum2 * comp_area1;
+                state <= S_SORT_INCREMENT_J;
+            end
+
+            S_SORT_INCREMENT_J: begin
+                // Swap if product1 > product2 (density1 > density2)
+                if (product1 > product2) begin
+                    rect_sum[sort_j] <= comp_sum2;
+                    rect_sum[sort_j+1] <= comp_sum1;
+                    rect_area[sort_j] <= comp_area2;
+                    rect_area[sort_j+1] <= comp_area1;
+                end
+                if (sort_j < rect_count - sort_i - 2) begin
+                    sort_j <= sort_j + 1;
+                    state <= S_SORT_COMPARE;
+                end else begin
+                    sort_i <= sort_i + 1;
+                    state <= S_SORT_INNER_LOOP;
+                end
+            end
+
+            S_MEDIAN: begin
+                // Prepare median computation
+                if (rect_count[0] == 1) begin  // odd
+                    median_temp <= rect_sum[rect_count >> 1];
+                    divisor_temp <= rect_area[rect_count >> 1];
+                end else begin  // even
+                    median_temp <= rect_sum[(rect_count >> 1) - 1] + rect_sum[rect_count >> 1];
+                    divisor_temp <= rect_area[(rect_count >> 1) - 1] + rect_area[rect_count >> 1];
+                end
+                state <= S_COMPUTE_DENSITY;
+            end
+
+            S_COMPUTE_DENSITY: begin
+                // Compute density = (median_temp << 16) / divisor_temp
+                if (divisor_temp != 0) begin
+                    median <= (median_temp * 32'h00010000) / divisor_temp;
+                end else begin
+                    median <= 0;
+                end
+                state <= S_DONE;
+            end
+
+            S_DONE: begin
+                done <= 1;
+                state <= S_IDLE;
+            end
+
+            default: state <= S_IDLE;
+        endcase
+    end
+end
+
+endmodule

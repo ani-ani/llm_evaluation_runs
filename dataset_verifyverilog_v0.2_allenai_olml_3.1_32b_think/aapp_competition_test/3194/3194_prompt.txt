@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'photo_scheduler' that determines if n photographs can be scheduled given their time windows and fixed duration.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] n // number of photographs (max 8)
+input [15:0] t // time to take each photograph
+input [7:0] photo_idx // index for current photo being loaded
+input [15:0] a_i // earliest start time for current photo
+input [15:0] b_i // latest end time for current photo
+input load // load photo data (asserted with idx, a_i, b_i)
+
+Outputs:
+output reg result // 1 if all can be taken, 0 otherwise
+output reg done // high when computation complete
+
+The module should:
+1. Store up to 8 photo time windows in internal registers
+2. Implement greedy scheduling algorithm: sort by end time (b), then for each photo, schedule at the earliest possible start time that is >= previous end time and >= photo's earliest start time a
+3. Check if each photo can finish by its deadline b_i
+4. Result is 'yes' (1) if all photos fit, 'no' (0) otherwise
+
+Latency: Done asserted approximately n*log(n) clock cycles after start (for sorting) plus n cycles for checking.
+
+State Machine States:
+- IDLE: Wait for start signal
+- LOAD: Load photo data into buffer (state to accept 'load' pulses)
+- SORT: Sort photos by end time (bubble sort, max 8 elements)
+- PROCESS: Iterate through sorted photos, check schedule feasibility
+- DONE: Assert result and done signal
+
+Implementation details:
+- Use 8-entry buffer for photos: each entry stores {a[15:0], b[15:0]}
+- During SORT state, implement bubble sort comparing b values
+- During PROCESS, maintain current_end register, verify each photo a_i >= current_end, update current_end = max(current_end, a_i) + t
+- If any photo fails, result = 0, else result = 1

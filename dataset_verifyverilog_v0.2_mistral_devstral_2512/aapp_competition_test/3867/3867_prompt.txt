@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'bfs_validator' that verifies if a given sequence corresponds to a valid BFS traversal of a tree.
+
+Problem Adaptation:
+- Graph is limited to 8 nodes (node indices 0-7)
+- Input adjacency list is provided as a 8x8 binary matrix where adj_matrix[i][j]=1 if edge exists
+- Input sequence is an array of 8 integers (node indices)
+- Root node must be 0 (vertex 1 in original problem, shifted to 0-based)
+
+Module Interface:
+module bfs_validator (
+    input clk,
+    input rst_n,
+    input start,
+    input [2:0] node_idx,         // Current node index for adjacency input
+    input [2:0] neighbor_idx,     // Neighbor node index for adjacency input
+    input adj_write,              // Write enable for adjacency matrix
+    input [2:0] seq_in,           // Next element of sequence to validate
+    input seq_write,              // Write enable for sequence input
+    output reg valid,             // High if sequence is valid BFS traversal
+    output reg done               // High when validation is complete
+);
+
+Architecture:
+1. Storage:
+   - adj_matrix[8][8]: 64-bit register array storing graph connectivity
+   - sequence[8]: 8-element array storing input sequence
+   - visited[8]: 8-bit register tracking visited nodes
+   - parent[8]: 8-bit register tracking parent of each node
+
+2. State Machine States:
+   - IDLE: Wait for start signal
+   - LOAD_ADJ: Accept adjacency matrix data (8 cycles)
+   - LOAD_SEQ: Accept sequence data (8 cycles)
+   - VERIFY_INIT: Initialize verification (check root is 0)
+   - VERIFY_PROCESS: Process each node in sequence and validate children
+   - VALID_DONE: Set valid=1, done=1
+   - INVALID_DONE: Set valid=0, done=1
+
+3. Verification Logic (VERIFY_PROCESS state):
+   - Track current index 'i' in sequence (0 to 7)
+   - For each node v = sequence[i]:
+     * Check if v is visited (must be either root or child of previously processed node)
+     * Identify all unvisited neighbors u of v
+     * Check that next k elements in sequence (where k = count of unvisited neighbors) are exactly those neighbors in any order
+   - Use intermediate registers to count unvisited neighbors and track position in sequence
+
+4. Control Signals:
+   - neighbor_count: Count of unvisited children of current node
+   - seq_pos: Current position being verified in sequence array
+   - verify_child_idx: Index for checking child nodes
+
+5. Timing:
+   - LOAD_ADJ: 8 cycles (one per node, loading row at a time)
+   - LOAD_SEQ: 8 cycles (one per sequence element)
+   - VERIFY_PROCESS: Worst case 64 cycles (8 nodes × max 8 children checks)
+   - Total latency: ~80-100 cycles after start
+
+6. Output:
+   - valid: 1 if sequence passes all checks, 0 otherwise
+   - done: 1 when verification is complete (either VALID or INVALID state)
+
+Behavioral Description:
+The module first accepts adjacency matrix in row-major order over 8 cycles. Each cycle, node_idx specifies which node row to write to, and neighbor_idx indicates connectivity. Then it accepts sequence elements over 8 cycles. On start assertion, verification begins by checking sequence[0]==0. For each subsequent node, it identifies all unvisited neighbors and ensures the next elements in the sequence exactly match those neighbors. If any check fails or sequence is incomplete, it transitions to INVALID_DONE. If all checks pass for all 8 nodes, it transitions to VALID_DONE.

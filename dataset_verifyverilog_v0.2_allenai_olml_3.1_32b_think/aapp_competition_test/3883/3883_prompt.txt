@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'polyline_solver' that finds the minimum positive value x for a polyline passing through (0,0)-(x,x)-(2x,0)-(3x,x)-(4x,0)... passing through point (a,b).
+
+Problem Analysis:
+- The polyline alternates between (2kx, 0) and ((2k+1)x, x)
+- Given point (a,b) must lie on a segment
+- Two cases for segments:
+  1. Upward segment from (2kx, 0) to ((2k+1)x, x): equation y = x' - 2kx for x' in [2kx, (2k+1)x]
+     Point (a,b) on this: b = a - 2kx => x = (a-b)/(2k), valid if 2kx ≤ a ≤ (2k+1)x and k > 0
+  2. Downward segment from ((2k+1)x, x) to ((2k+2)x, 0): equation y = -(x' - (2k+2)x) = (2k+2)x - x' for x' in [(2k+1)x, (2k+2)x]
+     Point (a,b) on this: b = (2k+2)x - a => x = (a+b)/(2k+2), valid if (2k+1)x ≤ a ≤ (2k+2)x
+
+Constraints: a, b ≤ 10^9, but we scale inputs to fit 16-bit range for fixed-point processing.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] a_scaled // a coordinate (scaled by 2^8)
+input [15:0] b_scaled // b coordinate (scaled by 2^8)
+
+Outputs:
+output reg [31:0] result_x // result in Q16.16 format
+output reg done // high when computation complete
+output reg no_solution // high when no solution exists
+
+Specify latency: 20 clock cycles after start asserted.
+
+Use state machine with states: IDLE, CHECK_A_LT_B, CALCULATE_CASE1, CALCULATE_CASE2, FIND_MIN, DONE.
+
+All arithmetic must be fixed-point Q16.16 format. Input a_scaled and b_scaled are pre-scaled: actual_a = a_scaled >> 8, actual_b = b_scaled >> 8.
+
+Key operations:
+- For Case 1 (upward): x = (a-b)/(2k) where k = floor((a-b)/(2b))
+- For Case 2 (downward): x = (a+b)/(2k+2) where k = floor((a+b)/(2b)) - 1
+
+Compute both candidate x values, find minimum positive one, handle division by zero and invalid ranges.

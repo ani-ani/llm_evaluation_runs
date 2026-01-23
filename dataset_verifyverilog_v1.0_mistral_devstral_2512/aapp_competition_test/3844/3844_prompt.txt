@@ -1,0 +1,170 @@
+module game_outcome #(
+    parameter N = 16,      // Maximum array size
+    parameter W = 8        // Bit width for values
+)(
+    input clk,
+    input rst_n,
+    input start,
+    input [W-1:0] arr_0, arr_1, arr_2, arr_3, arr_4, arr_5, arr_6, arr_7,
+    input [W-1:0] arr_8, arr_9, arr_10, arr_11, arr_12, arr_13, arr_14, arr_15,
+    input [4:0] len,
+    output reg result,
+    output reg done
+);
+
+    // State encoding
+    localparam IDLE = 4'd0;
+    localparam LOAD = 4'd1;
+    localparam SORT_INIT = 4'd2;
+    localparam SORT_COMPARE = 4'd3;
+    localparam SORT_NEXT_J = 4'd4;
+    localparam SORT_NEXT_I = 4'd5;
+    localparam SCAN_INIT = 4'd6;
+    localparam SCAN_LOOP = 4'd7;
+    localparam SCAN_CHECK_LAST = 4'd8;
+    localparam DONE = 4'd9;
+
+    // Registers
+    reg [3:0] state, next_state;
+    reg [W-1:0] array_reg [0:N-1];
+    reg [4:0] i, j;
+    reg [W-1:0] prev_val;
+    reg [3:0] run_len;
+    reg found_odd;
+    reg [4:0] load_idx;
+    reg [4:0] scan_idx;
+    reg start_dly;
+
+    // Combinational next state logic
+    always @(*) begin
+        case (state)
+            IDLE:       next_state = start_dly ? LOAD : IDLE;
+            LOAD:       next_state = (load_idx < len) ? LOAD : (len > 1 ? SORT_INIT : SCAN_INIT);
+            SORT_INIT:  next_state = SORT_COMPARE;
+            SORT_COMPARE: next_state = SORT_NEXT_J;
+            SORT_NEXT_J: begin
+                if (j < len - 1 - i)
+                    next_state = SORT_COMPARE;
+                else if (i < len - 2)
+                    next_state = SORT_NEXT_I;
+                else
+                    next_state = SCAN_INIT;
+            end
+            SORT_NEXT_I: next_state = SORT_COMPARE;
+            SCAN_INIT:   next_state = SCAN_LOOP;
+            SCAN_LOOP:   next_state = (scan_idx < len) ? SCAN_LOOP : SCAN_CHECK_LAST;
+            SCAN_CHECK_LAST: next_state = DONE;
+            DONE:        next_state = IDLE;
+            default:     next_state = IDLE;
+        endcase
+    end
+
+    // Sequential logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            i <= 0;
+            j <= 0;
+            load_idx <= 0;
+            scan_idx <= 0;
+            run_len <= 0;
+            found_odd <= 0;
+            start_dly <= 0;
+        end else begin
+            start_dly <= start;
+
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start_dly)
+                        load_idx <= 0;
+                end
+
+                LOAD: begin
+                    if (load_idx < len) begin
+                        case (load_idx)
+                            0: array_reg[0] <= arr_0;
+                            1: array_reg[1] <= arr_1;
+                            2: array_reg[2] <= arr_2;
+                            3: array_reg[3] <= arr_3;
+                            4: array_reg[4] <= arr_4;
+                            5: array_reg[5] <= arr_5;
+                            6: array_reg[6] <= arr_6;
+                            7: array_reg[7] <= arr_7;
+                            8: array_reg[8] <= arr_8;
+                            9: array_reg[9] <= arr_9;
+                            10: array_reg[10] <= arr_10;
+                            11: array_reg[11] <= arr_11;
+                            12: array_reg[12] <= arr_12;
+                            13: array_reg[13] <= arr_13;
+                            14: array_reg[14] <= arr_14;
+                            15: array_reg[15] <= arr_15;
+                        endcase
+                        load_idx <= load_idx + 1;
+                    end
+                end
+
+                SORT_INIT: begin
+                    i <= 0;
+                    j <= 0;
+                end
+
+                SORT_COMPARE: begin
+                    if (array_reg[j] > array_reg[j+1]) begin
+                        // Swap without temporary (non-blocking uses old values)
+                        array_reg[j] <= array_reg[j+1];
+                        array_reg[j+1] <= array_reg[j];
+                    end
+                end
+
+                SORT_NEXT_J: begin
+                    if (j < len - 1 - i)
+                        j <= j + 1;
+                    else if (i < len - 2) begin
+                        j <= 0;
+                    end
+                end
+
+                SORT_NEXT_I: begin
+                    i <= i + 1;
+                end
+
+                SCAN_INIT: begin
+                    prev_val <= array_reg[0];
+                    run_len <= 1;
+                    found_odd <= 0;
+                    scan_idx <= 1;
+                end
+
+                SCAN_LOOP: begin
+                    if (scan_idx < len) begin
+                        if (array_reg[scan_idx] == prev_val) begin
+                            run_len <= run_len + 1;
+                        end else begin
+                            if (run_len[0])
+                                found_odd <= 1;
+                            prev_val <= array_reg[scan_idx];
+                            run_len <= 1;
+                        end
+                        scan_idx <= scan_idx + 1;
+                    end
+                end
+
+                SCAN_CHECK_LAST: begin
+                    if (run_len[0])
+                        found_odd <= 1;
+                end
+
+                DONE: begin
+                    done <= 1;
+                    result <= found_odd;
+                end
+            endcase
+
+            state <= next_state;
+        end
+    end
+
+endmodule

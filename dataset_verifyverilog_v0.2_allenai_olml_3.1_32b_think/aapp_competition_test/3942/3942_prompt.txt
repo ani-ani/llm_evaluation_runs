@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'treasure_map_solver' that solves the parenthesis balance problem with '#' placeholders.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing
+input [5:0] str_len // Length of the string (up to 32)
+input [255:0] str_data // Packed string data (32 chars * 8 bits). '(': 40h, ')': 29h, '#': 23h
+
+Outputs:
+output reg [4:0] sharp_count // Number of '#' found
+output reg [31:0] result_packed // Packed results (max 5 results * 6 bits each). 0 indicates error.
+output reg valid // High when computation complete and result is valid
+output reg error // High if no solution exists
+
+Behavior:
+The module must process the string to determine the number of ')' characters to replace each '#' with.
+
+Algorithm:
+1. First Pass (Counting): Iterate through the string. Count total '(', ')', and '#'.
+   - Maintain a running balance. If balance drops below 0 at any point, set error=1.
+   - Count sharp_count.
+2. Feasibility Check: 
+   - Let diff = count('(') - count(')') - sharp_count.
+   - If diff < 0, it's impossible (not enough '('), set error=1.
+   - Actually, the greedy strategy is: All '#' except the last one take 1 ')'. The last one takes (diff + 1).
+   - The last '#' assignment must be at least 1. So we need diff >= 0. If diff < 0, error.
+   - Wait, if we assign 1 to all except last, the last one takes (diff + 1). This must be >= 1, so diff >= 0.
+3. Second Pass (Validation):
+   - Re-simulate the string with the assigned values.
+   - For each '#', if it's not the last one, subtract 1 from balance. If it's the last one, subtract (diff + 1).
+   - If balance < 0 at any point, set error=1.
+4. Result Packing: 
+   - If valid, store results in result_packed. e.g., result_packed[5:0] = first '#', result_packed[11:6] = second '#', etc.
+   - If error, result_packed = 0.
+
+Constraints:
+- String length <= 32 (6 bits for length). Each char is 8 bits.
+- Max 5 '#' characters (enough for small tests).
+- Result for each '#' fits in 6 bits (0-63).
+- Use a state machine: IDLE, COUNT, VALIDATE, DONE.
+- Latency: Approximately 2*str_len cycles plus a few cycles for logic.

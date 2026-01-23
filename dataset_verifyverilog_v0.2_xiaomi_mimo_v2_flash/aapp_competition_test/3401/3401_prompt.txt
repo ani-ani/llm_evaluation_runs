@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'aqueduct_solver' that solves a simplified version of the aqueduct problem.
+
+Problem Adaptation:
+- Number of hills (n) = 4 (scaled from 500)
+- Number of springs (s) = 2 (scaled from 40)
+- Number of towns (t) = 2 (scaled from 40)
+- Coordinates and heights are scaled to fit within 12-bit signed integers.
+- Maximum aqueduct length 'q' is scaled to 200.
+- The module must find the minimum total length of aqueducts to connect each town to a unique spring.
+- The water must flow downhill: spring height >= town height.
+- The distance (Euclidean) between hills must be <= q.
+- Since the number of hills is small (4), we can use a lookup table or direct input for the graph structure.
+
+Inputs:
+input clk              // Clock signal
+input rst_n            // Active-low reset
+input start            // Start computation
+input [11:0] hill_x [0:3], hill_y [0:3], hill_h [0:3] // Coordinates and heights of 4 hills (0-indexed)
+input [1:0] spring_idx [0:1] // Indices of hills with springs (2 springs)
+input [1:1] town_idx [0:1]   // Indices of hills with towns (2 towns)
+input [15:0] q_max           // Maximum aqueduct length
+
+Outputs:
+output reg [31:0] min_length // Minimum total length (scaled integer, divide by 65536 for float) or -1 if impossible
+output reg done              // High when computation is complete
+output reg valid             // High when min_length is valid
+
+Specification:
+The module should use a state machine (IDLE, PRECOMP, CALCULATE, DONE).
+1. IDLE: Wait for start signal.
+2. PRECOMP: Calculate the distance matrix between all pairs of hills. Since distances are Euclidean, use approximations: dx^2 + dy^2. Compare with q_max^2.
+3. CALCULATE: Iterate through all permutations of assigning springs to towns. Since s=2 and t=2, there are only 2! = 2 permutations.
+   - For each permutation:
+     - Check if spring height >= town height for the pair.
+     - Check if the precomputed distance <= q_max^2.
+     - If valid, sum the distances.
+     - Update the minimum total length.
+   - If no valid assignment found, output IMPOSSIBLE (represented as 32'hFFFFFFFF).
+4. DONE: Set done and valid high.
+
+Constraints:
+- Use combinational logic for distance calculation (square root not strictly needed if we compare squared distances, but we need to output the sum of lengths. Since sqrt is expensive, we will output the sum of squared distances scaled or approximated. Wait, the prompt asks for 'minimum total length'. We must sum actual lengths. Given the complexity of sqrt in hardware, we can use an integer square root approximation function or pre-calculated values for the small input set. Given we are benchmarking LLM code generation, let's assume the LLM can generate an efficient iterative sqrt or use a lookup table for the small coordinate range.
+- Alternatively, for this benchmark, we can assume the output is the sum of squared distances (for simplicity in Verilog) OR we can ask the LLM to implement a small sequential integer sqrt (Babylonian method) with limited iterations.
+- Let's require the actual Euclidean distance. We will limit the coordinate range such that squared distances fit in 32 bits, and we will ask for a simple iterative sqrt unit.
+
+Testbench Requirements:
+- Generate 2 test cases: one valid, one impossible.
+- Drive the inputs.
+- Wait for done.
+- Check if output matches expected.
+- Print Pass/Fail.

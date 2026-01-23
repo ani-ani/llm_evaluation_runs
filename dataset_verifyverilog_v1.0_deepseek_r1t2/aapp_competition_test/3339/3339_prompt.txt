@@ -1,0 +1,185 @@
+module evenland (
+    input wire clk,
+    input wire rst_n,
+    input wire start,           // start the process (reset and prepare for input)
+    input wire edge_valid,      // indicates edge data is valid
+    input wire [3:0] N,         // number of vertices (1-8)
+    input wire [4:0] M,         // total number of edges (1-16)
+    input wire [2:0] edge_a,    // vertex a (1 to N)
+    input wire [2:0] edge_b,    // vertex b (1 to N)
+    output reg [31:0] result,   // number of ways modulo 1000000009
+    output reg done             // asserted when result is valid
+);
+
+    // Maximum sizes (for synthesis)
+    localparam MAX_N = 8;
+    localparam MAX_M = 16;
+
+    // State definitions
+    localparam IDLE          = 0;
+    localparam COLLECT       = 1;
+    localparam FIND          = 2;
+    localparam PROCESS_RESULT= 3;
+    localparam UNION         = 4;
+    localparam CHECK_DONE    = 5;
+    localparam COMPUTE_INIT  = 6;
+    localparam COMPUTE_LOOP  = 7;
+    localparam COMPUTE_RESULT= 8;
+    localparam DONE          = 9;
+
+    // Registers
+    reg [3:0] state;
+    reg [3:0] next_state;
+    reg [3:0] parent [0:MAX_N-1];   // parent[i] stores parent of vertex i (0-indexed)
+    reg [4:0] edge_count;           // number of edges processed
+    reg [4:0] M_reg;                // copy of M
+    reg [3:0] N_reg;                // copy of N
+    reg [2:0] temp_a, temp_b;       // temporary storage for edge vertices (0-indexed)
+    reg [2:0] find_target;          // vertex whose root we are searching
+    reg [2:0] root_a, root_b;       // roots for edge vertices
+    reg [2:0] root_temp;            // temporary root storage
+    reg [1:0] phase;                // 0: idle, 1: find_a, 2: find_b, 3: component
+    reg [2:0] find_iter;            // iteration counter for find loop
+    reg [3:0] i;                    // loop index for component counting
+    reg [3:0] component_count;      // number of connected components
+    reg [7:0] seen_roots;           // bitmask of seen roots
+    reg [4:0] shift_amount;         // exponent for result
+    reg [31:0] result_reg;          // internal result register
+    reg done_reg;                   // internal done flag
+
+    // Combinational next state logic
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: if (start) next_state = COLLECT;
+            COLLECT: begin
+                if (edge_count < M_reg && edge_valid) next_state = FIND;
+                else if (edge_count == M_reg) next_state = COMPUTE_INIT;
+            end
+            FIND: begin
+                if (parent[find_target] == find_target) next_state = PROCESS_RESULT;
+                else if (find_iter >= 7) next_state = PROCESS_RESULT; // safety
+                else next_state = FIND;
+            end
+            PROCESS_RESULT: begin
+                if (phase == 1) next_state = FIND; // find b
+                else if (phase == 2) next_state = UNION;
+                else if (phase == 3) next_state = COMPUTE_LOOP;
+            end
+            UNION: next_state = CHECK_DONE;
+            CHECK_DONE: begin
+                if (edge_count == M_reg) next_state = COMPUTE_INIT;
+                else next_state = COLLECT;
+            end
+            COMPUTE_INIT: next_state = COMPUTE_LOOP;
+            COMPUTE_LOOP: begin
+                if (i >= N_reg) next_state = COMPUTE_RESULT;
+                else next_state = FIND;
+            end
+            COMPUTE_RESULT: next_state = DONE;
+            DONE: next_state = DONE;
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // Sequential logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            edge_count <= 0;
+            done_reg <= 0;
+            result <= 0;
+            done <= 0;
+        end else begin
+            state <= next_state;
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        // Initialize parent array: each vertex is its own parent
+                        parent[0] <= 4'd0;
+                        parent[1] <= 4'd1;
+                        parent[2] <= 4'd2;
+                        parent[3] <= 4'd3;
+                        parent[4] <= 4'd4;
+                        parent[5] <= 4'd5;
+                        parent[6] <= 4'd6;
+                        parent[7] <= 4'd7;
+                        edge_count <= 0;
+                        M_reg <= M;
+                        N_reg <= N;
+                        done_reg <= 0;
+                        result <= 0;
+                        done <= 0;
+                    end
+                end
+                COLLECT: begin
+                    if (edge_count < M_reg && edge_valid) begin
+                        temp_a <= edge_a - 1; // convert to 0-index
+                        temp_b <= edge_b - 1;
+                        edge_count <= edge_count + 1;
+                        phase <= 2'd1;          // find a next
+                        find_target <= edge_a - 1;
+                        find_iter <= 0;
+                    end
+                end
+                FIND: begin
+                    if (parent[find_target] == find_target) begin
+                        root_temp <= find_target;
+                    end else if (find_iter >= 7) begin
+                        root_temp <= find_target; // forced root
+                    end else begin
+                        find_target <= parent[find_target];
+                        find_iter <= find_iter + 1;
+                    end
+                end
+                PROCESS_RESULT: begin
+                    if (phase == 2'd1) begin
+                        root_a <= root_temp;
+                        phase <= 2'd2;          // find b next
+                        find_target <= temp_b;
+                        find_iter <= 0;
+                    end else if (phase == 2'd2) begin
+                        root_b <= root_temp;
+                    end else if (phase == 2'd3) begin
+                        // Component counting: mark seen root
+                        if (!seen_roots[root_temp]) begin
+                            seen_roots[root_temp] <= 1;
+                            component_count <= component_count + 1;
+                        end
+                        i <= i + 1;              // next vertex
+                    end
+                end
+                UNION: begin
+                    if (root_a != root_b) begin
+                        parent[root_a] <= root_b;
+                    end
+                end
+                CHECK_DONE: begin
+                    // no action
+                end
+                COMPUTE_INIT: begin
+                    i <= 0;
+                    component_count <= 0;
+                    seen_roots <= 0;
+                end
+                COMPUTE_LOOP: begin
+                    if (i < N_reg) begin
+                        phase <= 2'd3;          // component counting
+                        find_target <= i;
+                        find_iter <= 0;
+                    end
+                end
+                COMPUTE_RESULT: begin
+                    shift_amount <= (M_reg + component_count) - N_reg;
+                    result <= (32'h1 << ((M_reg + component_count) - N_reg));
+                    done_reg <= 1;
+                    done <= 1;
+                end
+                DONE: begin
+                    // Keep outputs stable
+                end
+            endcase
+        end
+    end
+
+endmodule

@@ -1,0 +1,64 @@
+Design a sequential Verilog module named 'tv_recorder' that implements a simplified TV show scheduling algorithm.
+
+**Problem Adaptation**:
+- Input: 8 TV shows with start/end times in Q16.16 fixed-point format
+- 2 recording slots (k=2)
+- Greedy algorithm: sort shows by end time, then schedule sequentially
+- Output: Maximum number of recordable shows
+
+**Module Interface**:
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [5:0] show_index // Current show index (0-7 for 8 shows)
+input [31:0] start_time // Q16.16 fixed-point start time
+input [31:0] end_time // Q16.16 fixed-point end time
+
+Outputs:
+output reg [3:0] result // Maximum number of shows (0-8)
+output reg done // High when computation complete
+
+**Behavioral Specification**:
+
+The module processes 8 shows in 3 stages:
+
+1. STAGE_SORT (5 cycles): 
+   - Use bubble sort to sort shows by end_time
+   - Store sorted shows in internal registers
+
+2. STAGE_SCHEDULE (4 cycles):
+   - Implement greedy scheduling algorithm
+   - Track end times of 2 slots: slot0_end, slot1_end
+   - For each sorted show, check if it fits in either slot
+   - If fit: increment count, update slot end time
+   - If no fit: skip show
+
+3. STAGE_DONE (1 cycle): Output result
+
+**State Machine States**:
+- IDLE: Wait for start signal
+- SORT_PASS_1 through SORT_PASS_7: Sorting iterations
+- SCHEDULE_0 through SCHEDULE_7: Scheduling each show
+- DONE: Result ready
+
+**Detailed Sorting Logic**:
+Use bubble sort with 7 passes. Each pass compares adjacent shows and swaps if needed.
+Store shows in temporary registers during sorting.
+
+**Detailed Scheduling Logic**:
+Initialize slot0_end = 0, slot1_end = 0
+For each sorted show (index i from 0 to 7):
+  If end_time_i >= slot0_end AND start_time_i >= slot0_end:
+    slot0_end = end_time_i
+    count++
+  Else if end_time_i >= slot1_end AND start_time_i >= slot1_end:
+    slot1_end = end_time_i
+    count++
+
+**Latency**: Result valid 13 clock cycles after start asserted.
+
+**Fixed-Point Note**: All timestamps are Q16.16 format (16 integer, 16 fractional bits). Comparison operations work directly on the 32-bit values.
+
+The module should use approximately 8*2 = 16 32-bit registers for show storage, plus temporary registers for sorting.

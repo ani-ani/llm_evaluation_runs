@@ -1,0 +1,59 @@
+Design a sequential Verilog module named 'multiples_counter' that counts multiples of X between A and B (inclusive) composed only of allowed digits.
+
+Module Interface:
+module multiples_counter (
+    input clk,              // Clock signal
+    input rst_n,            // Active-low reset
+    input start,            // Start computation
+    input [7:0] X,          // Divisor (1 to 255)
+    input [7:0] A,          // Lower bound (1 to 255)
+    input [13:0] B,         // Upper bound (100 to 16384)
+    input [9:0] allowed,    // Bitmask of allowed digits (bit d = 1 if digit d is allowed)
+    output reg [15:0] result, // Number of valid multiples found
+    output reg done         // High when computation complete
+);
+
+Behavioral Specification:
+1. The module must find all integers N where A <= N <= B, N % X == 0, and all decimal digits of N are in the allowed set.
+2. The allowed input is a 10-bit mask where bit i is set if digit i is allowed.
+3. The algorithm should iterate through all numbers from A to B, check divisibility by X, and verify that each decimal digit is allowed.
+4. Use a finite state machine with states: IDLE, INIT, CHECK, INCREMENT, COMPLETE.
+5. In IDLE: wait for start signal.
+6. In INIT: initialize counter N = A, result = 0.
+7. In CHECK: verify if N is within bounds, divisible by X, and contains only allowed digits.
+   - To check digits: repeatedly compute N % 10 to get last digit, divide N by 10.
+   - Use a temporary variable for the digit check loop.
+   - If valid, increment result.
+8. In INCREMENT: N = N + 1.
+9. In COMPLETE: assert done signal.
+10. Latency: The module should complete within 100,000 clock cycles (worst case: 16384 numbers * ~6 cycles per check).
+11. Use combinational logic for digit checking (state sub-states) or perform digit check over multiple cycles.
+
+Detailed FSM Description:
+- State INIT: Set current_num = A, result = 0. Transition to CHECK.
+- State CHECK: 
+  - If current_num > B, transition to COMPLETE.
+  - Else, check if (current_num % X == 0).
+  - If not divisible, go to INCREMENT.
+  - If divisible, perform digit check:
+    - Initialize temp_num = current_num, valid_digits = 1.
+    - While temp_num > 0:
+      - digit = temp_num % 10
+      - Check if allowed[digit] is 1. If not, valid_digits = 0.
+      - temp_num = temp_num / 10
+    - If valid_digits == 1, result = result + 1.
+    - Go to INCREMENT.
+- State INCREMENT: current_num = current_num + 1. Go to CHECK.
+- State COMPLETE: done = 1.
+
+Signal Widths:
+- current_num: reg [13:0] (max 16384)
+- temp_num: reg [13:0] (same as current_num)
+- digit: reg [3:0] (0-9)
+- result: reg [15:0] (max 16384/1 = 16384, fits in 14 bits, use 16 for safety)
+- X, A: 8 bits (max 255)
+- B: 14 bits (max 16384)
+- allowed: 10 bits
+
+Use blocking assignments for combinational logic within states or sequential logic appropriately for registers.
+Implement the digit checking as a sub-process within the CHECK state or use an auxiliary state like CHECK_DIGITS.

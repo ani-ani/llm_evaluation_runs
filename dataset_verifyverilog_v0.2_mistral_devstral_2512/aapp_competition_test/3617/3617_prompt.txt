@@ -1,0 +1,59 @@
+Design a sequential Verilog module named 'pikeman_solver' that solves a simplified version of the Pikeman problem. The module must process a sequence of pseudo-random numbers to find the maximum number of elements that can fit within a time limit T, and calculate the minimum penalty (weighted sum).
+
+Problem Adaptation:
+- The number of elements N is fixed to 16 (hardcoded).
+- The sequence is generated using a 16-bit Linear Feedback Shift Register (LFSR) with polynomial 0x8005 (Galois configuration), seeded with input `t0`.
+- The generated sequence is stored in a 16-element array.
+- The array is sorted in ascending order using a hardware-efficient Bitonic Sorting Network.
+- The module iterates through the sorted array, accumulating time and penalty.
+- Stop when accumulated time exceeds T.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] t0 // Initial seed for LFSR (used as first element)
+input [63:0] T // Time limit (up to 10^18 approx, use 64-bit)
+
+Outputs:
+output reg [31:0] count // Number of problems solved
+output reg [31:0] penalty // Penalty modulo 1000000007
+output reg done // High when computation is complete
+
+Internal Behavior:
+1. IDLE: Wait for start signal.
+2. GENERATE: Generate 16 pseudo-random numbers using LFSR. The LFSR updates on every clock cycle. Store `t0` and the next 15 generated values into a register array `mem[0:15]`.
+3. SORT: Sort the `mem` array. Implement a simplified Bitonic Sorting Network for 16 elements. This requires a fixed sequence of comparator stages (5 stages, 8 comparators per stage).
+4. CALCULATE: Iterate through the sorted array (index 0 to 15). Maintain `accumulated_time` and `current_penalty`. For each element `val`:
+   - `accumulated_time <= accumulated_time + val` (check for overflow but N is small)
+   - If `accumulated_time <= T`: increment `count`, update `penalty = (penalty + accumulated_time) % 1000000007`.
+   - Else: break loop.
+5. DONE: Assert `done` signal.
+
+State Machine States: IDLE, GENERATE, SORT, CALCULATE, DONE.
+
+Specifications:
+- Use 64-bit arithmetic for time accumulation and comparisons to match T's width.
+- Penalty calculation uses modulo 1000000007 (which fits in 32 bits, but intermediate additions might need 33 bits or check for carry). Use a 33-bit adder for the modulo update.
+- Sorting network must be purely combinational logic defined inside the SORT state (or as a separate combinational block instantiated in the sequential logic). For this prompt, define it as combinational logic that acts on a register array `mem` when a `sort_start` signal is active (internal signal).
+- The entire operation must finish within a reasonable number of cycles (e.g., < 1000 cycles).
+
+Latency: Result valid approximately 60-80 clock cycles after start asserted (16 generate + sorting network latency + calculation loop).
+
+Verilog Code Structure:
+module pikeman_solver (
+    input clk,
+    input rst_n,
+    input start,
+    input [31:0] t0,
+    input [63:0] T,
+    output reg [31:0] count,
+    output reg [31:0] penalty,
+    output reg done
+);
+    // Internal registers and parameters
+    // State definition
+    // LFSR logic
+    // Sorting Network logic (combinational)
+    // FSM logic
+endmodule

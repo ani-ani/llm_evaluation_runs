@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'subset_cost_sum' that computes the sum of costs over all non-empty subsets of N people where cost of a subset of size x is x^k.
+
+The formula is: sum_{x=1 to N} (x^k * C(N,x))
+
+Using Stirling numbers of second kind S(k,i), this equals: sum_{i=1 to k} S(k,i) * i! * C(N,i) * 2^(N-i)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [19:0] n // N (scaled to 20 bits, max 1,000,000)
+input [12:0] k // k (13 bits, max 5000)
+
+Outputs:
+output reg [31:0] result // result modulo 10^9+7
+output reg done // high when computation complete
+
+Specification:
+- Compute result modulo 1000000007
+- Use Stirling number approach: S(k,i) for i=1..k
+- S(k,i) = S(k-1,i-1) + i * S(k-1,i)
+- Compute i! for i=1..k
+- Compute C(N,i) = N*(N-1)*...*(N-i+1) / i!  (use modular inverse)
+- Compute 2^(N-i) using precomputed 2^N and modular inverse of 2^i
+- State machine: IDLE, CALC_STIRLING, CALC_FACT, CALC_RESULT, DONE
+- Latency: approximately k^2 + k + log(k) clock cycles
+- Maximum k = 5000, so expect ~25M cycles worst case
+- For hardware efficiency, compute sequentially with shared multipliers
+
+Use modulus M = 1000000007 = 3B9ACA07h
+
+Intermediate calculations:
+- S[k][i] stored in block RAM (5001 x 13 bits)
+- Factorials up to k
+- Modular inverse of factorial for C(N,i)
+- Accumulate result: sum_{i=1..k} S(k,i) * i! * C(N,i) * 2^(N-i) mod M

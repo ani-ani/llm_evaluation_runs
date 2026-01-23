@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'bug_fixing_dp' that computes the maximum expected severity of bugs fixed.
+
+**Problem Analysis**: We have B bugs with initial fix probabilities p and severities s. You have T hours. If you fail to fix a bug, its probability becomes p*f. We need to maximize expected total severity. This is solved with Dynamic Programming: let DP[t][state] be the max expected severity starting from hour t with bugs in 'state' (where state includes current probabilities). Since probabilities decrease geometrically, we can discretize them.
+
+**Simplifications**:
+1. Max Bugs (B): 4
+2. Max Hours (T): 16
+3. Probability discretization: Probabilities are mapped to 16 discrete levels (0.0, 0.066..., 0.133..., etc.) stored in 4 bits.
+4. Severity (s): Scaled to range 0-63 (6 bits) for integration.
+5. Output: Fixed-point Q8.8 (8 integer, 8 fractional bits).
+
+**Module Interface**:
+
+Inputs:
+- input clk: Clock signal
+- input rst_n: Active-low reset
+- input start: Start computation
+- input [5:0] bug_severity_0, bug_severity_1, bug_severity_2, bug_severity_3: Severity of bugs 0-3 (0-63)
+- input [3:0] bug_prob_initial_0, bug_prob_initial_1, bug_prob_initial_2, bug_prob_initial_3: Initial probability levels (0-15)
+- input [3:0] f_factor: Discretized decay factor (0-15)
+- input [3:0] num_bugs: Number of active bugs (1-4)
+- input [4:0] num_hours: Number of hours (1-16)
+
+Outputs:
+- output reg [15:0] result: The expected severity in Q8.8 format
+- output reg done: High when computation is finished
+
+**Internal Logic**:
+- Use a state machine: IDLE, LOAD_PARAMS, COMPUTE_DP, FINALIZE
+- The DP table will be computed iteratively. Since T is up to 16 and states are roughly (hours * bug_states), we need a counter.
+- The state of a bug can be represented by its probability level index.
+- We need to track: Hour index (t), Bug Index (i), and Bug State (p_index).
+- A lookup table (LUT) is needed for probability values corresponding to indices.
+- We need to calculate expected value: 
+  `E = p * (s + future_value_if_fixed) + (1-p) * future_value_if_failed`
+  Since fixing a bug removes it, the state space is smaller.
+  If we fix bug i, we move to T-1 hours with bugs excluding i.
+  If we fail, we stay with T-1 hours, but bug i's probability is reduced.
+
+**Operation**:
+1. Load severities and initial probabilities.
+2. Iterate t from T down to 0.
+3. For each subset of bugs (permutation of remaining bugs), calculate expected value for each active bug choice.
+4. The FSM should store intermediate results in block RAM or registers. Given small size, we can use registers.
+5. The output 'result' holds the final max expected severity in Q8.8 format.
+
+**Specifics**:
+- Use `reg [15:0] dp_val [0:16];` to store values for different states (conceptually, though address mapping is needed).
+- Probabilities lookup: p[0] = 0, p[1] = 1.0, p[2] = 0.5, p[3] = 0.25... roughly linear mapping to 0-1.
+- Fix probability p: map index to value. Multiply severity (fixed point) by p (fixed point). Result is Q8.8.
+
+**State Machine States**:
+- IDLE: Wait for start. Clear done.
+- LOAD: Capture inputs.
+- COMPUTE: The core loop. Iterate T times. Inside, iterate over bugs to pick best choice.
+- DONE: Set done high.
+
+Note: This is a complex DP. To make it implementable in hardware, we assume the clock frequency is high enough to perform the logic in a few cycles per step, or we simply iterate through all combinations.

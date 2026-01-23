@@ -1,0 +1,108 @@
+module dog_feeding_2dogs (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] t0_0, t0_1, t0_2, t0_3,
+    input [7:0] t1_0, t1_1, t1_2, t1_3,
+    output reg [7:0] min_T,
+    output reg done
+);
+
+    // State encoding
+    localparam IDLE = 3'b000;
+    localparam INIT = 3'b001;
+    localparam LOOP0 = 3'b010;
+    localparam LOOP1 = 3'b011;
+    localparam UPDATE = 3'b100;
+    localparam NEXT = 3'b101;
+    localparam DONE = 3'b110;
+    
+    reg [2:0] state;
+    reg [1:0] bowl0_idx, bowl1_idx;
+    reg [7:0] min_T_reg;
+    reg [7:0] t0_reg, t1_reg;
+    
+    // Combinational logic
+    wire [7:0] t0_current, t1_current;
+    wire [7:0] diff;
+    
+    assign t0_current = (bowl0_idx == 2'd0) ? t0_0 :
+                       (bowl0_idx == 2'd1) ? t0_1 :
+                       (bowl0_idx == 2'd2) ? t0_2 : t0_3;
+    
+    assign t1_current = (bowl1_idx == 2'd0) ? t1_0 :
+                       (bowl1_idx == 2'd1) ? t1_1 :
+                       (bowl1_idx == 2'd2) ? t1_2 : t1_3;
+    
+    assign diff = (t0_reg > t1_reg) ? (t0_reg - t1_reg) : (t1_reg - t0_reg);
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            min_T <= 8'd0;
+            done <= 1'b0;
+            bowl0_idx <= 2'd0;
+            bowl1_idx <= 2'd0;
+            min_T_reg <= 8'd0;
+            t0_reg <= 8'd0;
+            t1_reg <= 8'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) state <= INIT;
+                end
+                
+                INIT: begin
+                    min_T_reg <= 8'd255;
+                    bowl0_idx <= 2'd0;
+                    bowl1_idx <= 2'd0;
+                    state <= LOOP0;
+                end
+                
+                LOOP0: begin
+                    if (bowl0_idx == 2'd4) begin
+                        state <= DONE;
+                    end else begin
+                        bowl1_idx <= 2'd0;
+                        state <= LOOP1;
+                    end
+                end
+                
+                LOOP1: begin
+                    if (bowl1_idx == 2'd4) begin
+                        bowl0_idx <= bowl0_idx + 1'b1;
+                        state <= LOOP0;
+                    end else if (bowl0_idx != bowl1_idx) begin
+                        t0_reg <= t0_current;
+                        t1_reg <= t1_current;
+                        state <= UPDATE;
+                    end else begin
+                        state <= NEXT;
+                    end
+                end
+                
+                UPDATE: begin
+                    if (diff < min_T_reg) begin
+                        min_T_reg <= diff;
+                    end
+                    state <= NEXT;
+                end
+                
+                NEXT: begin
+                    bowl1_idx <= bowl1_idx + 1'b1;
+                    state <= LOOP1;
+                end
+                
+                DONE: begin
+                    min_T <= min_T_reg;
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

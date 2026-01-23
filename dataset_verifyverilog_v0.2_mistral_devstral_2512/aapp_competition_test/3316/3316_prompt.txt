@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'lottery_probability' that computes the probability of getting tickets for your group in a lottery.
+
+The problem: m total people, n winners drawn, each winner buys t tickets, p people in your group. You need at least ceil(p/t) winners from your group.
+
+Simplified for hardware:
+- m ≤ 255 (8-bit input)
+- n ≤ 32
+- t ≤ 100
+- p ≤ 255
+- We compute: sum over k = ceil(p/t) to min(p,n) of [C(p,k) * C(m-p,n-k)] / C(m,n)
+- Use Q16.16 fixed-point arithmetic (16 integer, 16 fractional bits)
+- Represent factorials as lookup tables (0! to 255! would be too large, so use iterative combination computation or limit to smaller n)
+
+Actually, for hardware feasibility, let's use a direct probability accumulation approach:
+- Need k_min = ceil(p/t) winners from group
+- Compute probability for each valid k using the hypergeometric formula
+- Use iterative combination calculation with bounded depth
+
+Module Interface:
+input clk: clock signal
+input rst_n: active-low reset
+input start: start computation
+input [7:0] m: total people (1-255)
+input [7:0] n: winners drawn (1-32, n <= m)
+input [7:0] t: tickets per winner (1-100)
+input [7:0] p: people in group (1-255, p <= m)
+
+output reg [31:0] result: probability in Q16.16 format
+output reg done: computation complete
+
+Latency: Maximum 256 clock cycles (iterative computation)
+
+Behavior:
+1. IDLE: Wait for start signal
+2. PROCESSING: Compute probability iteratively
+   - Calculate k_min = ceil(p/t)
+   - For each k from k_min to min(p,n):
+     - Compute C(p,k) * C(m-p,n-k)
+     - Accumulate numerator
+   - Compute C(m,n) denominator
+   - Divide numerator by denominator
+3. DONE: Set result and done signal
+
+Use state machine with states: IDLE, CALC_KMIN, COMPUTE_ITER, DIVIDE, DONE
+
+For combination calculation, use iterative method:
+C(a,b) = a*(a-1)*...*(a-b+1) / b!
+
+Use Q16.16 format throughout: all values multiplied by 65536.
+Intermediate calculations should use wider registers (48-bit or 64-bit) to prevent overflow.
+
+The result is the probability in Q16.16 fixed-point format.

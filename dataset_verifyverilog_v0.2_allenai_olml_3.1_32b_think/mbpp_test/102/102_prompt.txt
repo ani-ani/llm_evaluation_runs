@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'snake_to_camel' that converts snake_case strings to camelCase.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start conversion
+input [7:0] char_in // current character from input string (one per cycle)
+input valid_in // indicates char_in is valid
+output reg ready // ready to accept next character
+
+Outputs:
+output reg [7:0] char_out // output character in camelCase
+output reg valid_out // high when char_out contains valid output
+output reg done // high when conversion complete
+
+Behavioral Description:
+The module processes input characters one at a time and outputs the camelCase result character by character.
+
+1. When start=1 and rst_n=1, enter PROCESSING state
+2. Read characters sequentially via char_in/valid_in handshake
+3. Track the previous character: if prev was '_' or start was just asserted, capitalize next letter
+4. Output all characters except underscores (skip them)
+5. Convert lowercase to uppercase using ASCII: char_out = char_in - 8'h20 when capitalizing
+6. For non-capitalizing lowercase letters, pass through unchanged
+7. Underscores are suppressed from output
+8. When input ends (no more valid_in for 2 cycles), enter DONE state and assert done
+
+ASCII handling:
+- Underscore = 0x5F
+- Lowercase a-z = 0x61-0x7A
+- Uppercase A-Z = 0x41-0x5A
+- To capitalize: subtract 0x20 from lowercase
+
+State machine states:
+- IDLE: Wait for start signal
+- PROCESSING: Read input, transform, output
+- DONE: Conversion complete, wait for reset or new start
+
+Handshake protocol:
+- ready=1 indicates module can accept next character
+- valid_in=1 means char_in is valid
+- On each clock where valid_in=1 and ready=1, consume one character
+- valid_out=1 means char_out contains an output character
+- Multiple output characters may be produced per input character (e.g., when suppressing underscores)
+
+Maximum string length: 16 characters including underscores
+Output width: 16 characters maximum
+
+Note: The first character after underscore or start should be capitalized. All other lowercase letters remain lowercase.
+
+Example: 'python_program' -> 'PythonProgram'
+Cycles: Input 'p','y','t','h','o','n','_','p','r','o','g','r','a','m'
+Output: 'P','y','t','h','o','n','P','r','o','g','r','a','m' (14 output chars, 13 total due to underscore suppression)

@@ -1,0 +1,92 @@
+module string_compression (
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] s0, s1, s2, s3, s4, s5, s6, s7,
+    input [15:0] a, b,
+    input [3:0] n,
+    output reg [15:0] min_cost,
+    output reg done
+);
+
+// Internal registers to store inputs
+reg [7:0] s_reg [0:7];
+reg [15:0] a_reg, b_reg;
+reg [3:0] n_reg;
+
+// Internal tables for LCP and DP
+reg [3:0] lcp [0:8][0:8];  // 9x9 to avoid boundary issues
+reg [3:0] maxL [0:7];
+reg [15:0] dp [0:8];
+
+// Combinational logic for computation
+always @(*) begin
+    // Initialize LCP table to zero
+    for (integer i = 0; i <= 8; i = i + 1) begin
+        for (integer j = 0; j <= 8; j = j + 1) begin
+            lcp[i][j] = 0;
+        end
+    end
+    
+    // Compute LCP table
+    for (integer j = 7; j >= 1; j = j - 1) begin
+        for (integer k = j - 1; k >= 0; k = k - 1) begin
+            if (s_reg[k] == s_reg[j])
+                lcp[k][j] = 1 + lcp[k + 1][j + 1];
+            else
+                lcp[k][j] = 0;
+        end
+    end
+    
+    // Compute maxL for each position
+    for (integer j = 0; j < 8; j = j + 1) begin
+        maxL[j] = 0;
+        for (integer k = 0; k < j; k = k + 1) begin
+            integer L = (lcp[k][j] < (j - k)) ? lcp[k][j] : (j - k);
+            if (L > maxL[j])
+                maxL[j] = L;
+        end
+    end
+    
+    // Compute DP
+    dp[0] = 0;
+    for (integer i = 1; i <= 8; i = i + 1) begin
+        dp[i] = dp[i - 1] + a_reg;
+        for (integer j = 0; j < i; j = j + 1) begin
+            if (i - j <= maxL[j]) begin
+                if (dp[j] + b_reg < dp[i])
+                    dp[i] = dp[j] + b_reg;
+            end
+        end
+    end
+    
+    // Output result
+    min_cost = dp[n_reg];
+end
+
+// Sequential logic for input capture and done signal
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        done <= 0;
+    end else begin
+        if (start) begin
+            // Capture inputs
+            s_reg[0] <= s0;
+            s_reg[1] <= s1;
+            s_reg[2] <= s2;
+            s_reg[3] <= s3;
+            s_reg[4] <= s4;
+            s_reg[5] <= s5;
+            s_reg[6] <= s6;
+            s_reg[7] <= s7;
+            a_reg <= a;
+            b_reg <= b;
+            n_reg <= n;
+            done <= 1;
+        end else begin
+            done <= 0;
+        end
+    end
+end
+
+endmodule

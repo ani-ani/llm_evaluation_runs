@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'starts_one_ends' that counts n-digit positive integers starting or ending with digit 1.
+
+The mathematical formula is:
+- For n=1: result = 1
+- For n>1: result = 9 * 10^(n-1) * 2 - 10^(n-1) = 10^(n-1) * (18 - 1) = 17 * 10^(n-1), but wait... actually:
+  - Numbers starting with 1: 10^(n-1)
+  - Numbers ending with 1: 9 * 10^(n-2) (if n>1, first digit 1-9, last digit 1, middle digits 0-9)
+  - Numbers starting AND ending with 1: 10^(n-2) (if n>1)
+  - Total: 10^(n-1) + 9*10^(n-2) - 10^(n-2) = 10^(n-1) + 8*10^(n-2) = 10^(n-2)*(10+8) = 18*10^(n-2)
+  - Actually: for n=2, 18*10^0 = 18 ✓; for n=3, 18*10^1 = 180 ✓
+  - For n=1: 1 (special case)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [5:0] n // n-digit number (1-6)
+
+Outputs:
+output reg [31:0] result // count of numbers
+output reg done // high when computation complete
+
+Specify latency: Result valid 3 clock cycles after start asserted.
+Use state machine with states: IDLE, CALC_10_POW, CALC_FINAL, DONE.
+
+Implementation details:
+- Use a lookup table for 10^(n-1) for n=1 to 6: [1, 10, 100, 1000, 10000, 100000]
+- For n=1, result = 1
+- For n>=2, result = 18 * 10^(n-2)
+- 18 * 10^(n-2) can be computed as (10^(n-2) << 4) + (10^(n-2) << 1) + (10^(n-2) << 0) which is 16+2+1 = 19, wrong
+- Better: 18 = 16 + 2, so 10^(n-2) * 18 = (10^(n-2) << 4) + (10^(n-2) << 1)
+- 10^(n-2) for n=2 is 1, n=3 is 10, n=4 is 100, n=5 is 1000, n=6 is 10000
+
+States:
+- IDLE: wait for start
+- CALC_10_POW: lookup 10^(n-2) from LUT (if n>=2), compute 18 * 10^(n-2) using shifts
+- CALC_FINAL: for n=1, set result=1; for n>=2, result = 18 * 10^(n-2)
+- DONE: assert done
+
+Note: Use combinational logic for shift-and-add multiplication in CALC_10_POW state, or pipeline it across states.
+For n=1, handle as special case.

@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'fox_hiding_optimizer' that computes the minimum distance for the fox to hide all chickens.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] roost_x, roost_y // Q16.16 fixed-point coordinates of roost (roost / 2^16)
+input [2:0] num_spots // number of hiding spots (1-6)
+input [5:0][15:0] spots_x, spots_y // arrays of 6 hiding spot coordinates in Q16.16
+
+Outputs:
+output reg [31:0] min_distance // Q32.32 fixed-point result for high precision
+output reg done // high when computation complete
+
+Behavioral Description:
+The fox can carry 2 hens per trip. Each hiding spot fits 1 hen. We need to compute minimum total distance.
+
+This is equivalent to finding a minimum weight perfect matching in a graph where nodes are spots + roost, with the constraint that trips start and end at roost.
+
+Simplification for N≤6:
+- Use state machine to iterate through all possible trip assignments
+- Each trip: roost -> spot1 -> spot2 -> roost
+- For N spots, we need N/2 trips (if N even) or (N+1)/2 trips (if N odd, one trip with single spot)
+- Enumerate all pairings (N!! for even N, N!! * N for odd N)
+- For each pairing, compute total distance = sum of trip distances
+- Trip distance = dist(roost, s1) + dist(s1, s2) + dist(s2, roost)
+
+State Machine:
+- IDLE: Wait for start signal
+- INIT: Initialize pairings and masks
+- PAIRING_ITERATOR: Generate next valid pairing of spots
+- TRIP_DISTANCE: For current pairing, compute each trip's distance
+- DISTANCE_CALC: Compute Euclidean distance (sqrt of sum of squares) using integer approximation
+- UPDATE_MIN: Compare and update minimum distance
+- DONE: Signal completion
+
+Distance Calculation:
+- dist(A,B) = sqrt((x1-x2)^2 + (y1-y2)^2)
+- Use Q16.16 for coordinates, Q32.32 for squared distances to avoid overflow
+- Square root approximation: use 16-iteration Newton-Raphson or pre-computed LUT for small values
+
+Implementation Details:
+- Max 6 spots = 3 trips maximum
+- Each trip: 3 segments (roost->s1, s1->s2, s2->roost)
+- Total comparisons: for 6 spots, 15 possible pairings, each with 3 trips
+- Latency: ~200 clock cycles for full computation
+- All arithmetic in fixed-point, output in Q32.32
+
+Constraints:
+- Use parameter MAX_SPOTS = 6
+- Each coordinate fits in 16 bits Q16.16
+- Final distance stored in 64-bit Q32.32 for precision
+- State machine must handle both even and odd N

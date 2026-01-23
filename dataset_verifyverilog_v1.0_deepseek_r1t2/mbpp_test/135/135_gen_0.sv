@@ -1,0 +1,1 @@
+module hexagonal_num (\n    input wire [7:0] n,\n    output reg [15:0] result\n);\n\nalways @(*) begin\n    result = n * ((2 * n) - 1);\nend\n\nendmodule

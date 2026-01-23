@@ -1,0 +1,93 @@
+module profit_maximizer #(
+    parameter NUM_PRODUCERS = 4,
+    parameter NUM_CONSUMERS = 4
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    input wire [7:0] producer_price [0:NUM_PRODUCERS-1],
+    input wire [7:0] producer_date [0:NUM_PRODUCERS-1],
+    
+    input wire [7:0] consumer_price [0:NUM_CONSUMERS-1],
+    input wire [7:0] consumer_date [0:NUM_CONSUMERS-1],
+    
+    output reg [15:0] result,
+    output reg done
+);
+
+// State machine states
+localparam [1:0] IDLE = 2'd0;
+localparam [1:0] COMPUTE = 2'd1;
+localparam [1:0] DONE_STATE = 2'd2;
+
+reg [1:0] state;
+reg [3:0] i;  // Producer index (supports up to 16 producers)
+reg [3:0] j;  // Consumer index (supports up to 16 consumers)
+reg [15:0] max_profit;
+
+// Combinational profit calculation
+wire [15:0] profit;
+wire valid_pair;
+
+// Valid if consumer date > producer date AND consumer price > producer price
+assign valid_pair = (consumer_date[j] > producer_date[i]) && 
+                    (consumer_price[j] > producer_price[i]);
+
+// Calculate profit: (q - p) * (e - d)
+assign profit = valid_pair ? 
+                (consumer_price[j] - producer_price[i]) * 
+                (consumer_date[j] - producer_date[i]) : 16'd0;
+
+// State register and next state logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 16'd0;
+        done <= 1'b0;
+        i <= 4'd0;
+        j <= 4'd0;
+        max_profit <= 16'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    state <= COMPUTE;
+                    i <= 4'd0;
+                    j <= 4'd0;
+                    max_profit <= 16'd0;
+                end
+            end
+            
+            COMPUTE: begin
+                // Update max profit if current pair is valid and profitable
+                if (valid_pair && (profit > max_profit)) begin
+                    max_profit <= profit;
+                end
+                
+                // Next pair
+                if (j < NUM_CONSUMERS - 1) begin
+                    j <= j + 1;
+                end else begin
+                    j <= 0;
+                    if (i < NUM_PRODUCERS - 1) begin
+                        i <= i + 1;
+                    end else begin
+                        state <= DONE_STATE;
+                        result <= max_profit;
+                    end
+                end
+            end
+            
+            DONE_STATE: begin
+                done <= 1'b1;
+                state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,151 @@
+module pillar_collapse (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] n,  // number of pillars, max 4
+    input [15:0] strength_0,  // individual strength ports
+    input [15:0] strength_1,
+    input [15:0] strength_2,
+    input [15:0] strength_3,
+    output reg [15:0] max_damage,
+    output reg [3:0] best_pillar,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 0;
+localparam INIT = 1;
+localparam SIM_START = 2;
+localparam SIM_LOOP = 3;
+localparam SIM_DONE = 4;
+localparam FINISHED = 5;
+
+reg [2:0] state;
+reg [3:0] current_i;
+reg [3:0] i;
+
+// Internal registers
+reg [3:0] destroyed;
+reg [31:0] load [0:3];
+reg [3:0] queue [0:3];
+reg [2:0] q_head, q_tail;
+reg [3:0] damage_count;
+reg [15:0] current_max_damage;
+reg [3:0] current_best_pillar;
+
+// Helper array for strengths
+wire [15:0] strength [0:3];
+assign strength[0] = strength_0;
+assign strength[1] = strength_1;
+assign strength[2] = strength_2;
+assign strength[3] = strength_3;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        max_damage <= 0;
+        best_pillar <= 0;
+        done <= 0;
+        current_i <= 0;
+        current_max_damage <= 0;
+        current_best_pillar <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= INIT;
+                    current_i <= 0;
+                    current_max_damage <= 0;
+                    current_best_pillar <= 0;
+                end
+            end
+
+            INIT: begin
+                // Initialize destroyed and load
+                destroyed <= 4'b0000;
+                load[0] <= 32'd1000;
+                load[1] <= 32'd1000;
+                load[2] <= 32'd1000;
+                load[3] <= 32'd1000;
+                // Remove candidate
+                destroyed[current_i] <= 1'b1;
+                // Redistribute from candidate
+                if (current_i > 0) begin
+                    load[current_i-1] <= load[current_i-1] + 32'd500;
+                end
+                if (current_i < n-1) begin
+                    load[current_i+1] <= load[current_i+1] + 32'd500;
+                end
+                // Initialize queue
+                q_head <= 0;
+                q_tail <= 0;
+                damage_count <= 1;
+                // Check neighbors
+                if (current_i > 0 && load[current_i-1] > strength[current_i-1]) begin
+                    queue[q_tail] <= current_i-1;
+                    q_tail <= q_tail + 1;
+                end
+                if (current_i < n-1 && load[current_i+1] > strength[current_i+1]) begin
+                    queue[q_tail] <= current_i+1;
+                    q_tail <= q_tail + 1;
+                end
+                state <= SIM_LOOP;
+            end
+
+            SIM_LOOP: begin
+                if (q_head != q_tail) begin
+                    // Process one collapse
+                    if (!destroyed[queue[q_head]]) begin
+                        destroyed[queue[q_head]] <= 1'b1;
+                        damage_count <= damage_count + 1;
+                        // Redistribute load
+                        if (queue[q_head] > 0 && !destroyed[queue[q_head]-1]) begin
+                            load[queue[q_head]-1] <= load[queue[q_head]-1] + (load[queue[q_head]] >> 1);
+                        end
+                        if (queue[q_head] < n-1 && !destroyed[queue[q_head]+1]) begin
+                            load[queue[q_head]+1] <= load[queue[q_head]+1] + (load[queue[q_head]] >> 1);
+                        end
+                        // Check new collapses
+                        if (queue[q_head] > 0 && !destroyed[queue[q_head]-1] && load[queue[q_head]-1] > strength[queue[q_head]-1]) begin
+                            queue[q_tail] <= queue[q_head]-1;
+                            q_tail <= q_tail + 1;
+                        end
+                        if (queue[q_head] < n-1 && !destroyed[queue[q_head]+1] && load[queue[q_head]+1] > strength[queue[q_head]+1]) begin
+                            queue[q_tail] <= queue[q_head]+1;
+                            q_tail <= q_tail + 1;
+                        end
+                    end
+                    q_head <= q_head + 1;
+                    state <= SIM_LOOP;
+                end else begin
+                    state <= SIM_DONE;
+                end
+            end
+
+            SIM_DONE: begin
+                // Update best
+                if (damage_count > current_max_damage) begin
+                    current_max_damage <= damage_count;
+                    current_best_pillar <= current_i;
+                end
+                // Next candidate
+                if (current_i < n-1) begin
+                    current_i <= current_i + 1;
+                    state <= INIT;
+                end else begin
+                    state <= FINISHED;
+                end
+            end
+
+            FINISHED: begin
+                max_damage <= current_max_damage;
+                best_pillar <= current_best_pillar;
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

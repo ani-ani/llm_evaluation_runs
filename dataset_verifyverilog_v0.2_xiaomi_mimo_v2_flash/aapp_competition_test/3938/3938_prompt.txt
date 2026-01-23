@@ -1,0 +1,75 @@
+Design a sequential Verilog module named 'min_rect_cost' that computes the minimum total cost to whiten all black cells in a small grid.
+
+**PROBLEM ADAPTATION**:
+- Input grid size: 8x8 (n=8)
+- Maximum black cells: 8 (m=8)
+- Representation: 8x8 boolean matrix where 1=black, 0=white
+- Cost function: min(h, w) for a rectangle operation
+- Algorithm: Compute Min-Cut on the dual graph (or equivalent Max Flow) representing partitioning of black cells. Since the grid is small (8x8), we can implement the specific logic derived from the problem's bipartite nature.
+
+**INSIGHT**: The problem is equivalent to finding the minimum weight vertex cover in a bipartite graph of row-segments and col-segments of black cells, or finding the minimum cost to cut the black cells into non-touching groups using row/column deletions (cuts). 
+Given the small 8x8 constraint, we can implement a solution that effectively searches for the optimal cut pattern or uses a simplified flow network.
+
+For the 8x8 grid, we will implement a specific state machine that:
+1. Accepts the 8x8 grid as input
+2. Constructs the adjacency (intersection) graph of black cells (up to 8 nodes)
+3. Solves the Min-Cut/Vertex Cover using a dynamic programming approach on the small graph or exhaustive search on possible row/column cuts.
+
+**However**, to make it truly hardware-friendly and distinct, we will implement the **Min-Cut on Grid Graph** solution using a simplified max-flow approach tailored for the 8x8 grid.
+
+**Module Interface**:
+Inputs:
+- `clk`: Clock
+- `rst_n`: Active low reset
+- `start`: Start signal
+- `grid`: Input [7:0][7:0] array (8 rows of 8 bits). Each bit represents a cell (1=black).
+
+Outputs:
+- `result`: Output [5:0] (Max cost is small for 8x8, 6 bits enough)
+- `done`: High when computation complete
+
+**Latency**: Approximately 100-200 clock cycles (enough for 8x8 flow network calculation).
+
+**State Machine**:
+- `IDLE`: Wait for start
+- `CONSTRUCT`: Parse grid to identify distinct black cells and adjacency (simulating max flow)
+- `FLOW`: Run simplified max flow/min cut logic (e.g., 8 iterations of augmenting path search)
+- `DONE`: Output result
+
+**Implementation Detail (Simplified)**:
+Since 8x8 is small, we can implement a parallel check of all possible cuts (rows and columns) or a small iterative solver. 
+A robust approach for 8x8: Implement the Ford-Fulkerson algorithm with a fixed small graph (max 8 black cells). 
+- Nodes: Source, Sink, and up to 8 Black Cell nodes.
+- Edges: Capacity 1 from Source to each cell, Source/Sink to Row/Col nodes.
+
+Let's use the Bipartite Graph approach:
+- Rows 0-7 correspond to vertical cuts (cost = height = 1)
+- Cols 0-7 correspond to horizontal cuts (cost = width = 1)
+Wait, the cost is min(h, w). For unit cuts, cost is 1. 
+Actually, the problem asks to whiten the whole square. If we cut the grid using row/column lines, the cost is the number of lines. 
+
+Let's stick to the standard solution adapted for 8x8:
+We will implement a module that accepts the grid and computes the minimum cost using a state machine that searches for the optimal set of rows and columns to remove (cut) to separate all black cells or simply whiten them.
+
+Actually, a simpler valid interpretation for benchmarking: 
+Module calculates the cost to whiten the grid by removing all black rows and columns.
+Cost = min(num_black_rows, num_black_cols) ? No.
+
+Correct Logic for small grid:
+We will implement the **Min-Cut / Max-Flow** on the bipartite graph formed by the grid lines.
+Since 8x8 is small, we can unroll the flow logic.
+
+**Verilog Specification**:
+Define states: IDLE, PARSE, BUILD_ADJ, SOLVE, DONE.
+In SOLVE, we iterate to find max flow.
+
+Let's assume we process the `grid` input array.
+Output `result` is the minimum cost.
+
+Example Test Case 1 (Adapted 8x8):
+Black cells at (3,0)-(4,7) (col 3,4) and (0,3)-(7,4) (row 3,4). 
+Optimal cut: Cut row 3 and col 3. Cost = 2? Or cut the intersection.
+Wait, the example output is 4 for a 10x10 grid. 
+Actually, the cost is the sum of min(h,w) for rectangles.
+
+For the 8x8 adaptation, we will implement a specialized solver.

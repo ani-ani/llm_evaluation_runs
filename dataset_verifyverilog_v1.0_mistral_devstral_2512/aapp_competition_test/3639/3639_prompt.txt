@@ -1,0 +1,56 @@
+Module: rain_cycler
+
+Description:
+Computes minimum wetness from rain and sweat for cycling home. The module implements a simplified version that assumes departure at time 0 and searches over possible travel durations (1 to T minutes) to find optimal balance between rain exposure and sweat.
+
+Key simplifications:
+- Fixed departure time (t=0) to reduce computational complexity
+- Integer travel durations only (1 to T minutes)
+- Fixed-point arithmetic (Q8.8 format) for c, d, and result
+- Rain sum computed via cumulative sum array
+- Sweat formula: c * (60*d)^2 / dt
+
+Interface Specification:
+
+Inputs:
+  clk         : Clock signal (rising edge triggered)
+  rst_n       : Active-low synchronous reset
+  start       : Start pulse (assert for 1 cycle to begin computation)
+  c[23:0]     : Sweating constant in Q8.8 format (8 integer bits, 8 fractional bits)
+  d[23:0]     : Distance in Q8.8 format (8 integer bits, 8 fractional bits)
+  rain[0:15]  : 16-element rain array, each 8 bits (0-255 ml)
+                Access pattern: rain[0], rain[1], ..., rain[15]
+                Only first T elements are valid
+
+Outputs:
+  result[23:0]: Minimum wetness in Q8.8 format
+  done        : Asserted high for 1 cycle when result is valid
+
+Parameters:
+  T           : Number of minutes (default: 16)
+  DATA_WIDTH  : Bit width for fixed-point values (default: 24)
+  RAIN_WIDTH  : Bit width for rain values (default: 8)
+
+Behavior:
+1. On start pulse, begins computation
+2. Computes cumulative rain sum: rain_cum[i] = sum(rain[0:i-1])
+3. For each travel duration dt from 1 to T:
+   - Rain wetness = rain_cum[dt] - rain_cum[0]
+   - Sweat = c * (60*d)^2 / dt  (fixed-point division)
+   - Total = rain + sweat
+4. Tracks minimum across all dt
+5. Asserts done and outputs result when complete
+
+Timing:
+- Computation completes in ~3T clock cycles
+- Result available when done is high
+- Minimum 2 cycles of reset required
+
+Reset behavior:
+- On rst_n=0: done=0, result=0, internal state cleared
+- All counters and accumulators reset to 0
+
+Fixed-point note:
+- Values use Q8.8 format: value = integer * 256
+- Example: c=0.1 stored as 0.1 * 256 = 26
+- Example: d=2.0 stored as 2.0 * 256 = 512

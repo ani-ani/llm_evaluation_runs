@@ -1,0 +1,188 @@
+module robotic_arm #(
+    parameter N = 8,           // Max 8 segments (scaled down from 20)
+    parameter DATA_WIDTH = 32, // Q16.16 fixed-point format
+    parameter FRACT_WIDTH = 16,
+    parameter MAX_CYCLES = 256 // Timeout for state machine
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire signed [DATA_WIDTH-1:0] target_x,
+    input wire signed [DATA_WIDTH-1:0] target_y,
+    input wire [DATA_WIDTH-1:0] segment_lengths [0:N-1],
+    
+    output reg signed [DATA_WIDTH-1:0] x_coords [0:N-1],
+    output reg signed [DATA_WIDTH-1:0] y_coords [0:N-1],
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam CALC_SUM = 3'b001;
+localparam CALC_DIST = 3'b010;
+localparam CALC_DIR = 3'b011;
+localparam COMPUTE_POS = 3'b100;
+localparam FINISHED = 3'b101;
+
+// Registers and wires
+reg [2:0] state, next_state;
+reg [7:0] idx, next_idx;          // Segment counter
+reg signed [DATA_WIDTH-1:0] sum_lengths, next_sum_lengths;
+reg signed [DATA_WIDTH-1:0] target_dist, next_target_dist;
+reg signed [DATA_WIDTH-1:0] angle_sin, next_angle_sin;
+reg signed [DATA_WIDTH-1:0] angle_cos, next_angle_cos;
+reg signed [DATA_WIDTH-1:0] acc_x, next_acc_x;  // Accumulated x position
+reg signed [DATA_WIDTH-1:0] acc_y, next_acc_y;  // Accumulated y position
+reg signed [DATA_WIDTH-1:0] scale_factor, next_scale_factor;
+reg [7:0] cycle_count, next_cycle_count;
+
+// Combinational logic for state transition
+always @(*) begin
+    next_state = state;
+    next_idx = idx;
+    next_sum_lengths = sum_lengths;
+    next_target_dist = target_dist;
+    next_angle_sin = angle_sin;
+    next_angle_cos = angle_cos;
+    next_acc_x = acc_x;
+    next_acc_y = acc_y;
+    next_scale_factor = scale_factor;
+    next_cycle_count = cycle_count;
+    done = 0;
+
+    case (state)
+        IDLE: begin
+            if (start) begin
+                next_state = CALC_SUM;
+                next_idx = 0;
+                next_sum_lengths = 0;
+                next_cycle_count = 0;
+            end
+        end
+
+        CALC_SUM: begin
+            if (idx < N) begin
+                next_sum_lengths = sum_lengths + segment_lengths[idx];
+                next_idx = idx + 1;
+            end else begin
+                next_state = CALC_DIST;
+                next_idx = 0;
+            end
+        end
+
+        CALC_DIST: begin
+            // Calculate target distance = sqrt(x² + y²)
+            // Simplified: use Manhattan distance for hardware
+            // For Q16.16: dist = (abs(x) + abs(y)) / 2
+            if (cycle_count == 0) begin
+                next_target_dist = ((target_x > 0 ? target_x : -target_x) + 
+                                   (target_y > 0 ? target_y : -target_y)) >>> 1;
+                next_cycle_count = cycle_count + 1;
+            end else if (cycle_count == 1) begin
+                // Check if reachable
+                if (target_dist <= sum_lengths) begin
+                    next_scale_factor = target_dist; // Will divide by sum later
+                    next_state = CALC_DIR;
+                end else begin
+                    // Unreachable - point straight to target
+                    next_angle_cos = target_x;
+                    next_angle_sin = target_y;
+                    next_state = COMPUTE_POS;
+                end
+                next_cycle_count = 0;
+                next_idx = 0;
+            end
+        end
+
+        CALC_DIR: begin
+            // Calculate direction vector (cos, sin) normalized
+            // For Q16.16, we use x/dist and y/dist
+            if (cycle_count == 0) begin
+                // Scale factor = target_dist / sum_lengths
+                // For simplicity, approximate: scale = target_dist / (sum_lengths / 2)
+                next_scale_factor = target_dist * 2;
+                next_scale_factor = next_scale_factor / (sum_lengths >> 8); // Divide by sum (scaled)
+                next_angle_cos = target_x;
+                next_angle_sin = target_y;
+                next_cycle_count = cycle_count + 1;
+            end else if (cycle_count == 1) begin
+                // Normalize direction
+                next_angle_cos = target_x * 2; // Approximation
+                next_angle_cos = next_angle_cos / (target_dist + 1); // Avoid divide by zero
+                next_angle_sin = target_y * 2;
+                next_angle_sin = next_angle_sin / (target_dist + 1);
+                next_cycle_count = 0;
+                next_state = COMPUTE_POS;
+            end
+        end
+
+        COMPUTE_POS: begin
+            if (idx < N) begin
+                // Calculate segment length (scaled or original)
+                reg signed [DATA_WIDTH-1:0] seg_len;
+                if (target_dist <= sum_lengths) begin
+                    // Reachable: scale segment length
+                    seg_len = (segment_lengths[idx] * scale_factor) >> FRACT_WIDTH;
+                end else begin
+                    // Unreachable: full length
+                    seg_len = segment_lengths[idx];
+                end
+
+                // Calculate delta = length * direction
+                next_acc_x = acc_x + ((seg_len * angle_cos) >>> FRACT_WIDTH);
+                next_acc_y = acc_y + ((seg_len * angle_sin) >>> FRACT_WIDTH);
+                
+                // Store coordinates
+                x_coords[idx] = next_acc_x;
+                y_coords[idx] = next_acc_y;
+                
+                next_idx = idx + 1;
+            end else begin
+                next_state = FINISHED;
+            end
+        end
+
+        FINISHED: begin
+            done = 1;
+            if (!start) begin
+                next_state = IDLE;
+            end
+        end
+
+        default: next_state = IDLE;
+    endcase
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        idx <= 0;
+        sum_lengths <= 0;
+        target_dist <= 0;
+        angle_sin <= 0;
+        angle_cos <= 0;
+        acc_x <= 0;
+        acc_y <= 0;
+        scale_factor <= 0;
+        cycle_count <= 0;
+        // Clear output arrays
+        for (integer i = 0; i < N; i = i + 1) begin
+            x_coords[i] <= 0;
+            y_coords[i] <= 0;
+        end
+    end else begin
+        state <= next_state;
+        idx <= next_idx;
+        sum_lengths <= next_sum_lengths;
+        target_dist <= next_target_dist;
+        angle_sin <= next_angle_sin;
+        angle_cos <= next_angle_cos;
+        acc_x <= next_acc_x;
+        acc_y <= next_acc_y;
+        scale_factor <= next_scale_factor;
+        cycle_count <= next_cycle_count;
+    end
+end
+
+endmodule

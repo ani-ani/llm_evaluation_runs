@@ -1,0 +1,49 @@
+Verilog Module Specification for Matrix Sum Maximization
+
+Module: matrix_max_sum
+
+Parameters:
+  - R = 8 (rows, 1-8)
+  - C = 8 (columns, 1-8)
+
+Inputs:
+  - clk         : Clock signal (rising edge triggered)
+  - rst_n       : Active-low synchronous reset
+  - start       : Start pulse (assert for 1 cycle to begin computation)
+  - matrix_in   : 2D array of 8-bit signed values, size R x C
+                  Access pattern: matrix_in[0][0], matrix_in[0][1], ... matrix_in[R-1][C-1]
+
+Outputs:
+  - max_sum     : 16-bit signed result (maximized sum)
+  - row_mask    : R-bit mask (bit i = 1 -> negate row i)
+  - col_mask    : C-bit mask (bit j = 1 -> negate column j)
+  - op_count    : 8-bit count of operations (rows + columns to negate)
+  - done        : Asserted high for 1 cycle when computation completes
+
+Behavior:
+  - On rst_n=0: All outputs reset to 0, state cleared
+  - On start=1: Latch matrix_in and begin computation
+  - Algorithm: Brute-force search over all row negation patterns (256 iterations)
+    For each row pattern (0..255):
+      * Compute intermediate sum considering row negations only
+      * Greedy column selection: negate column if its sum is negative
+      * Track best (max_sum, row_mask, col_mask)
+  - Computation takes multiple cycles (max 256 * C cycles)
+  - When done: max_sum, row_mask, col_mask are valid
+
+Timing:
+  - Minimum 2 clock cycles of reset required
+  - start must be high for 1 cycle when ready
+  - done will go high when computation completes
+  - Result can be sampled on same cycle done is high
+
+Notes:
+  - This module finds optimal row negations + near-optimal column negations
+  - Rotations are not implemented in hardware; they are handled by testbench
+  - The 5*R*C operation limit is satisfied by counting rows + columns to negate
+  - Signed arithmetic must use two's complement
+
+Example operation sequence generation (handled by testbench):
+  For each row i where row_mask[i] == 1: output "negR i+1"
+  For each column j where col_mask[j] == 1: output "negS j+1"
+  (rotations would be added by testbench to achieve optimal element placement)

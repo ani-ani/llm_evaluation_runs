@@ -1,0 +1,104 @@
+module coin_game (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [6:0] n,          // Number of chests (1-100)
+    input wire [9:0] a [0:99],   // Coin counts (100 elements)
+    output reg signed [19:0] result, // Result or -1 for invalid
+    output reg done              // Computation finished
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam COPY = 3'b001;
+localparam COMP = 3'b010;
+localparam FINISH = 3'b011;
+localparam ERROR = 3'b100;
+
+reg [2:0] state;
+reg signed [15:0] mem [0:99];   // Internal storage for coins
+reg [6:0] x;                    // Current index
+reg signed [19:0] total_moves;  // Accumulated moves
+reg signed [19:0] result_reg;   // Result register
+reg done_reg;                   // Done signal register
+
+assign result = result_reg;
+assign done = done_reg;
+
+integer i;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done_reg <= 0;
+        result_reg <= 0;
+        x <= 0;
+        total_moves <= 0;
+        // Initialize memory
+        for (i = 0; i < 100; i = i + 1) begin
+            mem[i] <= 0;
+        end
+    end else begin
+        done_reg <= 0; // Default done to 0
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    if (n == 1 || n[0] == 0) begin // n==1 or even
+                        state <= ERROR;
+                    end else begin
+                        state <= COPY;
+                        x <= n >> 1; // Start from floor(n/2)
+                        total_moves <= 0;
+                    end
+                end
+            end
+            
+            COPY: begin
+                // Copy input array to internal memory
+                for (i = 0; i < 100; i = i + 1) begin
+                    if (i < n)
+                        mem[i] <= a[i];
+                    else
+                        mem[i] <= 0;
+                end
+                state <= COMP;
+            end
+            
+            COMP: begin
+                if (x >= 1) begin
+                    // Calculate children indices (1-indexed to 0-indexed)
+                    // Chest x at index x-1, children at 2x-1 and 2x
+                    if (2*x <= n && 2*x+1 <= n) begin
+                        // Both children exist
+                        if (mem[2*x-1] > mem[2*x]) 
+                            total_moves <= total_moves + mem[2*x-1];
+                        else 
+                            total_moves <= total_moves + mem[2*x];
+                        
+                        mem[x-1] <= mem[x-1] - 
+                                    ((mem[2*x-1] > mem[2*x]) ? mem[2*x-1] : mem[2*x]);
+                    end
+                    x <= x - 1;
+                end else begin
+                    state <= FINISH;
+                end
+            end
+            
+            FINISH: begin
+                if (mem[0] > 0)
+                    result_reg <= total_moves + mem[0];
+                else
+                    result_reg <= total_moves;
+                done_reg <= 1;
+                state <= IDLE;
+            end
+            
+            ERROR: begin
+                result_reg <= -20'sd1; // -1 in 20-bit signed
+                done_reg <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+endmodule

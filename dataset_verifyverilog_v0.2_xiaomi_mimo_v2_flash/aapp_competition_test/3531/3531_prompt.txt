@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'constrained_mst' that solves a simplified version of the problem: Find the minimum cost spanning tree of a graph with at most 16 nodes, such that exactly 'w' edges connect a special node to a non-special node.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] n // number of nodes (2 to 16)
+input [3:0] m // number of edges (1 to 16)
+input [3:0] k // number of special nodes
+input [3:0] w // required number of special-nonspecial edges
+input [15:0] special_nodes_mask // bit mask where bit i is 1 if node i+1 is special
+input [15:0] edge_node_a [0:15] // node A for each edge (1-based, 0 means invalid)
+input [15:0] edge_node_b [0:15] // node B for each edge
+input [15:0] edge_cost [0:15] // cost for each edge
+
+Outputs:
+output reg [31:0] result // minimum total cost or -1
+output reg done // high when computation complete
+
+Behavior:
+The module must find the minimum cost spanning tree (MST) using exactly 'w' edges that connect a special node to a non-special node. If no such spanning tree exists, output 32'hFFFFFFFF (-1).
+
+Since the number of nodes and edges is small (N≤16), the module can use a state machine to iterate through all possible subsets of edges (2^m possibilities) or use a backtracking/modified Kruskal's approach. Given m=16, checking 2^16=65536 subsets is feasible with a clock speed of 100MHz (takes <1ms).
+
+Algorithm Suggestion:
+1. IDLE: Wait for start signal.
+2. GENERATE_PERMUTATIONS: Generate valid subsets of edges that form a spanning tree. Since N is small, we can iterate through combinations or use a recursive approach to build trees.
+   - A spanning tree must have exactly n-1 edges.
+   - Iterate through all combinations of n-1 edges from the m available edges.
+   - For each combination, check: a) Does it form a spanning tree (connects all nodes, no cycles)? b) Does it have exactly w special-nonspecial edges?
+3. CALCULATE_COST: If valid, sum costs.
+4. COMPARE: Compare with current minimum.
+5. DONE: Output result.
+
+Simplifications for Hardware:
+- Use integer arithmetic for costs.
+- Union-Find logic can be unrolled for N≤16.
+- State machine tracks the current combination index.
+- Maximum edges m=16 allows iterating all combinations of n-1 edges (worst case C(16, 8) = 12870).
+
+Output the result in Q16.16 format if floats were involved, but here it's integer cost. Just output the integer.
+
+Latency: Result valid approximately 100,000 clock cycles after start (depends on exact implementation, but bounded).
+
+Test Case Constraints (scaled):
+- n ≤ 16
+- m ≤ 16
+- w ≤ n-1
+- Node IDs in inputs are 1-based; internal logic handles 0-based if easier.
+- Cost is 16-bit integer.

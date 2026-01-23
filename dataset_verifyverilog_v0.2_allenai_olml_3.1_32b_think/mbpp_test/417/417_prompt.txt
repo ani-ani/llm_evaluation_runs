@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'tuple_grouping' that groups tuples by their first element.
+
+**Problem Adaptation**: The original Python function groups tuples by first element, merging second elements. In hardware, we represent tuples as (first_byte, second_byte) pairs and group them using parallel comparison.
+
+**Module Specification**:
+- Input: 4 tuples, each tuple is (first[1:0], second[1:0]) - 2-bit values for compactness
+- Output: Variable-length groups (up to 4 total elements across all groups)
+- Limitation: Supports 4 input tuples maximum, each value is 2-bit
+- Latency: 8 clock cycles for processing
+
+**Inputs**:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [1:0] tuple_first [0:3] // first element of each tuple (2-bit)
+input [1:0] tuple_second [0:3] // second element of each tuple (2-bit)
+
+**Outputs**:
+output reg [1:0] group_first [0:3] // first element of each group (2-bit)
+output reg [1:0] group_data [0:15] // concatenated second elements (max 4 groups × 4 elements)
+output reg [2:0] group_size [0:3] // number of elements in each group
+output reg [1:0] num_groups // number of groups (0-4)
+output reg done // high when computation complete
+
+**Behavior**:
+1. On start, reset all outputs
+2. State machine: IDLE → COMPARE → COLLECT → DONE
+3. COMPARE: Compare first elements in parallel, find unique firsts (max 4)
+4. COLLECT: For each unique first, collect all matching second elements
+5. Output format: For each group, group_first[i] is the key, group_data[offset] contains elements, group_size[i] is count
+6. Example: Input [('x','y'), ('x','z'), ('w','t')] where x=0, y=1, z=2, w=3, t=0
+   Output: group_first[0]=0, group_data[0]=1, group_data[1]=2, group_size[0]=2, group_first[1]=3, group_data[2]=0, group_size[1]=1, num_groups=2
+
+**Implementation Strategy**:
+- Use 4-cycle parallel comparison to find unique first elements
+- Use state machine with states: IDLE, FIND_UNIQUE, COLLECT_DATA, FORMAT_OUTPUT, DONE
+- Maintain group index and offset pointers
+- Each cycle processes one comparison or collection step
+
+**Timing**:
+- 8 clock cycles after start asserted
+- Done pulses high for one cycle when complete

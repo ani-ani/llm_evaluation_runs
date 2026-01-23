@@ -1,0 +1,65 @@
+Design a sequential Verilog module named 'largest_prime_factor' that computes the largest prime factor of a 32-bit integer. The module uses a state machine to perform trial division.
+
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start computation pulse (high for one cycle)
+  input [31:0] n         // Input number (must be > 1)
+
+Outputs:
+  output reg [31:0] result  // Largest prime factor
+  output reg done           // High when computation complete, stays high until reset/start
+
+Module Behavior:
+- Implements trial division algorithm.
+- State IDLE: Wait for start signal.
+- State INIT: Initialize registers. temp_n = n, factor = 2, max_factor = 1.
+- State CHECK_LOOP_CONDITION: Check if factor * factor <= temp_n.
+  - If true, go to FACTOR_CHECK.
+  - If false, go to FINAL_CHECK.
+- State FACTOR_CHECK: Check if temp_n % factor == 0.
+  - If divisible, go to DIVIDE.
+  - If not divisible, go to INCREMENT.
+- State DIVIDE: Update temp_n = temp_n / factor, set max_factor = factor.
+  - Loop back to FACTOR_CHECK to check same factor again.
+- State INCREMENT: Increment factor by 1.
+  - Loop back to CHECK_LOOP_CONDITION.
+- State FINAL_CHECK: If temp_n > 1, set result = temp_n. Else result = max_factor.
+  - Go to DONE.
+- State DONE: Set done = 1.
+
+Implementation Constraints:
+- Use 32-bit unsigned arithmetic.
+- Division and multiplication must be done one bit or cycle at a time if using synthesis-friendly logic, or assume standard Verilog operators with latency.
+- To keep it synthesizable and bounded, we will assume standard operators but add a cycle delay for division/multiplication if needed, or simpler: use the fact that in a state machine, we can wait for operations.
+- However, to make it truly sequential without complex combinational multipliers/dividers, let's use iterative subtraction for division and addition for multiplication in CHECK_LOOP_CONDITION.
+- Max iterations: 100 (to prevent timeouts on large inputs).
+- Clock edge usage: All state transitions and register updates on posedge clk.
+
+Detailed State Transitions:
+- IDLE -> INIT (on start)
+- INIT -> CHECK_LOOP_CONDITION
+- CHECK_LOOP_CONDITION -> FACTOR_CHECK (if factor*factor <= temp_n)
+- CHECK_LOOP_CONDITION -> FINAL_CHECK (if factor*factor > temp_n)
+- FACTOR_CHECK -> DIVIDE (if temp_n % factor == 0)
+- FACTOR_CHECK -> INCREMENT (if temp_n % factor != 0)
+- DIVIDE -> FACTOR_CHECK (always)
+- INCREMENT -> CHECK_LOOP_CONDITION
+- FINAL_CHECK -> DONE
+- DONE -> IDLE (on reset or start? usually stays in DONE until reset)
+
+Accommodation: Since Verilog division/modulo are heavy, and we want this to run in a testbench, we will use simple `temp_n % factor` and `temp_n / factor` operators if the simulator supports them efficiently. If implementing strictly for hardware, we'd need iterative logic, but for benchmarking LLM generation, standard operators with a 'busy' state or just assuming fast execution is acceptable. Let's specify a 'busy' state for arithmetic operations to make it clear.
+
+Wait, to keep it simple for the benchmark: We will assume that `%` and `/` take 1 cycle, and `*` takes 1 cycle. This makes the state machine have a 'WAIT_ARITH' state. But that might be too verbose. Let's just use standard operators and assume the simulator handles it.
+
+Refined State Machine (Simpler for Verilog):
+- IDLE: Wait for start.
+- SETUP: factor=2, max_factor=1, temp_n=n.
+- LOOP_START: Check if factor*factor > temp_n. If yes, -> FINALIZE. If no, -> CHECK_DIV.
+- CHECK_DIV: if (temp_n % factor == 0) -> DIVIDE, else -> INCR.
+- DIVIDE: temp_n = temp_n / factor; max_factor = factor; -> CHECK_DIV (check same factor again).
+- INCR: factor = factor + 1; -> LOOP_START.
+- FINALIZE: result = (temp_n > 1) ? temp_n : max_factor; -> DONE.
+- DONE: done=1.
+
+This is a sequence of sequential states. We don't need a separate 'WAIT' state if we do operations in the state logic.

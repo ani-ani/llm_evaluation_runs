@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'interleaving_verifier' that verifies if two strings s1 and s2 can be interleaved to form string s. The strings are represented as fixed-width byte arrays.
+
+Constraints:
+- Max string length: 16 characters for s, 8 characters for s1 and s2
+- Characters are ASCII lowercase letters (7-bit ASCII, use 8-bit width)
+- Module uses a state machine to check if s1 and s2 are valid subsequences of s
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start verification
+input [5:0] len_s // Length of s (1-16)
+input [5:0] len_s1 // Length of s1 (1-8)
+input [5:0] len_s2 // Length of s2 (1-8)
+input [7:0] s [15:0] // String s as array of bytes
+input [7:0] s1 [7:0] // String s1 as array of bytes
+input [7:0] s2 [7:0] // String s2 as array of bytes
+
+Outputs:
+output reg result // 1 if interleaving is possible, 0 otherwise
+output reg done // High when verification complete
+
+Latency: Result valid approximately 40 clock cycles after start asserted.
+
+Behavior:
+The module should implement a DP approach where state[i][j] represents whether s1[0:i] and s2[0:j] can form s[0:(i+j)]. For fixed small sizes, we can use a 2D register array [8:0][8:0] storing 9x9 states.
+
+Algorithm:
+1. Initialize state[0][0] = 1 (empty strings form empty string)
+2. Iterate through i (0 to len_s1) and j (0 to len_s2)
+3. For each state[i][j] == 1:
+   - If i < len_s1 and s[i+j] == s1[i], set state[i+1][j] = 1
+   - If j < len_s2 and s[i+j] == s2[j], set state[i][j+1] = 1
+4. Final result is state[len_s1][len_s2]
+
+Use a state machine with states: IDLE, INIT, PROCESSING_ROW, PROCESSING_COL, DONE.
+Processing is pipelined: For each (i,j), check the two conditions and update next states.
+
+All arrays are passed as inputs; the module performs purely combinational checking once data is loaded, but uses sequential logic for the iteration to keep resource usage manageable.

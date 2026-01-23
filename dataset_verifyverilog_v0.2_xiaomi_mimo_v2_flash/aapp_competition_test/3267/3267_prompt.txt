@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'chess_spread' that computes the spread metric for chess pieces on a 4x4 board.
+
+Definitions:
+- Board: 4 rows x 4 columns (indices 0-3 for both row and col)
+- Pieces: 'M' for Mirko, 'S' for Slavko, '.' for empty
+- Distance between two kings: Chess king moves can go to any of 8 neighboring cells (including diagonals). The shortest path distance is equivalent to Chebyshev distance: max(|row1-row2|, |col1-col2|)
+- Spread: Sum of distances between ALL pairs of pieces for one player
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] board_data // 4-bit encoded board state (0=empty, 1=M, 2=S)
+input [1:0] board_index // current position index for board input (0-15 for 16 cells)
+
+Outputs:
+output reg [7:0] mirko_spread // total spread for Mirko (max 16 pieces, max dist 6 each: 120 max)
+output reg [7:0] slavko_spread // total spread for Slavko
+output reg done // high when computation complete
+
+Behavior:
+1. First, collect all piece coordinates:
+   - Sequentially read 16 board positions via board_data and board_index
+   - Store coordinates of up to 4 pieces per player
+   - Track count of pieces for each player
+
+2. Compute pairwise distances:
+   - For each player, compute sum of Chebyshev distances between all unique pairs
+   - For 4 pieces: P0-P1, P0-P2, P0-P3, P1-P2, P1-P3, P2-P3 (6 pairs max)
+   - Distance = max(abs(r1-r2), abs(c1-c2))
+
+3. State machine:
+   - IDLE: Wait for start signal
+   - COLLECT: Read 16 board positions, store piece coordinates
+   - COMPUTE: Calculate spreads for both players
+   - DONE: Set done signal
+
+Specs:
+- Latency: ~20-30 clock cycles after start
+- Use combinational distance calculation blocks
+- Each player supports up to 4 pieces (can be fewer)
+- If player has only 1 piece, spread = 0
+- Output sums must fit in 8 bits (verified: max 4 pieces gives max 6*dist_per_pair; dist_per_pair max = 6 (0,0 to 3,3), so max spread = 36, fits in 8 bits)
+
+Board Input Protocol:
+- Input cells sequentially (16 cycles)
+- For cycle i (0-15): board_index = i[1:0] (only 2 bits needed for 0-3 per dimension, but use 4 bits for index)
+- board_data: 00=empty, 01=M, 10=S
+- After 16 cycles, transition to COMPUTE state
+
+Distance Calculation:
+For two pieces at (r1,c1) and (r2,c2):
+diff_r = |r1 - r2| (absolute difference)
+diff_c = |c1 - c2|
+distance = (diff_r > diff_c) ? diff_r : diff_c

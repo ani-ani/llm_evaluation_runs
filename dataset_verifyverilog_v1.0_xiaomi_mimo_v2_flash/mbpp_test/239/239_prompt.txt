@@ -1,0 +1,146 @@
+module sequence_counter(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [4:0] m,
+    input wire [2:0] n,
+    output reg [15:0] result,
+    output reg done
+);
+
+    // FSM states
+    reg [2:0] state;
+    localparam IDLE = 3'b000;
+    localparam INIT_BASE = 3'b001;
+    localparam COMPUTE = 3'b010;
+    localparam FINISH = 3'b110;
+
+    // Table storage: T[17][5] for i=0..16, j=0..4
+    reg [15:0] T[16:0][4:0];
+    
+    // Iteration counters
+    reg [4:0] i;
+    reg [2:0] j;
+    
+    // Computation registers
+    reg [15:0] temp_sum;
+    reg [4:0] i_half;
+    reg computing;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 0;
+            done <= 0;
+            i <= 0;
+            j <= 0;
+            computing <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        i <= 0;
+                        j <= 0;
+                        state <= INIT_BASE;
+                    end
+                end
+                
+                INIT_BASE: begin
+                    // Initialize all base cases
+                    if (i == 0 || j == 0 || i < j) begin
+                        T[i][j] <= 0;
+                    end else if (j == 1) begin
+                        T[i][j] <= i;
+                    end else begin
+                        // Will compute in next state
+                        state <= COMPUTE;
+                        computing <= 1;
+                        i_half <= i >> 1;
+                        temp_sum <= T[i-1][j];
+                        // Stay at same i,j for computation
+                        i <= i;
+                        j <= j;
+                        computing <= 1;
+                        state <= COMPUTE;
+                        i_half <= i >> 1;
+                        temp_sum <= T[i-1][j];
+                    end
+                    
+                    // Move to next cell
+                    if (j < 4 && j < n) begin
+                        j <= j + 1;
+                    end else begin
+                        j <= 0;
+                        if (i < 16 && i < m) begin
+                            i <= i + 1;
+                        end else if (i == m && j == 0) begin
+                            // All initialized, now compute recursively
+                            i <= 2;
+                            j <= 2;
+                            computing <= 0;
+                            state <= COMPUTE;
+                        end else begin
+                            i <= i + 1;
+                            j <= 0;
+                        end
+                    end
+                end
+                
+                COMPUTE: begin
+                    if (computing) begin
+                        // Complete recursive computation
+                        if (j > 1 && i_half > 0) begin
+                            temp_sum <= temp_sum + T[i_half][j-1];
+                        end
+                        T[i][j] <= temp_sum;
+                        computing <= 0;
+                        // Move to next entry
+                        if (j < 4 && j < n) begin
+                            j <= j + 1;
+                        end else begin
+                            j <= 2;
+                            if (i < 16 && i < m) begin
+                                i <= i + 1;
+                            end else begin
+                                result <= T[m][n];
+                                done <= 1;
+                                state <= FINISH;
+                            end
+                        end
+                    end else if (i <= m && j <= n) begin
+                        // Check if base case
+                        if (i < j || j == 0 || j == 1) begin
+                            // Skip or already initialized
+                            if (j < n) begin
+                                j <= j + 1;
+                            end else begin
+                                j <= 2;
+                                if (i < m) begin
+                                    i <= i + 1;
+                                end else begin
+                                    result <= T[m][n];
+                                    done <= 1;
+                                    state <= FINISH;
+                                end
+                            end
+                        end else begin
+                            // Need to compute
+                            computing <= 1;
+                            i_half <= i >> 1;
+                            temp_sum <= T[i-1][j];
+                        end
+                    end
+                end
+                
+                FINISH: begin
+                    done <= 0;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

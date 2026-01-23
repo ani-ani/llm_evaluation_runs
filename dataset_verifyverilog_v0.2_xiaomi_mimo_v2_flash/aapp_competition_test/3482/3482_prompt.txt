@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'transit_card_optimizer' that computes the minimum cost for transit card coverage over a simplified timeline.
+
+The module should handle:
+- l price levels (max 4) with monotonically decreasing prices
+- t total days (max 16)
+- n trips home (max 4) that create gaps in required coverage
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] l // number of price levels (1-4)
+input [11:0] price [0:3] // price per day for each level (max 1000, fits in 12 bits)
+input [19:0] duration [0:2] // duration for each price level (max 10^6, but we scale to 20 bits for flexibility)
+input [4:0] t // total days (1-16)
+input [2:0] n // number of trips (0-4)
+input [4:0] trip_start [0:3] // start day for each trip
+input [4:0] trip_end [0:3] // end day for each trip
+
+Outputs:
+output reg [23:0] min_cost // minimum total cost (max 16*1000*4 = 64000, fits in 16 bits, using 24 for safety)
+output reg done // high when computation complete
+
+Behavior:
+The module must compute the minimum cost to cover all days from 1 to t, excluding days that are part of trips.
+The pricing scheme works as follows:
+- Day 1 to d1: price p1 per day
+- Day d1+1 to d1+d2: price p2 per day
+- Day d1+d2+1 to d1+d2+d3: price p3 per day
+- ...
+- After sum of all durations: price pl per day indefinitely
+
+For each trip [a,b], days a through b (inclusive) do NOT need coverage.
+
+Implementation approach:
+1. Build a timeline mask showing which days need coverage (max 16 bits)
+2. Try all possible ways to start new intervals and calculate costs
+3. Use state machine with states: IDLE, BUILD_TIMELINE, EVALUATE_OPTIONS, COMPUTE_COST, DONE
+4. Limit to exploring at most 8 interval start points (brute force on small timeline)
+5. Use parallel logic to calculate cost for each possible interval configuration
+
+Specification:
+- Use 16-bit timeline representation where bit i corresponds to day i+1
+- Trips create 0 bits in the timeline mask
+- Evaluate all possible interval partitions of the timeline
+- For each partition, calculate cost based on pricing scheme
+- Return minimum cost across all partitions
+
+Latency: Result valid within 64 clock cycles after start asserted.
+Use state machine with states: IDLE, BUILD_MASK, GENERATE_PARTITIONS, EVALUATE, DONE.

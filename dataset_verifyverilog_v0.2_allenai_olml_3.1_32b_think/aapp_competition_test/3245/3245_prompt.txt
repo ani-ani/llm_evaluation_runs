@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'fish_shell_sim' that simulates a simplified fish shell history and auto-completion system.
+
+The system tracks command history and handles up-key ('^') expansion.
+- History stores up to 8 commands (parameter MAX_HISTORY = 8).
+- Commands are strings of up to 16 characters (parameter MAX_CMD_LEN = 16).
+- The current input line is processed character by character.
+- Up-key ('^') expands to the most recent matching command from history.
+- A matching command shares the prefix of what has been typed so far in the current line (before any expansion).
+- Successive up-keys iterate back through history (2nd last, 3rd last matching, etc.).
+- If a non-'^' character is typed after expansion, the history search index resets for the next '^'.
+- When Enter is pressed (end of line), the expanded command is added to history (unless empty) and output.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High for one cycle to start processing a new line. Input data (char_in) is valid when start is high.
+input [7:0] char_in // ASCII character input (8 bits).
+
+Outputs:
+output reg [15:0] result_out // Packed 16-bit output (2 ASCII chars) for debugging/verification. Only valid when output_valid is high.
+output reg output_valid // High when the full command line result is ready and being output (cycle-by-cycle).
+output reg done // High for one cycle when the line processing is complete (i.e., Enter was processed).
+
+Internal Logic/Behavior:
+1.  **Storage**: 
+    - `history [0:7][0:15]`: Array of 8 history commands, each 16 bytes wide (padded with nulls).
+    - `history_len`: Tracks number of commands in history (0 to 8).
+
+2.  **State Machine States**:
+    - `IDLE`: Waiting for `start` signal.
+    - `TYPING`: Reading characters and building the current line.
+        - If 'Enter' (assumed '
+' or sentinel): Transition to `OUTPUT`.
+        - If '^': Trigger expansion logic.
+        - Else: Append to buffer, reset expansion index.
+    - `EXPANDING`: Multi-cycle state to fetch and replace prefix with history command.
+        - Logic: Identify prefix (part before first '^'). Search history backwards from `history_len-1` down to 0. 
+        - Matching rule: `history[i]` starts with `prefix`. 
+        - Handle multiple '^': Track search index. 
+        - Result: Update `current_buffer` with the matching command.
+    - `OUTPUT`: Pops characters from the expanded buffer to `result_out` (2 chars per cycle). 
+    - `UPDATE_HISTORY`: Writes `current_buffer` to history (if not empty). Shift if full. Resets state to IDLE.
+
+3.  **Constraints**:
+    - Max 8 history entries.
+    - Max 16 chars per command.
+    - Prefix match must be exact on the characters typed before '^'.
+    - Up-key sequence is terminated by any other char or Enter.
+
+Specify the module with detailed port definitions, internal registers for state, buffer, history, and the logic for handling prefix matching and history navigation.

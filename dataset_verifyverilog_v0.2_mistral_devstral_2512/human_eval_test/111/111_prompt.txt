@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'histogram_max' that finds the letter(s) with maximum frequency in a fixed-width string.
+
+**Adaptation from Python:**
+- Input: Fixed 16-character byte array (ASCII 'a'-'z', spaces ignored)
+- Output: Maximum count and a 26-bit bitmask indicating which letters achieve this count
+- Counts limited to 0-15 (4-bit counters)
+- Letters 'a'-'z' mapped to indices 0-25
+
+**Inputs:**
+- `input clk`: Clock signal
+- `input rst_n`: Active-low reset
+- `input start`: Start computation (load and process input)
+- `input [7:0] char_in [0:15]`: 16-character input array (ASCII bytes)
+
+**Outputs:**
+- `output reg [3:0] max_count`: Maximum frequency count found (0-15)
+- `output reg [25:0] max_letters`: Bitmask where bit 0='a', bit 25='z', 1 indicates max frequency
+- `output reg done`: High when computation complete
+
+**Specification:**
+1. **Clock cycles needed**: 18 cycles (16 for counting + 2 for max finding)
+2. **States**: IDLE, COUNTING, FINDING_MAX, DONE
+
+**Behavior:**
+- **IDLE**: Wait for start signal
+- **COUNTING**: For 16 cycles, read each character, skip spaces (0x20), increment appropriate letter counter
+- **FINDING_MAX**: Compare all 26 counters to find maximum value
+- **DONE**: Output result, wait for reset or next start
+
+**Counters:**
+- Use 26 registers of 4 bits each: `reg [3:0] counts [0:25]`
+- Initialize to zero in reset
+
+**Max Finding Logic:**
+- Compare all counters in parallel or sequentially
+- Build bitmask of all letters that match the maximum count
+
+**Example:**
+- Input: "a b b a" → counts: a=2, b=2, others=0 → max_count=2, max_letters=0x000003 (bits 0,1 set)
+- Input: "b b b b a" → counts: b=4, a=1 → max_count=4, max_letters=0x000002 (bit 1 set)
+- Input: "a a a" → counts: a=3 → max_count=3, max_letters=0x000001 (bit 0 set)
+
+**Testbench Note:**
+- Convert strings to byte arrays in testbench
+- Spaces (0x20) are skipped during counting
+- Non-space, non-'a'-'z' characters should be ignored

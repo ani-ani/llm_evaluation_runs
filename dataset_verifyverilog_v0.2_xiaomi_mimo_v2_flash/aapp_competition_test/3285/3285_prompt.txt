@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'sds_finder' that finds the smallest n where a target value m appears in a Smallest Different Sequence (SDS) or as a difference between two values.
+
+Sequence definition:
+- A1 = r (given)
+- An = A(n-1) + d, where d is the smallest positive integer not yet in the set S = {sequence values} U {differences between values}
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [15:0] r // first term of sequence (1-100)
+input [27:0] m // target value to find (1-200000000)
+
+Outputs:
+output reg [13:0] result // smallest n where m appears (max 10000)
+output reg done // high when computation complete
+output reg found // high if m found, low if not in range
+
+Latency: Result valid 15000 clock cycles after start asserted (worst case n=10000)
+
+Behavior:
+Use a state machine with states: IDLE, INIT, CHECK_EXISTING, COMPUTE_NEXT, UPDATE_SET, CHECK_COMPLETE, DONE.
+
+In INIT state: Initialize set S with r and mark r as found. Initialize A_prev = r, n = 1.
+
+In CHECK_EXISTING state: Check if m is already in S (either as a value or difference). If yes, go to DONE.
+
+In COMPUTE_NEXT state: Find smallest d >= 1 not in S. Use a counter from 1 upwards, checking against stored bits.
+
+In UPDATE_SET state: Compute A_next = A_prev + d. Add A_next to S. Add differences |A_next - A_i| for all previous A_i to S. Update A_prev = A_next, increment n.
+
+In CHECK_COMPLETE state: If n > 10000, go to DONE with found=0. Otherwise check if m in S, if yes go to DONE, else go to COMPUTE_NEXT.
+
+In DONE state: Output result and done=1.
+
+Implementation details:
+- Use a 2D array or multiple bit vectors to store which values are in S (track up to 40000 for differences)
+- Track n up to 10000
+- Store sequence values in a small buffer (last 16 values sufficient for difference computation)
+- Use parallel comparators for checking if values exist
+- Maximum value to track: min(m*2, 40000) to keep within reasonable hardware bounds
+- For m up to 200M, but n <= 10000, values grow quickly so m will likely appear early or as difference

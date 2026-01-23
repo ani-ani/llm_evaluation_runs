@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'sliding_blocks_solver' that determines if a target board configuration is reachable and outputs the sequence of moves.
+
+The module operates on a fixed 8x8 grid (N=8, M=8). The target board is represented as an 8x8 bit matrix (64 bits total). The first block provided in the input is assumed to be the starting block (initial board has 1 block).
+
+The module uses a state machine to implement a modified BFS/Dependency Graph algorithm:
+1. Start with the initial block.
+2. Check all neighboring cells (up, down, left, right) that are in the target configuration.
+3. A neighbor can be added if the cell immediately 'behind' the neighbor (in the direction from the neighbor to the current block) is empty (not in target). This ensures the block slides in and stops at the neighbor.
+4. If a block can be added, schedule it for output.
+5. Repeat until all target blocks are processed.
+6. If processing finishes but not all target blocks are reached, the configuration is impossible.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [63:0] target_matrix // 8x8 bit matrix representing target blocks (bit i corresponds to row i/8, col i%8)
+input [5:0] initial_r // Initial block row (1-based, 1-8)
+input [5:0] initial_c // Initial block column (1-based, 1-8)
+
+Outputs:
+output reg [7:0] move_count // Number of moves in the sequence
+output reg [31:0] move_data // Packed move data: {direction[1:0], row[5:0], col[5:0]}
+output reg move_valid // High when move_data is valid
+output reg solve_done // High when computation is complete
+output reg possible // High if configuration is possible, Low otherwise
+
+Specification:
+- Use a state machine with states: IDLE, CHECK_NEIGHBORS, OUTPUT_MOVE, VERIFY_COMPLETE, DONE.
+- Use internal registers to track added blocks (visited matrix) and a FIFO for scheduled blocks.
+- Direction encoding: 00: Left (slide from right, '<', row=k), 01: Right (slide from left, '>', row=k), 10: Up (slide from bottom, '^', col=k), 11: Down (slide from top, 'v', col=k).
+- Latency: Variable, depends on number of blocks. Computation completes within 1000 cycles for max 64 blocks.
+- The module must verify that adding a block does not collide with other target blocks in the sliding path.
+- Output moves must be in the order of block addition.

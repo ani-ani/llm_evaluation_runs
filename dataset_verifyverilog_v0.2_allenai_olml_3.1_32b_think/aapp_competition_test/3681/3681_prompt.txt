@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'teacher_rotation' that simulates teacher reassignments over weeks.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing current query
+input [2:0] query_type // 0: add rotation, 1: ask
+input [3:0] K_in // Number of teachers to rotate (valid for type 0)
+input [3:0] x_in // Week number (valid for both)
+input [3:0] d_in // Teacher index (valid for type 1)
+input [3:0] p_in [0:7] // Array of K teacher indices (valid for type 0, max K=8)
+
+Outputs:
+output reg [3:0] result // Result of query type 1 (teacher's class)
+output reg result_valid // High when result is valid
+output reg ready // High when module is ready for new query
+
+Specifications:
+- The module maintains a state of which teacher is in which class for weeks 1 to 16.
+- Initially, teacher i is in class i (1-based, so index 0 is unused or treated specially, or assume 0-based for simplicity where Teacher 0 is in Class 0).
+- We assume 0-based indexing for internal logic: Teachers 0..N-1, Classes 0..N-1.
+- Max N = 8, Max M = 16.
+- Process queries sequentially.
+- For Type 0 (Rotation): Rotate teachers p_in[0]..p_in[K_in-1] at week x_in. This affects all weeks >= x_in.
+- For Type 1 (Query): Find the class of teacher d_in at week x_in (Tuesday, so after Monday's rotation).
+- Use a sequential FSM to handle query processing. Since N is small, we can update the state array directly.
+- To handle week dependence, we can process events sorted by week, or simply apply updates and query against the current state of a history array.
+- Given the constraints of hardware, we will implement a buffer of 16 weeks (N=8).
+- State structure: reg [2:0] teacher_map [0:15][0:7] (Week x Teacher -> Class). Or Teacher -> Class per week.
+- Let's use: reg [2:0] class_of_teacher [0:15][0:7] (Week x Teacher -> Class).
+- Initialization: for all w, for all t, class_of_teacher[w][t] = t.
+- Type 0: Update week x through M: apply rotation to class_of_teacher[w][t] for w >= x.
+- Type 1: Read class_of_teacher[x][d].
+- Execution cycle: Wait for start. If Type 0, iterate w from x to M-1 and update. If Type 1, output value.
+- Latency: Due to loop updates, expect ~32-64 cycles per operation.
+- Output result on result_valid, then return to READY.

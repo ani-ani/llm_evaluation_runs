@@ -1,0 +1,60 @@
+Design a sequential Verilog module named 'pattern_matcher' that solves the file deletion pattern problem.
+
+Problem Description:
+Given a list of filenames, determine if there exists a pattern using '?' as a wildcard (matching any single character) that matches ALL files marked for deletion and NONE of the other files. The pattern must have the same length as the filenames.
+
+Module Specifications:
+- Input Clock and Reset: Standard synchronous design
+- Input Interface: Accepts files one by one
+- Output: Yes/No decision and the generated pattern
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing
+input valid_in // High if current input file is valid
+input [5:0] char_in // 6-bit ASCII character input (supports 'a'-'z', '0'-'9', '.')
+input is_delete_file // High if current file is one to be deleted (indices from Python code)
+input file_end // High to signal end of current filename
+input files_done // High when all files have been processed
+
+Outputs:
+output reg result_valid // High when computation is complete
+output reg [0:0] yes_no // 1 for Yes, 0 for No
+output reg [127:0] pattern // The pattern string (16 chars x 8 bits). Null-padded if shorter.
+output reg [3:0] pattern_len // Actual length of the pattern
+
+Functionality:
+1. **Pattern Generation Phase**:
+   - Accumulate characters of the first delete file into a buffer (Pattern Buffer).
+   - For subsequent delete files, compare each character position with the Pattern Buffer.
+   - If characters differ at any position, update Pattern Buffer to '?' at that position.
+   - All delete files must have the same length. If not, result is 'No'.
+
+2. **Validation Phase**:
+   - After reading all files, verify the pattern against non-delete files.
+   - Iterate through non-delete files.
+   - If a non-delete file matches the pattern (same length, all chars match or pattern has '?'), result is 'No'.
+   - If no non-delete file matches, result is 'Yes'.
+
+3. **Constraint Scaling**:
+   - Maximum filename length: 16 characters
+   - Maximum number of files: 8
+   - Character width: 6 bits (covers lowercase letters, digits, '.')
+
+State Machine:
+- IDLE: Wait for start signal
+- READ_DELETE: Reading files marked for deletion
+- READ_NORMAL: Reading files to keep
+- CHECK: Final validation logic
+- DONE: Output result ready
+
+Latency: Approximately (Total characters in all files) + constant overhead cycles after start.
+
+Implementation Details:
+Use internal buffers:
+- Pattern Buffer (16x6-bit array)
+- Length Buffer (5-bit integer)
+- Match status flags
+
+The module should use a simple sequential processing approach to handle the variable length strings and multiple files.

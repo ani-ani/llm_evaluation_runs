@@ -1,0 +1,162 @@
+module robot_checker (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] instruction,  // 1-bit per char: 1=F, 0=T
+    input wire [3:0] target_x,     // 4-bit signed (-8 to 7)
+    input wire [3:0] target_y,
+    output reg result,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 2'b00;
+    localparam PARSE = 2'b01;
+    localparam CHECK = 2'b10;
+    localparam DONE = 2'b11;
+    
+    reg [1:0] state;
+    reg [2:0] seg_count;       // Number of segments found
+    reg [3:0] segments [0:4];  // 5 segments max
+    reg [2:0] idx;             // Bit index for parsing
+    
+    // Wires for computation
+    wire signed [4:0] x0_s, x2_s, x4_s, y1_s, y3_s;
+    wire signed [4:0] x_target_s, y_target_s;
+    wire signed [4:0] x_target_adj;
+    wire signed [4:0] x_cand [0:8];
+    wire signed [4:0] y_cand [0:8];
+    wire x_check, y_check;
+    
+    // Parse logic (combinational)
+    reg [2:0] count;
+    reg [2:0] seg_idx;
+    integer i;
+    
+    always @(*) begin
+        // Initialize segments
+        segments[0] = 0;
+        segments[1] = 0;
+        segments[2] = 0;
+        segments[3] = 0;
+        segments[4] = 0;
+        
+        count = 0;
+        seg_idx = 0;
+        
+        for (i = 0; i < 8; i = i + 1) begin
+            if (instruction[i]) begin
+                count = count + 1;
+            end else begin
+                if (seg_idx < 5) begin
+                    segments[seg_idx] = count;
+                    seg_idx = seg_idx + 1;
+                end
+                count = 0;
+            end
+        end
+        if (seg_idx < 5) begin
+            segments[seg_idx] = count;
+        end
+    end
+    
+    // Assign segments to axes
+    assign x0_s = $signed({1'b0, segments[0]});
+    assign x2_s = $signed({1'b0, segments[2]});
+    assign x4_s = $signed({1'b0, segments[4]});
+    assign y1_s = $signed({1'b0, segments[1]});
+    assign y3_s = $signed({1'b0, segments[3]});
+    
+    // Target assignments
+    assign x_target_s = $signed(target_x);
+    assign y_target_s = $signed(target_y);
+    assign x_target_adj = x_target_s - x0_s;
+    
+    // Generate candidate sets
+    assign x_cand[0] = 5'sd0;
+    assign x_cand[1] = x2_s;
+    assign x_cand[2] = -x2_s;
+    assign x_cand[3] = x4_s;
+    assign x_cand[4] = -x4_s;
+    assign x_cand[5] = x2_s + x4_s;
+    assign x_cand[6] = x2_s - x4_s;
+    assign x_cand[7] = -x2_s + x4_s;
+    assign x_cand[8] = -x2_s - x4_s;
+    
+    assign y_cand[0] = 5'sd0;
+    assign y_cand[1] = y1_s;
+    assign y_cand[2] = -y1_s;
+    assign y_cand[3] = y3_s;
+    assign y_cand[4] = -y3_s;
+    assign y_cand[5] = y1_s + y3_s;
+    assign y_cand[6] = y1_s - y3_s;
+    assign y_cand[7] = -y1_s + y3_s;
+    assign y_cand[8] = -y1_s - y3_s;
+    
+    // Check functions
+    assign x_check = (x_target_adj == x_cand[0]) || (x_target_adj == x_cand[1]) ||
+                     (x_target_adj == x_cand[2]) || (x_target_adj == x_cand[3]) ||
+                     (x_target_adj == x_cand[4]) || (x_target_adj == x_cand[5]) ||
+                     (x_target_adj == x_cand[6]) || (x_target_adj == x_cand[7]) ||
+                     (x_target_adj == x_cand[8]);
+    
+    assign y_check = (y_target_s == y_cand[0]) || (y_target_s == y_cand[1]) ||
+                     (y_target_s == y_cand[2]) || (y_target_s == y_cand[3]) ||
+                     (y_target_s == y_cand[4]) || (y_target_s == y_cand[5]) ||
+                     (y_target_s == y_cand[6]) || (y_target_s == y_cand[7]) ||
+                     (y_target_s == y_cand[8]);
+    
+    // State machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 0;
+            done <= 0;
+            idx <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) state <= PARSE;
+                end
+                
+                PARSE: begin
+                    // Parse done in combinational logic
+                    state <= CHECK;
+                end
+                
+                CHECK: begin
+                    result <= x_check && y_check;
+                    state <= DONE;
+                end
+                
+                DONE: begin
+                    done <= 1;
+                    if (!start) state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule
+
+module top (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] instruction,
+    input wire [3:0] target_x,
+    input wire [3:0] target_y,
+    output wire result,
+    output wire done
+);
+    robot_checker rc (
+        .clk(clk),
+        .rst_n(rst_n),
+        .start(start),
+        .instruction(instruction),
+        .target_x(target_x),
+        .target_y(target_y),
+        .result(result),
+        .done(done)
+    );
+endmodule

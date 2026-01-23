@@ -1,0 +1,100 @@
+Design a sequential Verilog module named 'closest_vowel' that implements the logic to find the closest vowel between two consonants from the right side of a word.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0][7:0] word // Fixed 8-character string (ASCII), null-terminated or padded with zeros. Max 8 chars.
+
+Outputs:
+output reg [7:0] result // The vowel character (ASCII), or 0 if not found
+output reg done // high when computation complete
+
+Specification:
+The module processes an 8-character ASCII string (byte array) stored in the 'word' input.
+The input is expected to be padded with zeros (0x00) if the word is shorter than 8 characters.
+Vowels are 'a', 'e', 'i', 'o', 'u' (case-sensitive, so check both upper and lower: 'a','e','i','o','u','A','E','I','O','U').
+Consonants are any other English letter.
+
+Algorithm:
+1. Start scanning from the rightmost character (index 7) towards the left (index 0).
+2. Skip any leading/trailing vowels or zeros (padding) at the right end.
+3. Identify the first consonant from the right (let's call this position 'idx').
+4. Move left to find the next character (idx-1).
+5. If this character is a vowel, and the character at 'idx' is a consonant, and the character at 'idx-1' is also a consonant (to ensure the vowel is *between* two consonants), we need to refine the logic.
+   Refined Logic from description: 'closest vowel that stands between two consonants from the right side'.
+   Interpretation: Find the rightmost character that is a vowel, such that the character immediately to its right is a consonant, AND the character immediately to its left is a consonant.
+   Example 'yogurt':
+   y o g u r t
+   5 4 3 2 1 0
+   't' (0) is consonant. 'r' (1) is consonant. 'u' (2) is vowel. 'g' (3) is consonant.
+   'u' is between 'r' (consonant) and 'g' (consonant).
+   It is the closest such vowel to the right side (index 2).
+   Return 'u'.
+   Example 'quick': q u i c k
+   k (0) cons, c (1) cons, i (2) vowel, u (3) vowel, q (4) cons.
+   'i' is between c (cons) and k (cons)? No, 'i' is at index 2, left is index 1 ('c', cons), right is index 0 ('k', cons). Wait, 'c' is not a vowel.
+   Wait, let's re-read. 'closest vowel that stands between two consonants from the right side'.
+   Let's look at 'quick': q u i c k
+   Positions: 0:k, 1:c, 2:i, 3:u, 4:q.
+   Check vowels from right:
+   Index 2 ('i'): Left neighbor is 'u' (vowel), Right neighbor is 'c' (consonant). Not between two consonants.
+   Index 3 ('u'): Left neighbor is 'q' (consonant), Right neighbor is 'i' (vowel). Not between two consonants.
+   Result: "".
+   Example 'anime': a n i m e
+   e(0) cons? 'e' is vowel. 
+   Wait, vowels are a,e,i,o,u. So e is vowel.
+   So 'anime': 0:e(v), 1:m(c), 2:i(v), 3:n(c), 4:a(v).
+   'i' (2): Left neighbor 'n' (c), Right neighbor 'm' (c). -> Valid. 
+   'e' (0): Right edge.
+   'a' (4): Left edge.
+   So 'i' is the one. Returns 'i'.
+   
+   Correct Algorithm:
+   Iterate indices 1 to 6 (since we need left and right neighbors).
+   If char[i] is a vowel:
+     If char[i-1] is a consonant:
+       If char[i+1] is a consonant:
+         This is a candidate.
+   We need the one 'closest to the right side'.
+   This implies the smallest index (0-based from left) or we scan from right?
+   'yogurt': y o g u r t
+   0:t, 1:r, 2:u, 3:g, 4:o, 5:y
+   Scan from right (indices 6 to 0). Actually, index 6 and 7 are padding in 8-char array.
+   Let's assume input is padded to 8 chars.
+   Scan indices 7 down to 1.
+   Index 2 ('u'): 
+     Left (1): 'r' (consonant)
+     Right (3): 'g' (consonant)
+     Match!
+   
+Implementation:
+- FSM states: IDLE, SCAN, OUTPUT.
+- 'start' triggers the scan.
+- 'word' is a 8x8 bit array.
+- Result 'result' is 8 bit ASCII.
+
+Latency: 1 clock cycle (combinational logic for small 8-char array is fine) or sequential scan over 8 cycles. Let's use a sequential state machine for structure, iterating from right (index 7) to left (index 1).
+
+States:
+IDLE: Wait for start.
+SCAN: Check current index i.
+   If i < 1, go to DONE (no vowel found).
+   Check word[i]. Is it a vowel?
+   Check word[i-1]. Is it a consonant?
+   Check word[i+1]. Is it a consonant?
+   If all true: Set result = word[i], go to DONE.
+   If not: decrement i, stay in SCAN.
+DONE: Assert done.
+
+Reset:
+result = 0
+done = 0
+i = 7
+
+Start:
+go to SCAN
+
+This requires checking 8 positions max. 8 clock cycles.
+
+Ensure inputs are defined as vector arrays.

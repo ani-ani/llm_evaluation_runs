@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'wire_bending' that simulates a wire bending process and detects if the wire touches itself.
+
+The problem is adapted as follows:
+- Wire length L is fixed to 8 segments (one segment per unit length)
+- Bend points are integers from 0 to 8
+- Starting point is at origin (0,0) facing right (positive X)
+- Wire consists of axis-aligned segments on a grid
+- Each bend rotates the direction by 90 degrees (clockwise or counter-clockwise)
+- Detect if any new segment intersects existing segments or passes through existing vertices
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] bend_point // bend position (0-8)
+input bend_dir // 0 for clockwise (W), 1 for counter-clockwise (C)
+input bend_valid // valid bend input
+
+Outputs:
+output reg ghost // 1 if wire touches itself
+output reg done // high when all bends processed
+
+Behavior:
+- The module processes up to 8 bend operations sequentially
+- Starting state: wire is straight line from (0,0) to (8,0), facing RIGHT
+- State machine tracks current head position, direction, and all existing segments
+- For each bend:
+  1. Determine the bend point coordinate by traversing from start along existing segments
+  2. Truncate wire at that point
+  3. Rotate direction 90 degrees based on bend_dir
+  4. Add new segment of length equal to (8 - bend_point)
+  5. Check if new segment intersects ANY existing segment (including endpoints)
+  6. If intersection detected: assert ghost = 1 and stay in error state
+  7. If no intersection: continue to next bend
+
+Directions encoding:
+00 = RIGHT (+X), 01 = UP (+Y), 10 = LEFT (-X), 11 = DOWN (-Y)
+
+Segment storage:
+Store up to 8 segments as: start_x, start_y, end_x, end_y
+Each coordinate is 4-bit signed (range -8 to 8)
+
+Intersection checking:
+- New segment must not cross any existing segment (including at endpoints)
+- Use combinational logic to check all existing segments against new segment
+- Must check if bend point lands on an existing vertex
+
+Latency: 10 clock cycles per bend (allows time for intersection checking)
+Total latency for 8 bends: ~80 cycles after start asserted.
+
+Use state machine with states: IDLE, READ_BEND, FIND_BEND_POINT, ADD_NEW_SEGMENT, CHECK_INTERSECTION, DONE, GHOST_DETECTED.

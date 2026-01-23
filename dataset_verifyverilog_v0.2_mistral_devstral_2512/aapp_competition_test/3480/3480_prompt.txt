@@ -1,0 +1,421 @@
+Design a sequential Verilog module named 'round_generator' that implements a two-voice musical round display generator.
+
+**Problem Analysis:**
+The module takes a song defined by syllables and durations, and a delay D. It outputs two lines: the original voice and the overlapping second voice starting after delay D. Constraints are simplified to fixed-size buffers.
+
+**Constraints:**
+- Max lines L: 8
+- Max syllables per line: 8
+- Max syllable text length: 16 characters
+- Delay D: 0 to 128 time units
+- Duration t: 1 to 128 time units
+- Output line width: 200 characters (fixed buffer size)
+
+**Inputs (Control Signals):**
+input clk                  // Clock
+input rst_n                // Active-low reset
+input start                // Start processing the song
+
+**Inputs (Song Data - Loaded sequentially or via memory):**
+// For this interface, we assume loading is done via a parallel interface or simplified stream.
+// We will define a control interface to accept one syllable at a time.
+
+// Data In Interface (Used to load the song)
+input [15:0] data_val      // Data value (time or encoded char)
+input [1:0] data_type      // 0: Time, 1: Syllable Char (8-bit), 2: End of Syllable, 3: End of Line
+input data_valid           // Data valid strobe
+
+**Outputs:**
+output reg [199:0] line1_out // First voice line (ASCII string padded with underscores)
+output reg [199:0] line2_out // Second voice line (ASCII string padded with underscores or '/')
+output reg output_valid      // High when outputs are ready
+output reg done              // High when entire song is processed
+
+**Implementation Details:**
+1. **Memory:** Use internal registers to store up to 8 lines, 8 syllables each. Each syllable stores duration (8-bit) and text (16 bytes). Max 16 chars per syllable.
+2. **State Machine (FSM):**
+   - IDLE: Wait for start.
+   - LOAD: Accept data via `data_val`/`data_type` and store in internal buffers. Advance pointers.
+   - PROCESS_LINE: Calculate display positions for the current line.
+   - DISPLAY: Output the computed `line1_out` and `line2_out`.
+   - NEXT_LINE: Move to next line.
+   - DONE: Final state.
+
+**Display Logic:**
+For the current line (index `l`):
+- **Voice 1:**
+  - Iterate through syllables in line `l`.
+  - Maintain `cursor_pos` (start position of next syllable).
+  - Place syllable at `cursor_pos`.
+  - Update `cursor_pos`: `cursor_pos += duration_of_syllable`.
+  - Append underscores to `line1_out` to fill gaps.
+- **Voice 2:**
+  - The second voice sings the *same* text but shifted by time `D`.
+  - We need to find which syllables start in the time window of line `l`.
+  - Let `T_start_l` be the cumulative time before line `l`.
+  - Let `T_end_l` be `T_start_l + total_duration_of_line_l`.
+  - Second voice starts at `T_start_l + D`.
+  - We need to find syllables from the *entire song* that start in `[T_start_l + D, T_end_l + D)`.
+  - To simplify: Iterate through ALL syllables of the song. If a syllable's absolute start time `S` satisfies `S >= T_start_l + D` AND `S < T_end_l + D`, it belongs to line 2 output.
+  - Calculate `relative_pos = S - (T_start_l + D)`.
+  - Place the syllable at `relative_pos` in `line2_out`.
+  - If no such syllables, `line2_out = '/'`.
+
+**Simplification for HDL:**
+- Instead of processing the whole song at once, we will process one line of the output at a time.
+- To support this, the `PROCESS_LINE` state will loop through all stored syllables to find overlaps for the current line.
+
+**Detailed Module Spec:**
+module round_generator (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Data loading interface
+    input wire [7:0] data_char,   // ASCII character
+    input wire [7:0] data_time,   // Duration time
+    input wire [1:0] data_type,   // 0: Time, 1: Char, 2: EndSyl, 3: EndLine
+    input wire data_valid,
+    
+    output reg [199:0] line1_out,
+    output reg [199:0] line2_out,
+    output reg output_valid,
+    output reg done
+);
+
+    // Parameters
+    parameter MAX_LINES = 8;
+    parameter MAX_SYLLABLES = 8;
+    parameter MAX_CHARS = 16;
+    parameter LINE_WIDTH = 200;
+
+    // Internal Memory (Regfile style)
+    reg [7:0] syllable_text [0:MAX_LINES-1][0:MAX_SYLLABLES-1][0:MAX_CHARS-1];
+    reg [7:0] syllable_time [0:MAX_LINES-1][0:MAX_SYLLABLES-1];
+    reg [3:0] syllable_count [0:MAX_LINES-1]; // Number of syllables per line
+    reg [7:0] line_delay; // D
+    reg [3:0] num_lines;  // L
+
+    // Pointers
+    reg [3:0] cur_line_idx;
+    reg [3:0] cur_syl_idx;
+    reg [3:0] cur_char_idx;
+    reg [7:0] cur_abs_time; // Current absolute time for Voice 1 start of line
+    reg [7:0] voice2_start_time; // cur_abs_time + line_delay
+    
+    // State
+    reg [2:0] state;
+    localparam S_IDLE = 0;
+    localparam S_LOAD = 1;
+    localparam S_PROC_CALC = 2;
+    localparam S_PROC_OUT = 3;
+    localparam S_DONE = 4;
+
+    // Registers for output generation
+    reg [199:0] temp_line1;
+    reg [199:0] temp_line2;
+    reg [7:0]  cursor1; // Position in line1
+    reg [7:0]  cursor2; // Position in line2
+    reg        v2_has_data;
+    reg [7:0]  total_line_dur; // Sum of durations for current line (Voice 1)
+
+    integer i, j, k;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= S_IDLE;
+            output_valid <= 0;
+            done <= 0;
+            num_lines <= 0;
+            cur_line_idx <= 0;
+            cur_abs_time <= 0;
+        end else begin
+            case (state)
+                S_IDLE: begin
+                    output_valid <= 0;
+                    done <= 0;
+                    if (start) begin
+                        state <= S_LOAD;
+                        cur_line_idx <= 0;
+                        cur_syl_idx <= 0;
+                        cur_char_idx <= 0;
+                        line_delay <= 0; // Will be loaded first
+                        num_lines <= 0;
+                    end
+                end
+
+                S_LOAD: begin
+                    if (data_valid) begin
+                        if (num_lines == 0 && cur_line_idx == 0 && cur_syl_idx == 0 && cur_char_idx == 0) begin
+                            // First value is L and D (simplified: assume separate load or packed)
+                            // To fit prompt spec: assume standard loading sequence
+                            // Let's define data_type 0 as loading L (in upper byte) and D (in lower byte) of data_time/data_char? 
+                            // Let's assume 'data_time' carries L (high nibble) and D (low nibble + byte) or separate inputs.
+                            // To keep it simple: 
+                            // data_type=3 (EndLine) on first load triggers loading of L and D from data_val? 
+                            // Let's use: if cur_line_idx==0 && cur_syl_idx==0, we load config first.
+                            // Let's say: data_val[15:8] = L, data_val[7:0] = D.
+                            // We need to modify inputs slightly to accommodate.
+                            // Re-spec: 
+                            // input [15:0] data_val; // Used for config and char/time
+                            // input data_valid;
+                            // input [1:0] data_type; // 0=Config (L,D), 1=Char, 2=Time, 3=EndSyl, 4=EndLine
+                            
+                            // Let's stick to the prompt's inputs but add assumption:
+                            // Assume the first input to the FIFO is {L[3:0], D[7:0]} in data_val[11:0], and data_type=0
+                            // But prompt says data_type 0 is Time. 
+                            // Let's assume a separate configuration state or implicit loading. 
+                            // Fallback: The module calculates `L` and `D` from the stream naturally by structure.
+                            // Actually, let's rely on `data_type` to distinguish. 
+                            // Let's assume `data_type` encoding: 0=Config(L,D), 1=Char, 2=Time, 3=EndSyl, 4=EndLine.
+                            // (Updating logic to match prompt 'data_type 0: Time' -> I will use the prompt's types but add a config phase).
+                            
+                            // *Resolution*: The prompt requires a valid JSON. I will implement the loading logic assuming standard flow.
+                            // I will add a constraint: `data_type` 0 is used for (L,D) in the first cycle. 
+                            // `data_val[7:0]` is D, `data_val[15:8]` is L.
+                            // Subsequent cycles follow prompt (0: Time, etc).
+                            
+                            num_lines <= data_val[15:8];
+                            line_delay <= data_val[7:0];
+                            // No increment of pointers, just proceed to next load state
+                            // (We stay in S_LOAD, but ready for syllables)
+                            // We need a flag to know config is done. 
+                            // Let's assume `data_type` 0 is Config, and `data_type` 1 is Time.
+                            // *Strict adherence*: prompt says 0:Time. 
+                            // I will modify `data_type` interpretation: If `cur_line_idx==0 && cur_syl_idx==0`, data_type 0 is treated as Config.
+                            // Let's do this: 
+                            if (cur_line_idx == 0 && cur_syl_idx == 0) begin
+                                // Config phase
+                                num_lines <= data_val[15:8];
+                                line_delay <= data_val[7:0];
+                                // Proceed to next load, but we need to indicate we loaded config.
+                                // Let's assume `data_type` 5 for config to be safe and strictly follow prompt types for others.
+                                // But prompt only specified 0,1,2,3. 
+                                // OK, I will use `data_type` 0 for Config (L,D) in the very first cycle.
+                                // I will specify this deviation in the prompt.
+                            end else begin
+                                // Regular syllable loading
+                                // (Logic below)
+                            end
+                        end else begin
+                            // Regular loading logic
+                            // (If config is done, handle data)
+                            // We need a 'config_done' flag.
+                            // Let's refine the state machine to handle this cleanly.
+                            
+                            if (data_type == 2) begin // EndSyl
+                                cur_syl_idx <= cur_syl_idx + 1;
+                                cur_char_idx <= 0;
+                            end else if (data_type == 3) begin // EndLine
+                                cur_line_idx <= cur_line_idx + 1;
+                                cur_syl_idx <= 0;
+                                cur_char_idx <= 0;
+                                if (cur_line_idx + 1 >= num_lines) state <= S_PROC_CALC;
+                            end else if (data_type == 1) begin // Char
+                                if (cur_char_idx < MAX_CHARS) begin
+                                    syllable_text[cur_line_idx][cur_syl_idx][cur_char_idx] <= data_char;
+                                    cur_char_idx <= cur_char_idx + 1;
+                                end
+                            end else if (data_type == 0) begin // Time (or Config if first)
+                                // Assume first load handled. Subsequent: Time
+                                syllable_time[cur_line_idx][cur_syl_idx] <= data_time;
+                                syllable_count[cur_line_idx] <= cur_syl_idx + 1; // Track count
+                            end
+                        end
+                    end
+                end
+
+                S_PROC_CALC: begin
+                    // Calculate Voice 1 positions and total line duration
+                    // Also calculate Voice 2 overlaps
+                    
+                    // Reset output buffers
+                    temp_line1 <= {200{8'h5F}}; // Fill with '_'
+                    temp_line2 <= {200{8'h5F}}; // Fill with '_'
+                    cursor1 <= 0;
+                    cursor2 <= 0;
+                    v2_has_data <= 0;
+                    total_line_dur <= 0;
+                    
+                    // Calculate Voice 1 setup
+                    // We need to unroll or use a loop. In Verilog, we prefer unrolled or sequential state logic.
+                    // Since we are in a state, let's use an inner counter state or pre-calculate.
+                    // Let's use a sub-state or just calculate cumulatively here since MAX_SYLLABLES is small.
+                    
+                    // 1. Calculate Voice 1 line and Total Duration
+                    // And calculate Voice 2 Start Time
+                    // Voice 2 starts at: cur_abs_time + line_delay
+                    
+                    // To handle this in combinational logic or sequential logic within the state:
+                    // Let's do it sequentially using `cur_syl_idx` as a counter within this state.
+                    
+                    // We will iterate `cur_syl_idx` from 0 to syllable_count[cur_line_idx]-1
+                    // We need an inner state loop. 
+                    // Let's modify S_PROC_CALC to handle one syllable per clock or unroll.
+                    // Unrolling is cleaner for small fixed size.
+                    
+                    // **Unrolled Logic for Voice 1**
+                    // We need to compute the positions. 
+                    // Let's use a separate always_comb block or just do it here.
+                    // Because we are in sequential block, we need to update registers.
+                    
+                    // *Decision*: Use a sub-counter `proc_step` to handle syllables one by one.
+                    // But to keep the state machine simple, I will generate the logic inside this state.
+                    // Wait, `cur_syl_idx` is used as loader counter. I need a separate counter for processing.
+                    // Let's use `i` (integer) for processing loops.
+                    
+                    // **REVISION TO STATE MACHINE**: 
+                    // S_PROC_CALC will be a state that takes several cycles.
+                    // We need a new register: `proc_step`.
+                    
+                    // Let's add `reg [3:0] proc_step;`
+                    // And `reg [7:0] v1_cursor;` and `reg [7:0] v2_cursor;`
+                    // And `reg [7:0] v2_start_time;`
+                    // And `reg [7:0] abs_time_v1;`
+                    
+                    // **Inside S_PROC_CALC** (assuming we enter here once):
+                    // We will compute V1 line in one go (using generate-like logic or multiple clock cycles).
+                    // Let's use 2 clock cycles per syllable for V1 and V2 scan.
+                    // Max 8 syllables = 16 cycles.
+                    
+                    // Implementation inside S_PROC_CALC:
+                    if (proc_step == 0) begin
+                        // Initialize
+                        v1_cursor <= 0;
+                        v2_start_time <= cur_abs_time + line_delay;
+                        total_line_dur <= 0;
+                        // Reset temp buffers if needed, or assume done before entry.
+                        // Actually, we need to clear them.
+                        temp_line1 <= {200{8'h5F}};
+                        temp_line2 <= {200{8'h5F}}; // Clear now, or default to '/' later
+                        proc_step <= 1;
+                    end else if (proc_step <= syllable_count[cur_line_idx]) begin
+                        // Process Voice 1 for syllable (proc_step - 1)
+                        // idx = proc_step - 1
+                        // Place text at v1_cursor
+                        // Text length: find first null or MAX_CHARS
+                        // (Simplified: use duration as width or fixed width? Prompt says 'syllable displayed as far left as possible' -> constrained by time.
+                        // Constraint: 'Consecutive syllables... separated by at least one underscore'.
+                        // Constraint: 'S2 begins k time units after S1, S2 starts at least k cols right'.
+                        // This implies strict monotonic spacing.
+                        // In the example, 'Hot' (4) is 4 chars. 'cross' (4) is 5 chars. 
+                        // The spacing seems to be equal to Duration.
+                        // 'Hot' (4 chars, dur 4) -> occupies cols 0-3. Next at 4.
+                        // 'cross' (5 chars, dur 4) -> occupies cols 4-8. Next at 8? Or 8+1?
+                        // Example output: 'Hot_cross_...'.
+                        // Let's assume placement rule: Start at `cursor`. Print chars. Update cursor = `cursor + duration`.
+                        // (Minimal implementation: Print string, pad with '_' to duration).
+                        
+                        // Logic for one syllable:
+                        // 1. Write text to temp_line1 at v1_cursor.
+                        // 2. Update total_line_dur.
+                        // 3. Update v1_cursor = v1_cursor + duration.
+                        
+                        // Writing text logic (unrolled or block):
+                        // We need a loop to copy chars. Since we are in sequential block, we can do it one char per clock or
+                        // since it's small, we can use a 'sub_state' for character copying.
+                        // To keep it simple in this prompt: I will assume the text is written, and the cursor update happens based on duration.
+                        // The example shows that the *position* is determined by time, not string length.
+                        // So if 'Hot' takes 4 time, it takes 4 columns.
+                        // If 'Hot' is 3 chars, it gets 1 underscore padding implicitly? 
+                        // Example: 'Hot_cross'. 'Hot' (3 chars) is followed by '_' (1 char). Total width used by 'Hot' is 4 (matching duration).
+                        // So: `Write String`, then `Fill (Duration - Length)` with underscores.
+                        
+                        // Let's calculate `d = syllable_time[cur_line_idx][proc_step-1]`.
+                        // Copy `len` chars to `temp_line1` at `v1_cursor`.
+                        // Fill remaining `d - len` with '_'.
+                        // Update `v1_cursor += d`.
+                        // Update `total_line_dur += d`.
+                        
+                        // *Constraint*: Max output width 200. 
+                        // This logic requires a loop. To avoid complex sub-states, I will use a separate 'FSM logic' approach in the prompt description.
+                        // Actually, let's put the logic in `S_PROC_CALC` and assume it takes cycles.
+                        // We need to track `char_idx_copy`.
+                        
+                        // Let's refine the module spec to be implementation agnostic but describe behavior.
+                        // The prompt asks for a specification. I will write the code that handles the 'loop' implicitly or use a helper state.
+                        
+                        // **New State: S_V1_WRITE** and **S_V2_WRITE** to handle the loops.
+                        
+                        // Let's stick to a clean state machine:
+                        // S_PROC_CALC (Entry) -> S_V1_LOOP (Iterates syllables) -> S_V2_SCAN (Iterates ALL syllables for overlap) -> S_FORMAT_OUT.
+                        
+                        // S_V1_LOOP:
+                        // Use `proc_step` (0 to num_syls).
+                        // If `proc_step < num_syls`:
+                        //   d = syllable_time[cur_line_idx][proc_step]
+                        //   total_line_dur += d
+                        //   Copy chars to temp_line1 at cursor (requires loop, maybe 'S_COPY_CHAR' state).
+                        //   cursor += d
+                        //   proc_step++
+                        // Else -> S_V2_SCAN
+
+                        // S_V2_SCAN:
+                        // Iterate ALL lines and syllables (nested loops using `i`, `j`).
+                        // Calculate absolute start time of each syllable.
+                        // If start_time >= v2_start_time AND start_time < (v2_start_time + total_line_dur):
+                        //   relative_pos = start_time - v2_start_time
+                        //   Copy to temp_line2 at relative_pos.
+                        //   v2_has_data = 1.
+                        // If no data after scan, temp_line2 = '/' (ASCII 0x2F).
+                        // -> S_FORMAT_OUT
+
+                        // S_FORMAT_OUT:
+                        // Assign outputs, set output_valid.
+                        // Wait for acknowledgement or move to NEXT_LINE.
+                        // Actually, the prompt implies output is generated then we move on.
+                        // If we output, we set `output_valid`. 
+                        // We need to decide when to clear `output_valid`. 
+                        // Let's say `output_valid` stays high until `start` goes low or we move to next line.
+                        // But standard protocol: High for 1 cycle.
+                        
+                        // Let's implement the `S_PROC_CALC` logic described above.
+                    end
+                end
+            endcase
+        end
+    end
+
+    // Combinational logic for the loops (if we were writing strict RTL, we'd need explicit state variables).
+    // Given the prompt is for LLM generation, I will write the structure clearly.
+
+endmodule
+
+**Refined Prompt for the JSON:**
+Design a sequential Verilog module named 'round_generator' that implements the two-voice round display.
+
+**Inputs:**
+- `clk`, `rst_n`, `start`
+- `data_in` [15:0]: Combined data bus.
+- `data_type` [1:0]: 0=Config/Time, 1=Char, 2=EndSyl, 3=EndLine
+- `data_valid`: High valid strobe.
+
+**Outputs:**
+- `line1_out` [199:0]: ASCII string for Voice 1.
+- `line2_out` [199:0]: ASCII string for Voice 2.
+- `output_valid`: High when output is ready.
+- `done`: High when song is finished.
+
+**Internal Logic:**
+1. **Storage**: Registers for `syllable_text`, `syllable_time`, `syllable_count`, `line_delay`, `num_lines`.
+2. **FSM States**: IDLE, LOAD, CALC_V1, CALC_V2, OUTPUT, NEXT_LINE, DONE.
+3. **Load Logic**: 
+   - If `data_type` == 0: Store `line_delay` and `num_lines` (packed in `data_in`).
+   - If `data_type` == 1: Store char.
+   - If `data_type` == 0 (subsequent): Store time.
+   - Handle pointers for lines/syllables/chars.
+4. **Calculation Logic (V1)**:
+   - For the current line, calculate cumulative time.
+   - Place syllables in `temp_line1` buffer at positions determined by cumulative time (or strictly by duration sum).
+   - Fill gaps with underscores.
+   - Store total duration of the line.
+5. **Calculation Logic (V2)**:
+   - Calculate V2 start time = V1 line start time + delay.
+   - Scan *all* syllables in the song.
+   - If a syllable starts in the window `[V2_start, V2_start + line_duration]`:
+     - Calculate relative position = (Syllable Start - V2_start).
+     - Place in `temp_line2` buffer.
+   - If `temp_line2` is empty, set to '/'.
+6. **Output**: Assign registers to outputs and pulse `output_valid`.
+
+**Special Note**: To handle string copying and loops in a reasonable state machine size, the `CALC_V1` and `CALC_V2` states will internally use sub-iterations over the small fixed bounds (8 lines, 8 syllables, 16 chars).

@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'ore_partitioner' that computes the minimum sum of disparities for partitioning 16 shipments (nodes) based on a greedy streaming approach.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation pulse
+input valid_in // High when distance input is valid
+input [11:0] dist_in // Current distance value (upper triangular adjacency matrix)
+input [3:0] row_idx // Row index of the distance
+input [3:0] col_idx // Column index of the distance
+
+Outputs:
+output reg [11:0] result // Minimum sum of disparities
+output reg done // High when computation is complete
+
+Behavior:
+1. The module receives edges (u, v, w) via (row_idx, col_idx, dist_in) when valid_in is high. The input stream should contain all upper-triangular edges (approx 120 edges for 16 nodes). 
+2. Upon 'start' signal, the module should first store all incoming edges into a small internal buffer (FIFO or RAM) or process them if a sorting network is used.
+3. After ingestion, the module sorts the edges by weight in descending order. For N=16, this can be done via a state machine iterating through the buffer.
+4. The module then iterates through the sorted edges and performs a greedy assignment:
+   - Maintain two variables: max_A (current max in group A), max_B (current max in group B).
+   - Maintain an array of node ownership (0=unassigned, 1=Group A, 2=Group B).
+   - For each edge (u, v, w):
+     - If u and v are already in different groups, skip this edge.
+     - If u and v are in the same group, update that group's max (max_A = max(max_A, w) or max_B = max(max_B, w)).
+     - If both unassigned or same group, assign to the group with the smaller current max (or balance the maxes). 
+     - Specifically: Place in the group whose current max is smaller (or equal), adding the nodes to that group.
+5. Finally, compute result = max_A + max_B.
+
+Latency: Approx 1000-2000 clock cycles depending on sorting implementation.
+Use state machine states: IDLE, INPUT_WAIT, SORTING, PROCESSING, DONE.

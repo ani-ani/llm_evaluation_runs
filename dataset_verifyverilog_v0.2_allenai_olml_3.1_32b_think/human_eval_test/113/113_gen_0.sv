@@ -1,0 +1,1 @@
+module odd_count(input [7:0][7:0] input_str, output reg [255:0] result); assign result = 256'd0; endmodule

@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'tomb_solver' that solves a simplified tomb raider puzzle with a 4x4 grid. The module finds the minimum number of gargoyle rotations needed so that every gargoyle face connects to another face via light reflections.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset  
+input start // Start computation
+input [7:0] grid [0:15] // 4x4 grid stored as 16 bytes. Characters: '.'=0, '#'=1, '/=2, '\'=3, 'V'=4, 'H'=5
+
+Outputs:
+output reg [7:0] min_rotations // Minimum rotations needed (0-255)
+output reg [7:0] status // 0=busy, 1=done, 2=impossible
+output reg done // High when computation complete
+
+Specify latency: 1000 clock cycles maximum for computation.
+
+The module should:
+1. Parse the 4x4 grid to identify all gargoyle positions and orientations
+2. For each gargoyle face (V has top/bottom, H has left/right), trace light rays using mirror reflection rules:
+   - Light travels straight through '.' cells
+   - '/' reflects: top→left, bottom→right, left→top, right→bottom
+   - '\' reflects: top→right, bottom→left, left→bottom, right→top
+   - Walls reflect 180° (bounce back)
+   - Obstacles '#' and gargoyles block light
+3. Build a connectivity graph where nodes are gargoyle faces and edges exist if light connects them
+4. Find minimum rotations (V→H or H→V costs 1 rotation each) to make the graph connected
+5. Use state machine: IDLE, PARSE, TRACE, BUILD_GRAPH, CHECK_CONNECTIVITY, COMPUTE_MIN, DONE
+
+For fixed-point representation: Use integer arithmetic only since all values are discrete.
+
+Use bit manipulation for efficiency:
+- Grid cells: 3 bits per cell (8 possible values)
+- Direction encoding: 0=up, 1=right, 2=down, 3=left
+- Gargoyle face mapping: V faces are 0=top, 1=bottom; H faces are 0=left, 1=right
+
+The solver uses BFS to trace light paths from each face, building an adjacency matrix. Then it uses iterative search over rotation states to find minimum rotations needed. Since grid is small (4x4), maximum 16 gargoyle faces exist.
+
+Test Case Constraints:
+- Maximum 8 gargoyles per grid (16 faces total)
+- Light tracing limited to 64 steps per ray (grid is 4x4)
+- State space for rotations: 2^8 = 256 possibilities max
+
+Return -1 (0xFF) if no solution exists within constraints.

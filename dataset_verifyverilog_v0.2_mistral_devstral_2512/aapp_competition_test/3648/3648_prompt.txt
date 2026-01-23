@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'secure_network' that implements a simplified security-constrained minimum spanning tree problem.
+
+The problem is scaled down as follows:
+- Maximum number of buildings (nodes): 8
+- Maximum edge weight: 1023 (10 bits)
+- Maximum path length: 8 hops
+- Insecure buildings must be leaf nodes in the resulting tree (no traffic passes through them unless destination).
+- We will use a simplified approach: iterate through all possible subsets of edges to find the cheapest valid tree.
+
+Inputs:
+input clk               // Clock signal
+input rst_n             // Active-low reset
+input start             // Start computation
+input [2:0] n           // Number of buildings (1 to 8)
+input [2:0] p           // Number of insecure buildings (0 to 8)
+input [7:0] insecure_mask // Bitmask where bit i=1 means building i+1 is insecure
+input [7:0] edge_valid  // Valid bit for each of the 28 possible edges (8 choose 2)
+input [2:0] edge_u [27:0] // Source node for each edge (0-indexed)
+input [2:0] edge_v [27:0] // Destination node for each edge (0-indexed)
+input [9:0] edge_w [27:0] // Weight for each edge
+
+Outputs:
+output reg [15:0] result // Minimum cost (16 bits sufficient for 7 edges * 1023 = 7161)
+output reg done          // High when computation is complete
+output reg impossible    // High if no valid network exists
+
+Behavior:
+1. The module uses a state machine with states: IDLE, INIT, CHECK_SUBSET, CALCULATE_COST, UPDATE_BEST, DONE.
+2. It iterates through all possible subsets of valid edges (up to 28 edges, but we limit the search space for feasibility). 
+   Note: To keep it hardware-feasible, we will only check up to 16 edges max. The input edge_valid mask selects which edges to consider.
+3. For each subset, it checks:
+   a. Connectivity: Does it connect all n buildings? (BFS/DFS check, max 8 nodes)
+   b. Tree property: Does it have exactly n-1 edges?
+   c. Security: Are all insecure buildings leaf nodes? (Degree = 1 if connected, or 0 if isolated)
+4. If valid, calculate total weight and update minimum.
+
+Specific Logic:
+- Use a bitmask to represent the current subset of edges being checked.
+- Track connected components using a Union-Find structure or state-machine based BFS.
+- Track degree of each node to check for leaf requirement.
+- Since 2^28 subsets is too large, we limit the input or assume the 'edge_valid' mask selects a manageable number (e.g., <= 16 edges).
+
+Latency: Result valid 1000-2000 clock cycles after start (depending on edge count).
+
+Fixed-Point: Not applicable here as we use integer arithmetic.

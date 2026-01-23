@@ -1,0 +1,64 @@
+Design a sequential Verilog module named 'permutation_solver' that solves the public key cryptosystem problem for n=8.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] a_i // current public key value (1-8)
+input [2:0] index // index of current a_i value (0-7)
+
+Outputs:
+output reg [7:0] pi_out // permutation pi value for current index
+output reg [7:0] sigma_out // permutation sigma value for current index
+output reg [2:0] out_index // output index
+output reg found // high when valid permutations found
+output reg done // high when computation complete
+
+Specifications:
+- The module searches for two permutations pi and sigma of {1..8} such that (pi[i] + sigma[i]) % 8 = a[i] for each i
+- Use backtracking algorithm with state machine
+- Implement constraint checking: each number 1-8 used exactly once in each permutation
+- For modulo 8, values are 1-8, but modulo operation wraps: 8+8=16 ≡ 0 mod 8, but we need 1-8 range
+- Since values are 1-8, we interpret pi_i + sigma_i ≡ a_i (mod 8) with 1-8 range
+- Implement as: (pi_i + sigma_i - 1) % 8 + 1 = a_i, or equivalently (pi_i + sigma_i) % 8 = a_i % 8
+- For a_i in 1-8, we can treat modulo 8 where 8 ≡ 0
+- State machine states: IDLE, SEARCH_0, SEARCH_1, SEARCH_2, SEARCH_3, SEARCH_4, SEARCH_5, SEARCH_6, SEARCH_7, CHECK, FOUND, IMPOSSIBLE
+- Each SEARCH_k state tries to assign sigma[k] values 1-8 that satisfy constraint with pi[k] and unused numbers
+- Use depth-first search approach with backtracking
+- Latency: up to 10,000 clock cycles (worst-case search)
+- Store pi and sigma arrays internally (8x8-bit arrays)
+- Store used flags for each number in both permutations
+- On FOUND state, output the permutations sequentially through pi_out, sigma_out, out_index
+- Output sequence: for i=0 to 7, set pi_out=pi[i], sigma_out=sigma[i], out_index=i, wait for external read
+- After outputting all 8 pairs, set done=1
+
+Algorithm Details:
+1. Precompute all possible pairs (p,s) for each position i where (p+s)%8 = a[i] % 8, with p,s ∈ {1..8}
+2. Use backtracking: at position i, try each valid pair that doesn't conflict with used numbers
+3. If reach position 8 with valid assignment, found solution
+4. If no valid assignment exists at any position, backtrack
+5. If all possibilities exhausted at position 0, impossible
+
+Implementation Notes:
+- Use 3-bit counters for position index
+- Use 8-bit registers for pi[0:7] and sigma[0:7]
+- Use 8-bit flags for used_pi[1:8] and used_sigma[1:8] (index 0 unused)
+- For modulo arithmetic: (p + s) % 8 == a_i % 8, where % 8 of 8 is 0
+- Since inputs a_i are 1-8, we compute target_mod = (a_i == 8) ? 0 : a_i[2:0]
+- Valid pairs satisfy (p + s - 1) % 8 + 1 = a_i, or simpler: (p + s) % 8 == a_i % 8, with 8%8=0
+- For the example: n=5, a=[3,2,3,1,1], pi=[1,4,3,5,2], sigma=[2,3,5,1,4]
+- Check: (1+2)%5=3, (4+3)%5=2, (3+5)%5=3, (5+1)%5=1, (2+4)%5=1 ✓
+- For n=8 adaptation, we use modulo 8 arithmetic with values 1-8
+
+State Transitions:
+IDLE -> SEARCH_0 when start=1
+SEARCH_k -> SEARCH_k+1 if valid assignment at position k
+SEARCH_k -> BACKTRACK if no valid assignment
+BACKTRACK -> SEARCH_k-1 (decrement position)
+If position goes negative in BACKTRACK, go to IMPOSSIBLE
+If position reaches 8 in SEARCH_k, go to CHECK
+CHECK -> FOUND if valid solution, else BACKTRACK
+FOUND -> output loop (8 cycles) -> DONE
+IMPOSSIBLE -> DONE
+
+The module should compute the result through the state machine and output the permutations when found.

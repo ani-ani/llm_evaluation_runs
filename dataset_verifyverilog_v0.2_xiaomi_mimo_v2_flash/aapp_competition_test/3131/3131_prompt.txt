@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'max_subset_sum' that computes the sum of maximum elements in all K-sized subsets of an array.
+
+Problem Adaptation:
+- Input array size N is fixed to 16 (maximum)
+- Subset size K is fixed to 8 (maximum)
+- Input values are 32-bit unsigned integers
+- Output is 32-bit sum modulo 1000000007
+
+Module Interface:
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation pulse
+input [3:0] N // Actual number of elements (1 to 16)
+input [3:0] K // Subset size (1 to 8)
+input [31:0] data_in // Input value for array
+input [3:0] write_idx // Write index for array input
+
+Outputs:
+output reg [31:0] result // Final sum modulo 1000000007
+output reg done // High when computation is finished
+output reg busy // High when processing
+
+Internal Behavior:
+1. The module must store 16 values in a RAM (16x32-bit)
+2. On 'start' signal, it generates all combinations of K elements from N elements
+3. For each combination, find the maximum value
+4. Accumulate the sum of these maximums
+5. Perform modulo 1000000007 on the accumulated sum
+
+Combination Generation Strategy:
+Since N is small (<=16), we can generate combinations using index loops.
+Generate combinations as bitmasks of N bits with exactly K bits set.
+For N=16, maximum combinations is C(16,8)=12870 which takes many cycles.
+Optimization: Process in state machine.
+
+Detailed State Machine:
+- IDLE: Wait for start signal
+- LOAD_ARRAY: Accept 16 values from data_in/write_idx
+- GENERATE_COMBOS: Iterate through all combinations
+  - For each combination (bitmask with K ones):
+    - Scan bits to find selected indices
+    - Find maximum value among selected indices
+    - Add max to accumulator
+    - Apply modulo 1000000007
+- DONE: Set done=1, wait for reset
+
+Timing:
+- Data Load: 16 cycles (one per value)
+- Computation: Variable, up to ~13000 cycles for worst case
+- Result appears on 'result' bus when done=1
+
+Modulo Operation:
+Use subtraction-based modulo: while(sum >= MOD) sum -= MOD.
+MOD = 1000000007 (0x3B9ACA07).
+
+Output Format:
+Provide complete synthesizable Verilog code with all logic.

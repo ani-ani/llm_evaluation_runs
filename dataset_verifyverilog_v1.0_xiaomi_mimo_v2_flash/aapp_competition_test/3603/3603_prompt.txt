@@ -1,0 +1,154 @@
+module LanguagePairing (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] N,   // Number of languages (unused, kept for interface)
+    input wire [3:0] M,   // Number of translators (max 4)
+    // Translator definitions: each translator speaks two languages
+    input wire [3:0] lang1_0, lang2_0,
+    input wire [3:0] lang1_1, lang2_1,
+    input wire [3:0] lang1_2, lang2_2,
+    input wire [3:0] lang1_3, lang2_3,
+    // Output pairs of translator indices
+    output reg [3:0] pair1_tr1, pair1_tr2,
+    output reg [3:0] pair2_tr1, pair2_tr2,
+    output reg valid,      // Asserted when a valid pairing is found
+    output reg impossible  // Asserted when no pairing exists
+);
+
+// States
+localparam IDLE = 3'd0;
+localparam CHECK_M = 3'd1;
+localparam M2_CHECK = 3'd2;
+localparam M4_CHECK1 = 3'd3;
+localparam M4_CHECK2 = 3'd4;
+localparam M4_CHECK3 = 3'd5;
+localparam ODD_M = 3'd6;
+
+reg [2:0] state, next_state;
+
+// Helper function: check if two translators share a language
+function automatic logic share_language(
+    input [3:0] a1, a2,
+    input [3:0] b1, b2
+);
+    share_language = (a1 == b1) || (a1 == b2) || (a2 == b1) || (a2 == b2);
+endfunction
+
+// Combinational signals for share checks
+logic m2_share;
+assign m2_share = share_language(lang1_0, lang2_0, lang1_1, lang2_1);
+
+logic pair1_share_1, pair2_share_1;
+assign pair1_share_1 = share_language(lang1_0, lang2_0, lang1_1, lang2_1);
+assign pair2_share_1 = share_language(lang1_2, lang2_2, lang1_3, lang2_3);
+
+logic pair1_share_2, pair2_share_2;
+assign pair1_share_2 = share_language(lang1_0, lang2_0, lang1_2, lang2_2);
+assign pair2_share_2 = share_language(lang1_1, lang2_1, lang1_3, lang2_3);
+
+logic pair1_share_3, pair2_share_3;
+assign pair1_share_3 = share_language(lang1_0, lang2_0, lang1_3, lang2_3);
+assign pair2_share_3 = share_language(lang1_1, lang2_1, lang1_2, lang2_2);
+
+// State transition and output logic
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        valid <= 1'b0;
+        impossible <= 1'b0;
+        pair1_tr1 <= 4'd0;
+        pair1_tr2 <= 4'd0;
+        pair2_tr1 <= 4'd0;
+        pair2_tr2 <= 4'd0;
+    end else begin
+        state <= next_state;
+        case (state)
+            IDLE: begin
+                valid <= 1'b0;
+                impossible <= 1'b0;
+            end
+            M2_CHECK: begin
+                if (m2_share) begin
+                    pair1_tr1 <= 4'd0;
+                    pair1_tr2 <= 4'd1;
+                    valid <= 1'b1;
+                end else begin
+                    impossible <= 1'b1;
+                end
+            end
+            M4_CHECK1: begin
+                if (pair1_share_1 && pair2_share_1) begin
+                    pair1_tr1 <= 4'd0;
+                    pair1_tr2 <= 4'd1;
+                    pair2_tr1 <= 4'd2;
+                    pair2_tr2 <= 4'd3;
+                    valid <= 1'b1;
+                end
+            end
+            M4_CHECK2: begin
+                if (pair1_share_2 && pair2_share_2) begin
+                    pair1_tr1 <= 4'd0;
+                    pair1_tr2 <= 4'd2;
+                    pair2_tr1 <= 4'd1;
+                    pair2_tr2 <= 4'd3;
+                    valid <= 1'b1;
+                end
+            end
+            M4_CHECK3: begin
+                if (pair1_share_3 && pair2_share_3) begin
+                    pair1_tr1 <= 4'd0;
+                    pair1_tr2 <= 4'd3;
+                    pair2_tr1 <= 4'd1;
+                    pair2_tr2 <= 4'd2;
+                    valid <= 1'b1;
+                end else begin
+                    impossible <= 1'b1;
+                end
+            end
+            ODD_M: begin
+                impossible <= 1'b1;
+            end
+        endcase
+    end
+end
+
+// Next state logic
+always_comb begin
+    next_state = state;
+    case (state)
+        IDLE: begin
+            if (start) next_state = CHECK_M;
+        end
+        CHECK_M: begin
+            if (M[0]) // M is odd
+                next_state = ODD_M;
+            else if (M == 4'd2)
+                next_state = M2_CHECK;
+            else if (M == 4'd4)
+                next_state = M4_CHECK1;
+            else
+                next_state = ODD_M; // Unsupported M, treat as impossible
+        end
+        M2_CHECK: next_state = IDLE;
+        M4_CHECK1: begin
+            if (pair1_share_1 && pair2_share_1)
+                next_state = IDLE;
+            else
+                next_state = M4_CHECK2;
+        end
+        M4_CHECK2: begin
+            if (pair1_share_2 && pair2_share_2)
+                next_state = IDLE;
+            else
+                next_state = M4_CHECK3;
+        end
+        M4_CHECK3: begin
+            next_state = IDLE;
+        end
+        ODD_M: next_state = IDLE;
+        default: next_state = IDLE;
+    endcase
+end
+
+endmodule

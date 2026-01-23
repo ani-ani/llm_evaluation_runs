@@ -1,0 +1,386 @@
+Design a sequential Verilog module named 'max_eligible_pupils' that solves a simplified version of the excursion problem.
+
+**Problem Adaptation**:
+- Maximum N = 16 pupils (scaled down from 1000)
+- Height: 0-255 cm (8 bits)
+- Sex: 1 bit (0=F, 1=M)
+- Music Style: 3-bit code (0=classicism, 1=baroque, 2=romance, 3=other)
+- Sport: 3-bit code (0=programming, 1=skiing, 2=chess, 3=soccer, 4=ping-pong, 5=Paintball, 6=other)
+
+**Input Interface**:
+- Input clk and rst_n (active low)
+- Input start: pulse to begin computation
+- Input [4:0] num_pupils: actual number of pupils (1-16)
+- Input [7:0] heights [0:15]: array of heights
+- Input [0:15] sexes: packed bits for sex (1 bit per pupil)
+- Input [2:0] music [0:15]: array of music style codes
+- Input [2:0] sport [0:15]: array of sport codes
+
+**Conflict Rules** (pupils i and j conflict if they MUST be separated, i.e., they DON'T satisfy any rule):
+Two pupils CANNOT be together (conflict) if ALL of these are true:
+1. |height_i - height_j| <= 40 (NOT differing by > 40)
+2. sex_i == sex_j (same sex)
+3. music_i == music_j (same music)
+4. sport_i != sport_j (DIFFERENT sport)  
+Wait, rule says: "Their favourite sport is the SAME (they are likely to be fans of different teams and that would result in fighting)" is a GOOD rule (low probability of couple).
+So conflict (BAD pair) is if NONE of the rules are satisfied.
+
+Rules for LOW probability of couple (Safe):
+1. |h_i - h_j| > 40
+2. sex_i != sex_j
+3. music_i != music_j
+4. sport_i == sport_j
+
+Conflict (Unacceptable pair) if:
+- |h_i - h_j| <= 40 AND
+- sex_i == sex_j AND
+- music_i == music_j AND
+- sport_i != sport_j
+
+Wait, the prompt says: "for any two persons that he brings on the excursion, they must satisfy at least one of the requirements above."
+So, if we pick a set of pupils, for EVERY pair in that set, at least one rule must be true.
+
+**Algorithm**: Maximum Independent Set on the "Conflict Graph".
+A "Conflict Edge" exists between i and j if they violate ALL rules.
+Maximize number of nodes such that NO edge exists between selected nodes.
+
+**Module Specification**:
+- Sequential implementation using Branch and Bound algorithm.
+- State Machine: IDLE -> CALC_EDGES -> BRANCH_START -> BRANCH_EXPAND -> BRANCH_BACKTRACK -> DONE
+- **Edge Calculation**: Iterate i, j (0 to N-1) to build adjacency matrix (16x16 stored in 16x16 bits). This takes 128 cycles.
+- **Branch and Bound**: Recursive backtracking simulation using registers.
+  - Registers: `current_node`, `max_clique_size`, `current_clique_size`, `excluded_nodes_mask` (16 bits).
+  - We are finding Max Independent Set. Equivalently, find Max Clique in the complement graph (where edges mean "can be together").
+  - However, N=16 is small enough for Max Independent Set via backtracking.
+  - Optimization: Order nodes by degree.
+
+**Outputs**:
+- output reg [4:0] max_persons: Result
+- output reg done: High when finished
+- output reg valid: High when result is valid
+
+**Latency**: Approximately 5000-10000 cycles depending on graph density.
+
+**Pupil Data Representation**: The input arrays must be flattened or passed in chunks if port count is limited, but assume direct array inputs are allowed for N=16.
+
+**Detailed State Description**:
+- IDLE: Wait for start. Reset result.
+- CALC_EDGES: 
+  - Use nested loops (i from 0 to N-1, j from i+1 to N-1).
+  - Check conflict condition: 
+    `diff_h = (h[i] > h[j]) ? (h[i] - h[j]) : (h[j] - h[i]);`
+    `conflict = (diff_h <= 40) && (sex[i] == sex[j]) && (music[i] == music[j]) && (sport[i] != sport[j]);`
+  - Store `adj_matrix[i][j] = conflict` (and sym). Use 16 registers of 16 bits.
+  - Calculate degree of each node for ordering.
+- BRANCH_START: Initialize solver state. Sort nodes by degree (hardcoded or simple swap logic).
+- BRANCH_EXPAND/BACKTRACK: 
+  - Standard Max Independent Set backtracking.
+  - State variables: `candidate_set` (bitmask of available nodes), `current_size`.
+  - Loop: Pick a node `v`. 
+    - Option 1: Include `v`. Remove `v` and its neighbors from candidate set. Increment size.
+    - Option 2: Exclude `v`. Remove `v` from candidate set. 
+  - Pruning: If `current_size + popcount(candidate_set) <= max_so_far`, backtrack.
+  - Since we need to implement this sequentially with minimal state, we will unroll or use a loop counter.
+  - For N=16, we can implement a brute force with pruning, iterating over subsets or specific backtracking.
+  - Given hardware constraints, a state machine that iterates through the decision tree is best.
+  - We will maintain a stack (in registers) or implement iterative deepening.
+  - Let's use a single pass backtracking with loop counters and a stack of 16 entries to store decision history.
+  - Registers: 
+    - `stack_pos` (4 bits)
+    - `candidate_mask` (16 bits)
+    - `current_clique_mask` (16 bits) - actually just need count.
+    - `best_size` (5 bits).
+    - `mode`: 0=Try including, 1=Try excluding.
+
+**Edge Logic Details**:
+Conflict if: `diff <= 40` AND `sex_eq` AND `music_eq` AND `sport_neq`.
+Complement Edge (Can be together) if NOT Conflict.
+Max Independent Set on Conflict Graph is equivalent to Max Clique on Complement Graph.
+We will build the Conflict Graph adjacency matrix. 
+Then, we want Max Independent Set.
+
+Backtracking Algorithm (Iterative):
+State: `current_node` (0 to N-1), `current_set_size`, `candidate_mask`.
+Start: `candidate_mask = (1<<N)-1`, `best = 0`, `current_size = 0`.
+
+Loop:
+  If `candidate_mask == 0`: 
+    Update `best`. Backtrack.
+  Pick lowest index `v` in `candidate_mask`.
+  
+  Branch 1: Include `v`.
+    - New mask = `candidate_mask & ~(conflict_mask[v] | (1<<v))`.
+    - `current_size++`.
+    - If `new_mask == 0`: Update best. Backtrack.
+    - Else: Continue.
+  
+  Branch 2: Exclude `v`.
+    - New mask = `candidate_mask & ~(1<<v)`.
+    - Check pruning: `current_size + popcount(new_mask) <= best`. If so, backtrack.
+    
+This is complex for a single Verilog module to do fully generic backtracking with stack.
+
+**Alternative (Simpler & Robust)**:
+For N=16, Max Independent Set can be found by iterating over all subsets? No, 2^16 = 65536. 
+With 100MHz clock, 65536 iterations is 0.6ms. Acceptable.
+
+We can implement an iterative subset search.
+Algorithm: 
+1. Generate subsets (brute force or Gray code).
+2. Check if subset is an Independent Set (no edges between any two nodes in subset).
+3. Keep track of max size.
+
+This is easier to implement in hardware state machine:
+- State: GENERATE_SUBSET
+- State: CHECK_SUBSET
+- State: UPDATE_BEST
+
+`CHECK_SUBSET`: 
+Iterate `i` from 0 to N-1. 
+  If bit `i` is set:
+    Iterate `j` from i+1 to N-1.
+      If bit `j` is set:
+        Check `adj[i][j]`. If 1, valid = 0.
+
+`GENERATE_SUBSET`:
+Increment a 16-bit counter `subset_mask` from 1 to (1<<N)-1.
+
+Total cycles:
+Subsets: 65535.
+For each subset, check edges: roughly N^2/2 = 128 checks.
+Total ops: ~8 million. 
+At 100MHz, ~80ms. This might be too slow for simulation, but for N=16 it's the most robust hardware implementation.
+
+Wait, N is max 16, but usually small. 
+Let's try the backtracking approach again, but iterative using a stack of registers.
+We need to store: `mask` and `size` for each recursion level.
+Stack depth: N.
+
+Registers:
+- `stack_mask[15:0]`: 16 x 16 bits.
+- `stack_size[15:0]`: 16 x 5 bits.
+- `stack_ptr`: 4 bits.
+- `best_size`: 5 bits.
+- `current_mask`: 16 bits.
+- `current_size`: 5 bits.
+
+Steps:
+1. Init: `best_size=0`, `stack_ptr=0`, `current_mask = (1<<N)-1`, `current_size=0`.
+2. Loop:
+   a. If `current_mask == 0`:
+      Update best. Pop stack. If stack empty -> DONE. Else restore.
+   b. Pick `v` (lowest bit in `current_mask`).
+   c. **Try Include**:
+      - Calculate `new_mask = current_mask & ~conflict_mask[v] & ~(1<<v)`.
+      - Push `current_mask` and `current_size` to stack.
+      - Update `current_mask = new_mask`, `current_size = current_size + 1`.
+      - If `current_size + popcount(current_mask) <= best_size`: Prune (Pop stack, go to exclude branch). 
+      - (Implicitly we proceed to next loop iteration)
+   d. **Try Exclude** (This happens if we backtrack from Include):
+      - Update `current_mask = current_mask & ~(1<<v)`.
+      - If pruned (from c), we are here. 
+      - If `current_mask` becomes 0, backtrack.
+      
+Wait, standard backtracking logic in hardware:
+We need a state machine that tracks "Stage" (Include or Exclude attempt).
+
+Registers:
+- `mode`: 0 = Try Include, 1 = Try Exclude.
+- `v`: The node picked.
+
+State Machine:
+- IDLE -> SETUP
+- SETUP: Pick `v`. Set `mode=0`. Push to stack.
+- INCLUDE: 
+  - Compute `inc_mask`. 
+  - Check `size + popcount(inc_mask) <= best`. 
+  - If YES, prune: Jump to EXCLUDE (restore mask, but keep `v`).
+  - If NO: Update `current_mask = inc_mask`, `current_size++`. 
+    - If `current_mask == 0`: Update Best. Backtrack.
+    - Else: Loop back to SETUP (pick next v).
+- EXCLUDE:
+  - Compute `exc_mask = current_mask & ~(1<<v)`.
+  - Update `current_mask = exc_mask`.
+  - If `exc_mask == 0`: Backtrack.
+  - Else: Loop back to SETUP.
+- BACKTRACK:
+  - Pop stack.
+  - If stack empty -> DONE.
+  - If previous state was INCLUDE: We need to switch to EXCLUDE.
+  - If previous state was EXCLUDE: We need to backtrack again.
+
+This seems doable with ~400 lines of Verilog logic.
+
+Let's stick to the prompt requirements.
+Module name: `max_eligible_pupils`.
+Inputs/Outputs as defined.
+
+Refined logic for `conflict_mask` generation:
+For each node `i` (0 to 15):
+  `conflict_mask[i] = 0`;
+  For each node `j` (0 to 15):
+    If `i != j`:
+      `diff = abs(height[i] - height[j])`
+      `cond = (diff <= 40) & (sex[i] == sex[j]) & (music[i] == music[j]) & (sport[i] != sport[j])`
+      `if cond: conflict_mask[i] |= (1 << j)`
+
+Note on Inputs: The prompt asks for `input [0:15] sexes` (packed) and arrays for others. This is good.
+
+Testbench: 
+Need to convert test cases to scaled inputs.
+Test case 1:
+Pupils: 4
+1. 35 M classicism programming
+2. 0 M baroque skiing
+3. 43 M baroque chess
+4. 30 F baroque soccer
+
+Scale:
+- Music: classicism=0, baroque=1
+- Sport: programming=0, skiing=1, chess=2, soccer=3
+
+Check conflicts:
+P1 (35, M, 0, 0) vs P2 (0, M, 1, 1): 
+  diff=35 <= 40. Sex=M=M. Music=0!=1. 
+  Rule 3 triggered (Music diff) -> Safe. No conflict.
+P1 vs P3 (43, M, 1, 2):
+  diff=8 <= 40. Sex=M=M. Music=0!=1. 
+  Safe. No conflict.
+P1 vs P4 (30, F, 1, 3):
+  diff=5 <= 40. Sex=M!=F. 
+  Rule 2 triggered. Safe. No conflict.
+P2 vs P3 (0, 43): diff=43 > 40. Rule 1 triggered. Safe.
+P2 vs P4 (0, 30): diff=30 <= 40. Sex=M!=F. Safe.
+P3 vs P4 (43, 30): diff=13 <= 40. Sex=M!=F. Safe.
+
+Result: All pairs are safe. We can take all 4.
+Wait, Sample Output is 3.
+
+Let's re-read rules.
+Rule 1: Diff > 40. (Good)
+Rule 2: Same sex. (Good)
+Rule 3: Different music. (Good)
+Rule 4: Same sport. (Good)
+
+P1 vs P2:
+Diff 35 <= 40. (Bad)
+Sex M=M. (Good) -> Satisfied Rule 2. Safe.
+P1 vs P3:
+Diff 8 <= 40. (Bad)
+Sex M=M. (Good) -> Satisfied Rule 2. Safe.
+P1 vs P4:
+Diff 5 <= 40. (Bad)
+Sex M!=F. (Bad)
+Music classicism!=baroque. (Good) -> Satisfied Rule 3. Safe.
+P2 vs P3:
+Diff 43 > 40. (Good) -> Satisfied Rule 1. Safe.
+P2 vs P4:
+Diff 30 <= 40. (Bad)
+Sex M!=F. (Bad)
+Music baroque=baroque. (Bad)
+Sport skiing!=soccer. (Bad)
+Wait, Rule 4: "Their favourite sport is the SAME" is Good.
+P2 sport=skiing, P4 sport=soccer. Different. So Rule 4 NOT satisfied.
+So P2 and P4 satisfy NO rules.
+They CANNOT be together.
+
+P3 vs P4:
+Diff 13 <= 40. (Bad)
+Sex M!=F. (Bad)
+Music baroque=baroque. (Bad)
+Sport chess!=soccer. (Bad)
+P3 and P4 also satisfy NO rules.
+
+So Conflict Graph:
+Edges: (2, 3) and (2, 4)? Wait indices 0,1,2,3.
+P0, P1, P2, P3.
+Conflicts: (1, 3) and (2, 3).
+Max Independent Set: {0, 1, 2}. Size 3. Correct.
+
+So the logic is correct.
+
+Test Case 2:
+8 pupils. Output 7.
+I'll verify one conflict.
+
+0: 27 M romance programming (0,1,2,0)
+1: 194 F baroque programming (194,0,1,0)
+2: 67 M baroque ping-pong (67,1,1,4)
+3: 51 M classicism programming (51,1,0,0)
+4: 80 M classicism Paintball (80,1,0,5)
+5: 35 M baroque ping-pong (35,1,1,4)
+6: 39 F romance ping-pong (39,0,2,4)
+7: 110 M romance Paintball (110,1,2,5)
+
+Check 0 vs 1:
+Diff 167 > 40. Rule 1. Safe.
+Check 0 vs 2:
+Diff 40 <= 40. Sex M=M. Music 2!=1. Rule 3. Safe.
+...
+Check 2 vs 5:
+Diff 32 <= 40. Sex M=M. Music 1=1. Sport 4=4. Rule 4. Safe.
+Check 0 vs 6:
+Diff 12 > 40? 39-27=12. No.
+Sex M!=F. No.
+Music 2=2. No.
+Sport 0!=4. No.
+Conflict! P0 and P6 cannot be together.
+
+So we exclude P0 (or P6). Max set 7.
+
+Verilog Implementation Details:
+Inputs need to be arrays. `input [7:0] heights [0:15]` is valid Verilog for packed arrays or unpacked depending on tool.
+For compatibility, let's use `input [7:0] heights_0, heights_1, ...` or `input [127:0] heights_packed`.
+Prompt says: `input [7:0] heights [0:15]`. I will stick to this but assume it represents 16 independent 8-bit inputs.
+
+Testbench:
+We need to instantiate the DUT and drive these signals.
+In cocotb, we can assign `dut.heights[0] = 35`, etc.
+
+Final check on constraints:
+- "The module has the required inputs and outputs to verify".
+- I need to generate the `conflict_mask` logic.
+- The backtracking logic needs to be efficient enough for N=16.
+- 2^16 brute force is safer to implement correctly and fits in time.
+  - Loop 1 to 65535.
+  - Check validity.
+  - Track max.
+  - This avoids complex stack logic.
+  - 65535 * 128 cycles ~ 8M cycles. 80ms at 100MHz. Acceptable for simulation.
+
+Let's go with Brute Force Subset enumeration.
+
+State Machine:
+- IDLE
+- GEN_CONFLICT: Precompute conflict matrix (16x16 bits). This takes ~256 cycles.
+- INIT_SEARCH: Set `best_size = 0`, `current_subset = 1`.
+- CHECK_SUBSET:
+  - Check if `current_subset` is valid independent set.
+    - Loop `i` 0..15, `j` i+1..15.
+    - If `subset[i]` and `subset[j]` are both 1:
+      - Check `conflict_matrix[i][j]`. If 1 -> Invalid.
+  - If valid: `popcount(subset) > best_size` -> update best.
+- INCREMENT: `current_subset++`. If `current_subset < (1<<N)`, go to CHECK_SUBSET. Else DONE.
+
+Wait, checking validity takes loops. 
+We can optimize validity check.
+Let `mask = current_subset`.
+Let `violators = 0`.
+For `i` in 0..N-1:
+  If `mask[i]`:
+    `neigh = conflict_mask[i]`.
+    If `mask & neigh`: Violation.
+
+This is faster: Iterate `i`, if bit set, `mask & conflict_mask[i]`. If non-zero, invalid.
+
+So we need `conflict_mask[0..15]`.
+
+Total Cycles:
+Gen Conf: ~256
+Search: 
+  Loop 1 to 65535.
+  Check: Iterate i 0..N-1 (max 16). 
+  So 65535 * 16 = 1,048,560 cycles.
+  Total ~1.05M cycles. 10ms at 100MHz. Very fast.
+
+This is the plan.

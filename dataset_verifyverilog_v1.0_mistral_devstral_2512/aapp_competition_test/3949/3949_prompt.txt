@@ -1,0 +1,58 @@
+MONOPOLE MAGNET VERILOG SPECIFICATION
+
+You are to design a Verilog module that determines the minimum number of north magnets required for a simplified monopole magnet problem on an 8x8 grid.
+
+Problem Definition:
+- Given an 8x8 grid where each cell is either BLACK (1) or WHITE (0)
+- Conditions:
+  1. Each row must have contiguous black cells (or no black cells)
+  2. Each column must have contiguous black cells (or no black cells)
+  3. If there are empty rows, there must be empty columns, and vice versa
+- If conditions fail, output -1 (represented as 16'hFFFF)
+- Otherwise, output the number of connected components of black cells (using 4-directional connectivity)
+
+Module Interface:
+
+  Inputs:
+    - clk         : Clock signal (rising edge triggered)
+    - rst_n       : Active-low synchronous reset
+    - start       : Start pulse (assert for 1 cycle to begin computation)
+    - grid_0[7:0] : Row 0 of the grid (8 bits)
+    - grid_1[7:0] : Row 1 of the grid (8 bits)
+    - grid_2[7:0] : Row 2 of the grid (8 bits)
+    - grid_3[7:0] : Row 3 of the grid (8 bits)
+    - grid_4[7:0] : Row 4 of the grid (8 bits)
+    - grid_5[7:0] : Row 5 of the grid (8 bits)
+    - grid_6[7:0] : Row 6 of the grid (8 bits)
+    - grid_7[7:0] : Row 7 of the grid (8 bits)
+    
+    Note: Each bit represents a cell in the row (bit 7 = column 0, bit 0 = column 7)
+  
+  Outputs:
+    - result      : 16-bit result (0-64 for component count, 16'hFFFF for -1)
+    - done        : Asserted high for 1 cycle when computation completes
+
+  Timing:
+    - Assert start for 1 clock cycle
+    - done will go high within 5000 cycles
+    - Sample result on the same cycle done is high
+
+  Reset behavior:
+    - On rst_n=0: done=0, result=0, internal state cleared
+    - Minimum 2 clock cycles of reset required
+
+Implementation Requirements:
+- Use a finite state machine with these states:
+  IDLE, ROW_CHECK, COL_CHECK, CONSISTENCY_CHECK, COMPONENT_COUNT, DONE, ERROR
+- Component counting: Use iterative BFS with a visited array (8x8 bits)
+- For row/col checks: Verify contiguous black segments (no gaps)
+- For consistency: Check (empty_rows == 0) xor (empty_cols == 0) == 0
+- Parameterizable for 8x8 grid size
+- Use reasonable resource utilization (no large memories)
+
+Example test cases:
+1. Input: 3x3 pattern with 1 component, valid -> Output: 1
+2. Input: 4x2 pattern with gap -> Output: 16'hFFFF
+3. Input: 4x5 pattern with 2 components -> Output: 2
+4. Input: 2x1 pattern with empty row -> Output: 16'hFFFF
+5. Input: 3x5 all white -> Output: 0

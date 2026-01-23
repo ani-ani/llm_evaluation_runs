@@ -1,0 +1,61 @@
+## Verilog Module: Binary Sequence Counter
+
+### Problem Description
+Computes the count of binary sequences of length 2n where sum of first n bits equals sum of last n bits. This equals sum of C(n,k)² for k=0 to n.
+
+### Interface Specification
+
+**Module Name:** `binary_seq_counter`
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start pulse (assert for 1 cycle to begin computation)
+- `n_in`: 4-bit input value (1-8) representing parameter n
+
+**Outputs:**
+- `result`: 16-bit output result (supports values up to 256 for n=8)
+- `done`: Asserted high for 1 cycle when computation is complete
+
+**Parameters:**
+- `MAX_N = 8`: Maximum supported value of n
+- `DATA_WIDTH = 16`: Bit width for result
+- `N_WIDTH = 4`: Bit width for n input
+
+### Functional Requirements
+
+1. **Computation Algorithm:**
+   - Initialize: `res = 1`, `nCr = 1`, `r = 1`
+   - Loop for `r` from 1 to `n` (inclusive):
+     - `nCr = nCr * (n + 1 - r) / r` (integer division)
+     - `res = res + nCr * nCr`
+   - Output final `res` value
+
+2. **State Machine States:**
+   - `IDLE`: Wait for start signal
+   - `CALC`: Iterate through r=1 to n, computing nCr and accumulating result
+   - `DONE`: Assert done signal for 1 cycle
+
+3. **Timing:**
+   - After start pulse, computation takes n+3 cycles (1 init + n calc + 1 done)
+   - `done` asserted for exactly 1 clock cycle
+   - `result` valid when `done` is high
+
+4. **Reset Behavior:**
+   - On `rst_n=0`: `result=0`, `done=0`, all internal state cleared
+   - Minimum 2 clock cycles of reset required
+
+5. **Constraints:**
+   - n must be 1-8 (tested range)
+   - All intermediate values fit within 32-bit arithmetic
+   - Result fits within 16-bit output
+
+### Expected Results for Test Cases
+- n=1: result=2
+- n=2: result=6  
+- n=3: result=20
+
+### Implementation Notes
+- Use combinational logic for multiplication and division
+- Register intermediate values between iterations
+- Ensure integer arithmetic (no floating point)

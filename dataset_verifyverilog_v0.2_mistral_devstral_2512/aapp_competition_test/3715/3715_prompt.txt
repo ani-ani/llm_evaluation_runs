@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'vacation_scheduler' that computes the minimum number of rest days required for Vasya's vacation schedule.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation (load data then process)
+input [1:0] day_data // Current day's activity data (0-3)
+input [6:0] day_index // Index of current day data (0-99)
+input data_valid // High when day_data is valid
+
+Outputs:
+output reg [7:0] min_rest_days // Result: minimum rest days (8 bits covers 0-100)
+output reg done // High when computation complete
+
+Behavior:
+The module should implement a state machine to process a sequence of up to 100 days.
+
+Day encoding (day_data):
+  2'b00: Gym closed, no contest (must rest)
+  2'b01: Gym closed, contest available (can rest or contest)
+  2'b02: Gym open, no contest (can rest or sport)
+  2'b03: Gym open, contest available (can rest, sport, or contest)
+
+State machine states:
+  IDLE: Wait for start signal
+  LOAD: Load data into internal buffer (wait for data_valid)
+  COMPUTE: Process the schedule using DP
+  DONE: Result ready
+
+DP Algorithm (simplified for hardware):
+Use 3 state variables representing the previous day's activity:
+  state[0]: Last day was rest (or start)
+  state[1]: Last day was contest
+  state[2]: Last day was sport
+
+Each state stores the MAXIMUM number of active days (non-rest) achieved so far.
+
+Transition rules for each day i:
+  If day_data == 0: Next states all 0 (must rest), increment rest count
+  If day_data == 1: 
+    Can do contest if prev state != 1
+    New contest state = max(prev_rest, prev_sport) + 1
+  If day_data == 2:
+    Can do sport if prev state != 2
+    New sport state = max(prev_rest, prev_contest) + 1
+  If day_data == 3:
+    Can do contest or sport
+    New contest = max(prev_rest, prev_sport) + 1
+    New sport = max(prev_rest, prev_contest) + 1
+  New rest = max(prev_rest, prev_contest, prev_sport)
+
+Result: min_rest_days = total_days - max(max_active_days)
+
+Latency: Computation takes N+2 clock cycles after start (N=number of days).
+Use state machine: IDLE -> LOAD -> COMPUTE -> DONE.
+
+Internal storage: Buffer 100 days of 2-bit data (200 bits total), or process on-the-fly with state registers.

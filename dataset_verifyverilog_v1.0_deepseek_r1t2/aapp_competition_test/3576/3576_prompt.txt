@@ -1,0 +1,85 @@
+module evasion_probability #(
+    parameter R_WIDTH = 8,
+    parameter C_WIDTH = 8,
+    parameter K_WIDTH = 8
+) (
+    input clk,
+    input rst_n,
+    input start,
+    input [R_WIDTH-1:0] R,
+    input [C_WIDTH-1:0] C,
+    input [K_WIDTH-1:0] K,
+    output reg [63:0] numerator,
+    output reg [63:0] denominator,
+    output reg valid
+);
+
+// State machine states
+reg [2:0] state;
+localparam IDLE = 0;
+localparam CALC_S = 1;
+localparam CALC_M = 2;
+localparam DONE = 3;
+
+// Internal registers
+reg [63:0] S, M;
+reg [7:0] i, j;
+reg [63:0] term;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        valid <= 0;
+        numerator <= 0;
+        denominator <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                valid <= 0;
+                if (start) begin
+                    S <= 0;
+                    i <= 0;
+                    j <= 0;
+                    state <= CALC_S;
+                end
+            end
+            
+            CALC_S: begin
+                // Compute S = sum_{|dr|+|dc|≤K} (R-|dr|)(C-|dc|)
+                if (i <= R-1 && i <= K) begin
+                    if (j <= C-1 && i + j <= K) begin
+                        term = (R - i) * (C - j);
+                        if (i == 0 && j == 0) 
+                            S <= S + term;
+                        else if (i == 0 || j == 0) 
+                            S <= S + 2 * term;
+                        else 
+                            S <= S + 4 * term;
+                        j <= j + 1;
+                    end else begin
+                        j <= 0;
+                        i <= i + 1;
+                    end
+                end else begin
+                    state <= CALC_M;
+                end
+            end
+            
+            CALC_M: begin
+                M <= R * C;
+                state <= DONE;
+            end
+            
+            DONE: begin
+                // numerator = M^2 - S
+                // denominator = M^2
+                numerator <= (M * M) - S;
+                denominator <= M * M;
+                valid <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,141 @@
+module NauuoCards(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] hand_0, hand_1, hand_2, hand_3, hand_4, hand_5, hand_6, hand_7,
+    input wire [7:0] pile_0, pile_1, pile_2, pile_3, pile_4, pile_5, pile_6, pile_7,
+    output reg [7:0] result,
+    output reg done
+);
+
+// Parameters
+parameter MAX_N = 8;
+parameter DATA_WIDTH = 8;
+
+// State machine states
+typedef enum logic [2:0] {
+    IDLE,
+    CALC_POS,
+    CHECK_SEQ,
+    CALC_MAX,
+    FINISH
+} state_t;
+
+state_t current_state, next_state;
+
+// Internal registers
+reg [7:0] pos [0:7];  // Position of each card in pile (0 if not in pile)
+reg [7:0] max_val;
+reg [7:0] i_reg;      // Loop counter
+reg [7:0] j_reg;      // Secondary counter
+reg seq_valid;        // Flag for sequential chain validity
+reg [7:0] chain_len;  // Length of chain starting from 1
+
+// Helper: find position of card in pile
+function automatic [7:0] find_position(input [7:0] card);
+    begin
+        find_position = 0;
+        if (pile_0 == card) find_position = 1;
+        else if (pile_1 == card) find_position = 2;
+        else if (pile_2 == card) find_position = 3;
+        else if (pile_3 == card) find_position = 4;
+        else if (pile_4 == card) find_position = 5;
+        else if (pile_5 == card) find_position = 6;
+        else if (pile_6 == card) find_position = 7;
+        else if (pile_7 == card) find_position = 8;
+    end
+endfunction
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        current_state <= IDLE;
+        result <= 0;
+        done <= 0;
+        max_val <= 0;
+        i_reg <= 0;
+        j_reg <= 0;
+        seq_valid <= 0;
+        chain_len <= 0;
+    end else begin
+        current_state <= next_state;
+        
+        case (current_state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    i_reg <= 1;  // Start with card 1
+                    max_val <= 0;
+                    seq_valid <= 1;
+                    chain_len <= 0;
+                end
+            end
+            
+            CALC_POS: begin
+                // Calculate position for current card (i_reg)
+                pos[i_reg-1] <= find_position(i_reg);
+                i_reg <= i_reg + 1;
+            end
+            
+            CHECK_SEQ: begin
+                // Check if cards form sequential chain
+                if (i_reg <= 8 && pos[i_reg-1] != 0 && pos[i_reg-1] == i_reg + j_reg) begin
+                    chain_len <= i_reg;
+                end else begin
+                    seq_valid <= 0;
+                end
+                i_reg <= i_reg + 1;
+            end
+            
+            CALC_MAX: begin
+                // Calculate max(pos[i] - i + 1 + 8)
+                if (i_reg <= 8 && pos[i_reg-1] != 0) begin
+                    reg [7:0] val = pos[i_reg-1] - i_reg + 1 + 8;
+                    if (val > max_val) max_val <= val;
+                end
+                i_reg <= i_reg + 1;
+            end
+            
+            FINISH: begin
+                // Determine result based on sequential chain
+                if (seq_valid && chain_len > 0) begin
+                    result <= 8 - chain_len;  // n - chain_len
+                end else begin
+                    result <= max_val;
+                end
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = current_state;
+    case (current_state)
+        IDLE: begin
+            if (start) next_state = CALC_POS;
+        end
+        
+        CALC_POS: begin
+            if (i_reg > 8) next_state = CHECK_SEQ;
+            else next_state = CALC_POS;
+        end
+        
+        CHECK_SEQ: begin
+            if (i_reg > 8) next_state = CALC_MAX;
+            else next_state = CHECK_SEQ;
+        end
+        
+        CALC_MAX: begin
+            if (i_reg > 8) next_state = FINISH;
+            else next_state = CALC_MAX;
+        end
+        
+        FINISH: begin
+            next_state = IDLE;
+        end
+    endcase
+end
+
+endmodule

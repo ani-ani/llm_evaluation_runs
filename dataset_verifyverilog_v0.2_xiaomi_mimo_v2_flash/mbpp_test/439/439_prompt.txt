@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'multiple_to_single' that joins a list of multiple integers into a single integer.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [31:0] num_1, num_2, num_3, num_4, num_5, num_6 // up to 6 input numbers (32-bit signed)
+input [2:0] count // number of valid inputs (1-6)
+
+Outputs:
+output reg [63:0] result // final concatenated integer
+output reg done // high when computation complete
+output reg error // high if result would overflow 64 bits
+
+Specification:
+The module implements the equivalent of Python's multiple_to_single function:
+- Takes up to 6 signed 32-bit integers
+- Concatenates them as if converting each to decimal string and joining
+- If ANY input is negative, the entire result is negative (Python behavior)
+- The magnitude is the concatenation of absolute values
+- Result limited to 64-bit signed range (-2^63 to 2^63-1)
+
+Behavior:
+1. On start assertion, process inputs sequentially
+2. For each number, extract decimal digits (max 10 digits per 32-bit int)
+3. Track if any input was negative for final sign
+4. Build result digit-by-digit (as decimal, not binary)
+5. Check for overflow before completing
+
+Latency: Approximately 100 clock cycles (depends on number of digits)
+
+State Machine States:
+- IDLE: Wait for start signal
+- CHECK_SIGN: Determine if result will be negative
+- CONVERT_NUM: Convert current number to decimal digits
+- BUILD_RESULT: Shift and add digits to result
+- VERIFY: Check for overflow
+- DONE: Signal completion
+
+Example:
+Input: [11, 33, 50], count=3 -> result = 113350 (0x0001BB96)
+Input: [-1, 2, 3, 4, 5, 6], count=6 -> result = -123456 (0xFFFFFFFFFFE1A0F0)
+Input: [10, 15, 20, 25], count=4 -> result = 10152025 (0x009AD509)
+
+Implementation notes:
+- Use binary-coded decimal (BCD) approach for digit extraction
+- Track position in result and current input index
+- Handle 2's complement for negative inputs
+- 64-bit result with overflow detection

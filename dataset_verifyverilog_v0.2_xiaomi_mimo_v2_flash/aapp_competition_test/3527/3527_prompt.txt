@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'network_optimizer' that computes the maximum number of hops (diameter) in a network formed by connecting two disjoint trees with a single cable.
+
+The module operates on a graph with a fixed maximum of 16 nodes (N=16). The graph is provided as an adjacency list (flattened into arrays).
+
+Inputs:
+input clk: System clock
+input rst_n: Active-low reset
+input start: Start computation
+input [4:0] node_count: Total number of nodes (1 to 16)
+input [15:0] edge_count: Total number of edges (only used for validation)
+input [4:0] edges_u [15:0]: Source nodes of edges
+input [4:0] edges_v [15:0]: Destination nodes of edges
+
+Outputs:
+output reg [3:0] result: The maximum number of hops (diameter) of the resulting network. Since we connect two trees, the diameter is either the max of the diameters of the individual trees OR the sum of the heights of the two trees + 1 (or + 0 depending on edge definition, but +1 for the connecting edge usually).
+output reg done: High when computation is complete
+
+Internal Logic:
+The module must find the two disjoint trees (connected components). For a small graph (N=16), we can use a Breadth-First Search (BFS) to find the diameter of each component.
+1.  **Traverse Component 1**: Start BFS from the first available node to find the farthest node A.
+2.  From node A, run BFS to find the farthest node B. The distance from A to B is the diameter of Component 1.
+3.  **Traverse Component 2**: Start BFS from the next available unvisited node to find the farthest node C.
+4.  From node C, run BFS to find the farthest node D. The distance from C to D is the diameter of Component 2.
+5.  **Result**: The total diameter is max(Diam_1, Diam_2, Depth_1 + Depth_2 + 1). For two trees connected by one edge, the new diameter is max(Diam_1, Diam_2, ceil(Diam_1/2) + ceil(Diam_2/2) + 1). To simplify for hardware, we will compute the diameter of each component and the 'radius' (approx depth from a center) for the connection.
+
+Simplified Logic for Hardware:
+- Use a state machine: IDLE, BUILD_GRAPH, FIND_FARTHEST_1, FIND_DIA_1, FIND_FARTHEST_2, FIND_DIA_2, CALCULATE_RESULT.
+- Implement BFS using a queue of size 16.
+- Store graph as adjacency matrix (16x16) or adjacency list (requires dynamic parsing of input arrays).
+- Since inputs are fixed arrays, we can parse them into an adjacency matrix.
+
+State Details:
+- IDLE: Wait for start.
+- BUILD_GRAPH: Parse edges_u and edges_v into a 16x16 adjacency matrix. Initialize visited array.
+- FIND_FARTHEST_1: BFS from node 0 (or first present node) to find farthest node X.
+- FIND_DIA_1: BFS from node X to find distance to farthest node Y. Store Diameter_1.
+- FIND_FARTHEST_2: BFS from next unvisited node to find farthest node Z.
+- FIND_DIA_2: BFS from node Z to find distance to farthest node W. Store Diameter_2.
+- CALCULATE_RESULT: Result = max(Diameter_1, Diameter_2, (Diameter_1+1)/2 + (Diameter_2+1)/2 + 1).
+
+Output Constraints:
+- Result is a 4-bit value (max diameter 15).
+- Use non-blocking assignments for sequential logic.
+- Latency: Approximately 1000 clock cycles (sufficient for unrolled BFS on 16 nodes).

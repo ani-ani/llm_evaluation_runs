@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'bird_label_solver' that computes the minimum label changes needed when tiny birds become giant birds in a small tree.
+
+The module operates on a fixed-size tree with up to 16 vertices (indexed 1-16). The root is vertex 1.
+
+**Input Specification:**
+- `clk`: Clock signal
+- `rst_n`: Active-low reset
+- `start`: Start computation
+- `parent [5:0]`: Parent index for the current vertex being configured (0 to 16). Used to build the tree. Index 0 is dummy for root.
+- `v_type [1:0]`: Vertex type: 00=Branch(B), 01=Branch(S), 10=Leaf(Bird/Berry)
+- `v_subtype [1:0]`: Leaf subtype: 00=Berry(E), 01=Giand Bird(G), 10=Tiny Bird(T)
+- `v_label [39:0]`: 5-byte ASCII label for the leaf (padded with zeros). Interpret as 5 ASCII chars.
+- `config_mode`: 1 to load vertex data, 0 to trigger computation.
+
+**Output Specification:**
+- `result_valid`: High when computation is done and result is valid
+- `change_count [3:0]`: Number of label changes required
+- `change_v_idx [5:0]`: Index of the vertex requiring change (valid if change_count > 0)
+- `new_label [39:0]`: New label for the vertex (valid if change_count > 0)
+
+**Internal Logic & Behavior:**
+1. **Tree Storage**: Store parent pointers, branch types (Big/Small), and leaf info (Bird/Berry type, label) in arrays. Max 16 nodes.
+2. **Controlled Area Calculation**:
+   - For Tiny Birds: Area is subtree of parent.
+   - For Giant Birds: Area is subtree of closest Big Branch ancestor.
+   - Since tree depth is small (max 16), compute area by traversing up to find the ancestor, then defining the subtree.
+   - Subtree can be represented by a bitmask of 16 bits (one bit per node).
+3. **Conflict Detection**:
+   - Iterate through all birds (max 8 birds). For each pair of birds with the same label, check if their Controlled Areas are identical (bitmask match).
+   - If a conflict is found, at least one label must change.
+4. **Berry Ownership Check**:
+   - Iterate through berries. For each berry, find the specific bird that eats it.
+   - Rule: Berry label must match bird label. Berry must be inside bird's controlled area. Among valid birds, pick the one with the smallest controlled area (smallest subtree bitmask).
+   - This defines the "Correct Owner" for the current configuration.
+5. **Simulation of Tiny->Giant**:
+   - Re-calculate controlled areas assuming ALL birds are Giant.
+   - Verify if the "Correct Owner" for every berry remains the same bird.
+   - If ownership changes, a label change is required.
+   - If conflicts arise (two birds same label, same area), a label change is required.
+6. **Solution Generation**:
+   - If conflicts exist or ownership changes, increment change count.
+   - Output the first problematic bird found and assign it a unique new label (e.g., "c", "d", "z")
+
+**Latency:** Result valid approx 1024 clock cycles after start (enough for O(N^2) checks on N=16).
+
+**Fixed-Point/Scaling:** No floating point used. Tree nodes limited to 16.

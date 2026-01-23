@@ -1,0 +1,312 @@
+Design a Verilog module that solves the global warming pairing problem for small classes.
+
+**MODULE NAME**: `global_warming_solver`
+
+**OVERVIEW**: 
+This module arranges students into optimal pairs while minimizing CO2 emissions. The friendship graph is transitive (complete subgraphs), so the problem reduces to: (1) find connected components, (2) check all components have even size, (3) compute minimum perfect matching cost per component.
+
+**INTERFACE SPECIFICATION**:
+
+**Inputs**:
+- `clk` : System clock (rising edge triggered)
+- `rst_n` : Active-low synchronous reset
+- `start` : Assert high for 1 clock cycle to begin a new computation
+- `edge_valid` : High when edge data is valid (during COLLECT state)
+- `p[7:0]` : Student ID (1-8) for edge endpoint
+- `q[7:0]` : Student ID (1-8) for edge endpoint  
+- `cost[19:0]` : CO2 cost for this pair (0-1048575)
+- `edge_done` : High for 1 cycle when all edges have been provided
+
+**Outputs**:
+- `result[23:0]` : Minimum total CO2 cost (valid when done=1 and impossible=0)
+- `impossible` : High if arrangement is impossible (odd-sized component or no edges)
+- `done` : High for 1 cycle when computation completes
+
+**INTERNAL STATE MACHINE**:
+
+1. **IDLE**: Wait for start=1, then transition to COLLECT
+2. **COLLECT**: Accept edges while edge_valid=1
+   - Store edge costs in 8x8 matrix (cost_matrix[p][q] = cost)
+   - Track which student IDs appear (visited_nodes bitmask)
+   - Maximum 16 edges, 8 students
+3. **COMPUTE**: Triggered by edge_done=1
+   a. **COMP_DETECTION**: Use BFS on adjacency matrix
+      - Build component list: each component is bitmask of nodes
+      - For each component, record its size
+   b. **COMP_CHECK**: If any component has odd size -> impossible=1
+   c. **MIN_MATCHING**: For each even-sized component:
+      - Use DP: dp[mask] = min cost to match nodes in mask
+      - dp[0] = 0, dp[others] = INF
+      - For mask from 0 to (1<<size)-1:
+        - If dp[mask] == INF: continue
+        - Find first unmatched node i
+        - For each j > i, unmatched: 
+          - new_mask = mask | (1<<i) | (1<<j)
+          - dp[new_mask] = min(dp[new_mask], dp[mask] + cost[i][j])
+      - Component cost = dp[(1<<size)-1]
+   d. **SUM**: Sum costs across all components
+4. **DONE**: Set result/impossible, assert done=1, wait for next start
+
+**IMPLEMENTATION CONSTRAINTS**:
+- Max students: 8 (IDs 1-8, use 0-based internally)
+- Max edges: 16
+- Cost width: 20 bits (to handle up to 1,000,000)
+- Result width: 24 bits (max sum: 4 pairs × 1,000,000 = 4,000,000)
+- DP table: 256 entries × 24 bits
+- BFS queue: 8 entries × 3 bits
+- Maximum cycles: 1000 (prevents infinite loops)
+
+**KEY DESIGN DECISIONS**:
+1. Adjacency matrix: 8x8 array, store cost for each pair
+2. Component detection: Iterative BFS from each unvisited node
+3. Perfect matching: Bitmask DP, O(n²·2^n) for n=8 is acceptable in hardware
+4. State encoding: 4 states (2 bits)
+5. Use blocking assignments for sequential logic
+6. No recursion: Use iterative loops with fixed bounds
+
+**RESET BEHAVIOR**:
+- On rst_n=0: Clear state machine, cost_matrix, dp_table, all outputs = 0
+- Requires minimum 2 clock cycles of reset
+
+**TIMING**:
+- start pulse: 1 cycle
+- Edge collection: variable (0-16 cycles)
+- Computation: ~256 cycles for DP + ~50 cycles for BFS = ~300 cycles max
+- done pulse: 1 cycle
+- Total per test: < 400 cycles
+
+**VERILOG MODULE TEMPLATE**:
+```verilog
+module global_warming_solver (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire edge_valid,
+    input wire [7:0] p,
+    input wire [7:0] q,
+    input wire [19:0] cost,
+    input wire edge_done,
+    output reg [23:0] result,
+    output reg impossible,
+    output reg done
+);
+    // Internal state encoding
+    localparam IDLE = 2'b00;
+    localparam COLLECT = 2'b01;
+    localparam COMPUTE = 2'b10;
+    localparam DONE = 2'b11;
+    
+    // Registers
+    reg [1:0] state;
+    reg [19:0] cost_matrix [0:7][0:7]; // 8x8 cost matrix
+    reg [7:0] visited_nodes; // Bitmask of nodes that exist
+    reg [7:0] components [0:7]; // Up to 7 components (8 nodes max)
+    reg [3:0] comp_count;
+    reg [23:0] dp [0:255]; // DP table for matching
+    
+    // Additional registers for BFS and DP
+    reg [7:0] global_visited;
+    reg [2:0] current_node;
+    reg [7:0] current_component;
+    reg [7:0] bfs_visited;
+    reg [2:0] queue [0:7];
+    reg [2:0] queue_head, queue_tail;
+    reg [3:0] comp_index;
+    reg [23:0] total_cost;
+    reg [23:0] dp_mask;
+    reg [23:0] dp_min;
+    reg [2:0] i, j;
+    reg [7:0] comp_mask;
+    reg [3:0] comp_size;
+    reg [2:0] node_list [0:7];
+    reg [3:0] node_count;
+    
+    // Wires and state variables
+    // ... (define wires for BFS, DP, etc.)
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset logic
+            state <= IDLE;
+            result <= 0;
+            impossible <= 0;
+            done <= 0;
+            visited_nodes <= 0;
+            comp_count <= 0;
+            // Clear cost_matrix
+            for (integer i = 0; i < 8; i = i + 1) begin
+                for (integer j = 0; j < 8; j = j + 1) begin
+                    cost_matrix[i][j] <= 20'd0;
+                end
+            end
+            // Clear DP table
+            for (integer m = 0; m < 256; m = m + 1) begin
+                dp[m] <= 24'd0;
+            end
+            global_visited <= 8'd0;
+            current_component <= 8'd0;
+            bfs_visited <= 8'd0;
+            queue_head <= 3'd0;
+            queue_tail <= 3'd0;
+            comp_index <= 4'd0;
+            total_cost <= 24'd0;
+            dp_mask <= 24'd0;
+            dp_min <= 24'd0;
+            i <= 3'd0;
+            j <= 3'd0;
+            comp_mask <= 8'd0;
+            comp_size <= 4'd0;
+            node_count <= 4'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        state <= COLLECT;
+                        visited_nodes <= 0;
+                        comp_count <= 0;
+                        // Clear cost_matrix
+                        for (integer i = 0; i < 8; i = i + 1) begin
+                            for (integer j = 0; j < 8; j = j + 1) begin
+                                cost_matrix[i][j] <= 20'd0;
+                            end
+                        end
+                    end
+                end
+                
+                COLLECT: begin
+                    if (edge_valid) begin
+                        // Store edge (convert to 0-based)
+                        if (p >= 1 && p <= 8 && q >= 1 && q <= 8 && p != q) begin
+                            cost_matrix[p-1][q-1] <= cost;
+                            cost_matrix[q-1][p-1] <= cost;
+                            visited_nodes <= visited_nodes | (1 << (p-1)) | (1 << (q-1));
+                        end
+                    end
+                    if (edge_done) begin
+                        state <= COMPUTE;
+                        // Initialize for component detection
+                        global_visited <= 8'd0;
+                        comp_count <= 4'd0;
+                        comp_index <= 4'd0;
+                        total_cost <= 24'd0;
+                        impossible <= 0;
+                    end
+                end
+                
+                COMPUTE: begin
+                    // Component detection using BFS
+                    if (comp_count == 0 || comp_index < comp_count) begin
+                        // Find next unvisited node
+                        if (global_visited != visited_nodes) begin
+                            // Find first unvisited node
+                            for (integer n = 0; n < 8; n = n + 1) begin
+                                if (!global_visited[n] && visited_nodes[n]) begin
+                                    current_node <= n;
+                                    global_visited <= global_visited | (1 << n);
+                                    current_component <= (1 << n);
+                                    bfs_visited <= (1 << n);
+                                    queue[0] <= n;
+                                    queue_head <= 3'd0;
+                                    queue_tail <= 3'd1;
+                                    // Start BFS
+                                    if (queue_head < queue_tail) begin
+                                        // BFS loop
+                                        while (queue_head < queue_tail) begin
+                                            // Pop from queue
+                                            reg [2:0] u;
+                                            u = queue[queue_head];
+                                            queue_head <= queue_head + 1;
+                                            // Check all neighbors
+                                            for (integer v = 0; v < 8; v = v + 1) begin
+                                                if (visited_nodes[v] && !bfs_visited[v] && cost_matrix[u][v] != 0) begin
+                                                    bfs_visited <= bfs_visited | (1 << v);
+                                                    current_component <= current_component | (1 << v);
+                                                    queue[queue_tail] <= v;
+                                                    queue_tail <= queue_tail + 1;
+                                                end
+                                            end
+                                        end
+                                        // BFS complete for this component
+                                        components[comp_count] <= current_component;
+                                        comp_count <= comp_count + 1;
+                                    end
+                                end
+                            end
+                        end else begin
+                            // All nodes processed, check components
+                            comp_index <= 4'd0;
+                            // Move to checking
+                        end
+                    end else if (comp_index < comp_count) begin
+                        // Process component at comp_index
+                        comp_mask <= components[comp_index];
+                        // Count size and extract nodes
+                        comp_size <= 0;
+                        node_count <= 0;
+                        for (integer n = 0; n < 8; n = n + 1) begin
+                            if (comp_mask[n]) begin
+                                comp_size <= comp_size + 1;
+                                node_list[node_count] <= n;
+                                node_count <= node_count + 1;
+                            end
+                        end
+                        // Check if even size
+                        if (comp_size[0]) begin // Odd size
+                            impossible <= 1;
+                            state <= DONE;
+                        end else begin
+                            // Initialize DP
+                            for (integer m = 0; m < 256; m = m + 1) begin
+                                dp[m] <= 24'd10000000; // INF
+                            end
+                            dp[0] <= 24'd0;
+                            dp_mask <= 24'd0;
+                            // Start DP
+                            for (dp_mask = 0; dp_mask < (1 << comp_size); dp_mask = dp_mask + 1) begin
+                                if (dp[dp_mask] < 24'd10000000) begin
+                                    // Find first unmatched node
+                                    for (i = 0; i < comp_size; i = i + 1) begin
+                                        if (!dp_mask[i]) begin
+                                            for (j = i + 1; j < comp_size; j = j + 1) begin
+                                                if (!dp_mask[j]) begin
+                                                    reg [23:0] new_mask;
+                                                    reg [23:0] new_cost;
+                                                    new_mask = dp_mask | (1 << i) | (1 << j);
+                                                    new_cost = dp[dp_mask] + cost_matrix[node_list[i]][node_list[j]];
+                                                    if (new_cost < dp[new_mask]) begin
+                                                        dp[new_mask] <= new_cost;
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                            // Add component cost to total
+                            total_cost <= total_cost + dp[(1 << comp_size) - 1];
+                            comp_index <= comp_index + 1;
+                        end
+                    end else begin
+                        // All components processed
+                        state <= DONE;
+                    end
+                end
+                
+                DONE: begin
+                    done <= 1;
+                    if (!impossible) begin
+                        result <= total_cost;
+                    end
+                    if (start) begin
+                        state <= COLLECT;
+                        // Clear for next computation
+                        visited_nodes <= 0;
+                        comp_count <= 0;
+                    end
+                end
+            endcase
+        end
+    end
+endmodule
+```

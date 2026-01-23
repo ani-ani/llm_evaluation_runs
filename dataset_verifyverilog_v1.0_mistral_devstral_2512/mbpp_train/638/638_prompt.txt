@@ -1,0 +1,66 @@
+Wind Chill Index Calculator Module
+
+OVERVIEW:
+Calculate wind chill index using the standard formula with fixed-point arithmetic.
+Formula: windchill = 13.12 + 0.6215*t - 11.37*v^0.16 + 0.3965*t*v^0.16
+
+IMPLEMENTATION DETAILS:
+- Use Q16.16 fixed-point format for all calculations
+- Input: temperature in Celsius (-50 to +50), wind velocity 0-200 km/h
+- v^0.16 must be computed using a lookup table (256 entries) or iterative approximation
+- All constants converted to Q16.16 format:
+  - 13.12 = 0x000D1F70
+  - 0.6215 = 0x00009E5A
+  - 11.37 = 0x000B5E85
+  - 0.3965 = 0x0000659F
+- Output: Rounded integer result (offset Q16.16 to integer)
+
+INTERFACE SPECIFICATION:
+  Inputs:
+    - clk          : Clock signal (rising edge triggered)
+    - rst_n        : Active-low synchronous reset
+    - start        : Start pulse (assert for 1 cycle to begin computation)
+    - temp_in      : 16-bit signed temperature in Celsius (Q16.0 format, -50 to +50)
+    - wind_in      : 16-bit unsigned wind velocity in km/h (0 to 200)
+  
+  Outputs:
+    - result       : 16-bit signed integer wind chill index
+    - done         : Asserted high for 1 cycle when result is valid
+
+  Timing:
+    - Assert start for 1 clock cycle
+    - Computation requires maximum 64 cycles (lookup + multiplies + accumulation)
+    - done will go high exactly when result is ready
+    - Sample result on the same cycle done is high
+
+  Reset behavior:
+    - On rst_n=0: done=0, result=0, all internal registers cleared
+    - Minimum 2 clock cycles of reset required
+
+IMPLEMENTATION REQUIREMENTS:
+1. Must implement power approximation: compute v^0.16 for input 0-200
+   - Use 256-entry lookup table for v^0.16 in Q16.16 format
+   - If v=0, handle edge case (result=0)
+   - Table index: v[7:0] (use lower 8 bits for lookup, adequate for 0-200 range)
+
+2. Must perform sequential calculation:
+   - Cycle 1-8: Load inputs, lookup v^0.16
+   - Cycle 9-16: Compute t * v^0.16 (0.3965 * t * v^0.16)
+   - Cycle 17-24: Compute constant terms
+   - Cycle 25-32: Sum all contributions
+   - Cycle 33: Round and output
+
+3. Fixed-point multiplication rules:
+   - Q16.16 × Q16.16 = Q32.32, truncate to Q16.16 by taking [47:16] bits
+   - Handle signed vs unsigned multiplication properly
+
+4. Rounding:
+   - Convert Q16.16 result to integer by adding 0.5 (0x00008000) and truncating
+
+5. State machine must have at least: IDLE, LOOKUP, MULT1, MULT2, MULT3, MULT4, ACCUM, ROUND, DONE states
+
+6. All internal registers must be cleared on reset
+
+7. Output result should be clamped to prevent overflow (realistic wind chill: -80 to +50)
+
+Provide complete Verilog module implementation.

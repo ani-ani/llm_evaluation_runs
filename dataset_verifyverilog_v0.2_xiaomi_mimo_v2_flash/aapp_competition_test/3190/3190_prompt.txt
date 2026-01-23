@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'voodoo_average' that counts consecutive subsequences where the average price is greater than or equal to P.
+
+Problem: Given a sequence of N prices and a threshold P, count all contiguous subarrays [i..j] such that average(subarray) >= P.
+
+Constraint Transformation:
+- N is fixed to 16 (parameterizable)
+- Prices are 32-bit unsigned integers
+- P is a 32-bit unsigned integer
+- The condition average >= P is equivalent to: sum(subarray) >= P * length(subarray)
+- Since P * length can be up to 16 * 10^9 ≈ 2^34, we need 64-bit arithmetic for the comparison
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] valid_length // Actual number of valid inputs (1 to 16)
+input [31:0] price_i // Current price input
+input [31:0] P // Threshold P
+
+Outputs:
+output reg [31:0] result // Count of valid subsequences
+output reg done // High when computation complete
+output reg input_ready // Ready to accept next price
+
+Internal Logic:
+- Use a state machine with states: IDLE, LOAD_PRICES, COMPUTE, DONE
+- Store prices in a register array: reg [31:0] prices [0:15]
+- During LOAD_PRICES: accept 'valid_length' prices one by one
+- During COMPUTE: iterate through all possible subarrays
+  - For each start index i from 0 to valid_length-1
+  - For each end index j from i to valid_length-1
+  - Calculate sum of prices[i:j+1]
+  - Calculate threshold = P * (j-i+1)
+  - If sum >= threshold, increment result counter
+- Use combinational sum calculation within each cycle or accumulate over multiple cycles
+- Result is valid when done is high
+
+Specified Latency: 
+- Input loading: 'valid_length' cycles
+- Computation: O(N^2) cycles, approximately 256 cycles max for N=16
+- Total: ~272 cycles max
+
+Implementation Note: Since N=16 is small, we can compute sums incrementally:
+- Outer loop: i from 0 to N-1
+- Inner loop: j from i to N-1
+- Maintain running sum as we extend j
+- Each (i,j) pair takes 1 cycle for the comparison
+
+The module should reset all internal state when rst_n is low.
+When start is asserted, the module should begin loading prices.
+After valid_length prices are loaded, input_ready goes low and COMPUTE state begins.
+When computation finishes, result contains the count and done goes high.
+Result remains stable until next start.

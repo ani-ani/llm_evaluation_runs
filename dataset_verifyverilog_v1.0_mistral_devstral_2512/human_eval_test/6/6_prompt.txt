@@ -1,0 +1,74 @@
+Design a sequential Verilog module named 'parse_nested_parens' that computes the maximum nesting depth of parentheses in multiple groups.
+
+INTERFACE SPECIFICATION:
+Inputs:
+  input clk                    // Clock signal
+  input rst_n                  // Active-low reset
+  input start                  // Start computation (pulse high for 1 cycle)
+  input [7:0] char_array [0:15] // 16-character fixed-width string (ASCII)
+
+Outputs:
+  output reg [3:0] result      // Maximum nesting depth found (0-15)
+  output reg done              // High for 1 cycle when computation complete
+
+BEHAVIORAL DESCRIPTION:
+The module processes a 16-character fixed-width string containing parentheses groups separated by spaces. Groups contain '(' and ')' characters. The module tracks the current nesting depth and finds the maximum depth across all groups.
+
+CHARACTER ENCODING:
+- Space: 0x20 (ASCII 32)
+- '(': 0x28 (ASCII 40)
+- ')': 0x29 (ASCII 41)
+
+ALGORITHM:
+1. Initialize: current_depth = 0, max_depth = 0, in_group = false
+2. For each character in the 16-character array:
+   - If char == '(':
+     - If NOT in_group: set in_group = true, current_depth = 0
+     - Increment current_depth by 1
+     - Update max_depth = max(max_depth, current_depth)
+   - If char == ')':
+     - Decrement current_depth by 1
+     - If current_depth == 0: set in_group = false
+   - If char == ' ':
+     - Reset in_group = false, current_depth = 0
+   - Ignore all other characters
+3. After processing all 16 characters, output the max_depth
+
+IMPLEMENTATION NOTES:
+- Use a state machine with states: IDLE, PROCESSING, COMPLETE
+- Process one character per clock cycle
+- Track current_depth (4-bit counter)
+- Track max_depth (4-bit register)
+- Track in_group flag (1-bit)
+- Track current index (4-bit counter, 0-15)
+- Start signal initiates processing from index 0
+- Done signal goes high for 1 cycle when index reaches 15
+- Result is available when done is high
+- Result must remain valid until next start
+
+LATENCY: 17 clock cycles (1 for setup + 16 for processing)
+
+RESET BEHAVIOR:
+On rst_n == 0: all registers and outputs reset to 0
+
+START BEHAVIOR:
+When start goes high, module transitions from IDLE to PROCESSING and begins processing char_array[0]
+
+DONE BEHAVIOR:
+Done signal is high for exactly 1 cycle when processing of all 16 characters completes. Result is valid during this cycle.
+
+VERILOG CONSTRAINTS:
+- Use Icarus Verilog compatible code
+- No break statements in always blocks
+- All signals must have defined reset values
+- Use full case statements or if-else with complete coverage
+
+CLOCK CYCLE BREAKDOWN:
+Cycle 0: IDLE state, waiting for start
+Cycle 1: PROCESSING, character index 0
+Cycle 2: PROCESSING, character index 1
+...
+Cycle 16: PROCESSING, character index 15
+Cycle 17: COMPLETE, done=1, result valid
+
+Then returns to IDLE automatically.

@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'max_sub_rectangle' that finds the largest axis-aligned sub-rectangle within a grid that contains a specific point and matches a given aspect ratio.
+
+**Module Type**: Sequential (State Machine)
+**Clock Frequency**: 50 MHz (20ns period)
+
+**Inputs**:
+input clk // System clock
+input rst_n // Active-low reset
+input start // Start computation (pulse high for one cycle)
+input [7:0] N, M // Grid dimensions (max 255)
+input [7:0] x, y // Target point coordinates (0 <= x <= N, 0 <= y <= M)
+input [7:0] a, b // Desired aspect ratio (width/height = a/b)
+
+**Outputs**:
+output reg [7:0] x1, y1, x2, y2 // Coordinates of the found rectangle
+output reg done // High when computation is finished
+
+**Behavior**:
+The module must find the largest rectangle satisfying:
+1. 0 <= x1 <= x <= x2 <= N
+2. 0 <= y1 <= y <= y2 <= M
+3. (x2 - x1) / (y2 - y1) = a / b
+
+Since we are in integer logic, condition 3 is rewritten as: (x2-x1)*b == (y2-y1)*a.
+
+**Algorithm**: 
+1. **Normalization**: Compute the greatest common divisor (GCD) of `a` and `b` to find the smallest integer unit (w0, h0) that satisfies the ratio. Since true GCD is complex, for this benchmark we assume `a` and `b` are small co-prime integers or pre-scaled. To keep it synthesizable without a complex GCD block, we will assume the inputs `a` and `b` represent the fundamental ratio unit directly (e.g. if input is 4, 2, we treat 4 and 2 as the base dimensions since we can scale them up).
+
+2. **Search Strategy**: Since inputs are small (max 255), we will implement a sequential search for the maximum scale factor `s`. We will start with the maximum possible scale `s_max = min(N/a, M/b)` and decrement `s` until a valid rectangle is found.
+
+3. **Rectangle Calculation**: For a given scale `s`:
+   Width `w = a * s`
+   Height `h = b * s`
+   
+   We need to place this `w x h` rectangle such that:
+   `x1 <= x <= x1 + w` => `x1` must be in `[x - w, x]`
+   `y1 <= y <= y1 + h` => `y1` must be in `[y - h, y]`
+   
+   Also `x1 >= 0`, `x2 <= N` => `x1 <= N - w`
+   `y1 >= 0`, `y2 <= M` => `y1 <= M - h`
+
+   Combine constraints for `x1`: `max(0, x - w) <= x1 <= min(x, N - w)`
+   Combine constraints for `y1`: `max(0, y - h) <= y1 <= min(y, M - h)`
+
+   If `max <= min` for both axes, a valid position exists. To satisfy "closest to center" and "lexicographically minimum", we calculate the ideal center alignment: `ideal_x1 = x - w/2` and `ideal_y1 = y - h/2`. We then clamp these values to the valid ranges calculated above.
+
+4. **State Machine**:
+   - `IDLE`: Wait for `start` signal.
+   - `CALC_S_MAX`: Compute `min(N/a, M/b)`. *Optimization*: We don't need a divider here. Since `a` and `b` are fixed small integers (<=255), we can pre-calculate or use a counter. For this module, we will use a loop to find `s` by trying values from `s_max` down to 1. 
+   - `FIND_RECT`: Decrement `s` (starting from `s_max`), calculate `w` and `h`, check if valid area exists using the constraint logic. 
+   - `OPTIMIZE`: Calculate the lexicographically smallest coordinates within the valid area that are closest to the point `x, y`. 
+   - `DONE`: Latch results and set `done` high.
+
+**Constraint Handling**:
+- The search for `s` starts at `min(N/a, M/b)`. We must avoid division. A simple way is to use a comparator: `w <= N` and `h <= M`. We can start with `w = a`, `h = b` and multiply by a counter until `w > N` or `h > M`. The previous counter value is `s_max`. Then we iterate `s` downwards.
+- Checking validity: 
+  `x_low = (x >= w) ? (x - w) : 0;`
+  `x_high = (x <= N - w) ? x : (N - w);`
+  If `x_low <= x_high` and `y_low <= y_high`, the rectangle fits.
+
+**Latency**: Approximately 256 cycles (max iterations for `s`).
+
+**Output Format**: 8-bit integers for coordinates.

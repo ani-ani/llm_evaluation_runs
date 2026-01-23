@@ -1,0 +1,56 @@
+Maze Analyzer Module Specification
+
+OVERVIEW:
+Implement a hardware module that analyzes a small maze to identify effectively identical rooms. Two rooms are equivalent if they have the same signature based on their degree and the degrees of their neighbors.
+
+INTERFACE SPECIFICATION:
+
+Parameters:
+  - N = 8 (maximum number of rooms)
+  - DEG_W = 4 (degree width, supports 0-15)
+  - SIG_W = 32 (signature width)
+
+Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low reset (minimum 2 cycles)
+  - start: Start computation pulse (1 cycle)
+  - degree[0:N-1]: Array of room degrees, each [DEG_W-1:0]
+  - adj[0:N-1][0:N-1]: Adjacency matrix, adj[i][j]=1 if room i connects to room j
+
+Outputs:
+  - signature[0:N-1]: Computed signature for each room, each [SIG_W-1:0]
+  - done: Asserted when computation complete (1 cycle)
+
+FUNCTIONAL REQUIREMENTS:
+1. On start pulse, compute signature for each room
+2. Signature = (own_degree + sum_of_neighbor_degrees << 4) truncated to SIG_W
+3. Process all rooms sequentially
+4. Assert done when all signatures computed
+5. Reset clears all signatures and internal state
+
+TIMING:
+- Start to first signature: ~N*N cycles (worst case)
+- Done pulse width: 1 cycle
+- Minimum 2 cycle reset required
+
+EXAMPLE:
+For 3-room maze:
+  Room 0: degree=2, connects to rooms 1,2
+  Room 1: degree=1, connects to room 0
+  Room 2: degree=1, connects to room 0
+Signatures:
+  sig[0] = 2 + (1 << 4) + (1 << 4) = 2 + 16 + 16 = 34
+  sig[1] = 1 + (2 << 4) = 1 + 32 = 33
+  sig[2] = 1 + (2 << 4) = 1 + 32 = 33
+Result: Rooms 1 and 2 have same signature
+
+EDGE CASES:
+- Room with 0 neighbors: signature = degree
+- Self-connections not allowed (adj[i][i] = 0)
+- Undefined signals during computation should be ignored
+
+IMPLEMENTATION NOTES:
+- Use FSM with states: IDLE, RESET, COMPUTE_SIGNATURE, NEXT_ROOM, DONE
+- Use counters for room index and neighbor index
+- Accumulate neighbor contributions in temporary register
+- Store final signatures in output array

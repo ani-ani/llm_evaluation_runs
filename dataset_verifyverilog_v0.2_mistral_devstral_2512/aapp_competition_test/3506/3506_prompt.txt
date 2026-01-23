@@ -1,0 +1,65 @@
+Design a sequential Verilog module named 'cheerleader_optimizer' that implements a simplified cheerleading tactic optimization for football matches.
+
+**Problem Adaptation**:
+- Game duration: 8 minutes (0-7) instead of 90 minutes
+- Max cheerleaders: 2 instead of 20
+- Max opponent intervals: 3 instead of 1000
+- Goal threshold: 3 consecutive minutes (instead of 5)
+- Each interval is 1 minute
+- No halftime constraint (game is short enough)
+- Opponent schedule is a fixed-width 8-bit binary pattern (1 = cheering, 0 = not cheering)
+
+**Module Interface**:
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [1:0] num_cheerleaders // number of cheerleaders (0-2)
+input [7:0] cheer_time // total minutes per cheerleader (0-8)
+input [7:0] opponent_pattern // 8-bit pattern: bit i = 1 if opponent cheers at minute i
+
+Outputs:
+output reg [3:0] sportify_goals // goals scored by Sportify (0-15)
+output reg [3:0] spoilify_goals // goals scored by Spoilify (0-15)
+output reg done // high when computation complete
+
+**Behavioral Specification**:
+The module should find optimal scheduling for each cheerleader to maximize:
+1. Goal difference (Sportify - Spoilify) - primary objective
+2. Sportify goals - secondary objective
+
+**Goal Scoring Rules**:
+- For each minute i from 0 to 7:
+  - If Sportify cheers > Spoilify cheers at minute i, that minute counts toward Sportify's consecutive streak
+  - If Spoilify cheers > Sportify cheers at minute i, that minute counts toward Spoilify's consecutive streak
+  - If equal, both streaks reset
+  - If streak reaches 3 minutes, score 1 goal and reset that streak to 0
+
+**Cheerleader Constraint**:
+- Each cheerleader can cheer for exactly 'cheer_time' minutes
+- Each cheerleader chooses which minutes to cheer (0-7)
+- Multiple cheerleaders can cheer simultaneously (their cheers add up)
+
+**Optimization Strategy**:
+Use state machine with states: IDLE, EVALUATE_SCHEDULES, COMPUTE_GOALS, DONE.
+Since this is a combinatorial optimization problem, the module should:
+1. In EVALUATE_SCHEDULES state: Iterate through possible schedules (use bounded iteration)
+2. In COMPUTE_GOALS state: For each schedule, compute goals for both teams
+3. Track best result based on objectives
+
+**Implementation Notes**:
+- Since true optimization requires searching all combinations, implement a bounded search using state variables
+- Use a 3-bit counter to iterate through possible time allocations (representing schedule encoding)
+- Each schedule can be encoded as a bitmask for each cheerleader
+- For 2 cheerleaders with 8 minutes each, maximum combinations is manageable (2^8 * 2^8 = 65536, but we can sample or use smarter search)
+- For practicality, implement a greedy heuristic or exhaustive search for small parameter space
+- Use Q8.8 fixed-point if needed for any calculations (but integer math suffices here)
+
+**Latency**: Result valid 500 clock cycles after start asserted (allowing for search through schedule space).
+
+**Module Requirements**:
+- Purely sequential implementation
+- Must use state machine
+- Must implement goal counting logic
+- Must track and select optimal schedule
+- Reset should clear all registers and state

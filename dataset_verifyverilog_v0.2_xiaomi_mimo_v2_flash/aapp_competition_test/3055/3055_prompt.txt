@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'thore_checker' that implements the smallest unique prefix finder for a scoreboard.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] scoreboard_size // number of entries in scoreboard (max 8, but 16-bit for safety)
+input [127:0] current_name // "ThoreHusfeldt" stored as ASCII bytes, 16 chars max
+input [127:0] names_above [0:7] // Array of 8 names above "ThoreHusfeldt" in scoreboard
+input [127:0] names_below [0:7] // Array of 8 names below "ThoreHusfeldt" in scoreboard
+
+Outputs:
+output reg [15:0] result_prefix // Length of smallest unique prefix
+output reg [127:0] result_string // The actual prefix string (first N bytes)
+output reg done // high when computation complete
+output reg is_awesome // high if ThoreHusfeldt is first
+output reg sucks // high if someone above has prefix "ThoreHusfeld"
+
+Specification:
+The module processes the scoreboard to determine Thore's status.
+1. Check if "ThoreHusfeldt" is first (no names_above). Set is_awesome high.
+2. Check if any name in names_above has prefix "ThoreHusfeld" (first 12 characters). Set sucks high.
+3. Otherwise, find smallest prefix length L of "ThoreHusfeldt" (starting from 1) such that:
+   - No name in names_above has the same first L characters
+   - The prefix is unique for differentiation from above
+
+Implementation details:
+- Names are 16-byte arrays (128 bits), ASCII encoded.
+- "ThoreHusfeldt" is 13 characters.
+- Iterate through prefix lengths from 1 to 13.
+- Use state machine: IDLE, CHECK_FIRST, CHECK_SUCKS, FIND_PREFIX, DONE.
+- Use helper logic to compare byte arrays of variable length.
+- Latency: Approximately 20-30 clock cycles depending on implementation.
+
+State Machine Description:
+- IDLE: Wait for start signal.
+- CHECK_FIRST: Check if scoreboard_size == 0 or names_above[0] is all zeros. If so, set is_awesome and go to DONE.
+- CHECK_SUCKS: Iterate through names_above. Compare first 12 characters of each with current_name. If match, set sucks and go to DONE.
+- FIND_PREFIX: Iterate L from 1 to 13. For each L, compare current_name[0:L] with all names_above[0:L]. If no match found for a specific L, record L and string, set result_prefix, result_string, and go to DONE.
+- DONE: Wait for reset.
+
+Note: The input arrays names_above and names_below are provided, but logic primarily uses names_above for the check. If scoreboard_size is 0, Thore is first.

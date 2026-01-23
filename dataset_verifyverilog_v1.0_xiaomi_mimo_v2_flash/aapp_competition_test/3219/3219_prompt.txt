@@ -1,0 +1,74 @@
+module count_representations (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [MAX_BITS-1:0] bin_bits,   // LSB at index 0
+    input wire [LOG_MAX_BITS-1:0] length, // number of bits (1 to MAX_BITS)
+    output reg [RESULT_WIDTH-1:0] result,
+    output reg done
+);
+
+    // Parameters
+    parameter MAX_BITS = 16;
+    parameter LOG_MAX_BITS = 4;
+    parameter MOD = 1000000009;
+    parameter RESULT_WIDTH = 32;
+
+    // Internal registers for DP
+    reg [RESULT_WIDTH-1:0] dp0, dp1;
+    reg [LOG_MAX_BITS-1:0] index;
+    reg processing;
+
+    // Helper function for modular addition
+    function automatic [RESULT_WIDTH-1:0] mod_add;
+        input [RESULT_WIDTH-1:0] a, b;
+        begin
+            mod_add = a + b;
+            if (mod_add >= MOD)
+                mod_add = mod_add - MOD;
+        end
+    endfunction
+
+    // Sequential logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            dp0 <= 0;
+            dp1 <= 0;
+            result <= 0;
+            done <= 0;
+            index <= 0;
+            processing <= 0;
+        end else begin
+            if (processing) begin
+                // Update DP based on current bit
+                if (bin_bits[index] == 1'b0) begin
+                    dp0 <= dp0;
+                    dp1 <= mod_add(dp0, dp1);
+                end else begin
+                    dp0 <= mod_add(dp0, dp1);
+                    dp1 <= dp1;
+                end
+
+                // Check if last bit
+                if (index == length - 1) begin
+                    processing <= 0;
+                    done <= 1;
+                    result <= (bin_bits[index] == 1'b0) ? dp0 : mod_add(dp0, dp1);
+                end else begin
+                    index <= index + 1;
+                end
+            end else if (start) begin
+                // Initialize DP and start processing
+                dp0 <= 1;
+                dp1 <= 0;
+                index <= 0;
+                processing <= 1;
+                done <= 0;
+                result <= 0;
+            end else begin
+                done <= 0;
+            end
+        end
+    end
+
+endmodule

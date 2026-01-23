@@ -1,0 +1,142 @@
+module morse_counter #(
+    parameter MAX_LEN = 32,
+    parameter MOD = 1000000007
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire bit_in,
+    output reg [31:0] answer,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 2'b00;
+localparam COMPUTE = 2'b01;
+
+// Internal registers
+reg [MAX_LEN-1:0] s;
+reg [5:0] len;
+reg [31:0] sm;
+reg [1:0] state;
+
+// Combinational signals
+reg [31:0] sum_f_new_reg;
+
+// Combinational block to compute sum_f_new_reg
+always @(*) begin
+    integer i, j;
+    reg [31:0] f_comb [0:MAX_LEN];
+    reg [31:0] sum4;
+    reg [MAX_LEN-1:0] rev_s;
+    reg [5:0] z [0:MAX_LEN];
+    integer l, r;
+    reg [5:0] max_z;
+    reg [5:0] new;
+    reg [31:0] sum_f_new_temp;
+    reg bad;
+    
+    // Initialize f_comb
+    for (i = 0; i <= MAX_LEN; i = i + 1) begin
+        f_comb[i] = 0;
+    end
+    sum_f_new_temp = 0;
+    
+    if (len > 0) begin
+        // DP
+        f_comb[len] = 1;
+        sum4 = 1;
+        for (j = len-1; j >= 0; j = j - 1) begin
+            bad = 0;
+            if (j + 4 <= len) begin
+                if ((s[j] == 0 && s[j+1] == 0 && s[j+2] == 1 && s[j+3] == 1) ||
+                    (s[j] == 0 && s[j+1] == 1 && s[j+2] == 0 && s[j+3] == 1) ||
+                    (s[j] == 1 && s[j+1] == 1 && s[j+2] == 1 && s[j+3] == 0) ||
+                    (s[j] == 1 && s[j+1] == 1 && s[j+2] == 1 && s[j+3] == 1)) 
+                    bad = 1;
+            end
+            if (bad) begin
+                f_comb[j] = sum4 - f_comb[j+4];
+            end else begin
+                f_comb[j] = sum4;
+            end
+            sum4 = sum4 + f_comb[j];
+        end
+        
+        // Reverse string
+        for (i = 0; i < len; i = i + 1) begin
+            rev_s[i] = s[len-1-i];
+        end
+        
+        // Z-function
+        l = 0;
+        r = 0;
+        for (i = 1; i < len; i = i + 1) begin
+            if (i <= r) begin
+                if (r - i + 1 < z[i - l]) begin
+                    z[i] = r - i + 1;
+                end else begin
+                    z[i] = z[i - l];
+                end
+            end else begin
+                z[i] = 0;
+            end
+            while (i + z[i] < len && rev_s[z[i]] == rev_s[i + z[i]]) begin
+                z[i] = z[i] + 1;
+            end
+            if (i + z[i] - 1 > r) begin
+                l = i;
+                r = i + z[i] - 1;
+            end
+        end
+        
+        // Max z
+        max_z = 0;
+        for (i = 1; i < len; i = i + 1) begin
+            if (z[i] > max_z) max_z = z[i];
+        end
+        
+        new = len - max_z;
+        
+        // Sum f[0:new-1]
+        sum_f_new_temp = 0;
+        for (i = 0; i < new; i = i + 1) begin
+            sum_f_new_temp = (sum_f_new_temp + f_comb[i]) % MOD;
+        end
+    end
+    sum_f_new_reg = sum_f_new_temp;
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        len <= 0;
+        s <= 0;
+        sm <= 0;
+        done <= 0;
+        state <= IDLE;
+    end else begin
+        done <= 0;
+        case (state)
+            IDLE: begin
+                if (start && len < MAX_LEN) begin
+                    s[len] <= bit_in;
+                    len <= len + 1;
+                    state <= COMPUTE;
+                end
+            end
+            COMPUTE: begin
+                sm <= (sm + sum_f_new_reg) % MOD;
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+// Output
+always @(posedge clk) begin
+    answer <= sm;
+end
+
+endmodule

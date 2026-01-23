@@ -1,0 +1,57 @@
+Write a Verilog module that computes the maximum number of bulkhead sections and their positions for a given convex x-monotone polygon. The module should have the following interface:
+
+module bulkheads (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] N,          // Number of vertices (max 8)
+    input wire signed [15:0] x [0:7], // X-coordinates of vertices
+    input wire signed [15:0] y [0:7], // Y-coordinates of vertices
+    input wire [31:0] C,         // Minimum area per section
+    output reg [7:0] M,          // Number of sections
+    output reg [31:0] x_bulk [0:99], // X-coordinates of bulkheads (Q16.16 format)
+    output reg done              // Computation done
+);
+
+The module should implement the following algorithm:
+
+1. Compute total area using shoelace formula:
+   area = 0.5 * |sum_{i=0}^{N-1} (x[i]*y[(i+1)%N] - x[(i+1)%N]*y[i])|
+   Use 64-bit arithmetic for intermediate results, then divide by 2 to get 32-bit area.
+
+2. Compute M = max(1, floor(total_area / C)). If M > 100, set M = 100.
+
+3. For each k from 1 to M-1:
+   a. Compute target_area = (k * total_area) / M (integer division).
+   b. Find x-coordinate where cumulative area equals target_area using binary search:
+      - Range: [x_min, x_max] (from vertices)
+      - Iterations: 16 per target
+      - Cumulative area calculation:
+        * Find the two edges that intersect the vertical line at x (one upper, one lower)
+        * Compute y_upper and y_lower at x
+        * Height = y_upper - y_lower
+        * Cumulative area = integrate height from x_min to x using trapezoidal rule on edges
+   c. Store result in x_bulk[k-1] as Q16.16 fixed-point.
+
+4. Assert done when all bulkheads are computed.
+
+Implement as a finite state machine with states for:
+- IDLE, COMPUTE_AREA, COMPUTE_M, COMPUTE_TARGET, BINARY_SEARCH, STORE_RESULT, DONE.
+
+Use 16 fractional bits (Q16.16) for all fixed-point arithmetic.
+
+The binary search state machine should:
+- Initialize low = x_min, high = x_max
+- For 16 iterations:
+  * Compute mid = (low + high) / 2
+  * Compute cumulative_area(mid)
+  * Update low/high based on comparison with target
+- Final x = (low + high) / 2
+
+Cumulative area calculation:
+- For each edge, check if it spans the x value
+- If yes, interpolate y at that x
+- Determine upper/lower by checking polygon winding
+- Sum trapezoid areas from x_min to x
+
+Note: For simplicity, assume vertices are given in CCW order and polygon is convex and x-monotone.

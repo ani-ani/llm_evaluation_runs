@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'bicycle_race_routes' that counts distinct paths from node 1 to node 2 in a fixed 8-node directed graph.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] node_enable // which nodes exist in graph (bit i = node i+1 exists)
+input [7:0] adj_matrix [0:7] // adjacency matrix flattened: adj_matrix[i][j] = edge from i to j
+
+Outputs:
+output reg [29:0] result // route count (last 9 digits = 1 billion max, need 30 bits)
+output reg done // high when computation complete
+output reg inf_flag // high if infinitely many routes detected (cycle reachable from start)
+
+Specify latency: 100 clock cycles maximum (state machine will detect cycles and terminate).
+
+Behavior:
+1. Use state machine with states: IDLE, INIT, PROCESSING, COUNTING, CYCLE_CHECK, DONE
+2. Node numbering: 0-based internally (node 0 = town 1, node 1 = town 2)
+3. Graph has 8 nodes maximum (towns 1-8)
+4. Implement DFS-style path counting with depth limit of 16 steps
+5. Detect cycles by tracking visited nodes in current path
+6. If cycle detected that can reach destination, set inf_flag=1
+7. Use 32-bit counter for path count (modulo 10^9 if overflow)
+8. Parallel exploration: check all 8 nodes simultaneously each cycle
+9. Adjacency matrix format: bit j of adj_matrix[i] is 1 if edge i->j exists
+10. Only nodes enabled in node_enable are considered
+
+Implementation details:
+- Depth-first traversal using shift registers to track path
+- 8 parallel comparators for cycle detection
+- Counter increments when reaching node 1 (destination)
+- If depth > 15 and still counting, trigger cycle detection
+- Result in 30 bits (enough for 999,999,999)
+- When done=1, valid results available immediately
+
+Edge cases:
+- No path: result=0, inf_flag=0
+- Multiple edges between same nodes: count each as separate route
+- Self-loops: ignored (can't use in valid path)
+- Cycles not reachable from start: ignored

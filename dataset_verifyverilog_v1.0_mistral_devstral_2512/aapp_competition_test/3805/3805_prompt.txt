@@ -1,0 +1,62 @@
+module wire_untangle (
+    input clk,              // Clock signal
+    input rst_n,            // Active-low reset
+    input start,            // Start pulse (1 cycle) to begin new sequence
+    input char_in,          // Current character: 0 for '-', 1 for '+'
+    input valid_in,         // Valid input indicator
+    input last,             // Last character of sequence indicator
+    output reg done,        // Done signal (1 cycle) when computation complete
+    output reg result       // Result: 0 for "No", 1 for "Yes"
+);
+
+// Internal registers
+reg [15:0] stack_data;     // Stack storage: each bit represents one element
+reg [4:0] stack_depth;     // Current number of elements in stack (0-16)
+reg finished;              // Flag to ignore extra characters after last
+
+// State machine for processing
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        stack_data <= 16'b0;
+        stack_depth <= 5'b0;
+        done <= 1'b0;
+        result <= 1'b0;
+        finished <= 1'b0;
+    end else begin
+        if (start) begin
+            // Reset all state
+            stack_data <= 16'b0;
+            stack_depth <= 5'b0;
+            done <= 1'b0;
+            result <= 1'b0;
+            finished <= 1'b0;
+        end else if (valid_in && !finished) begin
+            // Process new character
+            if (stack_depth != 0 && stack_data[0] == char_in) begin
+                // Pop operation: top matches current character
+                stack_data <= {1'b0, stack_data[15:1]};
+                stack_depth <= stack_depth - 1;
+            end else begin
+                // Push operation: add new character to stack
+                if (stack_depth < 16) begin
+                    stack_data <= {stack_data[14:0], char_in};
+                    stack_depth <= stack_depth + 1;
+                end
+                // If stack full, ignore (will result in No anyway)
+            end
+            
+            // If this is the last character, set done and result
+            if (last) begin
+                done <= 1'b1;
+                result <= (stack_depth == 0) ? 1'b1 : 1'b0;
+                finished <= 1'b1;
+            end else begin
+                done <= 1'b0;
+            end
+        end else begin
+            done <= 1'b0;
+        end
+    end
+end
+
+endmodule

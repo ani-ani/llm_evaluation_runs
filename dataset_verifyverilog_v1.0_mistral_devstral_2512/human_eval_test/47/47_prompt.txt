@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'median_finder' that computes the median of up to 8 numbers.
+
+The module implements the following algorithm:
+1. Accepts an array of N numbers (N=1..8)
+2. Sorts the array using a bubble sort network (8 cycles maximum)
+3. Selects the median: for odd N, the middle element; for even N, the average of two middle elements
+4. Outputs result in Q16.16 fixed-point format
+
+Interface Specification:
+  Inputs:
+    - clk: clock signal
+    - rst_n: active-low reset
+    - start: start computation (pulse high for 1 cycle)
+    - data_in: 16-bit input number (Q16.16 format)
+    - valid_in: high when data_in is valid
+    - index: 3-bit index (0-7) indicating which array position is being loaded
+    - count: 4-bit count (1-8) indicating total number of elements
+
+  Outputs:
+    - result: 32-bit output in Q16.16 format
+    - done: goes high for 1 cycle when result is valid
+
+Behavior:
+1. When start=1 and valid_in=1, load data_in at position 'index' into internal array
+2. After all elements loaded (count elements), sorting begins automatically
+3. Sorting uses bubble sort with 8 passes over the array
+4. After sorting, compute median:
+   - If count is odd: result = sorted_array[count/2]
+   - If count is even: result = (sorted_array[count/2 - 1] + sorted_array[count/2]) / 2
+5. Division by 2 is implemented as right shift (logical)
+6. done signal pulses high when computation completes
+
+State Machine:
+- IDLE: waiting for start
+- LOADING: receiving array elements (count cycles)
+- SORTING: bubble sort passes (8 * count cycles)
+- COMPUTING: calculate median (1 cycle for odd, 2 cycles for even)
+- DONE: assert done signal
+
+The module must be synthesizable with Icarus Verilog. Use non-blocking assignments in sequential logic.

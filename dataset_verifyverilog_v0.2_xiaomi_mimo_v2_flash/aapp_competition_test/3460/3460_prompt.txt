@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'worm_cans' that calculates the number of exploding worms for a chain reaction problem on a 1D line.
+
+Problem Adaptation:
+- Input: N cans (N <= 64) sorted by position X. Each can has a blast radius R.
+- Logic: If can i explodes, it triggers can j if |X[i] - X[j]| <= R[i]. This propagates.
+- Task: For each can i, count the total number of cans that eventually explode.
+
+Inputs:
+input clk, // Clock
+input rst_n, // Active low reset
+input start, // Start computation
+input [5:0] n, // Number of cans (max 64)
+input [63:0] x [0:63], // Array of positions (signed values)
+input [63:0] r [0:63], // Array of blast radii
+
+Outputs:
+output reg [63:0] result [0:63], // Result count for each can
+output reg done, // High when all results computed
+
+Implementation Strategy:
+Use a state machine to iterate through each starting can. For each starting can, use a bitmask to track exploding cans. Since N is small (<=64), we can use 64-bit wide operations to update the mask in parallel or sequentially. 
+
+State Machine:
+1. IDLE: Wait for start.
+2. SETUP_START: Initialize loop for each starting can (i = 0 to N-1).
+3. PROPAGATE: Loop to expand explosion. Maintain a 'current_mask' and 'next_mask'. 
+   - 'current_mask' contains cans that have exploded in this step.
+   - Generate 'next_mask': For each bit set in current_mask, calculate reach and set bits in next_mask for cans within reach.
+   - Update total mask (visited) with new explosions.
+   - Repeat until no new explosions.
+4. COUNT: Popcount the total mask and store in result[i].
+5. NEXT_CAN: Increment i and go to SETUP_START if i < N.
+6. FINISHED: Set done high.
+
+Timing:
+- Propagation loop may take up to N cycles per starting can.
+- Total latency roughly N*N cycles.
+
+Constraints:
+- Use 64-bit arithmetic for positions and radii.
+- Be careful with signed vs unsigned for distance calculations.
+- Input arrays x and r must be accessible; assume they are registered internally or provided per cycle (but here we assume they are inputs, so we might need to latch them if the interface doesn't support array access in the state machine described, but standard Verilog allows array inputs. To be safe, we will describe latching them into internal registers in SETUP_START).

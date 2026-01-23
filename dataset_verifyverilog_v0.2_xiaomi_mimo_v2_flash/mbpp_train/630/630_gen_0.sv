@@ -1,0 +1,38 @@
+module adjacent_coords (
+    input [7:0] x_coord,
+    input [7:0] y_coord,
+    output [8:0][7:0] x_out,
+    output [8:0][7:0] y_out
+);
+
+    // Row 0: dx = -1 (255)
+    assign x_out[0] = x_coord - 8'd1;
+    assign y_out[0] = y_coord - 8'd1;
+    
+    assign x_out[1] = x_coord - 8'd1;
+    assign y_out[1] = y_coord;
+    
+    assign x_out[2] = x_coord - 8'd1;
+    assign y_out[2] = y_coord + 8'd1;
+
+    // Row 1: dx = 0
+    assign x_out[3] = x_coord;
+    assign y_out[3] = y_coord - 8'd1;
+    
+    assign x_out[4] = x_coord;
+    assign y_out[4] = y_coord;
+    
+    assign x_out[5] = x_coord;
+    assign y_out[5] = y_coord + 8'd1;
+
+    // Row 2: dx = +1
+    assign x_out[6] = x_coord + 8'd1;
+    assign y_out[6] = y_coord - 8'd1;
+    
+    assign x_out[7] = x_coord + 8'd1;
+    assign y_out[7] = y_coord;
+    
+    assign x_out[8] = x_coord + 8'd1;
+    assign y_out[8] = y_coord + 8'd1;
+
+endmodule

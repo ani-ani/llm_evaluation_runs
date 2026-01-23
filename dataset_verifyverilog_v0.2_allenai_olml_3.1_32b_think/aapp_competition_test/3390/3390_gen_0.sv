@@ -1,0 +1,1 @@
+module longest_menu(input clk, input rst_n, input start, input [2:0] num_nodes, input [7:0][7:0] adjacency_matrix, output reg [3:0] result, output reg done); reg [3:0] dist [7:0][7:0]; reg [2:0] state; always @(posedge clk) begin if (!rst_n) state <= 0; end endmodule

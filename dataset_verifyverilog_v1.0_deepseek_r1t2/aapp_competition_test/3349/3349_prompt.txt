@@ -1,0 +1,37 @@
+Design a Verilog module that implements the No-Vowels puzzle reconstruction. The module should use dynamic programming to find the segmentation of the message into dictionary skeletons that maximizes the total vowel count, and then output the sequence of dictionary word indices.
+
+Module name: no_vowels_reconstructor
+
+Parameters:
+  MAX_WORDS = 4
+  MAX_WORD_LEN = 8
+  MAX_MSG_LEN = 16
+
+Inputs:
+  clk, rst_n (active low), start (pulse)
+  message [127:0] – 16 characters, each 8 bits, MSB first.
+  msg_len [4:0] – actual length (1-16).
+  skeleton_chars [255:0] – For each word i (0 to MAX_WORDS-1), 64 bits contain 8 characters (MSB first). Only first skeleton_len[i] are valid.
+  skeleton_len [15:0] – For each word i, 4 bits length (0-8).
+  vowel_count [15:0] – For each word i, 4 bits vowel count (0-8).
+  num_words [3:0] – Number of dictionary words (1-4).
+
+Outputs:
+  word_valid (1 bit) – High for one cycle when word_index is valid.
+  word_index [1:0] – Index of the word to output (0 to num_words-1).
+  done (1 bit) – High for one cycle when reconstruction is complete (after all words output).
+
+Behavior:
+  On start pulse, the module computes the optimal segmentation using DP. It stores dp[i] (max vowels for prefix length i), reachable[i], prev[i], word_used[i] for i=0..msg_len.
+  After DP, it backtracks from msg_len to 0, pushing word_used[i] onto a stack (FIFO). Then it outputs the words in order, one per cycle, with word_valid asserted.
+  The module must complete within 10000 cycles. Use a state machine with states: IDLE, DP_INIT, DP_LOOP, DP_CHECK_WORD, DP_COMPARE_CHAR, DP_UPDATE, BACKTRACK, OUTPUT, DONE.
+  In DP_LOOP, iterate i from 0 to msg_len-1. For each i, if reachable[i] is set, iterate w from 0 to num_words-1. For each w, if i + L <= msg_len, compare message[i + j] with skeleton_chars[w][j] for j=0..L-1. If all match, compute new_vowels = dp[i] + vowel_count[w]. If new_vowels > dp[i+L] (or reachable[i+L] is false), update dp[i+L], reachable[i+L], prev[i+L], word_used[i+L].
+  After all i, go to BACKTRACK: create a stack of word indices (max size msg_len). Starting at pos = msg_len, while pos > 0, push word_used[pos], pos = prev[pos]. Then transition to OUTPUT.
+  In OUTPUT, pop from stack and assert word_valid and word_index for each word. After all words are output, assert done and return to IDLE.
+
+Implementation details:
+  - Unpack message into a register array msg_reg[0:MAX_MSG_LEN-1][7:0].
+  - Unpack skeleton_chars into dict_skeleton[0:MAX_WORDS-1][0:MAX_WORD_LEN-1][7:0] and dict_len[0:MAX_WORDS-1].
+  - Use appropriate widths for dp (8 bits), prev (5 bits), word_used (3 bits), etc.
+  - Ensure all signals are properly initialized on reset.
+  - The module should be synthesizable (no latches, all paths defined).

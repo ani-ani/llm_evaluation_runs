@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'string_compressor' that implements a simplified string compression algorithm with dynamic programming.
+
+The module computes the minimum cost to compress a string using two operations:
+1. Pay 'a' coins to encode a single character
+2. Pay 'b' coins to encode a substring that has appeared previously
+
+Scaled parameters:
+- String length N = 16 characters (max)
+- Character width = 8 bits (ASCII 'a'-'z')
+- Cost values a and b are 16-bit integers
+- DP table size = 16 entries
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] char_in // current character to process (for loading string)
+input [15:0] a_cost // cost for single character encoding
+input [15:0] b_cost // cost for substring encoding
+input [3:0] str_len // actual length of input string (1-16)
+
+Outputs:
+output reg [15:0] min_cost // minimum total cost
+output reg done // high when computation complete
+
+Specification:
+- The module should operate in two phases: LOAD and COMPUTE
+- During LOAD phase (when start=1), accept str_len characters one by one into an internal buffer
+- During COMPUTE phase, implement DP algorithm:
+  dp[i] = min(dp[i-1] + a_cost, dp[j] + b_cost) for all valid j < i
+  where substring s[j+1...i] must match a substring in s[1...j]
+- For substring matching, check if s[i-l+1...i] equals any substring ending at position j (where j < i, l is match length)
+- Use state machine: IDLE, LOAD, COMPUTE, DONE
+- Latency: Result valid 256 clock cycles after start (for bounded computation)
+
+Internal Implementation:
+- Maintain 16-entry DP table: dp[0] to dp[15]
+- Maintain 16x8 character buffer for input string
+- For each i from 1 to str_len:
+  1. Compute dp[i] = dp[i-1] + a_cost
+  2. For each j from 0 to i-1:
+     - Compute longest match length between s[j+1...i] and any substring in s[1...j]
+     - If match length == (i-j), update dp[i] = min(dp[i], dp[j] + b_cost)
+- The substring match check should compare character-by-character from the end
+
+Constraint: str_len <= 16 for practical hardware implementation.

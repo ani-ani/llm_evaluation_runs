@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'clock_setter' that implements clock time setting algorithm.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0] start_hh // start time hours (2 digits BCD)
+input [7:0] start_mm // start time minutes (2 digits BCD)
+input [7:0] target_hh // target time hours (2 digits BCD)
+input [7:0] target_mm // target time minutes (2 digits BCD)
+
+Outputs:
+output reg [7:0] current_hh // current time hours
+output reg [7:0] current_mm // current time minutes
+output reg done // high when sequence complete
+output reg [3:0] count // number of states generated
+
+The module should generate the sequence of intermediate clock states when changing from start to target time.
+
+Algorithm:
+1. Process minutes component first, then hours component
+2. For each component (hh or mm):
+   - If both digits need change: go through 00
+     * Change ones digit to 0 using shortest path (wraparound allowed)
+     * Change tens digit to target tens (linear steps)
+     * Change ones digit to target ones using shortest path
+   - If only ones digit needs change: use shortest path with wraparound
+   - If only tens digit needs change: change linearly
+3. Each digit change is one clock cycle
+4. Use state machine: IDLE, SETUP_MIN_ONES, SETUP_MIN_TENS, SETUP_MIN_ONES2, SETUP_HR_ONES, SETUP_HR_TENS, SETUP_HR_ONES2, DONE
+5. Only generate intermediate states (not final target)
+6. Maximum 16 intermediate states
+
+State Machine:
+- IDLE: wait for start signal
+- SETUP_MIN_ONES: process minutes ones digit
+- SETUP_MIN_TENS: process minutes tens digit  
+- SETUP_MIN_ONES2: process minutes ones digit (if needed after tens)
+- SETUP_HR_ONES: process hours ones digit
+- SETUP_HR_TENS: process hours tens digit
+- SETUP_HR_ONES2: process hours ones digit (if needed after tens)
+- DONE: set done signal high
+
+Digit operations:
+- BCD format: tens digit in bits [7:4], ones digit in bits [3:0]
+- For ones digits: can increment/decrement with wraparound 0↔9
+- For tens digits: hours tens 0-2, minutes tens 0-5, no wraparound
+- Each step changes exactly one digit by ±1
+- Result must remain valid time (00-23 hours, 00-59 minutes)
+
+Example:
+start: 09:09, target: 20:10
+Sequence: 09:09 → 09:00 → 09:10 → 00:10 → 10:10 → 20:10
+Count: 5 intermediate states

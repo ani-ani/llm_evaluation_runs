@@ -1,0 +1,1 @@
+module parabola_directrix(input [15:0] a, input [15:0] b, input [15:0] c, output reg [31:0] directrix); assign directrix = ( (signed(c) - ( ( ( (signed(b) * signed(b)) + 1 ) << 2 ) * signed(a) )) )[31:0]; endmodule

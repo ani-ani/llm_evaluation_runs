@@ -1,0 +1,149 @@
+module break_scheduler (
+    input clk,
+    input rst_n,
+    input start,
+    input [4:0] concert_length, // T (0-31)
+    input [2:0] num_musicians, // N (0-7)
+    input [7:0][4:0] break_durations, // durations for up to 8 musicians (0-31)
+    output reg [4:0] start_times [0:7], // start time for each musician
+    output reg done,
+    output reg valid // high if scheduling successful
+);
+
+// State machine
+reg [2:0] state;
+localparam IDLE = 3'd0;
+localparam SCHEDULE = 3'd1;
+localparam COMPLETE = 3'd2;
+
+// Timeline occupancy tracking: each bit represents 1 minute slot
+// For T=32 max, we need 32 bits
+reg [31:0] occupancy;
+reg [31:0] occupancy_next;
+
+// Internal counters
+reg [2:0] musician_idx;
+reg [4:0] time_cursor;
+reg [4:0] break_dur;
+reg [4:0] search_limit;
+reg [4:0] check_pos;
+reg [3:0] overlap_count;
+
+// Temporary storage for next state logic
+reg can_place;
+reg [31:0] mask;
+reg [31:0] masked_occupancy;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        valid <= 0;
+        occupancy <= 0;
+        musician_idx <= 0;
+        start_times[0] <= 0; start_times[1] <= 0; start_times[2] <= 0; start_times[3] <= 0;
+        start_times[4] <= 0; start_times[5] <= 0; start_times[6] <= 0; start_times[7] <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    state <= SCHEDULE;
+                    occupancy <= 0;
+                    musician_idx <= 0;
+                    done <= 0;
+                    valid <= 0;
+                end
+            end
+            
+            SCHEDULE: begin
+                if (musician_idx < num_musicians) begin
+                    // Get current musician's break duration
+                    break_dur <= break_durations[musician_idx];
+                    time_cursor <= 0;
+                    state <= COMPLETE; // temporarily jump, will fix logic below
+                end else begin
+                    // All musicians scheduled
+                    done <= 1;
+                    valid <= 1;
+                    state <= IDLE;
+                end
+            end
+            
+            COMPLETE: begin
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+// Combinational scheduling logic (split into stages for timing)
+always @(*) begin
+    // Default
+    occupancy_next = occupancy;
+    can_place = 0;
+    
+    if (state == SCHEDULE && musician_idx < num_musicians) begin
+        // Try to find valid start time
+        break_dur = break_durations[musician_idx];
+        
+        // Greedy search: find earliest slot where break fits
+        // This is pseudo-combinational - in real hardware would be pipelined
+        for (integer t = 0; t <= 31; t = t + 1) begin
+            if (!can_place && (t + break_dur) <= concert_length) begin
+                // Check overlap count for this interval
+                overlap_count = 0;
+                for (integer j = 0; j < 32; j = j + 1) begin
+                    if (j >= t && j < (t + break_dur)) begin
+                        if (occupancy[j]) overlap_count = overlap_count + 1;
+                    end
+                end
+                
+                // Can place if at most 2 overlapping (total <= 3 including current)
+                if (overlap_count <= 2) begin
+                    can_place = 1;
+                    // Update occupancy
+                    for (integer j = 0; j < 32; j = j + 1) begin
+                        if (j >= t && j < (t + break_dur)) begin
+                            occupancy_next[j] = 1;
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+// Sequential update of scheduling
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset handled above
+    end else if (state == SCHEDULE && musician_idx < num_musicians) begin
+        // Use combinational result to update
+        if (can_place) begin
+            // Find the actual time we selected (re-calculate for correctness)
+            for (integer t = 0; t <= 31; t = t + 1) begin
+                if ((t + break_durations[musician_idx]) <= concert_length) begin
+                    overlap_count = 0;
+                    for (integer j = 0; j < 32; j = j + 1) begin
+                        if (j >= t && j < (t + break_durations[musician_idx])) begin
+                            if (occupancy[j]) overlap_count = overlap_count + 1;
+                        end
+                    end
+                    if (overlap_count <= 2) begin
+                        start_times[musician_idx] <= t;
+                        // Update occupancy
+                        for (integer j = 0; j < 32; j = j + 1) begin
+                            if (j >= t && j < (t + break_durations[musician_idx])) begin
+                                occupancy[j] <= 1;
+                            end
+                        end
+                        musician_idx <= musician_idx + 1;
+                        break;
+                    end
+                end
+            end
+        end
+    end
+end
+
+endmodule

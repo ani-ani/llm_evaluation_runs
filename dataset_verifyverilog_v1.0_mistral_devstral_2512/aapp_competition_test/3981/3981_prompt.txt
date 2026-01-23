@@ -1,0 +1,40 @@
+Module: safe_rocket
+Description: Determines if two convex polygons (up to 4 vertices) are congruent under translation and rotation. Vertices are provided in order (clockwise or counterclockwise). Outputs 1 if congruent, 0 otherwise.
+
+Interface:
+Inputs:
+  size_a[1:0]  – number of vertices of polygon A (2,3,4)
+  ax0[7:0], ay0[7:0] – vertex 0 of A
+  ax1[7:0], ay1[7:0] – vertex 1 of A
+  ax2[7:0], ay2[7:0] – vertex 2 of A
+  ax3[7:0], ay3[7:0] – vertex 3 of A (ignored if size_a < 4)
+  size_b[1:0]  – number of vertices of polygon B (2,3,4)
+  bx0[7:0], by0[7:0] – vertex 0 of B
+  bx1[7:0], by1[7:0] – vertex 1 of B
+  bx2[7:0], by2[7:0] – vertex 2 of B
+  bx3[7:0], by3[7:0] – vertex 3 of B (ignored if size_b < 4)
+Output:
+  safe – 1 bit, high if polygons are congruent
+
+Implementation:
+1. If size_a != size_b, output 0.
+2. For size 2 (collinear): compute squared distance between the two points of each polygon. Output 1 iff distances equal.
+3. For size 3 or 4:
+   a. Translate each polygon so that vertex 0 is at origin: wx_i = vx_i - vx_0, wy_i = vy_i - vy_0.
+   b. Compute edge vectors e_i = (w_{(i+1)%k} - w_i) for i=0..k-1.
+   c. For each i, compute:
+        len2_i = e_i.x^2 + e_i.y^2 (unsigned)
+        dot_i   = e_i.x * e_{(i+1)%k}.x + e_i.y * e_{(i+1)%k}.y (signed)
+        cross_i = e_i.x * e_{(i+1)%k}.y - e_i.y * e_{(i+1)%k}.x (signed)
+   d. Store these triples for each polygon.
+   e. Check if there exists a cyclic shift s (0..k-1) such that for all i:
+        len2_A[i] == len2_B[(i+s)%k] && dot_A[i] == dot_B[(i+s)%k] && cross_A[i] == cross_B[(i+s)%k]
+   f. Output 1 if a shift matches, else 0.
+
+Bit widths:
+- Coordinates: 8 bits
+- Differences: 9 bits signed (range -255..255)
+- Squared lengths: 18 bits unsigned
+- Dot/Cross: 18 bits signed
+
+The module is purely combinational (no clock or reset).

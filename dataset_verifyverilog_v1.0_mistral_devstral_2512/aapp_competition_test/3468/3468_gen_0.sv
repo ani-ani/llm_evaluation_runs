@@ -1,0 +1,224 @@
+module AppInstaller (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // App count and initial capacity
+    input wire [2:0] n,           // Number of apps (1-8)
+    input wire [7:0] c,           // Initial disk capacity (0-255)
+    
+    // App data - 8 apps max, each with 8-bit d and s
+    input wire [7:0] d_0, s_0,    // App 1
+    input wire [7:0] d_1, s_1,    // App 2
+    input wire [7:0] d_2, s_2,    // App 3
+    input wire [7:0] d_3, s_3,    // App 4
+    input wire [7:0] d_4, s_4,    // App 5
+    input wire [7:0] d_5, s_5,    // App 6
+    input wire [7:0] d_6, s_6,    // App 7
+    input wire [7:0] d_7, s_7,    // App 8
+    
+    // Outputs
+    output reg [2:0] max_count,   // Maximum number of apps that can be installed
+    output reg [2:0] order_0,     // App index (0-7) for position 0
+    output reg [2:0] order_1,     // App index for position 1
+    output reg [2:0] order_2,     // App index for position 2
+    output reg [2:0] order_3,     // App index for position 3
+    output reg [2:0] order_4,     // App index for position 4
+    output reg [2:0] order_5,     // App index for position 5
+    output reg [2:0] order_6,     // App index for position 6
+    output reg [2:0] order_7,     // App index for position 7
+    output reg done               // Computation complete
+);
+
+    // Internal state machine states
+    localparam [2:0] IDLE = 3'd0;
+    localparam [2:0] PARTITION = 3'd1;
+    localparam [2:0] SORT_B = 3'd2;
+    localparam [2:0] SORT_A = 3'd3;
+    localparam [2:0] BUILD_ORDER = 3'd4;
+    localparam [2:0] SIMULATE = 3'd5;
+    localparam [2:0] FINISH = 3'd6;
+    
+    reg [2:0] state, next_state;
+    
+    // Storage for app data
+    reg [7:0] apps_d [0:7];
+    reg [7:0] apps_s [0:7];
+    reg [7:0] current_capacity;
+    
+    // Group tracking
+    reg [2:0] group_b_count;    // Number of apps in Group B
+    reg [2:0] group_a_count;    // Number of apps in Group A
+    reg [2:0] temp_order [0:7]; // Temporary order array
+    reg [2:0] install_idx;      // Index during simulation
+    
+    // Sorting variables
+    integer i, j;
+    reg [7:0] temp_d, temp_s;
+    reg [2:0] temp_idx;
+    
+    // State register
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            max_count <= 3'd0;
+            done <= 1'b0;
+            group_b_count <= 3'd0;
+            group_a_count <= 3'd0;
+            install_idx <= 3'd0;
+            current_capacity <= 8'd0;
+            // Reset order outputs
+            order_0 <= 3'd0; order_1 <= 3'd0; order_2 <= 3'd0; order_3 <= 3'd0;
+            order_4 <= 3'd0; order_5 <= 3'd0; order_6 <= 3'd0; order_7 <= 3'd0;
+        end else begin
+            state <= next_state;
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: if (start) next_state = PARTITION;
+            PARTITION: next_state = SORT_B;
+            SORT_B: next_state = SORT_A;
+            SORT_A: next_state = BUILD_ORDER;
+            BUILD_ORDER: next_state = SIMULATE;
+            SIMULATE: if (install_idx >= n || current_capacity < 8'hFF) next_state = FINISH;
+            FINISH: next_state = IDLE;
+            default: next_state = IDLE;
+        endcase
+    end
+    
+    // Main logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset handled above
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        // Load app data into internal arrays
+                        apps_d[0] <= d_0; apps_s[0] <= s_0;
+                        apps_d[1] <= d_1; apps_s[1] <= s_1;
+                        apps_d[2] <= d_2; apps_s[2] <= s_2;
+                        apps_d[3] <= d_3; apps_s[3] <= s_3;
+                        apps_d[4] <= d_4; apps_s[4] <= s_4;
+                        apps_d[5] <= d_5; apps_s[5] <= s_5;
+                        apps_d[6] <= d_6; apps_s[6] <= s_6;
+                        apps_d[7] <= d_7; apps_s[7] <= s_7;
+                        current_capacity <= c;
+                        max_count <= 3'd0;
+                        done <= 1'b0;
+                    end
+                end
+                
+                PARTITION: begin
+                    // Partition into Group A (d <= s) and Group B (d > s)
+                    // We'll use a simple approach: mark Group B apps first in temp_order
+                    group_b_count <= 3'd0;
+                    group_a_count <= 3'd0;
+                    // Initialize temp_order with invalid indices
+                    for (i = 0; i < 8; i = i + 1) begin
+                        temp_order[i] <= 3'b111; // Mark as empty
+                    end
+                end
+                
+                SORT_B: begin
+                    // Sort Group B apps by s descending (bubble sort)
+                    // For simplicity, we'll just arrange them in temp_order first
+                    if (group_b_count == 3'd0) begin
+                        // First pass: identify Group B apps
+                        for (i = 0; i < n; i = i + 1) begin
+                            if (apps_d[i] > apps_s[i]) begin
+                                temp_order[group_b_count] <= i[2:0];
+                                group_b_count <= group_b_count + 3'd1;
+                            end
+                        end
+                    end else begin
+                        // Perform bubble sort on Group B section
+                        for (i = 0; i < group_b_count - 3'd1; i = i + 1) begin
+                            if (temp_order[i] < 3'b111 && temp_order[i+1] < 3'b111) begin
+                                if (apps_s[temp_order[i]] < apps_s[temp_order[i+1]]) begin
+                                    // Swap
+                                    temp_idx <= temp_order[i];
+                                    temp_order[i] <= temp_order[i+1];
+                                    temp_order[i+1] <= temp_idx;
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                SORT_A: begin
+                    // Identify and sort Group A apps by d ascending
+                    // Place them after Group B in temp_order
+                    if (group_a_count == 3'd0) begin
+                        for (i = 0; i < n; i = i + 1) begin
+                            if (apps_d[i] <= apps_s[i]) begin
+                                temp_order[group_b_count + group_a_count] <= i[2:0];
+                                group_a_count <= group_a_count + 3'd1;
+                            end
+                        end
+                    end else begin
+                        // Bubble sort on Group A section
+                        for (i = group_b_count; i < group_b_count + group_a_count - 3'd1; i = i + 1) begin
+                            if (temp_order[i] < 3'b111 && temp_order[i+1] < 3'b111) begin
+                                if (apps_d[temp_order[i]] > apps_d[temp_order[i+1]]) begin
+                                    temp_idx <= temp_order[i];
+                                    temp_order[i] <= temp_order[i+1];
+                                    temp_order[i+1] <= temp_idx;
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                BUILD_ORDER: begin
+                    // Copy temp_order to output registers
+                    order_0 <= temp_order[0];
+                    order_1 <= temp_order[1];
+                    order_2 <= temp_order[2];
+                    order_3 <= temp_order[3];
+                    order_4 <= temp_order[4];
+                    order_5 <= temp_order[5];
+                    order_6 <= temp_order[6];
+                    order_7 <= temp_order[7];
+                    install_idx <= 3'd0;
+                    current_capacity <= c;
+                    max_count <= 3'd0;
+                end
+                
+                SIMULATE: begin
+                    // Simulate installation in the constructed order
+                    if (install_idx < n && temp_order[install_idx] < 3'b111) begin
+                        // Get app index
+                        idx = temp_order[install_idx];
+                        // Check if we can install this app
+                        if (current_capacity >= apps_d[idx] || current_capacity >= apps_s[idx]) begin
+                            // Actually need max(d, s)
+                            if (current_capacity >= apps_s[idx] && current_capacity >= apps_d[idx]) begin
+                                // Can install
+                                current_capacity <= current_capacity - apps_s[idx];
+                                max_count <= max_count + 3'd1;
+                                install_idx <= install_idx + 3'd1;
+                            end else begin
+                                // Cannot install - stop here
+                                install_idx <= n; // Force exit
+                            end
+                        end else begin
+                            install_idx <= n;
+                        end
+                    end else begin
+                        install_idx <= n;
+                    end
+                end
+                
+                FINISH: begin
+                    done <= 1'b1;
+                end
+            endcase
+        end
+    end
+    
+endmodule

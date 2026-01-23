@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'ways_calculator' that computes the number of ways to select exactly K items from N types with M copies each, modulo 10^6+7.
+
+The module implements the recurrence: C(n, k) = C(n, k-1) + C(n-1, k) - C(n-1, k-m-1).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [6:0] N_in // Number of types (max 64)
+input [6:0] M_in // Max copies per type (max 64)
+input [6:0] K_in // Target count (max 64)
+
+Outputs:
+output reg [19:0] result // Result modulo 1000007
+output reg done // High when computation complete
+
+Specifications:
+- Use a sliding window approach to maintain previous values.
+- Use a Block RAM (BRAM) or register array of size 128 to store values for the current and previous iteration.
+- Modulo 1000007 (0xF4243).
+- Latency: O(N*K) cycles, but since N, K <= 64, max ~4096 cycles.
+- State Machine States: IDLE, INIT, ITERATE_N, ITERATE_K, UPDATE_RESULT, DONE.
+- In ITERATE_K state, calculate new value using (val[k-1] + prev_val[k] - prev_val[k-M]) mod MOD.
+- Handle negative results from subtraction by adding MOD.
+
+Detailed Algorithm:
+1. In IDLE, wait for start.
+2. In INIT, reset the arrays. Set dp[0] = 1 for the first iteration (0 types selected).
+3. Loop N times (from 1 to N):
+   - Loop K times (from 1 to K):
+     - Retrieve dp[k-1] (current row previous column)
+     - Retrieve prev_dp[k] (previous row same column)
+     - Retrieve prev_dp[k-m] (previous row M steps back, treat as 0 if k-m < 0)
+     - Compute sum = dp[k-1] + prev_dp[k] - prev_dp[k-m]
+     - If sum < 0, add 1000007
+     - Store sum % 1000007 in dp[k]
+4. After N iterations, result is dp[K].

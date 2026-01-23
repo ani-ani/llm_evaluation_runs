@@ -1,0 +1,155 @@
+module digit_product_counter (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [9:0] L,
+    input wire [9:0] R,
+    output reg [31:0] count_1,
+    output reg [31:0] count_2,
+    output reg [31:0] count_3,
+    output reg [31:0] count_4,
+    output reg [31:0] count_5,
+    output reg [31:0] count_6,
+    output reg [31:0] count_7,
+    output reg [31:0] count_8,
+    output reg [31:0] count_9,
+    output reg done
+);
+
+// State encoding
+localparam IDLE = 3'b000;
+localparam COMPUTE = 3'b001;
+localparam INCREMENT = 3'b010;
+localparam DONE = 3'b011;
+
+// Sub-state for compute
+localparam COMPUTE_INIT = 3'b000;
+localparam COMPUTE_GET_DIGIT = 3'b001;
+localparam COMPUTE_MULTIPLY = 3'b010;
+localparam COMPUTE_UPDATE = 3'b011;
+localparam COMPUTE_CHECK = 3'b100;
+
+reg [9:0] current_number;
+reg [15:0] product;
+reg [9:0] temp;
+reg [3:0] digit;
+reg [2:0] state;
+reg [2:0] compute_state;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset
+        state <= IDLE;
+        done <= 0;
+        count_1 <= 0;
+        count_2 <= 0;
+        count_3 <= 0;
+        count_4 <= 0;
+        count_5 <= 0;
+        count_6 <= 0;
+        count_7 <= 0;
+        count_8 <= 0;
+        count_9 <= 0;
+        current_number <= 0;
+        product <= 0;
+        temp <= 0;
+        digit <= 0;
+        compute_state <= COMPUTE_INIT;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Initialize counts to 0
+                    count_1 <= 0;
+                    count_2 <= 0;
+                    count_3 <= 0;
+                    count_4 <= 0;
+                    count_5 <= 0;
+                    count_6 <= 0;
+                    count_7 <= 0;
+                    count_8 <= 0;
+                    count_9 <= 0;
+                    current_number <= L;
+                    state <= COMPUTE;
+                    compute_state <= COMPUTE_INIT;
+                end
+            end
+
+            COMPUTE: begin
+                case (compute_state)
+                    COMPUTE_INIT: begin
+                        temp <= current_number;
+                        product <= 1;
+                        compute_state <= COMPUTE_GET_DIGIT;
+                    end
+
+                    COMPUTE_GET_DIGIT: begin
+                        if (temp == 0) begin
+                            compute_state <= COMPUTE_CHECK;
+                        end else begin
+                            // Get the last digit
+                            digit <= temp % 10;
+                            temp <= temp / 10;
+                            compute_state <= COMPUTE_MULTIPLY;
+                        end
+                    end
+
+                    COMPUTE_MULTIPLY: begin
+                        if (digit != 0) begin
+                            product <= product * digit;
+                        end
+                        compute_state <= COMPUTE_GET_DIGIT;
+                    end
+
+                    COMPUTE_CHECK: begin
+                        if (product < 10) begin
+                            // We have the final digit
+                            // Increment the count for this digit
+                            state <= INCREMENT;
+                        end else begin
+                            // Need to reduce further
+                            temp <= product;
+                            product <= 1;
+                            compute_state <= COMPUTE_INIT;
+                        end
+                    end
+                endcase
+            end
+
+            INCREMENT: begin
+                case (product)
+                    1: count_1 <= count_1 + 1;
+                    2: count_2 <= count_2 + 1;
+                    3: count_3 <= count_3 + 1;
+                    4: count_4 <= count_4 + 1;
+                    5: count_5 <= count_5 + 1;
+                    6: count_6 <= count_6 + 1;
+                    7: count_7 <= count_7 + 1;
+                    8: count_8 <= count_8 + 1;
+                    9: count_9 <= count_9 + 1;
+                    default: ; // Should not happen
+                endcase
+
+                // Increment current_number
+                current_number <= current_number + 1;
+                // Check if we are done
+                if (current_number + 1 > R) begin
+                    state <= DONE;
+                end else begin
+                    state <= COMPUTE;
+                    compute_state <= COMPUTE_INIT;
+                end
+            end
+
+            DONE: begin
+                done <= 1;
+                if (!start) begin
+                    state <= IDLE;
+                end
+            end
+        endcase
+    end
+end
+
+endmodule

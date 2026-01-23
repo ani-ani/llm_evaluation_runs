@@ -1,0 +1,28 @@
+Design a combinational Verilog module named 'student_swap_optimizer' that computes the minimum number of people to persuade to swap students so that no compartment has 1 or 2 students.
+
+Problem Adaptation:
+- Input: An array of 32 compartments, each containing 0 to 4 students.
+- The module counts compartments by student count (0, 1, 2, 3, 4).
+- It applies a greedy algorithm to match 1s and 2s into valid groups of 3 or 4, using available spots in 3s and 4s.
+- It handles remainder cases using the minimum persuasive swaps.
+- If total students is 0, 1, 2, or 5, the configuration is impossible (return -1).
+
+Inputs:
+input [4:0] compartment_31, compartment_30, ..., compartment_0 // 32 inputs, each [4:0] representing student count (0-4)
+
+Outputs:
+output [7:0] min_swaps // The minimum number of people to persuade, or 8'hFF for impossible (-1)
+
+Logic:
+1. Count the number of compartments with 0, 1, 2, 3, and 4 students. Since the array is fixed size (32), use parallel reduction trees or Sum-of-Products logic.
+2. Calculate Total Students. If Total <= 2 or Total == 5, output 8'hFF (-1).
+3. Greedy Strategy (Hardware Implementation):
+   a. Pair 1s and 2s: `match_12 = min(count_1, count_2)`. These pairs need 1 extra student to form a group of 3. Cost = `match_12`. Update counts: `count_1 -= match_12`, `count_2 -= match_12`, `count_3 += match_12`.
+   b. Group remaining 1s: `groups_of_3_from_1 = count_1 // 3`. These need 2 extra students per group. Cost += `2 * groups_of_3_from_1`. Update `count_3 += groups_of_3_from_1`, `count_1 %= 3`.
+   c. Group remaining 2s: `groups_of_3_from_2 = count_2 // 3`. These need 1 extra student per group. Cost += `2 * groups_of_3_from_2`. Update `count_3 += 2 * groups_of_3_from_2`, `count_2 %= 2` (remainder 0, 1, or 2).
+   d. Resolve Remainders:
+      - If `count_1 == 1`: If `count_3 > 0`, cost += 1 (use 1 spot). Else if `count_4 >= 2`, cost += 2 (2 spots). Else impossible.
+      - If `count_1 == 2`: If `count_4 > 0`, cost += 2 (1 spot). Else if `count_3 >= 2`, cost += 2 (2 spots). Else impossible.
+      - If `count_2 == 1`: If `count_4 > 0`, cost += 1 (use 1 spot). Else if `count_3 >= 2`, cost += 2 (2 spots). Else impossible.
+      - If `count_2 == 2`: Cost += 2 (form new group). 
+4. The module must be purely combinational.

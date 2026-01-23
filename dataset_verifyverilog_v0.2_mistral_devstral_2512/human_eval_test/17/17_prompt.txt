@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'parse_music' that parses a string representing musical notes and returns the duration of each note in beats.
+
+**Input Specification:**
+- The input string is limited to a maximum of 16 ASCII characters.
+- The input is provided as a 128-bit vector (16 bytes, 8 bits per character).
+- The actual length of the string is provided via `input [4:0] length` (max 16).
+
+**Note Legend:**
+- 'o' (single character) = whole note = 4 beats
+- 'o|' (two characters) = half note = 2 beats
+- '.|' (two characters) = quarter note = 1 beat
+
+**Module Interface:**
+```verilog
+module parse_music (
+    input clk,                  // Clock signal
+    input rst_n,                // Active-low reset
+    input start,                // Start parsing
+    input [127:0] music_string, // Input string (16 bytes)
+    input [4:0] length,         // Actual length of the string
+    output reg [3:0] result,    // Duration of the current note (4, 2, or 1)
+    output reg result_valid,    // High when 'result' is valid
+    output reg done             // High when parsing is complete
+);
+```
+
+**Behavioral Description:**
+1. The module operates as a finite state machine (FSM) with states: IDLE, PROCESSING, DONE.
+2. On `start` assertion, the FSM transitions to PROCESSING.
+3. In PROCESSING state, the module reads the string byte-by-byte (or 2 bytes at a time) from the `music_string` vector.
+4. It identifies notes based on the character(s):
+   - If the current byte is 'o' (0x6F) AND the next byte is '|' (0x7C), it interprets it as 'o|' (2 beats). The index advances by 2.
+   - Else if the current byte is 'o' (0x6F), it interprets it as 'o' (4 beats). The index advances by 1.
+   - Else if the current byte is '.' (0x2E) AND the next byte is '|' (0x7C), it interprets it as '.|' (1 beat). The index advances by 2.
+   - Spaces (0x20) are skipped.
+5. For each valid note found, assert `result_valid` high for one clock cycle and place the beat value (4, 2, or 1) on `result`.
+6. When the entire string (up to `length`) is processed, transition to DONE state and assert `done` high.
+7. The module must handle the fixed-width limitation: if `length` is less than 16, only those bytes are valid; spaces fill the rest or are ignored by logic.
+
+**Constraints:**
+- The module should be sequential, using a clock.
+- Maximum output array size is 8 notes (based on test case lengths).
+- Use a state machine to control the iteration.
+- Result valid pulses should be generated as the notes are parsed.
+
+**Verilog Implementation Details:**
+- Define states: IDLE (0), PROCESSING (1), DONE (2).
+- Use a counter to track the current byte index being processed.
+- Extract bytes from `music_string` using bit slicing (e.g., `music_string[(index+1)*8-1 -: 8]`).
+- Handle the logic for 1-byte vs 2-byte tokens.
+- Reset `result_valid` to 0 when not active.

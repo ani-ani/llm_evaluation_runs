@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'probability_calculator' that calculates the probability that pattern g wins against pattern k in a coin flip race.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation signal
+input [19:0] g_mask // Bitmask representing pattern g (1=H, 0=T), max 20 bits
+input [19:0] k_mask // Bitmask representing pattern k (1=H, 0=T), max 20 bits
+input [7:0] g_len // Length of pattern g (1 to 20)
+input [7:0] k_len // Length of pattern k (1 to 20)
+input [15:0] p_fixed // Probability of Head in Q16.16 fixed-point format
+
+Outputs:
+output reg [31:0] result // Probability in Q16.16 fixed-point format
+output reg done // High when computation is complete
+
+The module should implement the following algorithm:
+1. Construct KMP automaton transition tables for g and k. States range from 0 to g_len for g, and 0 to k_len for k. Start state is (0,0).
+2. Identify absorbing states:
+   - Gon wins if g_len is reached but k_len is not (G_absorb, K_active).
+   - Killua wins if k_len is reached but g_len is not (G_active, K_absorb).
+   - Draw if both reached (G_absorb, K_absorb) or if g==k (exact match).
+3. Set up linear equations for winning probability P(s) for transient states (i, j) where i < g_len and j < k_len.
+   P(i,j) = p * P(next(g, i, 'H'), next(k, j, 'H')) + (1-p) * P(next(g, i, 'T'), next(k, j, 'T'))
+   Boundary conditions:
+   P(g_len, j) = 1.0 for j < k_len (Gon wins)
+   P(i, k_len) = 0.0 for i < g_len (Killua wins)
+   P(g_len, k_len) = 0.0 (Draw)
+4. Solve the system of linear equations using Gaussian elimination. Since max states is 400, use a fixed-point representation (Q16.16) for probabilities and arithmetic. The number of variables is at most (g_len * k_len), capped at around 400.
+5. Output the result P(0,0) in Q16.16 format.
+
+Specification:
+- Use sequential logic with states: IDLE, BUILD_AUTOMATA, BUILD_MATRIX, SOLVE_GAUSSIAN, DONE.
+- Fixed-point arithmetic: Q16.16 for all probability calculations.
+- Max states: 20 * 20 = 400. Matrix size will be 400x400. Implement Gaussian elimination iteratively (row by row) to save logic.
+- Latency: Result valid approximately 100,000 clock cycles after start (depends on matrix size).
+- The module must handle the KMP prefix function calculation and transition table generation internally.

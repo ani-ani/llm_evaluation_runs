@@ -1,0 +1,152 @@
+module tuple_concatenator (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Input tuple elements (8-bit ASCII characters each)
+    // Fixed 4-element tuple as specified in test cases
+    input wire [7:0] elem0,
+    input wire [7:0] elem1,
+    input wire [7:0] elem2,
+    input wire [7:0] elem3,
+    
+    // Output: concatenated string (max 32 characters, 256 bits)
+    output reg [255:0] result,
+    output reg [5:0] length,  // Actual length of result (0-32)
+    output reg done
+);
+
+    // Constants
+    localparam DELIM = 8'h2D;  // ASCII '-' = 0x2D
+    localparam MAX_LEN = 32;
+    
+    // State machine states
+    typedef enum logic [2:0] {
+        IDLE,
+        CONCAT0,  // Process elem0
+        ADD_DELIM0,
+        CONCAT1,  // Process elem1
+        ADD_DELIM1,
+        CONCAT2,  // Process elem2
+        ADD_DELIM2,
+        CONCAT3,  // Process elem3 (no delimiter after)
+        COMPLETE
+    } state_t;
+    
+    state_t current_state, next_state;
+    
+    // Internal registers for building result
+    reg [255:0] result_reg;
+    reg [5:0] pos_reg;  // Current position in result
+    
+    // State transition logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            current_state <= IDLE;
+            result_reg <= 256'h0;
+            pos_reg <= 6'd0;
+            done <= 1'b0;
+            length <= 6'd0;
+        end else begin
+            current_state <= next_state;
+            
+            case (current_state)
+                IDLE: begin
+                    result_reg <= 256'h0;
+                    pos_reg <= 6'd0;
+                    done <= 1'b0;
+                    length <= 6'd0;
+                end
+                
+                CONCAT0: begin
+                    // Copy elem0 bytes to result (assuming 1 byte per char)
+                    result_reg[7:0] <= elem0;
+                    pos_reg <= 6'd1;
+                end
+                
+                ADD_DELIM0: begin
+                    result_reg[15:8] <= DELIM;
+                    pos_reg <= 6'd2;
+                end
+                
+                CONCAT1: begin
+                    result_reg[23:16] <= elem1;
+                    pos_reg <= 6'd3;
+                end
+                
+                ADD_DELIM1: begin
+                    result_reg[31:24] <= DELIM;
+                    pos_reg <= 6'd4;
+                end
+                
+                CONCAT2: begin
+                    result_reg[39:32] <= elem2;
+                    pos_reg <= 6'd5;
+                end
+                
+                ADD_DELIM2: begin
+                    result_reg[47:40] <= DELIM;
+                    pos_reg <= 6'd6;
+                end
+                
+                CONCAT3: begin
+                    result_reg[55:48] <= elem3;
+                    pos_reg <= 6'd7;
+                    length <= 6'd7;  // 7 characters total
+                end
+                
+                COMPLETE: begin
+                    result <= result_reg;
+                    done <= 1'b1;
+                end
+            endcase
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        next_state = current_state;
+        
+        case (current_state)
+            IDLE: begin
+                if (start)
+                    next_state = CONCAT0;
+            end
+            
+            CONCAT0: begin
+                next_state = ADD_DELIM0;
+            end
+            
+            ADD_DELIM0: begin
+                next_state = CONCAT1;
+            end
+            
+            CONCAT1: begin
+                next_state = ADD_DELIM1;
+            end
+            
+            ADD_DELIM1: begin
+                next_state = CONCAT2;
+            end
+            
+            CONCAT2: begin
+                next_state = ADD_DELIM2;
+            end
+            
+            ADD_DELIM2: begin
+                next_state = CONCAT3;
+            end
+            
+            CONCAT3: begin
+                next_state = COMPLETE;
+            end
+            
+            COMPLETE: begin
+                next_state = IDLE;
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+
+endmodule

@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'airline_review_opt' that finds the minimum cost to review all required flights and return to Stockholm (node 1).
+
+Problem Adaptation:
+- N (airports): 8 max
+- R (required flights): 8 max (we identify connected components of required flights)
+- F (additional flights): 16 max
+- Costs: 0-10000 (fits in 16 bits)
+
+Algorithm:
+1. Use Floyd-Warshall (or repeated Dijkstra) to compute shortest paths between all pairs of cities using all flights (required + additional).
+2. Identify the set of 'required' cities (endpoints of required flights).
+3. Use Dynamic Programming with bitmask (mask size 8) to find minimum cost to visit all required components and return to start.
+
+Inputs:
+input clk // Clock
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] num_nodes // Number of nodes (3 bits, max 8)
+input [2:0] num_req_edges // Number of required edges (3 bits, max 8)
+input [2:0] num_add_edges // Number of additional edges (3 bits, max 16)
+input [3:0][7:0] req_edges_data // Packed array of required edges: {src[1:0], dst[1:0], cost[13:0]} for 4 edges max (simplified interface)
+input [7:0][7:0] add_edges_data // Packed array of additional edges: similar packing
+
+Outputs:
+output reg [23:0] min_cost // Result (24 bits covers max cost)
+output reg done // High when done
+
+Internal Logic:
+- State Machine: IDLE, PRECOMP_PATHS, DP_INIT, DP_ITERATE, DONE
+- Memory: 8x8 matrix for shortest paths (8-bit indices, 16-bit costs)
+- DP State: 256 states (8 nodes) storing min costs
+
+Behavior:
+1. Wait for start.
+2. Run Floyd-Warshall (3 nested loops: k, i, j) on combined graph.
+3. Extract required components (connected components of required edges).
+4. Run DP (iterative over masks) to find optimal tour visiting all components.
+5. Output result.
+
+Latency: Approx 10,000 cycles (Floyd-Warshall takes ~8^3=512 cycles, DP takes ~2^8 * 8 = 2048 cycles, plus overhead).

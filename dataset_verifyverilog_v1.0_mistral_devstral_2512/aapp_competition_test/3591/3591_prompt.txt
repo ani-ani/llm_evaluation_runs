@@ -1,0 +1,125 @@
+module photo_validator (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] length,
+    input wire [127:0] packed_arr,  // Packed array of 16 8-bit values: arr[0] in bits 7:0, arr[1] in 15:8, ..., arr[15] in 127:120
+    output reg result,
+    output reg done
+);
+
+// State encoding
+localparam IDLE = 3'b000;
+localparam INIT_I = 3'b001;
+localparam CHECK_LEFT = 3'b010;
+localparam CHECK_RIGHT = 3'b011;
+localparam FOUND_VALID = 3'b100;
+localparam DONE = 3'b101;
+
+reg [2:0] state;
+reg [3:0] i, j, k;          // counters up to 16
+reg [3:0] captured_len;      // captured length (4-bit)
+reg [127:0] captured_arr;    // captured array
+reg left_found;
+reg [7:0] left_min_above;
+reg right_found;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 0;
+        done <= 0;
+        i <= 0;
+        j <= 0;
+        k <= 0;
+        left_found <= 0;
+        left_min_above <= 8'hFF;
+        right_found <= 0;
+        captured_len <= 0;
+        captured_arr <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                result <= 0;
+                if (start) begin
+                    captured_arr <= packed_arr;
+                    captured_len <= length;
+                    i <= 0;
+                    state <= INIT_I;
+                end
+            end
+
+            INIT_I: begin
+                if (i >= captured_len) begin
+                    // No valid position found
+                    result <= 0;
+                    done <= 1;
+                    state <= DONE;
+                end else begin
+                    left_found <= 0;
+                    left_min_above <= 8'hFF;
+                    j <= 0;
+                    state <= CHECK_LEFT;
+                end
+            end
+
+            CHECK_LEFT: begin
+                if (j < i) begin
+                    // Compare arr[j] and arr[i]
+                    if (captured_arr[8*j +: 8] > captured_arr[8*i +: 8]) begin
+                        left_found <= 1;
+                        if (captured_arr[8*j +: 8] < left_min_above)
+                            left_min_above <= captured_arr[8*j +: 8];
+                    end
+                    j <= j + 1;
+                end else begin
+                    // Finished scanning left
+                    if (left_found) begin
+                        k <= i + 1;
+                        right_found <= 0;
+                        state <= CHECK_RIGHT;
+                    end else begin
+                        // No left taller person, move to next i
+                        i <= i + 1;
+                        state <= INIT_I;
+                    end
+                end
+            end
+
+            CHECK_RIGHT: begin
+                if (k < captured_len) begin
+                    if (captured_arr[8*k +: 8] > captured_arr[8*i +: 8] && captured_arr[8*k +: 8] > left_min_above) begin
+                        right_found <= 1;
+                        state <= FOUND_VALID;
+                    end else begin
+                        k <= k + 1;
+                    end
+                end else begin
+                    // No right person found for this i
+                    i <= i + 1;
+                    state <= INIT_I;
+                end
+            end
+
+            FOUND_VALID: begin
+                result <= 1;
+                done <= 1;
+                state <= DONE;
+            end
+
+            DONE: begin
+                // Stay here until reset
+                if (!rst_n) begin
+                    state <= IDLE;
+                    result <= 0;
+                    done <= 0;
+                end
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

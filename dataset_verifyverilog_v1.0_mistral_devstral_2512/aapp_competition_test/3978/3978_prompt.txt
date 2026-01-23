@@ -1,0 +1,137 @@
+module paint_the_numbers (
+    input clk, rst_n, start,
+    input [6:0] n,  // Number of elements (1-16)
+    input [7:0] arr_0, arr_1, arr_2, arr_3,
+    input [7:0] arr_4, arr_5, arr_6, arr_7,
+    input [7:0] arr_8, arr_9, arr_10, arr_11,
+    input [7:0] arr_12, arr_13, arr_14, arr_15,
+    output reg [7:0] color_count,
+    output reg done
+);
+
+    // State encoding
+    localparam IDLE = 4'd0, INIT = 4'd1, FIND_MIN = 4'd2, FIND_MIN_LOOP = 4'd3,
+               FOUND_MIN = 4'd4, SET_COLOR = 4'd5, MARK_LOOP = 4'd6, DONE = 4'd7;
+
+    // Internal registers
+    reg [3:0] state, next_state;
+    reg [15:0] colored;  // Bitmask for colored elements
+    reg [3:0] k, j;       // Loop counters
+    reg [7:0] temp_min;
+    reg [3:0] temp_index;
+    reg [7:0] min_val;
+    wire [7:0] arr_k, arr_j;
+    wire [7:0] remainder;
+
+    // Multiplexers for array access
+    assign arr_k = (k == 0) ? arr_0 : (k == 1) ? arr_1 : (k == 2) ? arr_2 : (k == 3) ? arr_3 :
+                   (k == 4) ? arr_4 : (k == 5) ? arr_5 : (k == 6) ? arr_6 : (k == 7) ? arr_7 :
+                   (k == 8) ? arr_8 : (k == 9) ? arr_9 : (k == 10) ? arr_10 : (k == 11) ? arr_11 :
+                   (k == 12) ? arr_12 : (k == 13) ? arr_13 : (k == 14) ? arr_14 : arr_15;
+
+    assign arr_j = (j == 0) ? arr_0 : (j == 1) ? arr_1 : (j == 2) ? arr_2 : (j == 3) ? arr_3 :
+                   (j == 4) ? arr_4 : (j == 5) ? arr_5 : (j == 6) ? arr_6 : (j == 7) ? arr_7 :
+                   (j == 8) ? arr_8 : (j == 9) ? arr_9 : (j == 10) ? arr_10 : (j == 11) ? arr_11 :
+                   (j == 12) ? arr_12 : (j == 13) ? arr_13 : (j == 14) ? arr_14 : arr_15;
+
+    // Combinational modulo (division by zero is impossible as values >=1)
+    assign remainder = (min_val != 0) ? (arr_j % min_val) : 0;
+
+    // State transition logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+        end else begin
+            state <= next_state;
+        end
+    end
+
+    always @(*) begin
+        case (state)
+            IDLE:       next_state = start ? INIT : IDLE;
+            INIT:       next_state = FIND_MIN;
+            FIND_MIN:   next_state = FIND_MIN_LOOP;
+            FIND_MIN_LOOP: 
+                if (k >= n) next_state = FOUND_MIN;
+                else if (colored[k]) next_state = FIND_MIN_LOOP; // Skip colored
+                else next_state = FIND_MIN_LOOP; // Continue checking
+            FOUND_MIN:  next_state = (temp_min == 8'd255) ? DONE : SET_COLOR;
+            SET_COLOR:  next_state = MARK_LOOP;
+            MARK_LOOP:  
+                if (j >= n) next_state = FIND_MIN;
+                else next_state = MARK_LOOP;
+            DONE:       next_state = DONE;
+            default:    next_state = IDLE;
+        endcase
+    end
+
+    // Sequential logic for state actions
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset all registers
+            color_count <= 8'd0;
+            done <= 1'b0;
+            colored <= 16'd0;
+            k <= 4'd0;
+            j <= 4'd0;
+            temp_min <= 8'd255;
+            temp_index <= 4'd0;
+            min_val <= 8'd0;
+        end else begin
+            case (state)
+                INIT: begin
+                    colored <= 16'd0;
+                    color_count <= 8'd0;
+                    k <= 4'd0;
+                    j <= 4'd0;
+                    temp_min <= 8'd255;
+                    temp_index <= 4'd0;
+                    done <= 1'b0;
+                end
+
+                FIND_MIN: begin
+                    k <= 4'd0;
+                    temp_min <= 8'd255;
+                    temp_index <= 4'd0;
+                end
+
+                FIND_MIN_LOOP: begin
+                    if (k < n) begin
+                        if (!colored[k]) begin
+                            if (arr_k < temp_min) begin
+                                temp_min <= arr_k;
+                                temp_index <= k;
+                            end
+                        end
+                        k <= k + 1;
+                    end
+                end
+
+                FOUND_MIN: begin
+                    // No action needed
+                end
+
+                SET_COLOR: begin
+                    color_count <= color_count + 1;
+                    min_val <= temp_min;
+                    colored[temp_index] <= 1'b1;  // Mark the min element
+                    j <= 4'd0;
+                end
+
+                MARK_LOOP: begin
+                    if (j < n) begin
+                        // If uncolored and divisible by min_val, mark it
+                        if (!colored[j] && (remainder == 0)) begin
+                            colored[j] <= 1'b1;
+                        end
+                        j <= j + 1;
+                    end
+                end
+
+                DONE: begin
+                    done <= 1'b1;
+                end
+            endcase
+        end
+    end
+endmodule

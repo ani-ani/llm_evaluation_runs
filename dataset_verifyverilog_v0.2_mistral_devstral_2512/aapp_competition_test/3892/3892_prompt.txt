@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'toy_train' that computes the minimum time for a train to deliver all candies starting from each station in a circular network.
+
+Constraints:
+- Number of stations (n): 3 to 8
+- Number of candies (m): 0 to 12
+- Time per station hop: 1 second
+- Train can load 1 candy per station visit
+- Train has infinite capacity
+
+Algorithm:
+For a fixed start station S, the time required to deliver all candies is determined by the "busiest" station. For each station i with candies, let:
+- dist(S, i): distance from start S to station i (circularly)
+- count[i]: number of candies at station i
+- min_dist[i]: minimum distance from station i to any of its destination stations
+
+The time to clear station i's candies (assuming it's the bottleneck) is:
+Time(i) = dist(S, i) + min_dist[i] + (count[i] - 1) * n
+
+The total time for start S is the maximum Time(i) over all stations i.
+
+Inputs (Register Interface):
+- `clk`: System clock
+- `rst_n`: Active-low reset
+- `start`: High to start calculation for all stations
+- `valid_input`: High when input `a` and `b` are valid
+- `a`: Current candy start station (0 to n-1)
+- `b`: Current candy destination station (0 to n-1)
+
+Outputs:
+- `output_valid`: High when output `result` is valid
+- `result`: The calculated minimum time for the current start station (starts at 0, increments)
+- `busy`: High when module is processing or accepting inputs
+
+Behavior:
+1. On reset, initialize internal structures (counts, min_distances).
+2. When `valid_input` is high, consume the candy pair `(a, b)` and update internal arrays.
+3. When `start` is high, begin the calculation loop for stations 0 to n-1.
+4. For each start station `s` (0 to n-1):
+   - Calculate `dist(s, i)` for all stations `i`.
+   - Calculate `time_i = dist(s, i) + min_dist[i] + (count[i] - 1) * n`.
+   - Result is `max(time_i)` over all `i`.
+   - Output `result` and assert `output_valid`.
+5. Repeat for all `s`. 
+
+Specification:
+- Use 8-bit widths for station indices and counts (enough for n<=8, m<=12).
+- Use 16-bit widths for time calculations (max time approx 8 + 8 + 11*8 = 104).
+- Implement a state machine: IDLE, RECV_INPUTS, CALCULATE, OUTPUT.
+- Since input size is small, we can store counts and min_dists in arrays sized [0:7].

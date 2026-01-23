@@ -1,0 +1,35 @@
+Design a sequential Verilog module 'mirko_wins' that computes the number of winning initial sets for Mirko.
+
+Inputs:
+input clk // Clock
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] N // N value (1 to 20)
+
+Outputs:
+output reg [29:0] result // Result modulo 1000000000 (fits in 30 bits)
+output reg done // High when computation complete
+
+Behavior:
+The module should compute the answer for the given N using Inclusion-Exclusion over partitions (x=2..N).
+Steps:
+1. Precompute validity of all pairs (a, b) where 1<=a<b<=N: valid if gcd(a, b) == 1.
+2. Iterate over all 2^(N-1) subsets of partitions (represented by a bitmask of length N-1).
+3. For each subset S of partitions, determine which pairs are compatible with S. A pair is compatible with S if it is valid for EVERY partition in S.
+   - A pair {a,b} is valid for partition x if (a < x && b < x) OR (a >= x && b >= x).
+   - This is equivalent to: NOT (a < x <= b OR b < x <= a), i.e., NOT (a < x and b >= x) and NOT (b < x and a >= x).
+   - Since a<b, this simplifies to: (b < x) OR (a >= x).
+4. Count the number of compatible pairs `C`. The number of subsets of pairs that are compatible with S is 2^C.
+5. Apply Inclusion-Exclusion: Add to result if |S| is even, subtract if |S| is odd.
+6. Result is modulo 1000000000.
+
+State Machine:
+- IDLE: Wait for start. If start, initialize state.
+- PRECOMP: Precompute valid pairs. Since N is small, we can do this in a cycle or two.
+- ITERATE: Iterate through 2^(N-1) partition masks.
+- COUNT: For each mask, count compatible pairs and update sum.
+- DONE: Set done high.
+
+Specify latency: ~2^(N-1) * N cycles (where N is input N, max 20). Use blocking operations or wait states.
+
+Note: N=20 means 2^19 = 524,288 iterations. The loop should be efficient. We can use a state machine to generate the masks (Gray code or simple increment) and compute the mask validity on the fly. Since 2^19 is large for a single clock cycle but small for an FPGA (millions of cycles), we should implement a sequential state machine that iterates.

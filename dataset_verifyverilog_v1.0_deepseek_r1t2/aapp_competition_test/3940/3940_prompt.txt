@@ -1,0 +1,75 @@
+module MinMexOptimizer (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,
+    input wire [3:0] m,
+    input wire valid_in,
+    input wire [3:0] l_in,
+    input wire [3:0] r_in,
+    output reg [4:0] min_length,
+    output reg [63:0] result_array,
+    output reg done
+);
+    localparam IDLE = 2'b00;
+    localparam PROCESS = 2'b01;
+    localparam GENERATE = 2'b10;
+    
+    reg [1:0] state;
+    reg [3:0] query_count;
+    reg [4:0] current_min;
+    reg [4:0] length;
+    integer i;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            min_length <= 0;
+            result_array <= 0;
+            query_count <= 0;
+            current_min <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        query_count <= 0;
+                        current_min <= 5'b11111; // Initialize to max value
+                        state <= PROCESS;
+                    end
+                end
+                
+                PROCESS: begin
+                    if (valid_in && (query_count < m)) begin
+                        length <= r_in - l_in + 1;
+                        if (length < current_min)
+                            current_min <= length;
+                        query_count <= query_count + 1;
+                    end else if (query_count == m) begin
+                        state <= GENERATE;
+                    end
+                end
+                
+                GENERATE: begin
+                    // Generate array using periodic pattern
+                    for (i = 0; i < 16; i = i + 1) begin
+                        if (i < n) begin
+                            // Compute modulus without division (small values)
+                            if (current_min != 0) begin
+                                result_array[i*4 +: 4] <= i % current_min;
+                            end else begin
+                                result_array[i*4 +: 4] <= 4'b0000;
+                            end
+                        end else begin
+                            result_array[i*4 +: 4] <= 4'b0000;
+                        end
+                    end
+                    min_length <= current_min;
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule

@@ -1,0 +1,135 @@
+Design a sequential Verilog module named 'trash_game' that simulates the card game 'Trash' between Theta and a Friend.
+
+**Overview:**
+The module takes a 416-bit input representing the 52-card deck (10 cards for each player + 32 draw pile cards). It simulates the game turn-by-turn and determines the winner. Theta and the Friend have different strategies for placing Wildcards (Jacks).
+
+**Card Representation:**
+- Cards are represented as 4-bit values:
+  - 4'd0: Ace (A)
+  - 4'd1 to 4'd9: 2-9
+  - 4'd10: Ten (T)
+  - 4'd11: Jack (J)
+  - 4'd12: Queen (Q)
+  - 4'd13: King (K)
+
+**Inputs:**
+- `input clk`: System clock.
+- `input rst_n`: Active-low reset.
+- `input start`: High for one cycle to start the simulation.
+- `input [415:0] deck`: The shuffled deck. `deck[415:412]` is the first card (Theta's Ace slot face-down), `deck[411:408]` is the second card, etc.
+
+**Outputs:**
+- `output reg result`: High if Theta wins, low if Friend wins.
+- `output reg done`: High when the game is finished (winner determined).
+
+**Internal Logic & State Machine:**
+Use a state machine with states: IDLE, CHECK_WIN, DRAW_CARD, THETA_JACK_STRATEGY, FRIEND_JACK_STRATEGY, PLACE_CARD, DISCARD_TURN, SWITCH_PLAYER.
+
+**Data Structures (Registers):**
+- `reg [3:0] theta_slots [0:9]`: Stores the current value in Theta's 10 slots (0 if empty, 1-13 if filled).
+- `reg [3:0] friend_slots [0:9]`: Stores the Friend's filled slots.
+- `reg [13:0] theta_revealed`: Bitmask of card values (1-13) revealed by Theta (face-up slots or discards).
+- `reg [13:1] friend_revealed`: Bitmask of card values revealed by Friend.
+- `reg [5:0] deck_ptr`: Pointer to the next card in the deck to draw (initially 20).
+- `reg [5:0] current_card`: The card currently being processed (drawn or uncovered).
+- `reg [3:0] turn_count`: Safety counter to prevent infinite loops (max 200 turns).
+- `reg current_player`: 0 for Theta, 1 for Friend.
+
+**Strategies:**
+1. **Friend Strategy**: Always place Jack in the lowest unfilled slot (0-9).
+2. **Theta Strategy**: Place Jack in the lowest unfilled slot that minimizes future deadlocks. 
+   - Logic: A slot is 'safe' if the card value needed is already in `theta_revealed` (seen in a slot or discard) OR if the card value has NOT been dealt to Theta's face-down slots (impossible to draw, so must be in Friend's slots or discard).
+   - Theta checks slots from 0 to 9. If a slot is safe, she fills it.
+   - If no safe slot exists, she fills the lowest unfilled slot.
+   - Note: We must track which cards are in Theta's initial hand. Since we know the deck, we can extract `theta_initial_hand` (indices 0-20).
+
+**Game Logic Flow:**
+1. **Initialization**: On `start`, reset all slots, load `theta_initial_hand` from `deck[415:336]`, set `deck_ptr` to 20, `current_player` to 0.
+2. **Turn Loop**:
+   a. Check win: If all slots filled for current player, set `result` and finish.
+   b. Draw: Read `deck[deck_ptr]`, increment `deck_ptr`.
+   c. Process Card:
+      - If J (11): Use strategy to pick slot. If all slots full, discard. Else fill slot and repeat with the face-down card from that slot.
+      - If Q/K (12/13): Discard, switch player.
+      - If 1-10 (0-10): Check if slot `value-1` (or `value-12` for T=10? No, T is 10, index 9) is empty.
+         - If empty: Fill it. Uncover face-down card in that slot (from initial hand). Repeat with uncovered card.
+         - If filled: Discard, switch player.
+3. **Winning**: First to fill 10 slots wins.
+
+**Specifics for Theta's Strategy:**
+- Theta knows `theta_initial_hand` (the 20 cards dealt to her).
+- She builds a list of "impossible" values: values that are NOT in `theta_initial_hand` AND NOT in `theta_revealed`. Wait, the prompt says she bases decisions on *turned face-up* and *discarded*. 
+- Correction: Theta only knows face-up slots and discards. She does NOT know her own face-down cards. 
+- Therefore, Theta's strategy for a Jack is: 
+   - Identify all currently unfilled slots.
+   - For each unfilled slot `i`, the required card is `i+1` (if i<5) or `i+1` (if i>=5). Wait, slots 0-4 are A, 2, 3, 4, 5. Slots 5-9 are 6, 7, 8, 9, T (10).
+   - Slot indices: 0->A(1), 1->2(2), 2->3(3), 3->4(4), 4->5(5), 5->6(6), 6->7(7), 7->8(8), 8->9(9), 9->T(10).
+   - Values needed: `req = i+1` for i<5, `req = i+1` for i>=5 (since 6-10 map to 6-10). Actually, standard mapping: 0->A, 1->2... 4->5, 5->6... 9->T. So `value = i+1`. But A is 1. T is 10.
+   - So value needed for slot `i` is `i+1` for `i` in 0..9, with 0->1 (A), 9->10 (T). 
+   - Theta checks: Is `req` visible in her revealed cards OR in discard? (We track `discard_revealed`). If NO, `req` might be in her hand. If `req` is in her hand, she shouldn't waste a Jack on it if she can draw it. BUT she doesn't know she has it. 
+   - Prompt says: "minimize the chance of being left with an unfilled slot". She uses only revealed cards (face-up and discard). 
+   - Interpretation: She avoids filling a slot if the required card is *already visible* (meaning she can't use it for that slot)? No. She avoids filling a slot if the required card is *not visible*? No. 
+   - Let's re-read: "If there are multiple optimal choices... lowest-numbered slot". 
+   - The 'simple' strategy is "lowest-numbered unfilled slot".
+   - Theta's "optimal" strategy likely considers discards. If '2' is discarded, she knows she can't get a '2'. 
+   - If '2' is in her hand (unknown to her), she could get it. 
+   - If '2' is not in her hand (unknown), she can't get it. 
+   - Since she doesn't know her hand, the only 'safe' slot is one where the required card is already placed (impossible) or... 
+   - Actually, the prompt implies she wants to *avoid* being stuck with a slot that needs a card that is hard to get. 
+   - A card is hard to get if it's been discarded or is in Friend's slots. 
+   - If `req` is in `theta_revealed` (face up) or `discard_revealed`, she knows `req` exists there, but she can't use it. 
+   - If `req` is NOT in `theta_revealed`, `friend_revealed`, or `discard_revealed`, it could be in her hand, the deck, or Friend's hand. 
+   - This seems too complex for HDL without tracking the whole deck state. 
+   - **ADAPTATION**: Let's assume Theta's optimal strategy is: "Fill the slot for which the required card is LEAST likely to be drawn". 
+   - "Least likely" means: The card is in the discard pile (0% chance) -> She should NOT use Jack on this slot (because she can never fill it anyway? No, if it's discarded, she can't fill it. She must use Jack on it). 
+   - Wait. If '2' is discarded, she can never get a '2'. She MUST use a Jack for slot 1 (the '2' slot). 
+   - If '2' is face-up in her slot 1, it's filled. 
+   - If '2' is face-up in her slot 5 (the '6' slot), she has misplaced it? No, cards only go in correct slots. 
+   - Let's refine the simple "Theta" strategy to be implementable: 
+     - She tracks `visible_values`: values in her slots + values in discard.
+     - For an unfilled slot `i`, needed `v = i+1`. 
+     - If `v` is in `visible_values`, she knows she can't draw it (if in discard) or it's already used (if in her slots). She MUST use a Jack for `i`.
+     - If `v` is NOT in `visible_values`, it might be in the deck or her hand. 
+     - She should prioritize slots where `v` IS in `visible_values` (because those are hopeless without a Jack). 
+     - Among those, pick lowest index. 
+     - If none, pick lowest index unfilled (standard strategy). 
+     - This seems to be the "minimize chance of being left with unfilled slot" (i.e. fill the slots that are impossible to fill otherwise). 
+     - This is implementable. 
+
+**Implementation Details:**
+- `theta_initial_hand` extraction: `deck[415:336]` (80 bits). 
+- `friend_initial_hand`: `deck[335:256]`. 
+- `discard_revealed` array: `reg [13:0] discard_revealed`. 
+- We need to track which cards are in the discard pile. 
+- We also need to know which cards are in the *draw pile* to simulate draws. 
+- Since the deck is fixed, we can just read from the `deck` input using `deck_ptr`. 
+
+**Revised Strategy:**
+- **Friend**: Jack -> lowest unfilled slot (0-9).
+- **Theta**: Jack -> iterate slots 0 to 9. If slot `i` is unfilled: 
+   - `req = i+1` (with A=1, T=10). 
+   - If `req` is in `theta_revealed` OR `discard_revealed` (meaning she has seen it and can't get it), fill this slot. 
+   - If multiple, lowest index. 
+   - If none, fill lowest unfilled.
+
+**Module Interface:**
+- `module trash_game(clk, rst_n, start, deck, result, done);`
+
+**State Machine:**
+- `IDLE`: Wait for start.
+- `INIT`: Setup hands.
+- `TURN_START`: Check win condition.
+- `DRAW`: Read card from `deck` at `deck_ptr`.
+- `JACK`: Handle Jack placement (strategy).
+- `UNCOVER`: When a slot is filled, read the face-down card from initial hand.
+- `DISCARD`: Card goes to discard.
+- `SWITCH`: Change player.
+- `WIN`: Set result, done.
+
+**Latency:** Result valid after max 2000 cycles (bounded). 
+
+**Testbench:**
+- Provide 3 test cases. 
+- Convert input strings to 416-bit vectors. 
+- Map chars: 'A'->0, '2'->1, ..., '9'->9, 'T'->10, 'J'->11, 'Q'->12, 'K'->13.
+- Check result output.

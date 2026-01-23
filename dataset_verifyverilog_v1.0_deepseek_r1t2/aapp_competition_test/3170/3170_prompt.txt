@@ -1,0 +1,197 @@
+module trash_game (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [207:0] deck,
+    output reg done,
+    output reg winner
+);
+
+// State definitions
+localparam IDLE = 0, DEAL = 1, TURN_START = 2, DRAW = 3, CHECK = 4,
+           NUMBER_STRATEGY = 5, JACK_STRATEGY = 6, FILL_SLOT = 7,
+           UNCOVER = 8, DISCARD = 9, DONE = 10;
+
+// Card values
+localparam ACE = 0, JACK = 10, QUEEN = 11, KING = 12;
+
+// Internal registers
+reg [207:0] deck_reg;
+reg [5:0] deck_ptr;            // 0-51
+reg [3:0] current_card;
+reg player_turn;               // 0: Theta, 1: Friend
+reg [9:0] theta_filled;        // 10 slots
+reg [9:0] friend_filled;
+reg [39:0] theta_faceup;       // 10 slots * 4 bits
+reg [39:0] friend_faceup;
+reg [1:0] seen_count [0:12];   // 13 counters, 2 bits each
+reg [3:0] fsm_state;
+reg [3:0] temp_slot;           // slot being filled
+
+// Memory for deck (52 x 4 bits)
+reg [3:0] deck_memory [0:51];
+
+// Combinational signals
+reg [3:0] best_slot_theta;
+reg [3:0] lowest_unfilled_friend;
+reg all_filled_theta;
+reg all_filled_friend;
+
+// Combinational: compute best slot for Theta
+always @(*) begin
+    best_slot_theta = 0;
+    reg [1:0] best_remaining = 3;
+    integer i;
+    for (i = 0; i < 10; i = i + 1) begin
+        if (~theta_filled[i]) begin
+            reg [1:0] remaining = 4 - seen_count[i];
+            if (remaining < best_remaining) begin
+                best_remaining = remaining;
+                best_slot_theta = i;
+            end
+        end
+    end
+end
+
+// Combinational: lowest unfilled slot for Friend
+always @(*) begin
+    lowest_unfilled_friend = 0;
+    integer i;
+    for (i = 0; i < 10; i = i + 1) begin
+        if (~friend_filled[i]) begin
+            lowest_unfilled_friend = i;
+            break;
+        end
+    end
+end
+
+// Combinational: check all filled
+always @(*) begin
+    all_filled_theta = (theta_filled == 10'h3FF);
+    all_filled_friend = (friend_filled == 10'h3FF);
+end
+
+// State update
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        fsm_state <= IDLE;
+        done <= 0;
+        winner <= 0;
+        deck_ptr <= 0;
+        current_card <= 0;
+        player_turn <= 0;
+        theta_filled <= 0;
+        friend_filled <= 0;
+        theta_faceup <= 0;
+        friend_faceup <= 0;
+        deck_reg <= 0;
+        temp_slot <= 0;
+        for (integer j = 0; j < 13; j = j + 1)
+            seen_count[j] <= 0;
+    end else begin
+        case (fsm_state)
+            IDLE: if (start) fsm_state <= DEAL;
+            
+            DEAL: begin
+                // Load deck_memory
+                for (integer i = 0; i < 52; i = i + 1)
+                    deck_memory[i] = deck[4*i +: 4];
+                deck_ptr <= 80;
+                player_turn <= 0;
+                theta_filled <= 0;
+                friend_filled <= 0;
+                theta_faceup <= 0;
+                friend_faceup <= 0;
+                for (integer j = 0; j < 13; j = j + 1)
+                    seen_count[j] <= 0;
+                fsm_state <= TURN_START;
+            end
+            
+            TURN_START: fsm_state <= DRAW;
+            
+            DRAW: begin
+                current_card <= deck_memory[deck_ptr];
+                deck_ptr <= deck_ptr + 1;
+                fsm_state <= CHECK;
+            end
+            
+            CHECK: begin
+                if (current_card == JACK)
+                    fsm_state <= JACK_STRATEGY;
+                else if (current_card <= 9)
+                    fsm_state <= NUMBER_STRATEGY;
+                else
+                    fsm_state <= DISCARD;
+            end
+            
+            NUMBER_STRATEGY: begin
+                if (player_turn == 0) begin
+                    if (~theta_filled[current_card]) begin
+                        temp_slot <= current_card;
+                        fsm_state <= FILL_SLOT;
+                    end else
+                        fsm_state <= DISCARD;
+                end else begin
+                    if (~friend_filled[current_card]) begin
+                        temp_slot <= current_card;
+                        fsm_state <= FILL_SLOT;
+                    end else
+                        fsm_state <= DISCARD;
+                end
+            end
+            
+            JACK_STRATEGY: begin
+                if (player_turn == 0)
+                    temp_slot <= best_slot_theta;
+                else
+                    temp_slot <= lowest_unfilled_friend;
+                fsm_state <= FILL_SLOT;
+            end
+            
+            FILL_SLOT: begin
+                if (player_turn == 0) begin
+                    theta_filled[temp_slot] <= 1;
+                    theta_faceup[4*temp_slot +: 4] <= current_card;
+                    seen_count[current_card] <= seen_count[current_card] + 1;
+                    if (all_filled_theta) begin
+                        done <= 1;
+                        winner <= 1;
+                        fsm_state <= DONE;
+                    end else
+                        fsm_state <= UNCOVER;
+                end else begin
+                    friend_filled[temp_slot] <= 1;
+                    friend_faceup[4*temp_slot +: 4] <= current_card;
+                    seen_count[current_card] <= seen_count[current_card] + 1;
+                    if (all_filled_friend) begin
+                        done <= 1;
+                        winner <= 0;
+                        fsm_state <= DONE;
+                    end else
+                        fsm_state <= UNCOVER;
+                end
+            end
+            
+            UNCOVER: begin
+                if (player_turn == 0)
+                    current_card <= deck_memory[temp_slot];          // Theta's face-down
+                else
+                    current_card <= deck_memory[10 + temp_slot];     // Friend's face-down
+                fsm_state <= CHECK;
+            end
+            
+            DISCARD: begin
+                if (current_card <= 12)
+                    seen_count[current_card] <= seen_count[current_card] + 1;
+                player_turn <= ~player_turn;
+                fsm_state <= TURN_START;
+            end
+            
+            DONE: fsm_state <= DONE;
+            
+            default: fsm_state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

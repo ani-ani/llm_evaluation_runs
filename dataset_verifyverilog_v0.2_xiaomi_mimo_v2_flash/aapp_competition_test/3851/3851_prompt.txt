@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'burger_solver' that computes the minimum and maximum number of stops (x and y) for Sergey's journey on a circular route with simplified parameters.
+
+### Problem Adaptation
+- **Total cities (circumference)**: `N * K` (scaled down to max 1024)
+- **Inputs**: `n` (number of restaurants), `k` (distance between restaurants), `a` (distance to restaurant from start), `b` (distance to restaurant from first stop).
+- **Algorithm**: The number of stops to return to start is `total_cities / gcd(total_cities, step_size)`. We iterate `i` from 0 to `n-1` and compute `step_size` for 4 relative positions: `i*k + b - a`, `i*k + b + a`, `i*k - b - a`, `i*k - b + a`. We find the min and max results.
+
+### Inputs (Sequential Interface)
+- `clk`: System clock
+- `rst_n`: Active-low reset
+- `start`: High for 1 cycle to start computation
+- `n_in`: 8-bit input (number of restaurants)
+- `k_in`: 10-bit input (distance between restaurants)
+- `a_in`: 10-bit input (distance a)
+- `b_in`: 10-bit input (distance b)
+
+### Outputs (Sequential Interface)
+- `min_stops`: 32-bit output (minimum stops)
+- `max_stops`: 32-bit output (maximum stops)
+- `done`: High when computation is finished
+
+### Behavioral Description
+The module uses a finite state machine (FSM) with states: IDLE, ITERATE_LOOP, CALC_GCD, UPDATE_RESULT, DONE.
+- **IDLE**: Waits for `start` signal.
+- **ITERATE_LOOP**: Iterates `i` from 0 to `n-1`. For each `i`, it must compute 4 step values:
+  1. `s1 = (i*k + b - a)`
+  2. `s2 = (i*k + b + a)`
+  3. `s3 = (i*k - b - a)`
+  4. `s4 = (i*k - b + a)`
+  Since we are in a circle of size `S = n*k`, the step size `L` passed to GCD is `step_value % S`. Note that `step_value` can be negative; handle modulo properly (ensure positive result for GCD). If `step_value` is 0 (meaning immediate return), the number of stops is 1.
+- **CALC_GCD**: A state that triggers a GCD calculation (or iteratively computes it) for `S` (Total Cities) and `L` (Step Size). Since inputs are small, we can implement a combinational GCD or a multi-cycle GCD state.
+- **UPDATE_RESULT**: Takes `stops = S / gcd_result`, compares with current `min_stops` and `max_stops`, updates them.
+- **DONE**: Sets `done` high.
+
+### Constraints
+- Use 32-bit arithmetic for `stops` calculation to prevent overflow.
+- Inputs `n` and `k` are limited such that `N*K <= 1024`.
+- GCD must handle `L` as an absolute value (magnitude of the step).
+
+The module must handle the loop counters and 4 sub-iterations per `i` internally.

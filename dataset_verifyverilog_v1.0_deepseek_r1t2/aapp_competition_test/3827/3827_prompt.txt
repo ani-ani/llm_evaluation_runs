@@ -1,0 +1,38 @@
+Verilog HDL Module Specification:
+
+Design a string validator that checks if a sequence of characters follows the pattern: one or more 'a's, then one or more 'b's, then one or more 'c's, where the count of 'c' equals either the count of 'a' or count of 'b'.
+
+INTERFACE SPECIFICATION:
+
+Inputs:
+  - clk: Clock signal (rising edge triggered)
+  - rst_n: Active-low synchronous reset
+  - start: Start pulse (assert for 1 cycle to begin validation)
+  - char_array[0:15]: 16-element input array, each element is 8-bit ASCII character
+  - str_len: 5-bit value (1-16) indicating valid character count
+
+Outputs:
+  - result: 1-bit output (1=valid string, 0=invalid)
+  - done: Asserted high for 1 cycle when validation completes
+
+Behavior:
+  1. On reset: done=0, result=0, all internal counters reset
+  2. After start: Process str_len characters sequentially
+  3. State machine tracks expected character sequence:
+     - State 0: Expect 'a' (count_a++, stay in state 0 for more 'a')
+     - State 1: Expect 'b' (count_b++, stay in state 1 for more 'b')
+     - State 2: Expect 'c' (count_c++, stay in state 2 for more 'c')
+     - Transition: 'a'->'b' allowed, 'b'->'c' allowed
+     - Any out-of-order character sets error flag
+  4. After processing all characters:
+     - result = (no error) AND (count_a >= 1) AND (count_b >= 1) AND (count_c == count_a OR count_c == count_b)
+  5. Timing: done asserted 1-20 cycles after start (depends on str_len)
+
+Constraints:
+  - Maximum string length: 16 characters
+  - Only characters 'a' (0x61), 'b' (0x62), 'c' (0x63) are valid
+  - All other characters treated as invalid
+
+Example:
+  Input: "aabc" (str_len=4)
+  Expected: result=1, done=1 (valid: 2'a',1'b,1'c; 'c' count equals 'b' count)

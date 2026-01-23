@@ -1,0 +1,1 @@
+module SquareSumOdd (\n    input [7:0] n,\n    output [23:0] result\n);\n\n    wire [15:0] n_sq = n * n;\n    wire [17:0] temp1 = {n_sq, 2'b00};\n    wire [17:0] temp2 = temp1 - 1'd1;\n    wire [25:0] temp3 = temp2 * n;\n    wire [25:0] temp4 = temp3 / 3;\n\n    assign result = temp4[23:0];\n\nendmodule

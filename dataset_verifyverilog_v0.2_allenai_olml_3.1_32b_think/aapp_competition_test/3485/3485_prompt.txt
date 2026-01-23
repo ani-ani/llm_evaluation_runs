@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'max_payout_calculator' that computes the maximum payout (average) achievable in the 'Stop Counting!' game.
+
+The problem asks to find the maximum average of cards that can be counted. The player can optionally exclude a contiguous middle segment from counting (by calling Stop/Start), or exclude a prefix, or exclude a suffix.
+
+Key insight: The optimal answer is either:
+1. Maximum average of a prefix (Stop before some card, never start)
+2. Maximum average of a suffix (Never stop, Start after some card)
+3. Maximum average of two segments: a prefix AND a suffix (Stop before i, Start after j where j >= i)
+
+For case 3, we need max(avg_prefix[0..i]) + max(avg_suffix[j..N-1]) where i < j.
+
+Since N can be large but card values are integers, we process the array once to compute prefix/suffix statistics.
+
+Simplified for hardware (N <= 16 for practical implementation):
+- Input: Array of up to 16 signed 16-bit integers
+- Compute running sums and counts for prefixes and suffixes
+- Find best prefix average (max average of any prefix)
+- Find best suffix average (max average of any suffix)  
+- Find best pair sum (max prefix sum + max suffix sum where they don't overlap, divided by total count)
+- Return 0 if no cards counted or all averages negative
+
+Module specification:
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] num_cards // number of cards (1-16)
+input signed [15:0] card_values [0:15] // array of card values
+
+Outputs:
+output reg [31:0] result // Q16.16 fixed-point result
+output reg done // high when computation complete
+
+Latency: Approximately 32 clock cycles after start (to process all cards and compute averages)
+
+Behavior:
+- On start, reset all intermediate registers
+- Process cards sequentially: maintain running prefix sum, prefix count, and track best prefix average
+- Process cards in reverse: maintain running suffix sum, suffix count, and track best suffix average  
+- Track best pair combination where prefix ends before suffix starts
+- Calculate final result as the maximum of: best prefix avg, best suffix avg, best pair avg, or 0
+- Use Q16.16 fixed-point format for division and comparison
+- State machine: IDLE, CALCULATE_PREFIX, CALCULATE_SUFFIX, FIND_BEST_PAIR, COMPUTE_RESULT, DONE
+
+The module should handle the edge case where no cards are counted (return 0).

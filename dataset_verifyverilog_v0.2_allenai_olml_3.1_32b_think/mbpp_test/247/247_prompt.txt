@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'lps' that implements the Longest Palindromic Subsequence algorithm for a fixed 8-character string.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] char_0, char_1, char_2, char_3, char_4, char_5, char_6, char_7 // 8 ASCII characters
+
+Outputs:
+output reg [3:0] result // length of LPS (max value is 8, so 4 bits)
+output reg done // high when computation complete
+
+Specification:
+- The module computes LPS using dynamic programming with a lookup table approach
+- Input string is 8 characters max (padded with nulls if shorter)
+- Use Q-format for internal states: store DP table in 8x8 register array
+- Each L[i][j] entry needs 4 bits (max value 8)
+- The algorithm runs for substring lengths cl = 1 to 8
+- Latency: Result valid 128 clock cycles after start asserted (8*8*2 operations)
+- State machine: IDLE -> PROCESSING (8x8 iterations) -> DONE
+
+Behavioral Description:
+1. In IDLE state: Wait for start signal
+2. In PROCESSING state:
+   - Initialize diagonal elements L[i][i] = 1 for i=0 to 7
+   - For substring length cl = 2 to 8:
+     - For i = 0 to (8-cl):
+       - Compute j = i+cl-1
+       - If cl == 2 and char[i] == char[j]: L[i][j] = 2
+       - Else if char[i] == char[j]: L[i][j] = L[i+1][j-1] + 2
+       - Else: L[i][j] = max(L[i][j-1], L[i+1][j])
+   - Store results in 8x8 memory array
+3. In DONE state: Output L[0][7] to result port
+4. Reset clears all internal registers
+
+Use parameter CHAR_WIDTH = 8 and LUT_SIZE = 8 for the DP table.

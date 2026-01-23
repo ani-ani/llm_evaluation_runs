@@ -1,0 +1,110 @@
+Lucky Permutation Triple Module
+
+// Module: lucky_permutation_triple
+// Description: Computes a Lucky Permutation Triple for n (1 <= n <= 8). If n is even or n > 8, outputs invalid.
+// Inputs:
+//   clk       : Clock signal (rising edge triggered)
+//   rst_n     : Active-low synchronous reset
+//   start     : Start pulse (assert for 1 cycle to begin computation)
+//   n[3:0]    : 4-bit input, value of n (1 to 8). n=0 is treated as invalid.
+// Outputs:
+//   done      : Asserted high for 1 cycle when computation is complete
+//   valid     : High when n is odd and n <= 8, indicating outputs are valid permutations
+//   a[7:0][7:0] : 8-element output array, each element 8 bits, representing permutation a
+//   b[7:0][7:0] : 8-element output array, each element 8 bits, representing permutation b
+//   c[7:0][7:0] : 8-element output array, each element 8 bits, representing permutation c
+//
+// Functionality:
+//   When start is asserted, the module computes the three permutations.
+//   For valid=1, for i = 0 to n-1:
+//     a[i] = i
+//     b[i] = i
+//     c[i] = (2*i) % n
+//   For i >= n, the arrays are set to 0 (don't care).
+//   The module asserts done one cycle after start.
+//   The module must be reset before first use.
+//
+// Timing:
+//   - Assert start for 1 clock cycle.
+//   - done will go high on the next clock cycle.
+//   - valid and the arrays are available on the same cycle as done.
+//   - After done, the module returns to IDLE state.
+//
+// Reset behavior:
+//   On rst_n=0: done=0, valid=0, arrays are cleared to 0.
+//   Minimum 2 clock cycles of reset recommended.
+//
+// Constraints:
+//   - n must be between 1 and 8 inclusive.
+//   - For n even or n > 8, valid will be 0.
+//   - The output arrays are 8 elements each, but only the first n elements are meaningful when valid=1.
+//
+// Note: The module uses combinatorial logic inside a sequential state machine. The computation is completed in one cycle.
+
+// Verilog code:
+`timescale 1ns/1ps
+
+module lucky_permutation_triple (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] n,
+    output reg done,
+    output reg valid,
+    output reg [7:0] a [0:7],
+    output reg [7:0] b [0:7],
+    output reg [7:0] c [0:7]
+);
+
+// State machine
+reg state;
+localparam IDLE = 1'b0;
+localparam DONE = 1'b1;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 1'b0;
+        valid <= 1'b0;
+        // Initialize arrays to zero
+        for (integer i = 0; i < 8; i = i + 1) begin
+            a[i] <= 8'd0;
+            b[i] <= 8'd0;
+            c[i] <= 8'd0;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    // Compute valid flag: n must be odd and <=8
+                    valid <= (n[0] == 1'b1) && (n <= 8);
+                    // Compute arrays
+                    for (integer i = 0; i < 8; i = i + 1) begin
+                        if (i < n && n[0] == 1'b1) begin
+                            a[i] <= i;
+                            b[i] <= i;
+                            // Compute c_i = (2*i) % n
+                            if (2*i >= n)
+                                c[i] <= 2*i - n;
+                            else
+                                c[i] <= 2*i;
+                        end else begin
+                            a[i] <= 8'd0;
+                            b[i] <= 8'd0;
+                            c[i] <= 8'd0;
+                        end
+                    end
+                    state <= DONE;
+                    done <= 1'b1;
+                end
+            end
+            DONE: begin
+                done <= 1'b0;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

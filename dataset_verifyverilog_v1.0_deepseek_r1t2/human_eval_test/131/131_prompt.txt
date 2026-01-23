@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'digits_product' that computes the product of odd digits in a positive integer.
+
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start computation (pulse high for 1 cycle)
+  input [23:0] n         // Input integer (supports up to 8 digits: 0 to 99,999,999)
+
+Outputs:
+  output reg [15:0] result  // Product of odd digits (0 if all even)
+  output reg done           // High for 1 cycle when result is valid
+
+Behavior:
+The module uses a state machine with states: IDLE, PROCESS, CHECK, MULTIPLY, DONE.
+
+1. IDLE: Wait for start signal. When start goes high, initialize:
+   - temp_n = n (working copy)
+   - result = 1 (identity for multiplication)
+   - any_odd = 0 (flag to track if any odd digit found)
+   - state = PROCESS
+
+2. PROCESS: Check if temp_n > 0. If yes, extract digit:
+   - digit = temp_n % 10
+   - state = CHECK
+   If temp_n == 0, go to DONE.
+
+3. CHECK: Check if digit is odd (digit[0] == 1):
+   - If odd: stored_digit = digit, state = MULTIPLY
+   - If even: state = PROCESS (skip to next digit)
+   Before next state transition, update temp_n = temp_n / 10 (integer division by 10).
+
+4. MULTIPLY: Multiply result by stored_digit:
+   - result = result * stored_digit
+   - any_odd = 1
+   - state = PROCESS (get next digit)
+
+5. DONE: If any_odd == 0, set result = 0. Pulse done high for 1 cycle, then return to IDLE.
+
+Division by 10: Since Verilog doesn't have integer division, use repeated subtraction:
+- To divide temp_n by 10: count = 0; while (temp_n >= 10) { temp_n = temp_n - 10; count++; }
+- Use a subtraction counter state SUBTRACT to handle this.
+
+Latency: Maximum 8 digits * (1 extract + 1 check + 1 multiply + 10 subtract cycles) = ~120 cycles.
+
+Constraints:
+- Use 16-bit result register (max product 9^8 = 43,046,721 which fits in 32-bit, but we use 16-bit for simplicity, assuming smaller inputs)
+- For actual test cases, max product is 315 (9*7*5), so 16-bit is sufficient
+- All arithmetic uses unsigned integers

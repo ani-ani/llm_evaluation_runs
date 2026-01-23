@@ -1,0 +1,168 @@
+module min_k_records (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Input arrays: 4 records, each has a name and a score
+    // Names are encoded as 8-bit ASCII values (single character for simplicity)
+    // Scores are 8-bit unsigned integers
+    input wire [7:0] name_0,
+    input wire [7:0] name_1,
+    input wire [7:0] name_2,
+    input wire [7:0] name_3,
+    input wire [7:0] score_0,
+    input wire [7:0] score_1,
+    input wire [7:0] score_2,
+    input wire [7:0] score_3,
+    input wire [1:0] k,  // K value: 1, 2, or 3 (since max 4 records)
+    
+    // Output: Top K records in score-sorted order
+    // Outputs K pairs of (name, score)
+    output reg [7:0] out_name_0,
+    output reg [7:0] out_score_0,
+    output reg [7:0] out_name_1,
+    output reg [7:0] out_score_1,
+    output reg [7:0] out_name_2,
+    output reg [7:0] out_score_2,
+    
+    output reg done
+);
+
+    parameter NUM_RECORDS = 4;
+    parameter MAX_K = 3;
+    
+    // Internal registers for sorting (4 elements)
+    reg [7:0] sort_name [0:3];
+    reg [7:0] sort_score [0:3];
+    
+    // State machine
+    reg [2:0] state;
+    reg [2:0] sort_counter;  // For bubble sort passes
+    reg [1:0] pair_counter;   // For comparing adjacent pairs
+    
+    // State definitions
+    localparam [2:0] IDLE = 3'd0;
+    localparam [2:0] LOAD = 3'd1;
+    localparam [2:0] SORT_PASS = 3'd2;
+    localparam [2:0] SORT_COMPARE = 3'd3;
+    localparam [2:0] OUTPUT = 3'd4;
+    localparam [2:0] DONE_STATE = 3'd5;
+    
+    // Temporary swap registers
+    reg [7:0] temp_name;
+    reg [7:0] temp_score;
+    reg swap_needed;
+    
+    integer i;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset
+            state <= IDLE;
+            done <= 1'b0;
+            for (i = 0; i < NUM_RECORDS; i = i + 1) begin
+                sort_name[i] <= 8'd0;
+                sort_score[i] <= 8'd0;
+            end
+            out_name_0 <= 8'd0;
+            out_score_0 <= 8'd0;
+            out_name_1 <= 8'd0;
+            out_score_1 <= 8'd0;
+            out_name_2 <= 8'd0;
+            out_score_2 <= 8'd0;
+            sort_counter <= 3'd0;
+            pair_counter <= 2'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= LOAD;
+                    end
+                end
+                
+                LOAD: begin
+                    // Load input data into internal sorting registers
+                    sort_name[0] <= name_0;
+                    sort_score[0] <= score_0;
+                    sort_name[1] <= name_1;
+                    sort_score[1] <= score_1;
+                    sort_name[2] <= name_2;
+                    sort_score[2] <= score_2;
+                    sort_name[3] <= name_3;
+                    sort_score[3] <= score_3;
+                    sort_counter <= 3'd3;  // N-1 passes for bubble sort
+                    pair_counter <= 2'd0;
+                    state <= SORT_PASS;
+                end
+                
+                SORT_PASS: begin
+                    if (sort_counter > 0) begin
+                        pair_counter <= 2'd0;
+                        state <= SORT_COMPARE;
+                    end else begin
+                        // Sorting complete, proceed to output
+                        state <= OUTPUT;
+                    end
+                end
+                
+                SORT_COMPARE: begin
+                    // Compare adjacent pairs
+                    if (pair_counter < 3) begin
+                        // Compare sort_score[pair_counter] and sort_score[pair_counter+1]
+                        if (sort_score[pair_counter] > sort_score[pair_counter + 1]) begin
+                            // Swap needed
+                            temp_name <= sort_name[pair_counter];
+                            temp_score <= sort_score[pair_counter];
+                            sort_name[pair_counter] <= sort_name[pair_counter + 1];
+                            sort_score[pair_counter] <= sort_score[pair_counter + 1];
+                            sort_name[pair_counter + 1] <= temp_name;
+                            sort_score[pair_counter + 1] <= temp_score;
+                        end
+                        pair_counter <= pair_counter + 1;
+                        state <= SORT_COMPARE;
+                    end else begin
+                        // Finished this pass
+                        sort_counter <= sort_counter - 1;
+                        state <= SORT_PASS;
+                    end
+                end
+                
+                OUTPUT: begin
+                    // Output first K records (sorted ascending by score)
+                    // K is 1-indexed in input, convert to 0-indexed count
+                    out_name_0 <= sort_name[0];
+                    out_score_0 <= sort_score[0];
+                    
+                    // Only output remaining if K >= 2
+                    if (k >= 2'd2) begin
+                        out_name_1 <= sort_name[1];
+                        out_score_1 <= sort_score[1];
+                    end else begin
+                        out_name_1 <= 8'd0;
+                        out_score_1 <= 8'd0;
+                    end
+                    
+                    // Only output third if K >= 3
+                    if (k >= 2'd3) begin
+                        out_name_2 <= sort_name[2];
+                        out_score_2 <= sort_score[2];
+                    end else begin
+                        out_name_2 <= 8'd0;
+                        out_score_2 <= 8'd0;
+                    end
+                    
+                    state <= DONE_STATE;
+                end
+                
+                DONE_STATE: begin
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

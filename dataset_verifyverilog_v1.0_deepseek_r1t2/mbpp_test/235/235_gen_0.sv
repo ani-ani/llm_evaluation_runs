@@ -1,0 +1,1 @@
+module even_bit_set(\n    input [15:0] n,\n    output [15:0] result\n);\n    assign result = n | 16'h5555;\nendmodule

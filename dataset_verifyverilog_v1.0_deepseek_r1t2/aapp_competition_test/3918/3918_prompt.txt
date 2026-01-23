@@ -1,0 +1,135 @@
+module min_error (
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] a_0, a_1, a_2, a_3, a_4, a_5, a_6, a_7,
+    input [15:0] b_0, b_1, b_2, b_3, b_4, b_5, b_6, b_7,
+    input [7:0] k1,
+    input [7:0] k2,
+    output reg [63:0] result,
+    output reg done
+);
+
+    // Internal state storage
+    reg [15:0] diff [0:7];          // Absolute differences
+    reg [7:0] ops_remaining;        // Operations left to perform
+    reg [2:0] idx;                  // Loop index
+    reg [15:0] max_val;             // Current maximum difference
+    reg [2:0] max_idx;              // Index of maximum difference
+    reg [63:0] sum;                 // Accumulated sum of squares
+    
+    // State machine encoding
+    reg [2:0] state;
+    localparam IDLE = 3'd0;
+    localparam COMPUTE_DIFF = 3'd1;
+    localparam FIND_MAX = 3'd2;
+    localparam UPDATE = 3'd3;
+    localparam SUM = 3'd4;
+    localparam DONE = 3'd5;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Active-low reset: clear all state
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            ops_remaining <= 0;
+            idx <= 0;
+            max_val <= 0;
+            max_idx <= 0;
+            sum <= 0;
+            for (integer i = 0; i < 8; i = i + 1) diff[i] <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        // Load total operations and start computation
+                        ops_remaining <= k1 + k2;
+                        idx <= 0;
+                        state <= COMPUTE_DIFF;
+                    end
+                end
+                
+                COMPUTE_DIFF: begin
+                    // Compute absolute differences (signed arithmetic)
+                    case (idx)
+                        0: diff[0] <= ($signed(a_0) > $signed(b_0)) ? ($signed(a_0) - $signed(b_0)) : ($signed(b_0) - $signed(a_0));
+                        1: diff[1] <= ($signed(a_1) > $signed(b_1)) ? ($signed(a_1) - $signed(b_1)) : ($signed(b_1) - $signed(a_1));
+                        2: diff[2] <= ($signed(a_2) > $signed(b_2)) ? ($signed(a_2) - $signed(b_2)) : ($signed(b_2) - $signed(a_2));
+                        3: diff[3] <= ($signed(a_3) > $signed(b_3)) ? ($signed(a_3) - $signed(b_3)) : ($signed(b_3) - $signed(a_3));
+                        4: diff[4] <= ($signed(a_4) > $signed(b_4)) ? ($signed(a_4) - $signed(b_4)) : ($signed(b_4) - $signed(a_4));
+                        5: diff[5] <= ($signed(a_5) > $signed(b_5)) ? ($signed(a_5) - $signed(b_5)) : ($signed(b_5) - $signed(a_5));
+                        6: diff[6] <= ($signed(a_6) > $signed(b_6)) ? ($signed(a_6) - $signed(b_6)) : ($signed(b_6) - $signed(a_6));
+                        7: diff[7] <= ($signed(a_7) > $signed(b_7)) ? ($signed(a_7) - $signed(b_7)) : ($signed(b_7) - $signed(a_7));
+                    endcase
+                    
+                    idx <= idx + 1;
+                    if (idx == 7) begin
+                        idx <= 0;
+                        max_val <= 0;
+                        max_idx <= 0;
+                        state <= FIND_MAX;
+                    end
+                end
+                
+                FIND_MAX: begin
+                    // Scan for maximum difference
+                    if (diff[idx] > max_val) begin
+                        max_val <= diff[idx];
+                        max_idx <= idx;
+                    end
+                    
+                    idx <= idx + 1;
+                    if (idx == 7) begin
+                        idx <= 0;
+                        state <= UPDATE;
+                    end
+                end
+                
+                UPDATE: begin
+                    if (ops_remaining > 0) begin
+                        // Apply operation to maximum difference
+                        if (max_val == 0) begin
+                            diff[max_idx] <= 1;  // Must use all operations
+                        end else begin
+                            diff[max_idx] <= max_val - 1;
+                        end
+                        ops_remaining <= ops_remaining - 1;
+                        // Reset for next iteration
+                        idx <= 0;
+                        max_val <= 0;
+                        max_idx <= 0;
+                        state <= FIND_MAX;
+                    end else begin
+                        // All operations complete, compute final sum
+                        idx <= 0;
+                        sum <= 0;
+                        state <= SUM;
+                    end
+                end
+                
+                SUM: begin
+                    if (idx < 8) begin
+                        sum <= sum + diff[idx] * diff[idx];
+                        idx <= idx + 1;
+                    end else begin
+                        result <= sum;
+                        state <= DONE;
+                    end
+                end
+                
+                DONE: begin
+                    done <= 1;
+                    if (!start) begin
+                        state <= IDLE;
+                        done <= 0;
+                    end
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

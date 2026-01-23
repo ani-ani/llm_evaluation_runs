@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'lifeguard_divider' that finds two positions for lifeguards to divide swimmers into equal groups.
+
+Problem: Given up to 8 swimmers at integer coordinates, find two lifeguard positions such that:
+1. Each swimmer goes to the closer lifeguard
+2. At most one swimmer is equidistant to both (counts for both)
+3. Both lifeguards have equal number of swimmers
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0] num_swimmers // number of swimmers (1-8)
+input [31:0] swimmer_x [0:7] // x-coordinates of swimmers
+input [31:0] swimmer_y [0:7] // y-coordinates of swimmers
+
+Outputs:
+output reg [31:0] lifeguard1_x // x position of first lifeguard
+output reg [31:0] lifeguard1_y // y position of first lifeguard  
+output reg [31:0] lifeguard2_x // x position of second lifeguard
+output reg [31:0] lifeguard2_y // y position of second lifeguard
+output reg done // high when computation complete
+output reg valid // high if valid solution found
+
+Latency: Maximum 1024 clock cycles (searches through candidate positions)
+
+Behavior:
+1. On start signal, reset state machine
+2. State machine states: IDLE, SEARCH, VERIFY, DONE
+3. Search strategy: Try candidate positions from -1000 to +1000 in steps of 100
+4. For each candidate pair (L1, L2), verify:
+   - Count swimmers closer to L1 vs L2
+   - At most one equidistant swimmer
+   - Counts are equal (or differ by 1 with one equidistant)
+5. Store first valid pair found
+6. Set valid=1 and done=1 when solution found, valid=0 if no solution
+
+Verification logic:
+- For each swimmer at (sx, sy):
+  - dist1 = (sx - lg1_x)^2 + (sy - lg1_y)^2
+  - dist2 = (sx - lg2_x)^2 + (sy - lg2_y)^2
+  - If dist1 < dist2: count1++
+  - If dist2 < dist1: count2++
+  - If dist1 == dist2: equidistant_count++
+- Valid if: equidistant_count <= 1 AND (count1 == count2 OR count1 + 1 == count2 with equidistant OR count2 + 1 == count1 with equidistant)
+
+Use 32-bit signed arithmetic for distance calculations (squared distances will fit since coordinates ≤ 1000).
+
+Implement as a state machine with bounded search to guarantee termination.

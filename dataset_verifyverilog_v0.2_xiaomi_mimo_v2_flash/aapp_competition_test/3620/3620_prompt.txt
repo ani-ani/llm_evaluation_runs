@@ -1,0 +1,56 @@
+Design a sequential Verilog module named 'k_coloring_counter' that computes the number of k-colourings of a small graph modulo P.
+
+Module Specification:
+- The module handles graphs with N ≤ 6 nodes (hardcoded parameter N=6) and k ≤ 4 colors (hardcoded parameter K=4)
+- Graph is provided via adjacency matrix format
+- Use brute-force enumeration: iterate through all K^N possible colorings
+- For each coloring, check if all edges are satisfied (adjacent nodes have different colors)
+- Count valid colorings and output result modulo P
+
+Inputs:
+input clk                    // Clock signal
+input rst_n                  // Active-low reset
+input start                  // Start computation
+input [5:0] num_edges        // Number of edges (up to 6 edges for small graph)
+input [2:0] edge_u [0:5]     // Edge endpoint u for up to 6 edges
+input [2:0] edge_v [0:5]     // Edge endpoint v for up to 6 edges
+input [31:0] P               // Modulo value
+
+Outputs:
+output reg [31:0] result     // Result modulo P
+output reg done              // High when computation complete
+output reg valid             // High when result is valid
+
+Behavior:
+1. On start signal, reset result counter to 0
+2. Generate all possible colorings systematically:
+   - Each node gets a color from 0 to K-1
+   - Total combinations: K^N = 4^6 = 4096 maximum
+   - Use a state machine to iterate through color assignments
+3. For each coloring:
+   - Check all M edges to ensure adjacent nodes have different colors
+   - If valid, increment counter (result = (result + 1) % P)
+4. After all combinations checked, set done = 1
+
+State Machine States:
+- IDLE: Wait for start signal
+- INIT: Reset iteration variables
+- COLORING: Generate next color combination (nested loop simulation)
+- CHECK: Validate current coloring against all edges
+- UPDATE: Update counter if valid
+- DONE: Computation complete
+
+Timing: Result valid after at most 4096 * (M+1) clock cycles. Worst case ~32,000 cycles.
+
+Implementation Notes:
+- Use 3-bit color registers for each node (N=6)
+- Use 6-bit iteration counter for up to 4096 iterations
+- Use modular arithmetic: if (counter + 1 >= P) wrap around
+- Edge checking: compare colors of edge_u[i] and edge_v[i] for all i < num_edges
+
+Fixed-Point Consideration: Not applicable (pure integer arithmetic)
+
+Parameter Values:
+default N = 6
+default K = 4
+max_edges = 6

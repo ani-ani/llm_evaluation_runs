@@ -1,0 +1,24 @@
+Design a combinational Verilog module named `bst_solver_8` that checks if a binary search tree can be formed from a set of 8 distinct sorted integers such that every adjacent pair in the tree has a Greatest Common Divisor (GCD) greater than 1.
+
+The module takes an 8-element input array of 16-bit integers (scaled down from the original problem's 32-bit integers) and outputs a single bit indicating feasibility.
+
+### Interface
+Inputs:
+- `input [7:0][15:0] nums`: Array of 8 integers in strictly ascending order. Values range from 2 to 1000.
+
+Outputs:
+- `output reg possible`: High if a valid BST exists.
+
+### Behavior
+1.  **GCD Matrix Generation**: Internally, pre-compute a connectivity matrix `valid_edge[i][j]` which is 1 if `gcd(nums[i], nums[j]) > 1`. Since `nums` are small (max 1000), use a lookup table or combinational logic for GCD.
+2.  **Dynamic Programming**: The solution checks if the entire range `[0, 7]` can form a valid tree. A valid range `[l, r]` can be formed if there exists a root `k` (where `l <= k <= r`) such that:
+    - The left subrange `[l, k-1]` (if any) forms a valid subtree rooted at `k`.
+    - The right subrange `[k+1, r]` (if any) forms a valid subtree rooted at `k`.
+    - The root `k` can connect to the parent. However, since we are checking for *any* valid tree, we can assume the parent logic is handled by the caller or simply check if a valid structure exists. 
+3.  **Simplification**: Given the small N (8), unroll the DP logic. Use a 3D lookup table `dp[l][r][root_side]` where `root_side` indicates if the range `[l, r]` can connect to a parent on the left (`root_side = 0`) or right (`root_side = 1`). 
+    - `dp[l][r][0]` is true if `nums[i]` can connect to `nums[l-1]` and forms a valid tree.
+    - `dp[l][r][1]` is true if `nums[i]` can connect to `nums[r+1]` and forms a valid tree.
+    - Base case: Single node `i` can always connect if `gcd(i, parent) > 1`.
+4.  **Final Check**: The output `possible` is high if there exists any root `k` in `0..7` such that `dp[0][k-1][1]` (left subtree) and `dp[k+1][7][0]` (right subtree) are true.
+
+Ensure the module is purely combinational.

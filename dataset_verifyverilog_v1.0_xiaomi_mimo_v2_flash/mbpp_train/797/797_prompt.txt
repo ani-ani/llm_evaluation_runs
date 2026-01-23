@@ -1,0 +1,111 @@
+module sum_odd_range (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] l,      // Lower bound (1-10000)
+    input wire [15:0] r,      // Upper bound (1-10000, r >= l)
+    output reg [31:0] result, // Sum of odd numbers in range
+    output reg done           // Computation complete signal
+);
+
+    // State machine states
+    localparam IDLE = 2'b00;
+    localparam CALC_SUM_R = 2'b01;
+    localparam CALC_SUM_L = 2'b10;
+    localparam FINISH = 2'b11;
+    
+    reg [1:0] state;
+    reg [1:0] calc_step;      // Tracks which calculation step we're on
+    reg signed [31:0] sum_r;  // Store sum_odd(r)
+    reg signed [31:0] sum_l;  // Store sum_odd(l-1)
+    reg [15:0] l_reg;         // Store l locally
+    reg [15:0] r_reg;         // Store r locally
+    reg [15:0] n_temp;        // Temp value for calculations
+    reg [15:0] terms;         // terms = (n+1)/2
+    reg [31:0] terms_sq;      // terms^2
+    
+    // Combinational helper for odd check
+    wire is_odd;
+    assign is_odd = n_temp[0];  // LSB determines odd/even
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 1'b0;
+            result <= 32'b0;
+            sum_r <= 32'b0;
+            sum_l <= 32'b0;
+            calc_step <= 2'b00;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        l_reg <= l;
+                        r_reg <= r;
+                        // Start calculating sum_odd(r)
+                        n_temp <= r;
+                        state <= CALC_SUM_R;
+                        calc_step <= 2'b00;
+                    end
+                end
+                
+                CALC_SUM_R: begin
+                    case (calc_step)
+                        2'b00: begin
+                            // Step 0: Calculate terms = (n+1)/2
+                            // For r >= 1, this is safe with 16-bit
+                            terms <= (n_temp + 16'd1) >> 1;  // Divide by 2
+                            calc_step <= 2'b01;
+                        end
+                        2'b01: begin
+                            // Step 1: Square the terms
+                            terms_sq <= terms * terms;
+                            calc_step <= 2'b10;
+                        end
+                        2'b10: begin
+                            // Step 2: Store result and start sum_odd(l-1)
+                            sum_r <= {16'b0, terms_sq[15:0]};  // Store as 32-bit
+                            if (l_reg > 16'd1) begin
+                                n_temp <= l_reg - 16'd1;
+                            end else begin
+                                n_temp <= 16'd0;  // l=1 means l-1=0
+                            end
+                            state <= CALC_SUM_L;
+                            calc_step <= 2'b00;
+                        end
+                    endcase
+                end
+                
+                CALC_SUM_L: begin
+                    case (calc_step)
+                        2'b00: begin
+                            // Step 0: For n=0, sum is 0. Otherwise calculate.
+                            if (n_temp == 16'd0) begin
+                                sum_l <= 32'b0;
+                                state <= FINISH;
+                            end else begin
+                                terms <= (n_temp + 16'd1) >> 1;
+                                calc_step <= 2'b01;
+                            end
+                        end
+                        2'b01: begin
+                            terms_sq <= terms * terms;
+                            calc_step <= 2'b10;
+                        end
+                        2'b10: begin
+                            sum_l <= {16'b0, terms_sq[15:0]};
+                            state <= FINISH;
+                        end
+                    endcase
+                end
+                
+                FINISH: begin
+                    result <= sum_r - sum_l;  // sum_in_range = sum_odd(r) - sum_odd(l-1)
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule

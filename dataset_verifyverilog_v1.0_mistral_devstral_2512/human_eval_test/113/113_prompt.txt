@@ -1,0 +1,62 @@
+Design a sequential Verilog module named 'odd_count' that processes a single digit string and generates a formatted output message.
+
+The module should:
+1. Accept a fixed-width string (8 characters max) of decimal digits as input
+2. Count the number of odd digits in the string
+3. Generate the output message: "the number of odd elements Xn the strXng X of the Xnput." where X is the count
+4. Output the result as a 16-byte array (fixed width)
+
+Interface Specification:
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start pulse (1 cycle high)
+  input [7:0] char_0, char_1, char_2, char_3, char_4, char_5, char_6, char_7  // 8-character input string (ASCII codes)
+
+Outputs:
+  output reg [7:0] out_0, out_1, out_2, out_3, out_4, out_5, out_6, out_7, out_8, out_9, out_10, out_11, out_12, out_13, out_14, out_15  // 16-character output string
+  output reg done        // Goes high for 1 cycle when computation is complete
+
+Latency: Result valid 20 clock cycles after start asserted.
+
+Behavioral Description:
+The module should:
+1. On reset: Clear all output bytes to 0, set done=0
+2. On start: Begin processing
+3. Count odd digits: Check if digit_char % 2 == 1 for all 8 input chars (digits '0'-'9')
+4. Generate template string bytes, inserting the count value at positions where 'X' appears in the template
+5. The template is: "the number of odd elements Xn the strXng X of the Xnput." (note: 'X' is single digit)
+6. Convert count digit to ASCII ('0'-'9') for insertion
+7. Set done=1 for one cycle when complete, then return to IDLE
+
+Use a state machine with states: IDLE, COUNT_ODD, GEN_OUTPUT, DONE
+
+For digits 0-9: ASCII '0'=0x30, '1'=0x31, ..., '9'=0x39
+Assume input characters are ASCII codes for digits only.
+
+The output message template (16 bytes, with X placeholders):
+Position:  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15
+Template: 't','h','e',' ','n','u','m','b','e','r',' ','o','f',' ','o','d'
+
+(Note: Output is truncated to 16 chars for hardware simplicity. Full message would be longer, but we fit in 16 chars)
+
+Alternative approach: Generate just the core message "X odd elements" where X is the count, as 16 bytes.
+
+Revised output (16 chars): "X odd elements  " where X is count digit (at pos 0)
+
+Example:
+Input: "1234567" (7 chars) -> Count odd = 4 -> Output: "4 odd elements  "
+
+State Machine:
+- IDLE: Wait for start
+- COUNT: Count odd digits (8 cycles)
+- FORMAT: Build output string (8 cycles)
+- DONE: Set done=1 (1 cycle)
+
+Use combinational odd detection for each character, then sum.
+
+For the output message (16 bytes):
+- Byte 0: Count digit as ASCII
+- Bytes 1-15: Fixed string " odd elements  " (15 chars with trailing spaces)
+
+This keeps the problem solvable while testing: string processing, digit counting, ASCII conversion, and sequential logic.

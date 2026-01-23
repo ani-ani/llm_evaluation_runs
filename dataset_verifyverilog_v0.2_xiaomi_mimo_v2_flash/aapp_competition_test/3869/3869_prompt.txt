@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'rect_intersection_area' that computes the area of intersection between two rectangles centered at the origin, where one is axis-aligned (width w, height h) and the other is rotated by angle alpha.
+
+The module must use Q16.16 fixed-point arithmetic (16 integer bits, 16 fractional bits).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] w // Width of rectangle 1 (scaled by 65536)
+input [15:0] h // Height of rectangle 1 (scaled by 65536)
+input [15:0] alpha_deg // Rotation angle in degrees (0-180, scaled by 65536)
+
+Outputs:
+output reg [31:0] area // Intersection area in Q16.16 format
+output reg done // High when computation complete
+
+Behavior:
+1. Wait for start signal.
+2. Normalize angle: alpha = min(alpha, 180-alpha).
+3. If alpha == 0: area = w * h.
+4. If alpha == 90: area = min(w, h) * min(w, h).
+5. For other angles, compute using the formula:
+   Let A = w, B = h (ensure A >= B).
+   Let t = tan(alpha/2).
+   If t > B/A:
+       area = B*B / sin(alpha)
+   Else:
+       area = A*B - ((A - B*t)^2 + (B - A*t)^2) * tan(alpha) / 4
+6. All trigonometric functions (sin, cos, tan) must use pre-computed lookup tables or state-machine based series approximations for angles 0-90 degrees.
+7. Result must be valid after max 1024 clock cycles.
+
+Latency: 1024 clock cycles after start asserted.
+Use state machine with states: IDLE, PRECOMPUTE, CALCULATE, DONE.

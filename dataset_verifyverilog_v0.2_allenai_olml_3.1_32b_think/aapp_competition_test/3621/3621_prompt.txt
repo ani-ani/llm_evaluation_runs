@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'monochromatic_clique_sum' that computes the sum of f(S) over all non-empty subsets S of nodes in a colored complete graph.
+
+The module implements a brute-force algorithm:
+1. Enumerate all non-empty subsets of nodes (2^n - 1 subsets)
+2. For each subset, find the size of the largest monochromatic clique (complete subgraph with all edges same color)
+3. Sum these sizes modulo 10^9+7
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] n // number of nodes (1-5)
+input [299:0] color_matrix [0:7][0:7] // color matrix, only using [0:n-1][0:n-1]
+
+Outputs:
+output reg [29:0] result // result modulo 10^9+7 (fits in 30 bits)
+output reg done // high when computation complete
+
+Latency: Approximately (2^n) * (n^2) clock cycles, for n=5 max 32*25=800 cycles.
+
+Implementation details:
+- Use state machine: IDLE, ENUM_SUBSET, FIND_CLIQUE, SUM_UP, DONE
+- Enumerate subsets using a counter from 1 to (2^n)-1
+- For each subset, iterate over all sub-subsets to find maximum monochromatic clique
+- A sub-subset is a monochromatic clique if:
+  - It contains 1 node (always valid)
+  - All edges between nodes in the sub-subset have same color
+- Use combinational logic to check clique property
+- Accumulate result, taking modulo 10^9+7 at each addition
+
+For the clique check:
+- For a candidate subset represented by bitmask, check all pairs of set bits
+- For each pair (i,j), verify color_matrix[i][j] equals a reference color
+- The reference color can be color_matrix[first_set_bit][second_set_bit]
+- If any pair has different color, it's not a monochromatic clique
+
+Module header:
+module monochromatic_clique_sum(
+    input clk,
+    input rst_n,
+    input start,
+    input [4:0] n,
+    input [299:0] color_matrix [0:7][0:7],
+    output reg [29:0] result,
+    output reg done
+);
+
+State definitions:
+- IDLE: Wait for start signal
+- ENUM_SUBSET: Generate next subset to evaluate
+- FIND_CLIQUE: Find maximum monochromatic clique in current subset
+- SUM_UP: Add clique size to result
+- DONE: All subsets processed, result ready
+
+The module should reset result to 0 and done to 0 on reset.
+When start is asserted, begin enumeration.
+When done is asserted, result holds the final answer.

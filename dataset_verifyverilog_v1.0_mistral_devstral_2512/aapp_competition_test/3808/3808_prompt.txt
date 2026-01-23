@@ -1,0 +1,71 @@
+module bracket_fixer (
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] seq,        // Each bit: 0 for '(', 1 for ')'
+    input [4:0] valid_length, // 0 to 16
+    output reg result,
+    output reg done
+);
+
+parameter MAX_N = 16;
+
+// State definitions
+localparam IDLE = 2'b00;
+localparam PROCESS = 2'b01;
+localparam DONE = 2'b10;
+
+reg [1:0] state;
+reg [4:0] counter;
+reg signed [7:0] current_balance;
+reg signed [7:0] min_balance;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        counter <= 0;
+        current_balance <= 0;
+        min_balance <= 0;
+        result <= 0;
+        done <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    counter <= 0;
+                    current_balance <= 0;
+                    min_balance <= 0;
+                    if (valid_length == 0)
+                        state <= DONE;
+                    else
+                        state <= PROCESS;
+                end
+            end
+
+            PROCESS: begin
+                // Process current bracket
+                if (seq[counter] == 0) begin // '('
+                    current_balance <= current_balance + 1;
+                    min_balance <= (min_balance < (current_balance + 1)) ? min_balance : (current_balance + 1);
+                end else begin // ')'
+                    current_balance <= current_balance - 1;
+                    min_balance <= (min_balance < (current_balance - 1)) ? min_balance : (current_balance - 1);
+                end
+
+                counter <= counter + 1;
+
+                if (counter + 1 == valid_length)
+                    state <= DONE;
+            end
+
+            DONE: begin
+                result <= (current_balance == 0) && (min_balance >= -1);
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

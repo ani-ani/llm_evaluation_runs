@@ -1,0 +1,69 @@
+VERILOG MODULE SPECIFICATION FOR MANUSCRIPT RECONSTRUCTION
+
+Module: manuscript_reconstructor
+
+Parameters:
+  MAX_FRAGMENTS = 8    (maximum number of fragments)
+  MAX_FRAGMENT_LENGTH = 16  (maximum length per fragment)
+  OVERLAP_THRESHOLD = 5     (minimum overlap length)
+  CLK_PERIOD = 10           (clock period in ns)
+
+Inputs:
+  clk         : Clock signal (rising edge triggered)
+  rst_n       : Active-low synchronous reset
+  start       : Start pulse (assert for 1 cycle to begin computation)
+  fragment_data : 8-bit character input for loading fragments
+  fragment_valid : High when fragment_data is valid
+  fragment_end   : Pulse high to indicate end of current fragment
+  loading_done   : Pulse high when all fragments are loaded
+
+Outputs:
+  result_char   : 8-bit character output for reconstructed text
+  result_valid  : High when result_char is valid
+  result_done   : High for 1 cycle when reconstruction is complete
+  ambiguous     : High when optimal reconstruction is ambiguous
+
+Internal Signals:
+  - 8x16 fragment storage array (8 fragments, 16 chars each)
+  - 8x8 overlap matrix (stores overlap length between fragments)
+  - 8-element arrays for DP: longest_path_length, path_count, next_node
+  - Topological order array
+  - Result buffer (128 chars max)
+
+Behavior:
+1. IDLE state: Wait for start signal
+2. LOAD state: Accept fragment_data and store in array when fragment_valid=1
+                On fragment_end, increment fragment count
+                On loading_done, move to compute state
+3. COMPUTE_OVERLAPS: For each pair of fragments, compute overlap length
+                     by comparing suffix of A with prefix of B
+                     Only consider overlaps >= OVERLAP_THRESHOLD
+4. BUILD_GRAPH: Create adjacency matrix from overlap matrix
+5. TOPOLOGICAL_SORT: Kahn's algorithm to get topological order
+6. DP_LONGEST_PATH: Process nodes in reverse topological order:
+                    For each node, examine all outgoing edges
+                    Compute longest path starting from each node
+                    Track path count (saturate at 2 for ambiguity detection)
+7. FIND_RESULT: Determine global maximum path length
+                Count how many nodes achieve this maximum
+                If count > 1, set ambiguous flag
+                If count = 1, reconstruct string
+8. RECONSTRUCT: Follow next_node pointers to get fragment sequence
+                Build result by concatenating first fragment and
+                non-overlapping parts of subsequent fragments
+9. OUTPUT: Stream result_char one character per cycle
+
+Timing:
+- Loading: Asynchronous, controlled by fragment_valid and fragment_end
+- Computation: Takes approximately 1000 cycles for 8 fragments
+- Output: 1 character per cycle after computation
+
+Reset:
+- rst_n=0: All internal states reset, fragment storage cleared
+- Minimum 2 clock cycles of reset required
+
+Constraints:
+- Maximum 8 fragments, each 16 characters
+- No cycles in fragment graph (guaranteed by problem)
+- Result string max 128 characters
+- Overlap computation uses string comparison with threshold 5

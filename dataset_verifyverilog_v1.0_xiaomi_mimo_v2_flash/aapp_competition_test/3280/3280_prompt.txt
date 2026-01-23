@@ -1,0 +1,151 @@
+module tv_recorder(
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] n,  // Number of shows (1-8)
+    input [2:0] k,  // Number of machines (1-4)
+    input [15:0] start_times [0:7],  // Start times for 8 shows
+    input [15:0] end_times [0:7],    // End times for 8 shows
+    output reg [3:0] count,          // Maximum number of shows
+    output reg done                  // Computation complete
+);
+
+    // State definitions
+    localparam IDLE = 3'b000;
+    localparam SORT = 3'b001;
+    localparam INIT = 3'b010;
+    localparam COMPUTE = 3'b011;
+    localparam DONE = 3'b100;
+    
+    reg [2:0] state;
+    reg [3:0] show_idx;
+    reg [3:0] machine_idx;
+    reg [15:0] machine_end [0:3];  // 4 machines with 16-bit end times
+    
+    // Sorted shows
+    reg [15:0] sorted_start [0:7];
+    reg [15:0] sorted_end [0:7];
+    
+    // Sorting network signals
+    reg [15:0] sort_start [0:7];
+    reg [15:0] sort_end [0:7];
+    
+    integer i, j;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            count <= 4'b0;
+            done <= 1'b0;
+            show_idx <= 4'b0;
+            machine_idx <= 4'b0;
+            for (i = 0; i < 4; i = i + 1) begin
+                machine_end[i] <= 16'b0;
+            end
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= SORT;
+                        // Copy inputs to sorting network
+                        for (i = 0; i < 8; i = i + 1) begin
+                            sort_start[i] <= start_times[i];
+                            sort_end[i] <= end_times[i];
+                        end
+                    end
+                end
+                
+                SORT: begin
+                    // Bubble sort by end time (combinational, done in 1 cycle for small size)
+                    // First pass - unrolled for 8 elements
+                    // Compare and swap adjacent pairs
+                    for (i = 0; i < 7; i = i + 1) begin
+                        if (sort_end[i] > sort_end[i+1]) begin
+                            // Swap end times
+                            sort_end[i] <= sort_end[i+1];
+                            sort_end[i+1] <= sort_end[i];
+                            // Swap start times
+                            sort_start[i] <= sort_start[i+1];
+                            sort_start[i+1] <= sort_start[i];
+                        end
+                    end
+                    // Second pass (to handle worst case)
+                    for (i = 0; i < 6; i = i + 1) begin
+                        if (sort_end[i] > sort_end[i+1]) begin
+                            sort_end[i] <= sort_end[i+1];
+                            sort_end[i+1] <= sort_end[i];
+                            sort_start[i] <= sort_start[i+1];
+                            sort_start[i+1] <= sort_start[i];
+                        end
+                    end
+                    // Copy sorted results
+                    for (i = 0; i < 8; i = i + 1) begin
+                        sorted_start[i] <= sort_start[i];
+                        sorted_end[i] <= sort_end[i];
+                    end
+                    state <= INIT;
+                end
+                
+                INIT: begin
+                    // Initialize machine end times and count
+                    for (i = 0; i < 4; i = i + 1) begin
+                        machine_end[i] <= 16'b0;
+                    end
+                    count <= 4'b0;
+                    show_idx <= 4'b0;
+                    state <= COMPUTE;
+                end
+                
+                COMPUTE: begin
+                    if (show_idx < n && show_idx < 8) begin
+                        // Check all machines for the current show
+                        // Find the machine with latest end time <= show start
+                        reg found;
+                        reg [15:0] max_end;
+                        reg [2:0] best_machine;
+                        
+                        found = 0;
+                        max_end = 16'b0;
+                        best_machine = 3'b0;
+                        
+                        for (machine_idx = 0; machine_idx < k && machine_idx < 4; machine_idx = machine_idx + 1) begin
+                            if (machine_end[machine_idx] <= sorted_start[show_idx]) begin
+                                if (machine_end[machine_idx] > max_end || !found) begin
+                                    max_end = machine_end[machine_idx];
+                                    best_machine = machine_idx;
+                                    found = 1'b1;
+                                end
+                            end
+                        end
+                        
+                        if (found) begin
+                            // Assign show to this machine
+                            machine_end[best_machine] <= sorted_end[show_idx];
+                            count <= count + 1'b1;
+                        end else if (show_idx < k) begin
+                            // Use new machine if available
+                            machine_end[show_idx] <= sorted_end[show_idx];
+                            count <= count + 1'b1;
+                        end
+                        
+                        show_idx <= show_idx + 1'b1;
+                    end else begin
+                        state <= DONE;
+                        done <= 1'b1;
+                    end
+                end
+                
+                DONE: begin
+                    done <= 1'b0;
+                    if (!start) begin
+                        state <= IDLE;
+                    end
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

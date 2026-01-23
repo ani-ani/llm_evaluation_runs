@@ -1,0 +1,148 @@
+module monotonic_subgrid_count #(
+    parameter MAX_R = 3,
+    parameter MAX_C = 3,
+    parameter DATA_WIDTH = 8,
+    parameter COUNT_WIDTH = 8
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [1:0] r,  // Actual rows (1-3)
+    input wire [1:0] c,  // Actual cols (1-3)
+    input wire [DATA_WIDTH-1:0] grid_0_0, grid_0_1, grid_0_2,
+    input wire [DATA_WIDTH-1:0] grid_1_0, grid_1_1, grid_1_2,
+    input wire [DATA_WIDTH-1:0] grid_2_0, grid_2_1, grid_2_2,
+    output reg [COUNT_WIDTH-1:0] count,
+    output reg done
+);
+
+    // Internal state
+    reg [MAX_R-1:0] row_mask;
+    reg [MAX_C-1:0] col_mask;
+    reg [3:0] state;
+    reg [COUNT_WIDTH-1:0] temp_count;
+    
+    // Grid storage
+    reg [DATA_WIDTH-1:0] grid [0:MAX_R-1][0:MAX_C-1];
+    reg grid_loaded;
+    
+    // State definitions
+    localparam IDLE = 4'd0;
+    localparam LOAD_GRID = 4'd1;
+    localparam INIT = 4'd2;
+    localparam CHECK_SUBGRID = 4'd3;
+    localparam UPDATE_COUNT = 4'd4;
+    localparam NEXT_COL_MASK = 4'd5;
+    localparam NEXT_ROW_MASK = 4'd6;
+    localparam DONE_STATE = 4'd7;
+    
+    // Monotonicity check variables
+    reg [DATA_WIDTH-1:0] values[0:3];
+    reg is_valid;
+    reg is_increasing;
+    reg is_decreasing;
+    reg [1:0] valid_count;
+    reg [1:0] i;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            count <= 0;
+            done <= 0;
+            grid_loaded <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        state <= LOAD_GRID;
+                        grid_loaded <= 0;
+                    end
+                end
+                
+                LOAD_GRID: begin
+                    // Load grid from individual ports
+                    grid[0][0] <= grid_0_0; grid[0][1] <= grid_0_1; grid[0][2] <= grid_0_2;
+                    grid[1][0] <= grid_1_0; grid[1][1] <= grid_1_1; grid[1][2] <= grid_1_2;
+                    grid[2][0] <= grid_2_0; grid[2][1] <= grid_2_1; grid[2][2] <= grid_2_2;
+                    grid_loaded <= 1;
+                    state <= INIT;
+                end
+                
+                INIT: begin
+                    temp_count <= 0;
+                    row_mask <= 1;  // Start with first row
+                    col_mask <= 1;  // Start with first column
+                    state <= CHECK_SUBGRID;
+                end
+                
+                CHECK_SUBGRID: begin
+                    // Check if current subgrid is monotonic
+                    is_valid <= 1;
+                    
+                    // Check rows in subgrid
+                    if (row_mask == 0 || col_mask == 0) is_valid <= 0;
+                    else begin
+                        // Check each selected row
+                        for (i = 0; i < MAX_R; i = i + 1) begin
+                            if (row_mask[i]) begin
+                                // Extract row values for selected columns
+                                // This needs to be combinational
+                            end
+                        end
+                    end
+                    
+                    state <= UPDATE_COUNT;
+                end
+                
+                UPDATE_COUNT: begin
+                    if (is_valid) begin
+                        temp_count <= temp_count + 1;
+                    end
+                    state <= NEXT_COL_MASK;
+                end
+                
+                NEXT_COL_MASK: begin
+                    if (col_mask < (1 << c) - 1) begin
+                        col_mask <= col_mask + 1;
+                        state <= CHECK_SUBGRID;
+                    end else begin
+                        state <= NEXT_ROW_MASK;
+                    end
+                end
+                
+                NEXT_ROW_MASK: begin
+                    if (row_mask < (1 << r) - 1) begin
+                        row_mask <= row_mask + 1;
+                        col_mask <= 1;
+                        state <= CHECK_SUBGRID;
+                    end else begin
+                        count <= temp_count;
+                        state <= DONE_STATE;
+                    end
+                end
+                
+                DONE_STATE: begin
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+    
+    // Combinational logic for monotonicity check
+    always @(*) begin
+        // Extract values for current subgrid and check monotonicity
+        // This is simplified for 3x3 case
+        is_valid = 1;
+        
+        // Check each row in subgrid
+        for (int row = 0; row < 3; row = row + 1) begin
+            if (row_mask[row]) begin
+                // Get selected columns in this row
+                // Check if row is monotonic
+            end
+        end
+    end
+    
+endmodule

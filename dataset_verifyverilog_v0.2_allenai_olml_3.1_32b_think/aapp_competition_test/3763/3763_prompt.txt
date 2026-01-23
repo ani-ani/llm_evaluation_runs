@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'restaurant_visitor_expected' that calculates the average number of visitors across all permutations of guest arrivals.
+
+Problem Adaptation:
+- n (number of guests): 3 to 8 guests maximum
+- a[i] (guest sizes): values 1-50, scaled to 6-bit values
+- p (table length): 1-50, scaled to 6-bit values
+- Calculate: Sum of (visitors per permutation) / (total permutations)
+- Total permutations = n! (factorial of n)
+- Since 8! = 40320, the module will use a state machine to iterate through permutations or use a combinatorial lookup for small n
+
+Simplification: Implement a combinatorial module that computes expected value using pre-calculated probability logic.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] n // Number of guests (3-8)
+input [5:0] a_0, a_1, a_2, a_3, a_4, a_5, a_6, a_7 // Guest sizes (6-bit, max 50)
+input [5:0] p // Table length (6-bit, max 50)
+
+Outputs:
+output reg [31:0] result // Q16.16 fixed-point result
+output reg done // High when computation complete
+
+Specification:
+- Use Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Result = (Sum of visitors across all permutations) / n!
+- The module must handle n=3 to n=8 (factorials: 6, 24, 120, 720, 5040, 40320)
+- Use state machine with states: IDLE, CALC_PERMUTATIONS, DIVIDE, DONE
+- Latency: Maximum 50,000 clock cycles (enough for 8! permutations)
+- For n=8, process each permutation sequentially
+- For each permutation, simulate guest entry and count visitors until table is full
+- Accumulate total visitors across all permutations
+- Divide by factorial(n) using integer division and fractional accumulation
+- Output in Q16.16 format (multiply result by 65536)
+
+Algorithm:
+1. Count total permutations = n!
+2. For each permutation (or use probability calculation):
+   - Simulate: sum=0, count=0
+   - For each guest in order: if sum + size <= p, count++, sum+=size; else stop
+   - Accumulate count
+3. Expected = total_count / n!
+4. Convert to Q16.16: result = (expected * 65536) rounded
+
+Example: n=3, a=[1,2,3], p=3
+Total permutations=6, counts=[2,1,2,1,1,1], sum=8, avg=1.3333
+Result Q16.16 = 1.3333 * 65536 = 87381 (0x00015545)
+
+For sequential implementation, use:
+- State variable to track current permutation index
+- Combinatorial next_permutation logic
+- Counter for sum of visitors
+- Division: (total_sum * 65536) / n!

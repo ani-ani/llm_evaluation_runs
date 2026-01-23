@@ -1,0 +1,24 @@
+Design a Verilog module that computes the minimum number of straight lines needed to cover all given points on the boundary of a convex polygon. The input consists of n points (3 <= n <= 8) with integer coordinates in the range [-2048, 2047] (scaled from original). The module uses a clocked state machine to perform the following steps:
+
+1. Accept n and the coordinates of n points (x0,y0 ... x7,y7).
+2. Generate all distinct lines that cover at least two points. For each pair of points (i,j), compute the set of points collinear with them. This is done by checking the cross product (x_j - x_i)*(y_k - y_i) - (y_j - y_i)*(x_k - x_i) == 0 for all k. Store each unique line as an n-bit mask.
+3. Perform dynamic programming over subsets of points to find the minimum number of lines covering all points. Initialize dp[0] = 0, dp[mask] = INF for others. For each line mask L, update dp[mask | L] = min(dp[mask | L], dp[mask] + 1). The DP is performed using two arrays (ping-pong) to avoid overwriting.
+4. After processing all lines, the result is dp[(1<<n)-1]. Output the result and assert done.
+
+The module must have the following interface:
+- Clock and active-low reset.
+- Start signal: assert for one clock cycle to start computation.
+- n: 4-bit input indicating number of points (1 to 8).
+- Coordinates: 8 ports for x and 8 ports for y, each 12-bit signed integers. Only the first n points are valid.
+- Result: 4-bit output.
+- Done: asserted high for one clock cycle when computation finishes.
+
+Implementation details:
+- Use parameters: COORD_WIDTH = 12, MAX_N = 8, RESULT_WIDTH = 4.
+- Internal RAM for dp: 256 x 4 bits.
+- Internal RAM for line masks: up to 28 lines, each 8 bits.
+- State machine with states: IDLE, COMPUTE_LINES_INIT, COMPUTE_LINES_INNER, COMPUTE_LINES_STORE, COMPUTE_LINES_NEXT, DP_INIT, DP_UPDATE_LINES, DP_UPDATE_MASKS, DP_UPDATE_NEXT_LINE, DP_DONE.
+- Use 64-bit arithmetic for cross product? But with scaled coordinates (12-bit), product fits in 24 bits. Use 32-bit for intermediate.
+- Avoid duplicate lines by comparing new mask with stored masks.
+
+This is a high-level specification; the LLM should generate the detailed RTL code.

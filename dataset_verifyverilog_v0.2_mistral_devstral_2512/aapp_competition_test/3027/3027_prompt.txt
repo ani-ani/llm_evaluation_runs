@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'bureaucrat_stamp' that finds the minimum number of nubs in a stamp that could produce a given 8x8 paper pattern when stamped twice (with possible translation).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [0:7][0:7] paper_grid // 8x8 binary grid, paper_grid[i][j] = 1 for '#', 0 for '.'
+
+Outputs:
+output reg [7:0] min_nubs // minimum number of nubs (8-bit value)
+output reg done // high when computation complete
+
+Specification:
+- The module computes the minimum number of '#' symbols in a stamp that, when stamped twice at two different positions (with translation but no rotation), produces exactly the input pattern.
+- Use a state machine with states: IDLE, INIT, CALC_OFFSET, COMPUTE_STAMP, NEXT_OFFSET, MIN_UPDATE, DONE
+- Try all possible offsets (dx, dy) where dx ranges from -8 to 7 and dy ranges from -8 to 7
+- For each offset, compute the minimal stamp size using chain decomposition:
+  * Create chains of positions where each position can reach the next via the offset
+  * For each chain of length L, add ceil(L/2) to the stamp size for that offset
+- Keep track of the minimum stamp size across all valid offsets
+- Valid offsets must ensure both stamp placements fit within 8x8 bounds
+- Latency: approximately 10,000 clock cycles (enough to process all offsets)
+- Use 9-bit signed values for dx, dy to handle negative offsets
+- Implement chain tracing using registers to track visited positions
+
+State Machine Description:
+- IDLE: Wait for start signal, then reset internal counters and go to INIT
+- INIT: Initialize offset counters (dx = -8, dy = -8), set current_min = 255, go to CALC_OFFSET
+- CALC_OFFSET: Check if current offset (dx,dy) is valid (both stamp placements fit). If yes, go to COMPUTE_STAMP, else go to NEXT_OFFSET
+- COMPUTE_STAMP: For current offset, compute minimal stamp size by tracing chains of positions. Use a visited array and iterate through all positions. For each unvisited '#', trace the chain and add ceil(chain_length/2) to offset_size. Store offset_size in temp register. Go to MIN_UPDATE
+- MIN_UPDATE: Compare temp with current_min, update current_min if temp is smaller. Go to NEXT_OFFSET
+- NEXT_OFFSET: Increment dy. If dy > 7, reset dy = -8 and increment dx. If dx > 7, go to DONE. Otherwise go to CALC_OFFSET
+- DONE: Set min_nubs = current_min, assert done signal, return to IDLE
+
+Additional Details:
+- Use parameter MAX_SIZE = 8 for grid dimensions
+- For chain tracing, need to handle both forward (dx,dy) and backward (-dx,-dy) directions
+- Chain length counting: start from a position, move in forward direction while positions are '#', count steps; move in backward direction while '#', count steps; total length = forward_count + backward_count + 1
+- ceil(L/2) = (L + 1) >> 1
+- Handle edge cases: single '#' (chain length 1, ceil(1/2) = 1)
+- Offset validity: both stamps must fit. For stamp at (0,0), all '#' positions must be in [0,8)x[0,8). For stamp at (dx,dy), all shifted positions must also be in bounds.
+- Optimize by pre-computing the bounds of '#' positions to limit offset range

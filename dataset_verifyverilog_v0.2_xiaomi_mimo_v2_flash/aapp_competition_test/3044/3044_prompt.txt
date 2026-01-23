@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'robot_path_fixer' that computes the minimum number of edits needed to make a robot reach the goal in a 4x4 grid.
+
+The module should implement BFS over states combining robot position, current command index, and edits used.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [1:0] grid [0:15] // 4x4 grid flattened: 0=empty, 1=obstacle, 2=start, 3=goal
+input [2:0] cmd_length // number of valid commands (1-8)
+input [7:0] commands // 8 commands, each 2 bits: 00=L, 01=R, 02=U, 03=D
+
+Outputs:
+output reg [2:0] min_edits // minimum edits needed (0-4)
+output reg done // high when computation complete
+
+Specify latency: Result valid within 512 clock cycles after start asserted.
+
+Use state machine with states: IDLE, EXPLORE_STATE, CHECK_GOAL, UPDATE_QUEUE, DONE.
+
+Algorithm:
+1. Initialize queue with start state (position=Start, idx=0, edits=0)
+2. For each state, explore three possibilities:
+   - Execute current command (if idx < length): move if valid, advance idx
+   - Delete current command: advance idx, increment edits
+   - Insert new command: stay at same idx, increment edits, try all 4 directions
+3. Track visited states to avoid duplicates
+4. Return minimum edits when goal reached
+5. If queue exhausted without goal, return 4 (max edits)
+
+State encoding: {pos_x[1:0], pos_y[1:0], cmd_idx[2:0], edits[1:0]}
+Queue size: 64 entries max
+Visited array: 512 bits (one per state)
+
+All arithmetic is binary, no floating point needed.

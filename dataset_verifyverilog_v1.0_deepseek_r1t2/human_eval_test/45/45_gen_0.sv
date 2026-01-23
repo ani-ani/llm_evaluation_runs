@@ -1,0 +1,1 @@
+module triangle_area(\n    input [31:0] base,\n    input [31:0] height,\n    output [31:0] area\n);\n    wire [63:0] product = base * height;\n    wire [63:0] shifted_product = product >> 17;\n    assign area = shifted_product[31:0];\nendmodule

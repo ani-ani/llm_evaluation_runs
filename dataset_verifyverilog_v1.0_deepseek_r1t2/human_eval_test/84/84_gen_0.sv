@@ -1,0 +1,1 @@
+module digit_sum_binary(\n    input [9:0] N,\n    output [4:0] binary_sum\n);\n    wire [3:0] hundreds = N / 10'd100;\n    wire [3:0] tens = (N % 10'd100) / 10'd10;\n    wire [3:0] ones = N % 10'd10;\n    assign binary_sum = {1'b0, hundreds} + {1'b0, tens} + {1'b0, ones};\nendmodule

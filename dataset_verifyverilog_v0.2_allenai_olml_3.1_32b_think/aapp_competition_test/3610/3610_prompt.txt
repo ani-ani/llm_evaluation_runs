@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'vertex_cover_solver' that computes a minimum vertex cover for a bipartite graph representing employee teams.
+
+Problem Adaptation:
+- Input graph: Bipartite with Stockholm employees (IDs 1000-1999) and London employees (IDs 2000-2999)
+- Scaled constraint: Maximum 16 employees per city, maximum 16 teams
+- Algorithm: Use greedy approximation - iteratively select vertices with highest degree until all edges are covered
+- Friend preference: Friend has ID 1009. If 1009 is in minimum cover, include it. If tie between solutions, prefer one containing 1009.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [9:0] team_stockholm // Stockholm employee ID (10 bits covers 1000-1999)
+input [9:0] team_london // London employee ID (10 bits covers 2000-2999)
+input team_valid // high when team input is valid
+input team_done // high when all teams have been input
+
+Outputs:
+output reg [4:0] result_count // number of invitees (max 32, but actually max 16+16=32, so 5 bits)
+output reg [9:0] result_ids [0:15] // array of 16 invitee IDs
+output reg result_valid // high when result is ready
+output reg done // high when computation complete
+
+Internal Behavior:
+- Use IDLE, INPUT_TEAMS, COMPUTE_COVER, OUTPUT_RESULT states
+- Store adjacency information in 16x16 matrix (1-bit per edge)
+- Track degree counts for each vertex
+- Greedy algorithm: While edges remain, select vertex with highest degree, remove covered edges, repeat
+- For friend inclusion: After computing cover, if 1009 not in cover but an alternative cover of same size exists with 1009, use that
+- Latency: ~200 clock cycles worst case
+
+Implementation Details:
+- Use 16 entry buffers for Stockholm and London employee IDs (map actual IDs to 0-15 indices)
+- Store edges in memory: 16x16 bit matrix
+- Track which vertices are in cover: 16-bit masks for each side
+- Output should be sorted by ID ascending
+- Friend ID 1009 is special - if it appears in any edge, prefer selecting it when degree is equal to others

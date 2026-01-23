@@ -1,0 +1,78 @@
+Design a sequential Verilog module named 'beacon_connectivity' that determines the number of disconnected components in a visibility graph of beacons.
+
+**Problem Adaptation:**
+- Limit to **N=8 beacons** and **M=8 mountain peaks**.
+- Coordinates and radii are integers (0-10000).
+- Visibility check: Two beacons are connected if the line segment between them does not pass through the interior of any mountain peak (distance from center to line segment > radius).
+- **Fixed-Point Arithmetic:** Use **Q16.16** format for intermediate calculations (distances, squared values) to handle square roots and divisions if necessary, but use integer arithmetic where possible.
+- **Algorithm:**
+  1. Initialize DSU (Disjoint Set Union) for 8 beacons.
+  2. For every pair of beacons (i, j):
+     - Check visibility against all M mountains.
+     - If visible, union(i, j).
+  3. Count unique roots in DSU.
+  4. Result = (count of unique roots - 1).
+
+**Inputs:**
+- `clk`, `rst_n`, `start`.
+- `beacon_x [7:0][13:0]` (8 beacons, 14 bits for 0-10000).
+- `beacon_y [7:0][13:0]`.
+- `mountain_x [7:0][13:0]` (8 mountains).
+- `mountain_y [7:0][13:0]`.
+- `mountain_r [7:0][13:0]`.
+- `num_beacons` (4 bits), `num_mountains` (4 bits).
+
+**Outputs:**
+- `result` (4 bits): The number of messages (components - 1).
+- `done` flag.
+
+**Behavior:**
+- Use a state machine: IDLE -> LOAD -> PAIR_LOOP -> MOUNTAIN_LOOP -> CHECK_VISIBILITY -> UNION -> COUNT_ROOTS -> DONE.
+- **Visibility Math (Point to Segment Distance squared):**
+  Let P be mountain center, A and B be beacons.
+  Vector AB: (Bx-Ax, By-Ay).
+  Vector AP: (Px-Ax, Py-Ay).
+  Squared length of AB: L2 = ABx^2 + ABy^2.
+  If L2 == 0, points are same (skip).
+  Dot product: t = (AP . AB) / L2. Clamp t to [0, 1].
+  Closest point C = A + t * AB.
+  Distance PC^2 must be > r^2.
+  To avoid floating point: `(PCx^2 + PCy^2) > r^2 * L2`. This involves multiplication of 32-bit numbers, result fits in 64 bits (use 48 bits for safety).
+- **Square Root:** Can be approximated using iterative method or lookup table for the final distance check if strictly needed, but the squared comparison `D^2 > R^2` is sufficient and purely integer if scaled correctly. However, since `t` requires division, use Q16.16 for t calculation.
+- **DSU:** Maintain `parent` array of 8 3-bit registers. Implement `find` with path compression (requires iterative logic or deep recursion unrolled) or simple `find` (iterative) and `union` (iterative).
+- **Latency:** Expect high latency (e.g., 5000+ cycles) due to nested loops (8 beacons * 8 beacons * 8 mountains * DSU operations). Optimize state transitions.
+
+**State Machine Details:**
+- `IDLE`: Wait for start.
+- `INIT_DSU`: Initialize parent[i] = i.
+- `outer_loop`:
+  - `i` from 0 to num_beacons-1.
+  - `inner_loop`:
+    - `j` from i+1 to num_beacons-1.
+    - `mountain_loop`:
+      - `k` from 0 to num_mountains-1.
+      - Calculate visibility.
+      - If blocked: break inner loop (j).
+      - If k finishes and not blocked: call `union(i, j)`.
+- `count_roots`: Iterate 0 to 7, find roots, count distinct.
+- `DONE`: Output result - 1.
+
+**Math Implementation:**
+- Use a generic multiplier for Q16.16 (32b * 32b -> 64b, take [47:16] or similar).
+- For `t` calculation:
+  - Numerator: AP . AB (use 32b adders/multipliers).
+  - Denominator: L2.
+  - t = Numerator / Denominator (Q16.16 result). Use a simple 32-cycle restoring divider.
+  - If t < 0, t = 0. If t > 1 (0x10000), t = 1.
+- For Point C:
+  - Cx = Ax + (t * ABx) >> 16.
+- For Distance Check:
+  - dist_sq = (Px - Cx)^2 + (Py - Cy)^2.
+  - radius_sq = r^2.
+  - Compare dist_sq > radius_sq (considering scale if any).
+
+**Signal Widths:**
+- Coordinates: [13:0] (max 10000).
+- Intermediate Q16.16: [31:0].
+- Multiplier results: [63:0].
+- Result: [3:0].

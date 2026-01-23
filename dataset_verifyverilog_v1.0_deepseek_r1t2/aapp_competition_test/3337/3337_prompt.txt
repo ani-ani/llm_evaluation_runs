@@ -1,0 +1,160 @@
+module stack_operations #(
+    parameter MAX_OPS = 16,          // Maximum operations (scaled from 300k to 16)
+    parameter MAX_STACK_SIZE = 8,    // Maximum stack depth
+    parameter DATA_WIDTH = 8,        // Number width (fits 1-16)
+    parameter ADDR_WIDTH = 4         // Stack address width (16 stacks)
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [1:0] op_type,       // 00=push, 01=pop, 10=count
+    input wire [ADDR_WIDTH-1:0] v,  // First stack operand
+    input wire [ADDR_WIDTH-1:0] w,  // Second stack operand (type 10 only)
+    output reg [15:0] result,       // Result for pop and count operations
+    output reg done                 // Operation complete pulse
+);
+
+// Internal memory for all stacks
+reg [DATA_WIDTH-1:0] stacks [0:MAX_OPS-1][0:MAX_STACK_SIZE-1];
+reg [2:0] stack_len [0:MAX_OPS-1];
+
+// Operation tracking
+reg [ADDR_WIDTH-1:0] op_counter;   // Current operation number (1..MAX_OPS)
+reg [ADDR_WIDTH-1:0] current_idx;  // Next stack index to allocate
+
+// FSM states
+localparam IDLE = 3'd0;
+localparam EXECUTE = 3'd1;
+localparam TYPE_C_CALC = 3'd2;
+localparam DONE = 3'd3;
+reg [2:0] state;
+
+// Type C calculation registers
+reg [2:0] c_i;                      // Element index in stack v
+reg [3:0] c_count;                  // Accumulated intersection count
+reg c_match_found;                  // Match flag for current element
+
+// Combinational logic for type C: check if value exists in stack w
+wire exists_in_w;
+assign exists_in_w = (
+    (c_i < stack_len[v]) && (
+        (stack_len[w] > 0 && stacks[v][c_i] == stacks[w][0]) ||
+        (stack_len[w] > 1 && stacks[v][c_i] == stacks[w][1]) ||
+        (stack_len[w] > 2 && stacks[v][c_i] == stacks[w][2]) ||
+        (stack_len[w] > 3 && stacks[v][c_i] == stacks[w][3]) ||
+        (stack_len[w] > 4 && stacks[v][c_i] == stacks[w][4]) ||
+        (stack_len[w] > 5 && stacks[v][c_i] == stacks[w][5]) ||
+        (stack_len[w] > 6 && stacks[v][c_i] == stacks[w][6]) ||
+        (stack_len[w] > 7 && stacks[v][c_i] == stacks[w][7])
+    )
+);
+
+// Reset and state transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset all state
+        state <= IDLE;
+        op_counter <= 1;
+        current_idx <= 1;
+        done <= 0;
+        result <= 0;
+        c_i <= 0;
+        c_count <= 0;
+        c_match_found <= 0;
+        // Clear stack lengths
+        for (integer i = 0; i < MAX_OPS; i = i + 1) begin
+            stack_len[i] <= 0;
+        end
+    end else begin
+        done <= 0;  // Pulse done only for 1 cycle
+        
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    state <= EXECUTE;
+                end
+            end
+            
+            EXECUTE: begin
+                case (op_type)
+                    2'b00: begin // Type A: Push
+                        // Copy stack v to new stack
+                        if (current_idx < MAX_OPS) begin
+                            stack_len[current_idx] <= stack_len[v] + 1;
+                            for (integer i = 0; i < MAX_STACK_SIZE; i = i + 1) begin
+                                if (i < stack_len[v]) begin
+                                    stacks[current_idx][i] <= stacks[v][i];
+                                end
+                            end
+                            // Push operation number on top
+                            if (stack_len[v] < MAX_STACK_SIZE) begin
+                                stacks[current_idx][stack_len[v]] <= op_counter;
+                            end
+                            op_counter <= op_counter + 1;
+                            current_idx <= current_idx + 1;
+                        end
+                        state <= DONE;
+                    end
+                    
+                    2'b01: begin // Type B: Pop
+                        if (current_idx < MAX_OPS && stack_len[v] > 0) begin
+                            // Copy stack v (without top element)
+                            stack_len[current_idx] <= stack_len[v] - 1;
+                            for (integer i = 0; i < MAX_STACK_SIZE; i = i + 1) begin
+                                if (i < stack_len[v] - 1) begin
+                                    stacks[current_idx][i] <= stacks[v][i];
+                                end
+                            end
+                            // Output popped value
+                            result <= stacks[v][stack_len[v] - 1];
+                            op_counter <= op_counter + 1;
+                            current_idx <= current_idx + 1;
+                        end
+                        state <= DONE;
+                    end
+                    
+                    2'b10: begin // Type C: Count common elements
+                        // Initialize type C calculation
+                        c_i <= 0;
+                        c_count <= 0;
+                        c_match_found <= 0;
+                        state <= TYPE_C_CALC;
+                    end
+                    
+                    default: begin
+                        state <= DONE;
+                    end
+                endcase
+            end
+            
+            TYPE_C_CALC: begin
+                // Process each element of stack v
+                if (c_i < stack_len[v]) begin
+                    // Check if current element exists in stack w
+                    if (exists_in_w && !c_match_found) begin
+                        c_count <= c_count + 1;
+                        c_match_found <= 1; // Prevent double-counting for this element
+                    end
+                    c_i <= c_i + 1;
+                    // Reset match flag for next element (in next cycle)
+                    if (c_i + 1 < stack_len[v]) begin
+                        c_match_found <= 0;
+                    end
+                end else begin
+                    // Type C complete
+                    result <= c_count;
+                    op_counter <= op_counter + 1;
+                    current_idx <= current_idx + 1;
+                    state <= DONE;
+                end
+            end
+            
+            DONE: begin
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

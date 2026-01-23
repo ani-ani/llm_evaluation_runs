@@ -1,0 +1,47 @@
+module CanyonMapper (
+    input wire clk,                // Clock, rising edge
+    input wire rst_n,              // Active-low synchronous reset
+    input wire start,              // Start pulse, one cycle
+    input wire [3:0] n,            // Number of vertices (3-8)
+    input wire [1:0] k,            // Number of squares (1-3)
+    input wire [15:0] x [0:7],     // X-coordinates, scaled by 100
+    input wire [15:0] y [0:7],     // Y-coordinates, scaled by 100
+    output reg [15:0] side,        // Minimal side length in hundredths
+    output reg done                // Done signal, high for one cycle
+);
+
+// Parameters
+parameter N_MAX = 8;
+parameter K_MAX = 3;
+parameter CANDIDATE_MAX = 64; // 4 * N_MAX^2
+parameter COORD_SCALE = 100;
+
+// Internal states
+state_t state, next_state;
+
+// The module must implement the following algorithm:
+// 1. On reset, clear all state.
+// 2. On start, compute bounding box of the polygon (only first n vertices).
+// 3. Perform binary search on side length s (in hundredths) from 0 to max(width, height) of bounding box.
+// 4. For each candidate s, generate all possible squares that could cover vertices:
+//    - For each i in 0..n-1, for each j in 0..n-1, generate 4 candidate squares:
+//        bottom-left at (x[i], y[j])
+//        bottom-left at (x[i] - s, y[j])
+//        bottom-left at (x[i], y[j] - s)
+//        bottom-left at (x[i] - s, y[j] - s)
+//    - For each candidate, compute a bitmask of n bits: bit k is 1 if vertex k is inside the square.
+// 5. Check if there exists a combination of k squares (allowing reuse) that covers all vertices:
+//    - Enumerate all combinations of k candidate indices (with repetition allowed).
+//    - Compute the union of their bitmasks.
+//    - If the union equals (1<<n)-1, then s is feasible.
+// 6. Binary search continues until lower bound meets upper bound.
+// 7. Output side = lower bound (in hundredths) and assert done for one cycle.
+
+// Implementation notes:
+// - Use parameters for maximum sizes: N_MAX=8, K_MAX=3, CANDIDATE_MAX=64.
+// - Use fixed-point arithmetic: all coordinates and side are scaled by 100.
+// - The design may use loops and arrays; it is intended for simulation, not synthesis.
+// - Ensure state machine transitions correctly.
+// - The computation may take many clock cycles; there is no cycle limit, but the testbench will have a timeout.
+
+endmodule

@@ -1,0 +1,217 @@
+// Module: Union of Two Sorted Arrays with Duplicate Removal
+// Function: Computes union of two 4-element arrays, outputs sorted 8-element result
+// Implementation: 3-stage pipeline
+//   Stage 1: Merge (12 elements from 2 arrays + padding)
+//   Stage 2: Bubble sort (8 cycles)
+//   Stage 3: Duplicate removal (7 cycles)
+// Total latency: ~16 cycles after start
+
+module union_arrays (
+    input wire clk,           // Clock signal
+    input wire rst_n,         // Active-low synchronous reset
+    input wire start,         // Start pulse (assert for 1 cycle)
+    
+    // Input array A (4 elements, 8-bit each)
+    input wire [7:0] arr_a_0,
+    input wire [7:0] arr_a_1,
+    input wire [7:0] arr_a_2,
+    input wire [7:0] arr_a_3,
+    
+    // Input array B (4 elements, 8-bit each)
+    input wire [7:0] arr_b_0,
+    input wire [7:0] arr_b_1,
+    input wire [7:0] arr_b_2,
+    input wire [7:0] arr_b_3,
+    
+    // Output: Result array (8 elements, 8-bit each)
+    output reg [7:0] result_0,
+    output reg [7:0] result_1,
+    output reg [7:0] result_2,
+    output reg [7:0] result_3,
+    output reg [7:0] result_4,
+    output reg [7:0] result_5,
+    output reg [7:0] result_6,
+    output reg [7:0] result_7,
+    
+    output reg done            // Asserted high when result is valid
+);
+
+    // Parameters
+    parameter STAGE_IDLE = 3'd0;
+    parameter STAGE_MERGE = 3'd1;
+    parameter STAGE_SORT = 3'd2;
+    parameter STAGE_REMOVE_DUP = 3'd3;
+    parameter STAGE_COMPLETE = 3'd4;
+
+    // Internal state
+    reg [2:0] stage;
+    reg [3:0] counter;
+    reg [7:0] merged [0:11];  // 12-element merged array (10 values + 2 padding)
+    reg [7:0] sorted [0:7];   // 8-element sorted array
+    reg [7:0] final_result [0:7];  // Final result without duplicates
+    
+    // Temporary registers for sorting
+    reg [7:0] temp;
+    reg [7:0] temp2;
+    reg [7:0] temp3;
+    
+    integer i;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            stage <= STAGE_IDLE;
+            counter <= 4'd0;
+            done <= 1'b0;
+            result_0 <= 8'd0;
+            result_1 <= 8'd0;
+            result_2 <= 8'd0;
+            result_3 <= 8'd0;
+            result_4 <= 8'd0;
+            result_5 <= 8'd0;
+            result_6 <= 8'd0;
+            result_7 <= 8'd0;
+            // Initialize internal arrays
+            for (i = 0; i < 12; i = i + 1) merged[i] <= 8'd255;
+            for (i = 0; i < 8; i = i + 1) begin
+                sorted[i] <= 8'd255;
+                final_result[i] <= 8'd255;
+            end
+        end else begin
+            case (stage)
+                STAGE_IDLE: begin
+                    if (start) begin
+                        // Stage 1: Merge input arrays
+                        // Copy array A (4 elements)
+                        merged[0] <= arr_a_0;
+                        merged[1] <= arr_a_1;
+                        merged[2] <= arr_a_2;
+                        merged[3] <= arr_a_3;
+                        // Copy array B (4 elements)
+                        merged[4] <= arr_b_0;
+                        merged[5] <= arr_b_1;
+                        merged[6] <= arr_b_2;
+                        merged[7] <= arr_b_3;
+                        // Pad with max values (255) for sorting
+                        merged[8] <= 8'd255;
+                        merged[9] <= 8'd255;
+                        merged[10] <= 8'd255;
+                        merged[11] <= 8'd255;
+                        
+                        // Initialize sorted array
+                        for (i = 0; i < 8; i = i + 1)
+                            sorted[i] <= 8'd255;
+                        
+                        // Copy first 8 values from merged to sorted for sorting
+                        sorted[0] <= arr_a_0;
+                        sorted[1] <= arr_a_1;
+                        sorted[2] <= arr_a_2;
+                        sorted[3] <= arr_a_3;
+                        sorted[4] <= arr_b_0;
+                        sorted[5] <= arr_b_1;
+                        sorted[6] <= arr_b_2;
+                        sorted[7] <= arr_b_3;
+                        
+                        counter <= 4'd0;
+                        stage <= STAGE_SORT;
+                        done <= 1'b0;
+                    end
+                end
+                
+                STAGE_SORT: begin
+                    // Odd-even transposition sort (8 cycles)
+                    // Each cycle performs one pass
+                    if (counter < 4'd8) begin
+                        // Odd phase (for odd counters)
+                        if (counter[0] == 1'b1) begin
+                            for (i = 0; i < 7; i = i + 2) begin
+                                if (sorted[i] > sorted[i+1]) begin
+                                    temp <= sorted[i];
+                                    sorted[i] <= sorted[i+1];
+                                    sorted[i+1] <= temp;
+                                end
+                            end
+                        end 
+                        // Even phase (for even counters)
+                        else begin
+                            for (i = 1; i < 7; i = i + 2) begin
+                                if (sorted[i] > sorted[i+1]) begin
+                                    temp <= sorted[i];
+                                    sorted[i] <= sorted[i+1];
+                                    sorted[i+1] <= temp;
+                                end
+                            end
+                        end
+                        counter <= counter + 1'b1;
+                    end else begin
+                        // Sorting complete, move to duplicate removal
+                        // Reset counter and initialize final_result
+                        counter <= 4'd0;
+                        for (i = 0; i < 8; i = i + 1)
+                            final_result[i] <= 8'd255;
+                        stage <= STAGE_REMOVE_DUP;
+                    end
+                end
+                
+                STAGE_REMOVE_DUP: begin
+                    // Remove duplicates from sorted array
+                    // Simple linear pass with index tracking
+                    if (counter < 4'd8) begin
+                        // First element always unique
+                        if (counter == 4'd0) begin
+                            final_result[0] <= sorted[0];
+                            counter <= 4'd1;
+                        end else begin
+                            // Compare with previous non-255 value
+                            temp2 <= final_result[counter - 1];
+                            if (sorted[counter] != final_result[counter - 1] && sorted[counter] != 8'd255) begin
+                                // Find first empty slot in final_result
+                                temp3 <= sorted[counter];
+                                // Shift existing values if needed (simplified)
+                                final_result[counter] <= sorted[counter];
+                            end else if (sorted[counter] == final_result[counter - 1]) begin
+                                // Skip duplicate, shift remaining
+                                final_result[counter] <= 8'd255;
+                            end
+                            counter <= counter + 1'b1;
+                        end
+                    end else begin
+                        // Compact the array (remove 255 gaps)
+                        // Simple bubble-based compaction
+                        for (i = 0; i < 7; i = i + 1) begin
+                            if (final_result[i] == 8'd255 && final_result[i+1] != 8'd255) begin
+                                final_result[i] <= final_result[i+1];
+                                final_result[i+1] <= 8'd255;
+                            end
+                        end
+                        // Final assignment to outputs
+                        result_0 <= final_result[0];
+                        result_1 <= final_result[1];
+                        result_2 <= final_result[2];
+                        result_3 <= final_result[3];
+                        result_4 <= final_result[4];
+                        result_5 <= final_result[5];
+                        result_6 <= final_result[6];
+                        result_7 <= final_result[7];
+                        stage <= STAGE_COMPLETE;
+                        done <= 1'b1;
+                    end
+                end
+                
+                STAGE_COMPLETE: begin
+                    // Wait for start to go low
+                    if (!start) begin
+                        done <= 1'b0;
+                        stage <= STAGE_IDLE;
+                    end
+                end
+                
+                default: begin
+                    stage <= STAGE_IDLE;
+                    done <= 1'b0;
+                end
+            endcase
+        end
+    end
+
+endmodule

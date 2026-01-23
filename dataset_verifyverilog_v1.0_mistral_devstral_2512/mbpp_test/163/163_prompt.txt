@@ -1,0 +1,60 @@
+Module: PolygonAreaCalculator
+
+Description: Calculates the area of a regular polygon using the formula: Area = s * l^2 / (4 * tan(π/s))
+
+Interface Specification:
+  Inputs:
+    - clk         : Clock signal (rising edge triggered)
+    - rst_n       : Active-low synchronous reset
+    - start       : Start pulse (assert for 1 cycle to begin computation)
+    - sides       : 4-bit unsigned integer (3-16, number of polygon sides)
+    - length      : 16-bit unsigned integer (representing side length in Q8.8 format)
+                   
+  Outputs:
+    - result      : 32-bit output in Q16.16 fixed-point format (area)
+    - done        : Asserted high for 1 cycle when computation completes
+    - error       : Asserted high if sides < 3 (invalid input)
+
+  Timing:
+    - Assert start for 1 clock cycle to initiate
+    - Computation takes approximately 16-20 cycles (including tan lookup)
+    - done goes high when result is valid
+    - Sample result on the same cycle done is high
+
+  Reset behavior:
+    - On rst_n=0: done=0, result=0, error=0, state cleared
+    - Minimum 2 clock cycles of reset required
+
+Implementation Details:
+  1. Input length is in Q8.8 format (8 integer, 8 fractional bits)
+  2. Length squared (l^2) produces Q16.16 format
+  3. Use lookup table for tan(π/s) for sides 3-16 (Q16.16 format)
+  4. Use iterative division or combinational divider for final result
+  5. Output result is Q16.16 fixed-point (multiply by 1/65536.0 to get float)
+
+Lookup Table Values (tan(π/s) in Q16.16 format):
+  s=3:  tan(π/3) = √3 ≈ 1.732 → Q16.16 = 113515
+  s=4:  tan(π/4) = 1.0 → Q16.16 = 65536
+  s=5:  tan(π/5) = 0.7265 → Q16.16 = 47622
+  s=6:  tan(π/6) = 0.57735 → Q16.16 = 37838
+  s=7:  tan(π/7) ≈ 0.48157 → Q16.16 = 31565
+  s=8:  tan(π/8) ≈ 0.41421 → Q16.16 = 27146
+  s=9:  tan(π/9) ≈ 0.36397 → Q16.16 = 23856
+  s=10: tan(π/10) ≈ 0.32492 → Q16.16 = 21298
+  s=11: tan(π/11) ≈ 0.29363 → Q16.16 = 19243
+  s=12: tan(π/12) ≈ 0.26795 → Q16.16 = 17560
+  s=13: tan(π/13) ≈ 0.24648 → Q16.16 = 16154
+  s=14: tan(π/14) ≈ 0.22824 → Q16.16 = 14957
+  s=15: tan(π/15) ≈ 0.21256 → Q16.16 = 13931
+  s=16: tan(π/16) ≈ 0.19891 → Q16.16 = 13038
+
+Control State Machine:
+  IDLE -> WAIT_START -> LOAD_INPUTS -> CALCULATE -> OUTPUT -> DONE
+
+Data Path:
+  1. Multiply length by length (16x16 → 32-bit result in Q16.16)
+  2. Get tan value from lookup table based on sides
+  3. Multiply by sides (4x32 → 36-bit, then truncate to 32-bit)
+  4. Multiply by 1/4 (bit shift right by 2)
+  5. Divide by tan value (32-bit / 16-bit → 32-bit Q16.16)
+  6. Output final result

@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'get_closest_vowel' that finds the closest vowel standing between two consonants from the right side of a word.
+
+MODULE SPECIFICATION:
+- Input word is limited to maximum 16 ASCII characters
+- Vowels: a, e, i, o, u (both lowercase and uppercase)
+- Consonants: all other English letters
+- Scan from right to left, ignoring word boundaries
+- Return the vowel found, or 0x00 (null) if none found
+
+INPUTS:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start pulse (high for 1 cycle)
+  input [7:0] char_in    // Character input (ASCII)
+  input [4:0] len        // Word length (1-16)
+
+OUTPUTS:
+  output reg [7:0] result  // Closest vowel found (ASCII), or 0x00 if none
+  output reg done          // High for 1 cycle when result is valid
+
+INTERNAL:
+  - char_ram[0:15] - 16-entry memory for input characters
+  - state machine: IDLE, LOAD, SCAN, CHECK, DONE
+  - index register for scanning position
+  - buffer registers for storing vowel and checking pattern
+
+ALGORITHM (STATE MACHINE):
+1. IDLE: Wait for start signal
+2. LOAD: Store input character into RAM at position 0 to len-1 (index increments)
+3. SCAN: From rightmost character (index = len-1) moving left:
+   - Check if current char is vowel
+   - If vowel found, check if it's between two consonants:
+     - Look left: find next consonant or boundary
+     - Look right: find next consonant or boundary
+     - If vowel has consonants on both sides within word, return it
+4. CHECK: Verify the pattern for current position
+5. DONE: Assert done signal
+
+Timing: ~20 clock cycles maximum
+
+Constraints:
+- Word length: 1-16 characters
+- Characters: ASCII values (a-z, A-Z)
+- Use Q16.16 style where needed for intermediate calculations (no fractions here)
+- Must work with Icarus Verilog
+
+Interface specification for testbench:
+- Start signal: single cycle high pulse
+- Load: each character loaded one per cycle during LOAD state
+- Result available when done=1
+- Characters indexed: dut.char_in for input, dut.result for output
+- Array access: dut.char_ram[i] for storage elements (if exposed), or use internal state

@@ -1,0 +1,40 @@
+Design a Verilog module that solves the Taboo problem for scaled-down constraints (max 8 strings, each max 8 bits). The module has two phases: configuration and computation.
+
+INTERFACE SPECIFICATION (testbench will use these exact names):
+
+Inputs:
+  - clk: Clock signal (rising edge triggered)
+  - rst_n: Active-low synchronous reset
+  - config_mode: High during configuration phase
+  - config_done: Pulse high to indicate all strings are loaded
+  - num_strings[3:0]: Number of strings to load (1-8)
+  - For each string index i (0 to 7):
+      - str_len[i][2:0]: Length of string i (1-8)
+      - str_data[i][7:0]: String bits, where str_data[i][j] is the j-th character (j=0 is first character)
+  - start: Pulse high to start computation after configuration
+
+Outputs:
+  - result_valid: Pulse high when a finite result is ready
+  - result_infinite: Pulse high when answer is -1 (arbitrarily long)
+  - result_string[15:0]: Packed result string (LSB is first character, zero-padded to 16 bits)
+  - result_length[4:0]: Length of result string (0-16)
+
+Timing and Behavior:
+  1. Reset: rst_n=0 clears all internal state; minimum 2 clock cycles.
+  2. Configuration: While config_mode=1, set num_strings, str_len, and str_data for all strings. Then pulse config_done high for one cycle.
+  3. The module builds the trie and failure links within a bounded number of cycles (e.g., 200 cycles). Use an internal busy signal if needed.
+  4. After configuration, assert start for one cycle to begin computation.
+  5. Computation: The module checks for cycles in the automaton that avoid terminal states. If such a cycle exists, it sets result_infinite high for one cycle (and result_valid low).
+  6. If no cycle, it computes the longest path from the start state avoiding terminal states, and the lexicographically smallest string among those of maximum length. Then it sets result_valid high for one cycle, with result_string and result_length indicating the answer.
+  7. If no non-empty string exists (e.g., all single characters are forbidden), the result_length will be 0, and result_string = 0.
+
+Design Details:
+  - Maximum number of nodes in trie: 32.
+  - Each node has transitions for '0' and '1', failure link, and terminal flag.
+  - Build trie: Insert each taboo string by traversing/creating nodes. Mark terminal nodes.
+  - Build failure links using BFS (Aho-Corasick).
+  - Cycle detection: Perform DFS from start state, tracking visited states in current path. If a state is revisited without encountering a terminal, set infinite flag.
+  - Longest path: Use DP with memoization. For each state, compute (max_length, best_string) where best_string is the lexicographically smallest string of that maximum length. Transition on '0' and '1' to next states (following automaton). Avoid terminal states.
+  - Output formatting: Pack the result string into 16 bits with LSB first.
+
+Note: The module must handle up to 32 states, and the computation should complete within a bounded number of cycles (e.g., 1000 cycles after start). The testbench will verify functionality with given examples.

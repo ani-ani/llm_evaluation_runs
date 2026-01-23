@@ -1,0 +1,320 @@
+module three_states (
+    input clk,
+    input rst_n,
+    input start,
+    input [191:0] grid_flat,  // 64 cells * 3 bits (000 unused, 001=state1, 010=state2, 011=state3, 100=road, 101=blocked)
+    output [5:0] min_roads,
+    output valid,
+    output done
+);
+
+// Internal state encoding
+localparam IDLE = 3'd0;
+localparam LOAD = 3'd1;
+localparam BFS1 = 3'd2;
+localparam BFS2 = 3'd3;
+localparam BFS3 = 3'd4;
+localparam COMPUTE = 3'd5;
+localparam FINISH = 3'd6;
+
+reg [2:0] state;
+reg [2:0] next_state;
+
+// Grid storage
+reg [2:0] grid [0:7][0:7];
+
+// Distance arrays for each state
+reg [5:0] dist1 [0:7][0:7];  // 6-bit distances (0-63)
+reg [5:0] dist2 [0:7][0:7];
+reg [5:0] dist3 [0:7][0:7];
+
+// BFS registers
+reg [5:0] dist_curr [0:7][0:7];  // Current state's distances
+reg [5:0] queue [0:63];  // Queue: {row[2:0], col[2:0]}
+reg [5:0] head, tail;    // Queue pointers
+reg [5:0] current_cell;  // Currently processing cell
+reg [2:0] neighbor_cnt;  // 0-3 for 4 directions
+reg [7:0] bfs_timeout;   // Prevents infinite loops
+
+// Compute registers
+reg [7:0] min_total;     // Minimum total cost (8-bit for safety)
+reg [5:0] cell_idx;      // 0-63 for cell iteration
+reg [7:0] total_cost;    // Temporary total
+
+// Output registers
+reg [5:0] min_roads_reg;
+reg valid_reg;
+reg done_reg;
+
+assign min_roads = min_roads_reg;
+assign valid = valid_reg;
+assign done = done_reg;
+
+// Helper: get neighbor coordinates
+function [5:0] get_neighbor;
+    input [5:0] cell;
+    input [1:0] dir;  // 0=right,1=left,2=down,3=up
+    reg [2:0] r, c;
+    begin
+        r = cell[5:3];
+        c = cell[2:0];
+        case(dir)
+            2'd0: c = c + 1;
+            2'd1: c = c - 1;
+            2'd2: r = r + 1;
+            2'd3: r = r - 1;
+        endcase
+        get_neighbor = {r, c};
+    end
+endfunction
+
+// Helper: check if cell is valid
+function valid_cell;
+    input [5:0] cell;
+    reg [2:0] r, c;
+    begin
+        r = cell[5:3];
+        c = cell[2:0];
+        valid_cell = (r < 8) && (c < 8);
+    end
+endfunction
+
+// Helper: get state value from grid
+function [2:0] get_state;
+    input [5:0] cell;
+    reg [2:0] r, c;
+    begin
+        r = cell[5:3];
+        c = cell[2:0];
+        get_state = grid[r][c];
+    end
+endfunction
+
+// Helper: get distance value
+function [5:0] get_dist;
+    input [5:0] cell;
+    input [1:0] state_idx;  // 0=state1,1=state2,2=state3
+    reg [2:0] r, c;
+    begin
+        r = cell[5:3];
+        c = cell[2:0];
+        case(state_idx)
+            2'd0: get_dist = dist1[r][c];
+            2'd1: get_dist = dist2[r][c];
+            2'd2: get_dist = dist3[r][c];
+            default: get_dist = 6'd63;
+        endcase
+    end
+endfunction
+
+// Helper: set distance value
+task set_dist;
+    input [5:0] cell;
+    input [1:0] state_idx;
+    input [5:0] value;
+    reg [2:0] r, c;
+    begin
+        r = cell[5:3];
+        c = cell[2:0];
+        case(state_idx)
+            2'd0: dist1[r][c] <= value;
+            2'd1: dist2[r][c] <= value;
+            2'd2: dist3[r][c] <= value;
+        endcase
+    end
+endtask
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done_reg <= 0;
+        valid_reg <= 0;
+        min_roads_reg <= 6'd0;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case(state)
+        IDLE: if (start) next_state = LOAD;
+        LOAD: next_state = BFS1;
+        BFS1: if (head == tail || bfs_timeout == 8'd255) next_state = BFS2;
+        BFS2: if (head == tail || bfs_timeout == 8'd255) next_state = BFS3;
+        BFS3: if (head == tail || bfs_timeout == 8'd255) next_state = COMPUTE;
+        COMPUTE: if (cell_idx == 6'd63) next_state = FINISH;
+        FINISH: next_state = IDLE;
+    endcase
+end
+
+// State machine implementation
+always @(posedge clk) begin
+    if (rst_n) begin
+        case(state)
+            LOAD: begin
+                // Unpack grid_flat into 8x8 array
+                for (integer i = 0; i < 8; i = i + 1) begin
+                    for (integer j = 0; j < 8; j = j + 1) begin
+                        grid[i][j] <= grid_flat[(i*8+j)*3 +: 3];
+                    end
+                end
+                // Initialize all distances to 63 (infinity)
+                for (integer i = 0; i < 8; i = i + 1) begin
+                    for (integer j = 0; j < 8; j = j + 1) begin
+                        dist1[i][j] <= 6'd63;
+                        dist2[i][j] <= 6'd63;
+                        dist3[i][j] <= 6'd63;
+                    end
+                end
+            end
+            
+            BFS1, BFS2, BFS3: begin
+                if (state == BFS1 && head == 5'd0 && tail == 5'd0 && bfs_timeout == 0) begin
+                    // Initialize BFS for state 1
+                    for (integer i = 0; i < 8; i = i + 1) begin
+                        for (integer j = 0; j < 8; j = j + 1) begin
+                            if (grid[i][j] == 3'd1) begin
+                                dist1[i][j] <= 6'd0;
+                                queue[tail] <= {i[2:0], j[2:0]};
+                                tail <= tail + 1;
+                            end
+                        end
+                    end
+                    bfs_timeout <= 0;
+                end else if (state == BFS2 && head == 5'd0 && tail == 5'd0 && bfs_timeout == 0) begin
+                    // Initialize BFS for state 2
+                    for (integer i = 0; i < 8; i = i + 1) begin
+                        for (integer j = 0; j < 8; j = j + 1) begin
+                            if (grid[i][j] == 3'd2) begin
+                                dist2[i][j] <= 6'd0;
+                                queue[tail] <= {i[2:0], j[2:0]];
+                                tail <= tail + 1;
+                            end
+                        end
+                    end
+                    bfs_timeout <= 0;
+                end else if (state == BFS3 && head == 5'd0 && tail == 5'd0 && bfs_timeout == 0) begin
+                    // Initialize BFS for state 3
+                    for (integer i = 0; i < 8; i = i + 1) begin
+                        for (integer j = 0; j < 8; j = j + 1) begin
+                            if (grid[i][j] == 3'd3) begin
+                                dist3[i][j] <= 6'd0;
+                                queue[tail] <= {i[2:0], j[2:0]};
+                                tail <= tail + 1;
+                            end
+                        end
+                    end
+                    bfs_timeout <= 0;
+                end else if (head != tail && bfs_timeout != 8'd255) begin
+                    // Process BFS step
+                    if (neighbor_cnt == 3'd0) begin
+                        current_cell <= queue[head];
+                        head <= head + 1;
+                        neighbor_cnt <= 3'd1;
+                    end else begin
+                        // Process neighbors
+                        if (neighbor_cnt <= 3'd4) begin
+                            reg [5:0] neighbor;
+                            reg [2:0] curr_state;
+                            reg [5:0] curr_dist;
+                            reg [5:0] new_dist;
+                            
+                            neighbor = get_neighbor(current_cell, neighbor_cnt[1:0]);
+                            if (valid_cell(neighbor)) begin
+                                curr_state = get_state(neighbor);
+                                curr_dist = get_dist(current_cell, state - BFS1);  // 0,1,2
+                                
+                                if (curr_state != 3'd5 && curr_state != 3'd0) begin  // Not blocked
+                                    if (curr_state == 3'd4) begin  // Road
+                                        new_dist = curr_dist + 1;
+                                    end else if (curr_state == state - BFS1 + 1) begin  // Same state
+                                        new_dist = curr_dist;
+                                    end else if (curr_state >= 3'd1 && curr_state <= 3'd3 && curr_state != state - BFS1 + 1) begin  // Other state
+                                        // Record distance but don't traverse
+                                        if (curr_dist < get_dist(neighbor, state - BFS1)) begin
+                                            set_dist(neighbor, state - BFS1, curr_dist);
+                                        end
+                                        new_dist = 6'd63;  // Mark to not push
+                                    end else begin
+                                        new_dist = 6'd63;
+                                    end
+                                    
+                                    if (new_dist != 6'd63 && new_dist < get_dist(neighbor, state - BFS1)) begin
+                                        set_dist(neighbor, state - BFS1, new_dist);
+                                        if (new_dist == curr_dist) begin
+                                            // Push to front (0-cost)
+                                            if (head != 0) begin
+                                                head <= head - 1;
+                                                queue[head - 1] <= neighbor;
+                                            end else begin
+                                                // Handle wrap-around or ignore for simplicity
+                                            end
+                                        end else begin
+                                            // Push to back (1-cost)
+                                            queue[tail] <= neighbor;
+                                            tail <= tail + 1;
+                                        end
+                                    end
+                                end
+                            end
+                            neighbor_cnt <= neighbor_cnt + 1;
+                        end else begin
+                            neighbor_cnt <= 0;
+                            bfs_timeout <= bfs_timeout + 1;
+                        end
+                    end
+                end
+            end
+            
+            COMPUTE: begin
+                if (cell_idx == 6'd0) begin
+                    min_total <= 8'd255;  // Initialize to max
+                end else begin
+                    // Check current cell
+                    reg [2:0] r, c;
+                    reg [5:0] d1, d2, d3;
+                    r = cell_idx[5:3];
+                    c = cell_idx[2:0];
+                    d1 = dist1[r][c];
+                    d2 = dist2[r][c];
+                    d3 = dist3[r][c];
+                    
+                    if (d1 != 6'd63 && d2 != 6'd63 && d3 != 6'd63) begin
+                        total_cost = d1 + d2 + d3;
+                        if (grid[r][c] == 3'd4) total_cost = total_cost - 2;  // Subtract 2 for road cell
+                        if (total_cost < min_total) begin
+                            min_total <= total_cost;
+                        end
+                    end
+                    
+                    cell_idx <= cell_idx + 1;
+                end
+            end
+            
+            FINISH: begin
+                done_reg <= 1;
+                if (min_total < 8'd255) begin
+                    valid_reg <= 1;
+                    min_roads_reg <= min_total[5:0];
+                end else begin
+                    valid_reg <= 0;
+                    min_roads_reg <= 6'd63;  // Special value for impossible
+                end
+            end
+            
+            IDLE: begin
+                done_reg <= 0;
+                head <= 0;
+                tail <= 0;
+                neighbor_cnt <= 0;
+                cell_idx <= 0;
+                bfs_timeout <= 0;
+            end
+        endcase
+    end
+end
+
+endmodule

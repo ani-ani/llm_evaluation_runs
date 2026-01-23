@@ -1,0 +1,61 @@
+Design a sequential Verilog module named 'island_network_min_tunnel' that finds the minimum tunnel length needed to connect all islands in a network where islands can be connected via palm tree throws or within-island movement.
+
+Problem Simplification:
+- Maximum 8 islands (indexed 0-7)
+- Maximum 8 palm trees (indexed 0-7)
+- Each palm tree has a fixed throw range = k * height (use Q16.16 fixed-point)
+- Two islands are directly connected if there exists a palm tree that can throw from one island to another
+- Within an island, all points are connected (island is a connected component)
+- Need to find minimum tunnel length (Euclidean distance between island perimeters) to connect all islands
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] num_islands // Number of islands (1-8)
+input [7:0] num_trees // Number of palm trees (0-8)
+input [31:0] k_ratio // Ratio k (throw range multiplier), in Q16.16 format
+
+// Island data: centers and radii in Q16.16 format (16 integer, 16 fractional bits)
+input [31:0] island_x [0:7], // X center of islands
+input [31:0] island_y [0:7], // Y center of islands
+input [31:0] island_r [0:7], // Radius of islands
+
+// Palm tree data: positions and heights in Q16.16 format
+input [31:0] tree_x [0:7], // X position of trees
+input [31:0] tree_y [0:7], // Y position of trees
+input [31:0] tree_h [0:7], // Height of trees
+
+Outputs:
+output reg [31:0] min_tunnel_length // Result in Q16.16 format (minimum tunnel length)
+output reg done // High when computation complete
+output reg impossible // High if connection is impossible
+
+Specifications:
+1. Compute throw range for each tree: range = k_ratio * tree_h (Q16.16 multiplication)
+2. Build connectivity graph: Two islands i and j are connected if:
+   - i == j (same island), OR
+   - There exists a tree t on island i that can reach island j
+   - A tree can reach island j if: distance(tree_t, island_j_center) <= range_t + island_j_radius
+   - A tree is on island i if: distance(tree_t, island_i_center) < island_i_radius
+3. Find connected components using union-find or BFS (max 8 nodes, unroll if needed)
+4. If all islands in one component: output 0
+5. If more than 2 components: impossible
+6. If exactly 2 components: find minimum distance between islands in different components
+   - Distance between islands i and j = max(0, distance(centers) - r_i - r_j)
+   - This is the tunnel length needed (must be >= 1 meter = 100 cm = 0x640000 in Q16.16)
+
+Algorithm Flow (State Machine):
+- IDLE: Wait for start signal
+- PREPARE: Initialize data structures
+- COMPUTE_RANGES: Calculate throw ranges for all trees
+- BUILD_GRAPH: Determine connectivity between islands
+- FIND_COMPONENTS: Group islands into connected components
+- CHECK_CONNECTION: If 1 component -> done (result 0), if >2 -> impossible, else continue
+- CALCULATE_MIN: Find minimum tunnel length between components
+- DONE: Output result
+
+Use Q16.16 fixed-point format throughout. Distances and radii are represented as integers where value = real_value * 65536.
+Example: 1400.0 cm = 1400 * 65536 = 91750400 (0x05780000)
+
+Latency: Result valid 1000 clock cycles after start asserted (sufficient for 8x8 graph operations).

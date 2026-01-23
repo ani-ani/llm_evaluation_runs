@@ -1,0 +1,145 @@
+module beacon_connectivity (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] num_beacons,
+    input wire [63:0] adj_matrix,
+    output reg [3:0] result,
+    output reg done
+);
+
+// Parameters
+parameter MAX_N = 8;
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam INIT = 3'd1;
+localparam K_LOOP = 3'd2;
+localparam I_LOOP = 3'd3;
+localparam COUNT_INIT = 3'd4;
+localparam COUNT_LOOP = 3'd5;
+localparam DONE = 3'd6;
+
+// Registers
+reg [2:0] state;
+reg [2:0] i, k;
+reg [7:0] reach [0:7]; // reachability masks
+reg [7:0] visited;
+reg [3:0] count;
+reg [7:0] adj_row_i;
+
+// Combinational logic to extract adjacency row based on current i
+always @(*) begin
+    case(i)
+        3'd0: adj_row_i = adj_matrix[7:0];
+        3'd1: adj_row_i = adj_matrix[15:8];
+        3'd2: adj_row_i = adj_matrix[23:16];
+        3'd3: adj_row_i = adj_matrix[31:24];
+        3'd4: adj_row_i = adj_matrix[39:32];
+        3'd5: adj_row_i = adj_matrix[47:40];
+        3'd6: adj_row_i = adj_matrix[55:48];
+        3'd7: adj_row_i = adj_matrix[63:56];
+        default: adj_row_i = 8'd0;
+    endcase
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        i <= 0;
+        k <= 0;
+        visited <= 0;
+        count <= 0;
+        // Clear reach array
+        reach[0] <= 8'd0;
+        reach[1] <= 8'd0;
+        reach[2] <= 8'd0;
+        reach[3] <= 8'd0;
+        reach[4] <= 8'd0;
+        reach[5] <= 8'd0;
+        reach[6] <= 8'd0;
+        reach[7] <= 8'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= INIT;
+                    i <= 0;
+                end
+            end
+            INIT: begin
+                if (i < MAX_N) begin
+                    if (i < num_beacons) begin
+                        // Initialize reach[i] with adjacency row and self-bit
+                        reach[i] <= adj_row_i | (1 << i);
+                    end else begin
+                        reach[i] <= 8'd0;
+                    end
+                    i <= i + 1;
+                end else begin
+                    k <= 0;
+                    state <= K_LOOP;
+                end
+            end
+            K_LOOP: begin
+                if (k < num_beacons) begin
+                    i <= 0;
+                    state <= I_LOOP;
+                end else begin
+                    state <= COUNT_INIT;
+                end
+            end
+            I_LOOP: begin
+                if (i < num_beacons) begin
+                    // Update reach[i] only if i != k and reach[i][k] is set
+                    if (i != k && reach[i][k]) begin
+                        reach[i] <= reach[i] | reach[k];
+                    end
+                    // Increment i and decide next state
+                    i <= i + 1;
+                    if (i + 1 < num_beacons) begin
+                        state <= I_LOOP;
+                    end else begin
+                        k <= k + 1;
+                        state <= K_LOOP;
+                    end
+                end else begin
+                    // Should not happen; go to K_LOOP
+                    k <= k + 1;
+                    state <= K_LOOP;
+                end
+            end
+            COUNT_INIT: begin
+                visited <= 0;
+                count <= 0;
+                i <= 0;
+                state <= COUNT_LOOP;
+            end
+            COUNT_LOOP: begin
+                if (i < num_beacons) begin
+                    if (!visited[i]) begin
+                        count <= count + 1;
+                        visited <= visited | reach[i];
+                    end
+                    i <= i + 1;
+                end else begin
+                    // Counting done; output riders = count - 1 (if count > 0, else 0)
+                    if (count > 0) begin
+                        result <= count - 1;
+                    end else begin
+                        result <= 0;
+                    end
+                    done <= 1;
+                    state <= IDLE;
+                end
+            end
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

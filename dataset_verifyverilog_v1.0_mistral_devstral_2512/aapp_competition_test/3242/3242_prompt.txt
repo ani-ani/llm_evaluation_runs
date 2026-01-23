@@ -1,0 +1,143 @@
+module find_polly #(
+    parameter N = 8,                      // Number of boxes (fixed at 8)
+    parameter WIDTH_ENERGY = 10,          // Bits for energy (0-1023)
+    parameter WIDTH_PROB = 16,            // Bits for probability (Q8.8 format)
+    parameter WIDTH_RESULT = 13           // Bits for result (0-8191)
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Energy and probability inputs for each box
+    // Q8.8 format: value = integer + fractional/256
+    input wire [WIDTH_ENERGY-1:0] energy [0:N-1],
+    input wire [WIDTH_PROB-1:0] prob [0:N-1],
+    
+    // Target probability in Q8.8 format
+    input wire [WIDTH_PROB-1:0] P_target,
+    
+    // Outputs
+    output reg [WIDTH_RESULT-1:0] min_energy,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam INIT = 3'b001;
+localparam COMPUTE_SUBSET = 3'b010;
+localparam CHECK_BIT = 3'b011;
+localparam UPDATE_RESULT = 3'b100;
+localparam INCREMENT = 3'b101;
+localparam DONE = 3'b110;
+
+// Registers
+reg [2:0] state;
+reg [7:0] subset_reg;        // Subset counter (0 to 255)
+reg [2:0] bit_index;         // Bit position (0 to N-1)
+reg [WIDTH_PROB-1:0] temp_prob_sum;
+reg [WIDTH_RESULT-1:0] temp_energy_sum;
+reg [WIDTH_RESULT-1:0] min_energy_reg;
+reg [WIDTH_PROB-1:0] P_target_reg;
+
+// Combinational signals
+wire [WIDTH_PROB-1:0] prob_to_add;
+wire [WIDTH_RESULT-1:0] energy_to_add;
+wire subset_bit_set;
+wire [7:0] max_subset;
+
+assign max_subset = (1 << N) - 1; // 2^N - 1 (255 for N=8)
+assign subset_bit_set = subset_reg[bit_index];
+assign prob_to_add = prob[bit_index];
+assign energy_to_add = energy[bit_index];
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        subset_reg <= 8'b0;
+        bit_index <= 3'b0;
+        temp_prob_sum <= 0;
+        temp_energy_sum <= 0;
+        min_energy_reg <= 0;
+        P_target_reg <= 0;
+        min_energy <= 0;
+        done <= 1'b0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    state <= INIT;
+                end
+            end
+            
+            INIT: begin
+                // Initialize min_energy to maximum value
+                min_energy_reg <= {WIDTH_RESULT{1'b1}};
+                subset_reg <= 8'b0;
+                P_target_reg <= P_target;
+                state <= COMPUTE_SUBSET;
+            end
+            
+            COMPUTE_SUBSET: begin
+                // Reset accumulators and start bit checking from bit 0
+                temp_prob_sum <= 0;
+                temp_energy_sum <= 0;
+                bit_index <= 3'b0;
+                state <= CHECK_BIT;
+            end
+            
+            CHECK_BIT: begin
+                // If current bit is set, add corresponding values
+                if (subset_bit_set) begin
+                    temp_prob_sum <= temp_prob_sum + prob_to_add;
+                    temp_energy_sum <= temp_energy_sum + energy_to_add;
+                end
+                
+                // Move to next bit
+                bit_index <= bit_index + 1;
+                
+                // If we just checked the last bit (bit_index == N-1), go to UPDATE_RESULT
+                if (bit_index == N - 1) begin
+                    state <= UPDATE_RESULT;
+                end else begin
+                    state <= CHECK_BIT;
+                end
+            end
+            
+            UPDATE_RESULT: begin
+                // Check if current subset meets probability requirement
+                if (temp_prob_sum >= P_target_reg && temp_energy_sum < min_energy_reg) begin
+                    min_energy_reg <= temp_energy_sum;
+                end
+                state <= INCREMENT;
+            end
+            
+            INCREMENT: begin
+                // Move to next subset
+                subset_reg <= subset_reg + 1;
+                
+                // If we haven't processed the last subset yet, continue
+                if (subset_reg < max_subset) begin
+                    state <= COMPUTE_SUBSET;
+                end else begin
+                    state <= DONE;
+                    min_energy <= min_energy_reg;
+                end
+            end
+            
+            DONE: begin
+                done <= 1'b1;
+                // Wait for reset or new start
+                if (start) begin
+                    state <= INIT;
+                    done <= 1'b0;
+                end
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

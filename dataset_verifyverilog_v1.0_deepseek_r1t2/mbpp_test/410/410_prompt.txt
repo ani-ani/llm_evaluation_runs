@@ -1,0 +1,65 @@
+Verilog HDL Module Specification
+
+Problem: Find minimum integer value in a heterogeneous list containing integers and strings.
+
+Adaptation Strategy:
+- Strings represented as fixed 8-character arrays (8-bit ASCII per character)
+- Integers as 8-bit values
+- Mixed list represented as parallel arrays: data_type[0:7] and data_value[0:7]
+- Type codes: 0=integer, 1=string
+- Maximum 8 elements in list
+- Combinational logic for small N, sequential for larger (using state machine)
+
+Module Interface:
+
+Inputs:
+  - clk: Clock signal (rising edge triggered)
+  - rst_n: Active-low reset
+  - start: Start pulse (1 cycle)
+  - valid[0:7]: 1-bit array, indicates which positions have valid data
+  - type_code[0:7]: 1-bit array, 0=integer, 1=string
+  - value[0:7]: 8-bit array, integer value or character index
+  - num_elements: 3-bit input (1-8), number of elements to process
+
+Outputs:
+  - min_value: 8-bit result (minimum integer found)
+  - done: Asserted high for 1 cycle when computation completes
+  - error: Asserted if no valid integers found
+
+Functionality:
+1. On start pulse, begin scanning array elements sequentially
+2. Skip elements where type_code=1 (strings) or valid=0
+3. For integer elements (type_code=0), compare with current minimum
+4. Update minimum when smaller integer found
+5. After processing all elements, assert done with result
+6. If no valid integers, assert error flag
+
+Timing:
+- Start pulse required to initiate computation
+- Processing takes up to 10 clock cycles (8 elements + overhead)
+- Result available when done=1
+- Error flag indicates invalid input (no integers)
+
+State Machine States:
+- IDLE: Wait for start
+- SCAN: Process each element (0 to num_elements-1)
+- UPDATE: Compare and update min value
+- DONE: Assert done signal with result
+
+Reset Behavior:
+- rst_n=0: All outputs 0, internal state cleared
+- Minimum 2 cycles reset required
+
+Implementation Constraints:
+- Use 8-bit comparators
+- Use registers for minimum storage
+- Use counter for array indexing
+- All operations must complete within 100 cycles
+
+Example:
+  Inputs: ["Python", 3, 2, 4] represented as:
+    valid: [1, 1, 1, 1, 0, 0, 0, 0]
+    type_code: [1, 0, 0, 0, x, x, x, x]  (1=string, 0=int)
+    value: [0, 3, 2, 4, x, x, x, x]
+    num_elements: 4
+  Output: min_value = 2, done = 1

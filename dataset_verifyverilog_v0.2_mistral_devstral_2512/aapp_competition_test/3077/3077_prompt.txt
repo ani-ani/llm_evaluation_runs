@@ -1,0 +1,72 @@
+Design a sequential Verilog module named 'tower_defense_solver' that determines the maximum number of enemy minions that can be destroyed in a single Area of Effect attack without damaging any villages.
+
+Problem Adaptation:
+- Max 4 villages (n=4)
+- Max 10 minions (m=10)
+- Max attack radius r = 100 (scaled from 20000)
+- Coordinates scaled to range -128 to 127 (8-bit signed)
+- Village radii scaled to 1-30
+- The attack circle must not enter any village (may touch walls)
+- Enemy minions are never inside villages
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] village_x [0:3], village_y [0:3], village_r [0:3] // Village data, only first n_used valid
+input [7:0] minion_x [0:9], minion_y [0:9] // Minion data, only first m_used valid
+input [3:0] n_used // Number of villages (1-4)
+input [4:0] m_used // Number of minions (1-10)
+input [7:0] max_r // Maximum attack radius (1-100)
+
+Outputs:
+output reg [4:0] max_killed // Maximum number of minions killed (0-10)
+output reg done // High when computation complete
+
+Module Behavior:
+The module should find the optimal attack by:
+1. Generate candidate centers: all minion locations + intersections of circles defined by pairs of minions (with radii up to max_r)
+2. For each candidate center, compute the maximum safe radius that avoids all villages
+3. Count minions within that radius
+4. Track the maximum count across all candidates
+
+Implementation Strategy:
+- Use state machine: IDLE, GEN_CANDIDATES, EVALUATE_CENTERS, DONE
+- Candidate centers: at most 10 minions + 45 pair intersections = 55 candidates max
+- For each candidate, compute min distance to all villages (subtract village radius)
+- This gives max safe radius at that center
+- Clamp to max_r if needed
+- Count minions within safe radius
+- Pipeline evaluation to process one candidate per few cycles
+- Use combinational logic for distance and count calculations
+
+State Machine:
+- IDLE: Wait for start signal
+- GEN_CANDIDATES: Generate and store candidate centers (can be implicit in state enumeration)
+- EVALUATE_CENTERS: For each candidate, compute safe radius and count killed
+- DONE: Output result
+
+Latency: Approximately 200-300 clock cycles (55 candidates * 5 cycles each)
+
+Distance Calculation (combinational):
+Use Manhattan or squared Euclidean distance to avoid sqrt:
+dist_sq = (cx - vx)^2 + (cy - vy)^2
+Safe radius = sqrt(dist_sq) - village_r
+For integer math, compare squared distances: dist_sq > (safe_r + village_r)^2
+
+Counting minions:
+For each minion, check if (mx - cx)^2 + (my - cy)^2 <= safe_r^2
+
+Corner Cases:
+- If no candidate is valid, output 0
+- If safe_r <= 0 at all candidates, output 0
+- The optimal center might be at a minion location or at intersection of circles with radius = safe_r
+
+Note: Since true circle-circle intersection requires solving quadratic equations, approximate by also checking minion locations and points along lines between minions.
+
+Test Cases:
+1. 1 village, 3 minions, r=3 -> output 1
+2. 1 village, 5 minions, r=3 -> output 3
+3. 4 villages, 10 minions, r=100 -> output 5
+
+The module must work for all inputs within the scaled constraints.

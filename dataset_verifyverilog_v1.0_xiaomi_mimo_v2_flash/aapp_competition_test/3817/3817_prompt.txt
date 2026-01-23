@@ -1,0 +1,26 @@
+Module: wool_sequence_counter
+
+Interface:
+  Inputs:
+    clk       : Clock signal (rising edge triggered)
+    rst_n     : Active-low synchronous reset
+    start     : Start pulse (assert for 1 cycle to begin computation)
+    n[3:0]    : 4-bit unsigned, sequence length (1..8)
+    m[3:0]    : 4-bit unsigned, exponent (1..8, so 2^m ≤ 256)
+  Outputs:
+    result[31:0] : 32-bit result = product_{i=1}^{n} (2^m - i) mod 1000000009
+    done        : Asserted high for 1 cycle when result is valid
+
+Timing:
+  - After start pulse, computation takes at most n+3 cycles (including power-of-two computation).
+  - result is valid when done is high; result holds until next start.
+  - reset (rst_n=0) clears state, done=0, result=0.
+
+Behavior:
+  - Compute pow2m = 2^m (left shift of 1 by m bits).
+  - Compute product = 1; for i = 1 to n: product = product * (pow2m - i) % MOD.
+  - Handle negative (pow2m - i) by: if pow2m >= i then factor = pow2m - i else factor = MOD - (i - pow2m).
+  - Use localparam MOD = 32'd1000000009.
+  - Use behavioral multiplication and modulo operator; simulation only.
+
+Design hint: State machine with states IDLE, COMPUTE, DONE. Inside COMPUTE, compute factor as above, then product = (product * factor) % MOD. Increment i each iteration until i > n, then go to DONE.

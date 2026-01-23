@@ -1,0 +1,219 @@
+module typo_checker (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] word_count,
+    input wire [511:0] words,        // 8 words * 64 bits (8 chars * 8 bits each)
+    input wire [31:0] word_lengths,  // 8 words * 4 bits each (0-8)
+    output reg pair_valid,
+    output reg [3:0] word1_idx,
+    output reg [3:0] word2_idx,
+    output reg done
+);
+
+// Internal storage for words and lengths
+reg [63:0] words_reg [0:7];
+reg [3:0] word_lengths_reg [0:7];
+
+// State definitions
+localparam S_IDLE = 0;
+localparam S_LOAD = 1;
+localparam S_LOOP_I = 2;
+localparam S_LOOP_J = 3;
+localparam S_CHECK = 4;
+localparam S_OUTPUT = 5;
+localparam S_INCREMENT_J = 6;
+localparam S_INCREMENT_I = 7;
+localparam S_DONE = 8;
+
+reg [3:0] state;
+reg [2:0] i, j;          // Current pair indices
+reg [2:0] i_reg, j_reg;  // Latched indices for similarity check
+
+// Similarity check output
+wire is_similar;
+
+// Instantiate similarity module
+similar sim_inst (
+    .word1(words_reg[i]),
+    .len1(word_lengths_reg[i]),
+    .word2(words_reg[j]),
+    .len2(word_lengths_reg[j]),
+    .is_similar(is_similar)
+);
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= S_IDLE;
+        pair_valid <= 0;
+        done <= 0;
+        i <= 0;
+        j <= 0;
+        i_reg <= 0;
+        j_reg <= 0;
+    end else begin
+        case (state)
+            S_IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= S_LOAD;
+                end
+            end
+            
+            S_LOAD: begin
+                // Capture input words and lengths
+                for (integer w = 0; w < 8; w = w + 1) begin
+                    words_reg[w] <= words[w*64 +: 64];
+                    word_lengths_reg[w] <= word_lengths[w*4 +: 4];
+                end
+                i <= 0;
+                j <= 0;
+                state <= S_LOOP_I;
+            end
+            
+            S_LOOP_I: begin
+                if (word_count <= 3'd1) begin
+                    state <= S_DONE;
+                end else if (i < word_count - 1) begin
+                    j <= i + 1;
+                    state <= S_LOOP_J;
+                end else begin
+                    state <= S_DONE;
+                end
+            end
+            
+            S_LOOP_J: begin
+                if (j < word_count) begin
+                    state <= S_CHECK;
+                end else begin
+                    state <= S_INCREMENT_I;
+                end
+            end
+            
+            S_CHECK: begin
+                // Similarity result available combinationally
+                if (is_similar) begin
+                    i_reg <= i;
+                    j_reg <= j;
+                    state <= S_OUTPUT;
+                end else begin
+                    state <= S_INCREMENT_J;
+                end
+            end
+            
+            S_OUTPUT: begin
+                pair_valid <= 1;
+                word1_idx <= i_reg;
+                word2_idx <= j_reg;
+                state <= S_INCREMENT_J;
+            end
+            
+            S_INCREMENT_J: begin
+                pair_valid <= 0;
+                j <= j + 1;
+                state <= S_LOOP_J;
+            end
+            
+            S_INCREMENT_I: begin
+                i <= i + 1;
+                state <= S_LOOP_I;
+            end
+            
+            S_DONE: begin
+                done <= 1;
+                state <= S_IDLE;
+            end
+            
+            default: state <= S_IDLE;
+        endcase
+    end
+end
+
+endmodule
+
+// Similarity check module
+module similar (
+    input [63:0] word1,
+    input [3:0] len1,
+    input [63:0] word2,
+    input [3:0] len2,
+    output reg is_similar
+);
+
+always @(*) begin
+    is_similar = 0;
+    
+    // Check delete: len1 = len2 + 1
+    if (len1 == len2 + 1) begin
+        for (integer i = 0; i < 8; i = i + 1) begin
+            if (i < len1) begin
+                integer k;
+                bit match;
+                match = 1;
+                // Check prefix
+                for (k = 0; k < i; k = k + 1) begin
+                    if (word1[8*k +:8] != word2[8*k +:8]) match = 0;
+                end
+                // Check suffix
+                for (k = i; k < len2; k = k + 1) begin
+                    if (word1[8*(k+1) +:8] != word2[8*k +:8]) match = 0;
+                end
+                if (match) is_similar = 1;
+            end
+        end
+    end
+    
+    // Check insert: len2 = len1 + 1 (symmetric to delete)
+    else if (len2 == len1 + 1) begin
+        for (integer i = 0; i < 8; i = i + 1) begin
+            if (i < len2) begin
+                integer k;
+                bit match;
+                match = 1;
+                // Check prefix
+                for (k = 0; k < i; k = k + 1) begin
+                    if (word2[8*k +:8] != word1[8*k +:8]) match = 0;
+                end
+                // Check suffix
+                for (k = i; k < len1; k = k + 1) begin
+                    if (word2[8*(k+1) +:8] != word1[8*k +:8]) match = 0;
+                end
+                if (match) is_similar = 1;
+            end
+        end
+    end
+    
+    // Check replace and transpose: len1 == len2
+    else if (len1 == len2) begin
+        // Check replace: exactly one character difference
+        integer diff_count;
+        diff_count = 0;
+        for (integer k = 0; k < 8; k = k + 1) begin
+            if (k < len1) begin
+                if (word1[8*k +:8] != word2[8*k +:8]) diff_count = diff_count + 1;
+            end
+        end
+        if (diff_count == 1) is_similar = 1;
+        
+        // Check transpose: one adjacent swap
+        for (integer i = 0; i < 8; i = i + 1) begin
+            if (i < len1 - 1) begin
+                bit match;
+                match = 1;
+                // Check swapped pair
+                if (word1[8*i +:8] != word2[8*(i+1) +:8]) match = 0;
+                if (word1[8*(i+1) +:8] != word2[8*i +:8]) match = 0;
+                // Check rest
+                for (integer k = 0; k < len1; k = k + 1) begin
+                    if (k != i && k != i+1) begin
+                        if (word1[8*k +:8] != word2[8*k +:8]) match = 0;
+                    end
+                end
+                if (match) is_similar = 1;
+            end
+        end
+    end
+end
+
+endmodule

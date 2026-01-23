@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'triangle_ways' that calculates the number of ways to increase stick lengths to form a non-degenerate triangle.
+
+Problem Adaptation:
+- Input values a, b, c, l are scaled down to fit 8-bit range (0-255)
+- Arithmetic uses Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Total ways count: Total combinations minus invalid ways
+- Invalid ways calculated using formula: sum over x (min(s + x, l - x) + 1) * (min(s + x, l - x) + 2) / 2
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] a // Stick length a (scaled)
+input [7:0] b // Stick length b (scaled)
+input [7:0] c // Stick length c (scaled)
+input [7:0] l // Max total increase (scaled)
+
+Outputs:
+output reg [31:0] result // Result in Q16.16 format
+output reg done // High when computation complete
+
+Latency: Result valid 35 clock cycles after start asserted (covers 3 loops of 0-255 iterations with 3 cycles each + overhead).
+
+Implementation Details:
+1. Use state machine with states: IDLE, CALC_TOTAL, CALC_INVALID_A, CALC_INVALID_B, CALC_INVALID_C, DONE
+2. Total ways formula: (l+3)*(l+2)*(l+1)/6 in Q16.16
+3. Invalid ways loop: For each stick, iterate x from 0 to l:
+   - Calculate s = 2*z - a - b - c
+   - If s + x < 0, continue
+   - m = min(s + x, l - x)
+   - Subtract (m+1)*(m+2)/2
+4. Use 32-bit Q16.16 intermediate registers
+5. Division by 2 is right shift by 1
+6. Ensure arithmetic handles signed/unsigned correctly for Q16.16 format

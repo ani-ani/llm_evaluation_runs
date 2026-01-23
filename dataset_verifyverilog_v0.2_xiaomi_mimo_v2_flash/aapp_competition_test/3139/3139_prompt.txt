@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'student_mentor_finder' that implements a simplified version of the mentor finding algorithm.
+
+Problem Description:
+Given a database of up to 8 students, each with two 16-bit values A (understanding) and B (knowledge quantity), find the best mentor for a specific student. A student can only ask someone with both A' >= A and B' >= B. Among valid mentors, choose the one with minimum (B' - B), and if ties, minimum (A' - A).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] query_idx // index of student to query (0-7)
+input [2:0] num_students // number of active students (1-8)
+input [7:0][15:0] student_A // array of 8 students' A values (16-bit)
+input [7:0][15:0] student_B // array of 8 students' B values (16-bit)
+
+Outputs:
+output reg [2:0] mentor_idx // index of chosen mentor (0-7, valid only when done=1)
+output reg done // high when computation complete
+output reg valid // high if a valid mentor exists (low means output NE)
+
+Specification:
+1. The module maintains an internal database of students (student_A, student_B arrays).
+2. When start is asserted with query_idx, it searches for the best mentor.
+3. The search must respect these rules:
+   - Only consider students j where student_A[j] >= student_A[query_idx] AND student_B[j] >= student_B[query_idx]
+   - Exclude self (j != query_idx)
+   - Among valid candidates, minimize (student_B[j] - student_B[query_idx])
+   - If tie, minimize (student_A[j] - student_A[query_idx])
+4. Use a state machine with states: IDLE, SEARCH, COMPARE, DONE
+5. Latency: Maximum 64 clock cycles (8 students × 8 cycles max)
+6. Implementation strategy: Sequential search through all students, maintaining current best candidate
+7. Use non-blocking assignments for all sequential logic
+
+Behavioral Description:
+In IDLE state: Wait for start signal. When start goes high, initialize search state and current_best_index to 'none'.
+
+In SEARCH state: Iterate through all students from 0 to num_students-1. Skip index equal to query_idx. For each candidate, check if A >= query_A and B >= query_B.
+
+In COMPARE state: If candidate is valid, calculate differences. Compare with current best:
+   - If no current best, candidate becomes best
+   - If candidate_B_diff < best_B_diff, candidate becomes best
+   - If candidate_B_diff == best_B_diff and candidate_A_diff < best_A_diff, candidate becomes best
+
+In DONE state: Set mentor_idx to best candidate (or 0 if none), set valid flag appropriately, and wait for start to go low.
+
+Test Case Requirements:
+Test with 3-5 scenarios including:
+- No valid mentor (all outputs NE)
+- Unique best mentor by B difference
+- Tie in B difference, resolved by A difference
+- Self excluded from consideration
+- Multiple candidates, complex selection

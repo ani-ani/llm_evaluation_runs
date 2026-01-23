@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'median_calculator' that computes the median of up to 8 input numbers.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation - assert high for one cycle
+input [2:0] num_elements // number of elements in array (1-8)
+input [7:0] data_in // current data value (fed sequentially)
+input data_valid // high when data_in is valid
+
+Outputs:
+output reg [15:0] result // median value (integer output)
+output reg done // high when computation complete
+output reg data_ready // high when ready to accept next data_in
+
+Behavioral Description:
+The module implements median calculation through sorting network architecture.
+
+Phase 1: Data Collection
+- When start is asserted, reset internal state
+- Accept up to 8 values sequentially via data_in when data_ready is high
+- Store values in internal 8x8-bit register array
+- Count received values against num_elements input
+
+Phase 2: Sorting
+- Implement a sorting network for 8 elements using parallel comparators
+- Use bitonic sorting network or odd-even transposition sort
+- This phase takes 7 clock cycles (for 8 elements)
+- Each cycle performs pairwise swaps based on comparator results
+
+Phase 3: Median Extraction
+- After sorting complete, extract middle element(s)
+- If num_elements is odd: result = sorted_array[num_elements/2]
+- If num_elements is even: result = (sorted_array[num_elements/2 - 1] + sorted_array[num_elements/2]) / 2
+- Division by 2 is integer division, but half-integer case handled (5.5 example)
+
+States:
+- IDLE: Waiting for start signal
+- COLLECT: Accepting input data values
+- SORTING: Performing sorting network operations
+- CALCULATE: Extracting median value
+- DONE: Result ready, waiting for next start
+
+Timing:
+- Data collection: num_elements cycles
+- Sorting: 7 cycles (worst case for 8 elements)
+- Calculate: 1 cycle
+- Total latency: variable based on input size, max ~16 cycles
+
+The module should handle all test cases:
+- [3,1,2,4,5] -> 3 (odd count)
+- [-10,4,6,1000,10,20] -> 8 (even count, average of 6 and 10 = 8)
+- [5] -> 5 (single element)
+- [6,5] -> 5 (even count, average of 5 and 6 = 5.5 truncated to 5 for integer output)
+- [8,1,3,9,9,2,7] -> 7 (odd count, sorted: 1,2,3,7,8,9,9, median=7)
+
+Note: Since result is 16-bit integer, 5.5 will be represented as 5 (truncated) or 6 (rounded). For this implementation, use rounding: add 1 before right shift for even count.

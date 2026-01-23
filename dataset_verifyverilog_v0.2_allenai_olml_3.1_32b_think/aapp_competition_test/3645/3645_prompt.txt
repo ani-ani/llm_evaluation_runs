@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'guessing_circle' that determines which integers can be chosen in a circle game.
+
+The problem is simplified: analyze a circle of up to 16 integers (values 1-255) to find which values appear in exactly one contiguous segment. This means all occurrences of a value must be consecutive in the circular array.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] data_in // current integer from input stream (1-255)
+input valid_in // data_in is valid
+input [3:0] count_in // total number of elements (max 16)
+input done_in // all data received
+
+Outputs:
+output reg [7:0] result_value // the integer being checked (1-255)
+output reg result_valid // 1 if result_value can be chosen, 0 otherwise
+output reg output_done // high when all values processed
+output reg computation_done // high when entire computation complete
+
+Behavior:
+1. Accept up to 16 integers (values 1-255) sequentially via data_in
+2. Store in a circular buffer
+3. For each unique integer v in the circle:
+   - Find all positions where v appears
+   - Check if these positions form exactly one contiguous segment in circular array
+   - If yes, v is a valid choice
+4. Output valid integers in increasing order
+
+Implementation Strategy:
+- Use a 16-entry RAM to store input values (address 0-15)
+- Use state machine: IDLE, COLLECT, ANALYZE, OUTPUT
+- For analysis: iterate through unique values 1-255 (or only those present)
+- Check contiguity: find first occurrence, continue until value changes, check if returns to same value
+- Keep track of current output value and validity
+- Clock out results sequentially
+
+State Machine:
+- IDLE: wait for start
+- COLLECT: store incoming data_in when valid_in is high, count entries
+- WAIT_DONE: wait for done_in signal
+- ANALYZE_VALUE: for each potential value (1-255), check positions in circular buffer
+- OUTPUT_RESULT: stream out valid values with result_valid=1
+- DONE: set output_done high
+
+Key Constraint: Since we have max 16 elements, we can check contiguity by scanning the circular array once per unique value, requiring at most 16*16 = 256 iterations in worst case.
+
+Output Format:
+- Clock out one value per cycle where result_valid indicates if that value is valid
+- Only output values that appear in the input (1-255)
+- Output in increasing order
+- Set output_done when all values processed
+- Set computation_done when entire task complete
+
+Use 32-bit counters for iteration tracking. Use 8-bit registers for values (1-255 fits in 8 bits).

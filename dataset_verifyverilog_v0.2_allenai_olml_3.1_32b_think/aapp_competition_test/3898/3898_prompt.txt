@@ -1,0 +1,213 @@
+module puzzle_rearrangement (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] n,          // Number of islands (max 8)
+    input wire [7:0] a_in,       // Packed initial config: bit i=1 if island i has a statue, bit 0 is island 1
+    input wire [7:0] b_in,       // Packed target config: bit i=1 if island i has a statue, bit 0 is island 1
+    output reg result,           // 1 if YES, 0 if NO
+    output reg done              // High when computation is complete
+);
+
+    // State encoding
+    localparam IDLE = 2'b00;
+    localparam PROCESSING = 2'b01;
+    localparam DONE_STATE = 2'b10;
+
+    reg [1:0] state, next_state;
+    reg [7:0] a, b;           // Storage for configurations
+    reg [2:0] rotation_offset; // Offset to align '1' bit
+    reg [2:0] i_counter;      // Loop counter
+    reg match;                // Internal match flag
+
+    // Next state logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+        end else begin
+            state <= next_state;
+        end
+    end
+
+    // State transition and datapath logic
+    always @(*) begin
+        case (state)
+            IDLE: begin
+                if (start) next_state = PROCESSING;
+                else next_state = IDLE;
+            end
+            PROCESSING: begin
+                if (i_counter >= n) next_state = DONE_STATE;
+                else next_state = PROCESSING;
+            end
+            DONE_STATE: next_state = DONE_STATE;
+            default: next_state = IDLE;
+        endcase
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            result <= 0;
+            done <= 0;
+            i_counter <= 0;
+            a <= 0;
+            b <= 0;
+            rotation_offset <= 0;
+            match <= 1; // Default to true, falsified on mismatch
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        // Load inputs: Remove '0' (which implies index 0 in 1-based input maps to bit 0? 
+                        // Wait, prompt says bit 0 is island 1. If input a_i = 0, bit i-1 is 0. 
+                        // If a_i != 0, bit i-1 is 1. 
+                        // However, the logic removes 0s and checks rotation of non-zeros.
+                        // If we simply use a_in as the mask of non-zero elements, we just check if b_in is a rotation of a_in.
+                        // The prompt uses a_in/b_in as bitmasks where 1 = statue, 0 = empty.
+                        a <= a_in;
+                        b <= b_in;
+                        i_counter <= 0;
+                        match <= 1;
+                        // Find initial offset to match the first '1' in b
+                        // We need to find a rotation of 'a' that matches 'b'.
+                        // Since it's a cycle, we can check if 'b' is in 'a+a'.
+                        // Or simpler: align b's first '1' with a's corresponding '1' and compare.
+                        // Actually, the problem says: remove 0s, then check if sequence matches.
+                        // This is equivalent to checking if b is a rotation of a.
+                        // Let's iterate 'a' through rotations until it matches 'b', or all rotated.
+                        // But wait, we only need to check if 'b' is a rotation of 'a'.
+                        // We can check if 'b' exists in 'a+a' (concatenation).
+                        // But we are in hardware. Let's just check cyclic shift.
+                        // Start offset where a's '1' aligns with b's '1'.
+                        // Assume n <= 8. 
+                        // We need to find if 'a' shifted by some k equals 'b'.
+                        // Let's just try all rotations of 'a' against 'b'.
+                    end
+                end
+                PROCESSING: begin
+                    // Logic: Check if 'b' is a rotation of 'a'.
+                    // Strategy: Iterate through all possible rotations of 'a' and check if equal to 'b'.
+                    // Since n is small, we can do this sequentially.
+                    // Actually, simpler: Align 'a' such that the first '1' in 'a' aligns with '1' in 'b' (use index 0 as anchor if 1-based indexing is lost, 
+                    // but here we use bitmask). 
+                    // Let's extract the sequences of '1's. 
+                    // Bit 0 is Island 1. 
+                    // Let's just brute force check all 8 rotations.
+                    
+                    // Wait, the Python logic: 
+                    // a.remove(0); b.remove(0);
+                    // i = a.index(b[0]);
+                    // a = a[i:] + a[:i];
+                    // check a == b.
+                    // 
+                    // Implementation:
+                    // 1. Find index of first '1' in b. Let's say bit k is the first '1' (0-indexed from bit 0).
+                    // 2. Find the same '1' in a (value matching is implicit if bitmask matches rotation).
+                    // 3. Rotate a so that this bit is at position 0 (or rather, start comparison from there).
+                    // 4. Compare a and b cyclically.
+                    
+                    // Let's perform the rotation of 'a' to match 'b's starting bit position.
+                    // Identify the index of the first set bit in 'b'.
+                    // If i_counter == 0: find the shift amount to align 'a' with 'b'.
+                    
+                    if (i_counter == 0) begin
+                        // Find index of first '1' in b
+                        // If b is all 0 (should not happen given constraints), result=1?
+                        // We need to rotate 'a' by (index_of_first_1_in_b - index_of_first_1_in_a) mod n.
+                        // Let's just search for a rotation of 'a' that equals 'b'.
+                        // Since we are in state PROCESSING, we can iterate 'rotation_offset' from 0 to n-1.
+                    end
+                end
+            endcase
+        end
+    end
+
+    // Revised Logic for Sequential Block (Cleaner):
+    // We need to check if b is a rotation of a.
+    // 1. Check if popcount(a) == popcount(b). If not, NO.
+    // 2. Find the index of the first '1' in a.
+    // 3. Find the index of the first '1' in b.
+    // 4. Rotate a by (index_b - index_a) mod n.
+    // 5. Check if rotated_a == b.
+
+    // Let's use a counter to iterate rotations.
+    // State: IDLE, CHECK_ROTATION, DONE
+    // Check rotation: Try offset 0 to n-1. 
+    // If we find offset where (a >> offset | a << (n-offset)) & mask == b, YES.
+    // Mask is (1<<n)-1.
+
+    // Re-writing the always block for cleaner implementation
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            done <= 0;
+            result <= 0;
+            state <= IDLE;
+            i_counter <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        // Check trivial reject: popcount mismatch
+                        // But we can just check rotations. 
+                        // Initialize iteration
+                        i_counter <= 0;
+                        state <= PROCESSING;
+                    end
+                end
+                
+                PROCESSING: begin
+                    // i_counter is the rotation offset (0 to n-1)
+                    // Check if current rotation of 'a' matches 'b'
+                    // Rotate left by i_counter: (a << i_counter) | (a >> (n - i_counter))
+                    // Mask with (1<<n)-1
+                    
+                    if (i_counter < n) begin
+                        // Parallel check logic is better, but here we do sequential state
+                        // Actually, let's do it combinatorially inside the state logic for simplicity since n <= 8
+                        
+                        // Logic:
+                        // rotated_a = {a[(n-i_counter-1):0], a[n-1:(n-i_counter)]} ? 
+                        // No, Verilog rotation is tricky for variable width.
+                        // Let's do bit by bit comparison: a[(idx + i_counter) % n] == b[idx] for all idx?
+                        // Or: b == (a rotated by i_counter).
+                        
+                        // Let's define rotated_a in a combinational block or wire.
+                        // Since we are in sequential, we can check equality using shifts.
+                        // But n is variable (input).
+                        // Let's just iterate offset.
+                        
+                        // Check if (a >> i_counter) | (a << (n-i_counter)) == b (masked)
+                        // Since we are in hardware, let's use a simple bit comparison loop.
+                        // Actually, the easiest way: define a wire for the rotated version in the module body.
+                        
+                        // Wait, if n is variable, shift amount is variable. This is allowed in synthesizable code (barrel shifter).
+                        
+                        if ( ((a >> i_counter) | (a << (n - i_counter))) == b ) begin
+                            result <= 1;
+                            state <= DONE_STATE;
+                            done <= 1;
+                        end else begin
+                            i_counter <= i_counter + 1;
+                            if (i_counter == n - 1) begin
+                                result <= 0;
+                                state <= DONE_STATE;
+                                done <= 1;
+                            end
+                        end
+                    end else begin
+                        // Should not reach here due to condition
+                        result <= 0;
+                        state <= DONE_STATE;
+                        done <= 1;
+                    end
+                end
+                
+                DONE_STATE: begin
+                    // Hold
+                end
+            endcase
+        end
+    end
+
+endmodule

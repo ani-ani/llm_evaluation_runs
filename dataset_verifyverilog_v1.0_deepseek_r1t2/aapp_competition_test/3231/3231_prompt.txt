@@ -1,0 +1,38 @@
+module friend_group_checker #(
+    parameter MAX_N = 8
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,          // number of nodes (1 to MAX_N)
+    input wire [3:0] p,          // max group size
+    input wire [3:0] q,          // max cross-edges per group
+    input wire [7:0] adj [0:MAX_N-1], // adjacency matrix rows (8 bits each, only first n columns used)
+    output reg done,
+    output reg valid,
+    output reg [2:0] group_id [0:MAX_N-1] // group assignment for each node (0..7)
+);
+
+// Behavior:
+// - When start is asserted (1 cycle), the module begins computation.
+// - The module asserts done when finished (within a few thousand cycles for n≤8).
+// - If valid is high, a partition exists and group_id[i] holds the group number for node i.
+// - Groups are numbered consecutively from 0.
+// - If valid is low, no partition exists; group_id is undefined.
+// - Reset: rst_n=0 clears all state, done=0, valid=0, group_id=0.
+// - The module uses a DP-over-subsets algorithm:
+//     1. Precompute for each subset mask (1..(1<<n)-1) whether it is a valid group:
+//        - Size (popcount) ≤ p
+//        - Cross-edges ≤ q (sum over nodes in subset of edges to nodes outside)
+//     2. DP: dp[mask] = 1 if there exists a submask s of mask such that s is valid and dp[mask\s]=1.
+//     3. If dp[(1<<n)-1] = 1, reconstruct partition via stored predecessor submask.
+//     4. Output group_id for each node.
+// - The module must handle variable n (1..8). Only the lowest n bits of each adj row are considered.
+// - The adjacency matrix is symmetric (but not verified).
+// - Implementation must be synthesizable; loops can be unrolled for fixed MAX_N.
+// - Timing: after start, done will be asserted within a bounded number of cycles (e.g., < 10,000).
+
+// The testbench will provide adj as an array of 8-bit values, one per node, with bits representing friends.
+// Example: if node 0 is friends with node 1, then adj[0][1] = 1.
+
+endmodule

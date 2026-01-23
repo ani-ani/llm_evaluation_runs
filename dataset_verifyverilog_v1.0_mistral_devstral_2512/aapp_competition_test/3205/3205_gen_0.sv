@@ -1,0 +1,248 @@
+module settle_bills (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] receipt_a,
+    input wire [2:0] receipt_b,
+    input wire [9:0] receipt_p,
+    input wire receipt_valid,
+    input wire last,
+    output reg [3:0] result,
+    output reg done
+);
+
+// Parameters
+parameter MAX_PEOPLE = 8;
+localparam BALANCE_WIDTH = 32;
+localparam RESULT_WIDTH = 4;
+localparam STATE_WIDTH = 5;
+
+// State definitions
+localparam S_IDLE = 0,
+           S_PROCESS_RECEIPTS = 1,
+           S_COUNT_NONZERO = 2,
+           S_COMPONENT_START = 3,
+           S_COMPONENT_LOOP = 4,
+           S_COMPONENT_PROPAGATE_INIT = 5,
+           S_COMPONENT_PROPAGATE_LOOP = 6,
+           S_COMPONENT_PROPAGATE_J = 7,
+           S_COMPONENT_PROPAGATE_K = 8,
+           S_COMPONENT_NEXT_I = 9,
+           S_COMPUTE_RESULT = 10,
+           S_DONE = 11;
+
+// Registers
+reg [STATE_WIDTH-1:0] state, next_state;
+reg [BALANCE_WIDTH-1:0] balance [0:MAX_PEOPLE-1];
+reg [MAX_PEOPLE-1:0] adjacency [0:MAX_PEOPLE-1]; // 8x8 matrix
+reg [MAX_PEOPLE-1:0] visited;
+reg [RESULT_WIDTH-1:0] non_zero_count;
+reg [RESULT_WIDTH-1:0] component_count;
+reg [2:0] i, j, k; // counters
+reg changed; // for propagation
+reg [RESULT_WIDTH-1:0] result_reg;
+reg done_reg;
+
+// Integer for loops
+integer idx;
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= S_IDLE;
+        done_reg <= 0;
+        result_reg <= 0;
+        non_zero_count <= 0;
+        component_count <= 0;
+        visited <= 0;
+        changed <= 0;
+        i <= 0;
+        j <= 0;
+        k <= 0;
+        // Reset balance and adjacency
+        for (idx = 0; idx < MAX_PEOPLE; idx = idx + 1) begin
+            balance[idx] <= 0;
+            adjacency[idx] <= 0;
+        end
+    end else begin
+        state <= next_state;
+        done_reg <= 0;
+        result_reg <= result_reg;
+
+        case (state)
+            S_IDLE: begin
+                if (start) begin
+                    // Already reset, nothing else needed
+                end
+            end
+
+            S_PROCESS_RECEIPTS: begin
+                if (receipt_valid) begin
+                    // Update balances: a paid for b
+                    balance[receipt_a] <= balance[receipt_a] - receipt_p;
+                    balance[receipt_b] <= balance[receipt_b] + receipt_p;
+                    // Update adjacency (undirected)
+                    adjacency[receipt_a][receipt_b] <= 1;
+                    adjacency[receipt_b][receipt_a] <= 1;
+                end
+            end
+
+            S_COUNT_NONZERO: begin
+                // Count non-zero balances
+                if (balance[i] != 0) begin
+                    non_zero_count <= non_zero_count + 1;
+                end
+                i <= i + 1;
+            end
+
+            S_COMPONENT_START: begin
+                visited <= 0;
+                component_count <= 0;
+                i <= 0;
+            end
+
+            S_COMPONENT_LOOP: begin
+                if (i < MAX_PEOPLE) begin
+                    if (balance[i] != 0 && !visited[i]) begin
+                        visited[i] <= 1;
+                        component_count <= component_count + 1;
+                        changed <= 1;
+                    end else begin
+                        i <= i + 1;
+                    end
+                end
+            end
+
+            S_COMPONENT_PROPAGATE_INIT: begin
+                changed <= 0;
+                j <= 0;
+            end
+
+            S_COMPONENT_PROPAGATE_LOOP: begin
+                if (changed) begin
+                    changed <= 0;
+                    j <= 0;
+                end else begin
+                    i <= i + 1; // Move to next i after propagation
+                end
+            end
+
+            S_COMPONENT_PROPAGATE_J: begin
+                if (j < MAX_PEOPLE) begin
+                    if (visited[j]) begin
+                        k <= 0;
+                    end else begin
+                        j <= j + 1;
+                    end
+                end else begin
+                    // Finished scanning j for this iteration
+                    // Go back to propagate loop to check if changed
+                    state <= S_COMPONENT_PROPAGATE_LOOP;
+                end
+            end
+
+            S_COMPONENT_PROPAGATE_K: begin
+                if (k < MAX_PEOPLE) begin
+                    if (adjacency[j][k] && balance[k] != 0 && !visited[k]) begin
+                        visited[k] <= 1;
+                        changed <= 1;
+                    end
+                    k <= k + 1;
+                end else begin
+                    j <= j + 1;
+                    state <= S_COMPONENT_PROPAGATE_J;
+                end
+            end
+
+            S_COMPONENT_NEXT_I: begin
+                // Already handled by incrementing i in other states
+            end
+
+            S_COMPUTE_RESULT: begin
+                result_reg <= non_zero_count - component_count;
+                done_reg <= 1;
+            end
+
+            S_DONE: begin
+                done_reg <= 1;
+            end
+        endcase
+    end
+end
+
+// Next state logic
+always @(*) begin
+    case (state)
+        S_IDLE: begin
+            if (start) next_state = S_PROCESS_RECEIPTS;
+            else next_state = S_IDLE;
+        end
+
+        S_PROCESS_RECEIPTS: begin
+            if (receipt_valid && last) next_state = S_COUNT_NONZERO;
+            else if (receipt_valid && !last) next_state = S_PROCESS_RECEIPTS;
+            else if (!receipt_valid) next_state = S_PROCESS_RECEIPTS;
+            else next_state = S_PROCESS_RECEIPTS;
+        end
+
+        S_COUNT_NONZERO: begin
+            if (i < MAX_PEOPLE) next_state = S_COUNT_NONZERO;
+            else next_state = S_COMPONENT_START;
+        end
+
+        S_COMPONENT_START: begin
+            next_state = S_COMPONENT_LOOP;
+        end
+
+        S_COMPONENT_LOOP: begin
+            if (i < MAX_PEOPLE) begin
+                if (balance[i] != 0 && !visited[i]) begin
+                    next_state = S_COMPONENT_PROPAGATE_INIT;
+                end else begin
+                    next_state = S_COMPONENT_LOOP; // will increment i
+                end
+            end else begin
+                next_state = S_COMPUTE_RESULT;
+            end
+        end
+
+        S_COMPONENT_PROPAGATE_INIT: begin
+            next_state = S_COMPONENT_PROPAGATE_LOOP;
+        end
+
+        S_COMPONENT_PROPAGATE_LOOP: begin
+            if (changed) next_state = S_COMPONENT_PROPAGATE_J;
+            else next_state = S_COMPONENT_LOOP; // move to next i
+        end
+
+        S_COMPONENT_PROPAGATE_J: begin
+            if (j < MAX_PEOPLE) begin
+                if (visited[j]) next_state = S_COMPONENT_PROPAGATE_K;
+                else next_state = S_COMPONENT_PROPAGATE_J; // will increment j
+            end else begin
+                next_state = S_COMPONENT_PROPAGATE_LOOP;
+            end
+        end
+
+        S_COMPONENT_PROPAGATE_K: begin
+            if (k < MAX_PEOPLE) next_state = S_COMPONENT_PROPAGATE_K;
+            else next_state = S_COMPONENT_PROPAGATE_J;
+        end
+
+        S_COMPUTE_RESULT: begin
+            next_state = S_DONE;
+        end
+
+        S_DONE: begin
+            next_state = S_DONE;
+        end
+
+        default: next_state = S_IDLE;
+    endcase
+end
+
+// Output assignments
+assign result = result_reg;
+assign done = done_reg;
+
+endmodule

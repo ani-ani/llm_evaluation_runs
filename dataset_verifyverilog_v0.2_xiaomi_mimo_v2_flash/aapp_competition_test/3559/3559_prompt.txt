@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'zergling_simulation' that simulates a simplified version of the Starcraft Zergling rush battle.
+
+The module implements a battle on an 8x8 grid with a maximum of 16 Zerglings per player. The simulation runs for a fixed number of turns (16 max).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start simulation (loads initial state)
+input [2:0] grid_in_00_to_07, grid_in_08_to_15 // Initial grid data (flattened 8x8)
+input [2:0] grid_in_16_to_23, grid_in_24_to_31 // Values: 0=empty, 1=P1, 2=P2
+input [2:0] grid_in_32_to_39, grid_in_40_to_47
+input [2:0] grid_in_48_to_55, grid_in_56_to_63
+input [3:0] p1_atk_up, p1_arm_up // Attack/Armor upgrades (0-15)
+input [3:0] p2_atk_up, p2_arm_up
+input [7:0] num_turns // Number of turns to simulate (0-255)
+
+Outputs:
+output reg [2:0] grid_out_00_to_07, grid_out_08_to_15 // Final grid state
+output reg [2:0] grid_out_16_to_23, grid_out_24_to_31
+output reg [2:0] grid_out_32_to_39, grid_out_40_to_47
+output reg [2:0] grid_out_48_to_55, grid_out_56_to_63
+output reg done // High when simulation complete
+
+Internal Parameters & Registers:
+- Grid: 8x8 (64 cells), 3 bits per cell (0=empty, 1=P1, 2=P2)
+- HP per Zergling: 8 bits (0-255, starts at 35)
+- Max Zerglings per player: 16 (tracked in parallel arrays)
+- State Machine: IDLE, LOAD, TURN_START, CHECK_ATTACK, EXECUTE_ATTACK, CHECK_MOVE, EXECUTE_MOVE, REGENERATE, NEXT_TURN, DONE
+- Direction Order (N, NE, E, SE, S, SW, W, NW): 0-7
+
+Behavioral Description:
+1. IDLE: Wait for start signal.
+2. LOAD: Parse grid_in into internal HP arrays for P1 and P2. Each Zergling has x, y, hp (35).
+3. TURN_START: Initialize turn counters.
+4. CHECK_ATTACK: For each Zergling, check 8 neighbors. If enemy found, select highest priority direction (N->NE->E->SE->S->SW->W->NW). Store attack decisions.
+5. EXECUTE_ATTACK: Apply damage simultaneously. Attack value = 5 + (player atk up). Damage = Attack - (enemy arm up). Reduce HP. Remove dead (HP <= 0).
+6. CHECK_MOVE: If no attack, calculate Manhattan distance to nearest enemy. Select neighbor with minimum distance. Apply tie-breaking (N->NE->...).
+7. EXECUTE_MOVE: Move Zerglings simultaneously. Resolve collisions: Priority to Northmost, then Westmost. Do not move if target occupied.
+8. REGENERATE: All living Zerglings with HP < 35 gain 1 HP.
+9. NEXT_TURN: Decrement turn counter. If > 0, go to TURN_START. Else, go to DONE.
+10. DONE: Set done=1, output final grid from HP arrays.
+
+Helper logic:
+- Manhattan Distance: |x1 - x2| + |y1 - y2|
+- Collision Resolution: Check if multiple Zerglings target same (x,y). Select min(row), then min(col).
+- Nearest Enemy: Iterate all enemy Zerglings to find min distance.
+
+Constraint: Use combinational logic blocks for neighbor checking and distance calculation within the state machine steps. The module must fit the simulation within a reasonable number of cycles (e.g., 5000 cycles total).

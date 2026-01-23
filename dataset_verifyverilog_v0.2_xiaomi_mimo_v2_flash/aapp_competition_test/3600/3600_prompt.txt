@@ -1,0 +1,48 @@
+Design a combinational Verilog module named 'basin_city_drones' that determines if it's possible to place exactly k drones on a graph with n nodes such that no two adjacent nodes both have drones.
+
+Inputs:
+input [7:0] k // number of drones required (0-15)
+input [7:0] n // number of nodes (1-8, scaled down from 100000)
+input [7:0] adj_0, adj_1, adj_2, adj_3, adj_4, adj_5, adj_6, adj_7 // adjacency bits for each node (8-bit bitmask, bits 0-7 represent connections to nodes 0-7)
+
+Outputs:
+output reg possible // 1 if k drones can be placed, 0 otherwise
+
+Behavioral Description:
+The module implements maximum independent set checking for a small graph (up to 8 nodes). It uses exhaustive search to check all possible drone placements.
+
+For graphs with n nodes:
+- Check all 2^n possible placements
+- A placement is valid if no two adjacent nodes both have drones
+- Count drones in each valid placement
+- If any valid placement has exactly k drones, output possible=1
+
+Adjacency encoding:
+Each adj_i is an 8-bit vector where bit j = 1 means node i is connected to node j
+Self-connections (bit i of adj_i) should be 0
+
+Example: For sample input 1 with 7 nodes (scaled to 8 for Verilog):
+Node 1 (index 0): neighbors 2,4 -> adj_0 = 8'b00010110 (bits 1,3)
+Node 2 (index 1): neighbors 1,3,5 -> adj_1 = 8'b00101011 (bits 0,2,4)
+Node 3 (index 2): neighbor 2 -> adj_2 = 8'b00000100 (bit 1)
+Node 4 (index 3): neighbors 1,5 -> adj_3 = 8'b00101001 (bits 0,4)
+Node 5 (index 4): neighbors 2,4,6,7 -> adj_4 = 8'b11011010 (bits 1,3,5,6)
+Node 6 (index 5): neighbors 5,7 -> adj_5 = 8'b11010000 (bits 4,6)
+Node 7 (index 6): neighbors 6,5 -> adj_6 = 8'b01100000 (bits 4,5)
+Node 8 (index 7): no neighbors -> adj_7 = 8'b00000000
+
+The algorithm:
+1. Generate all 256 possible placements (8-bit patterns)
+2. For each placement (bitmask P):
+   a. Check validity: For each node i with P[i]=1, ensure P & adj_i == 0
+   b. Count drones: popcount(P)
+   c. If valid and popcount == k, set possible=1
+3. If no placement satisfies, possible=0
+
+For n < 8, ignore nodes n through 7 (treat as disconnected).
+
+Combinational logic implementation:
+Use generate blocks or explicit case analysis for n=1 to 8.
+For maximum efficiency, unroll the search for n <= 8.
+
+Note: This is a brute-force combinational solution suitable for n <= 8 nodes.

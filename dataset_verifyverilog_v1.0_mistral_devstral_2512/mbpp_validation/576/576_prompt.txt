@@ -1,0 +1,116 @@
+module is_Sub_Array(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] A_0, A_1, A_2, A_3,  // Main array (max 4 elements)
+    input wire [7:0] B_0, B_1, B_2, B_3,  // Subarray (max 4 elements)
+    input wire [2:0] len_A,               // Valid length of A (1-4)
+    input wire [2:0] len_B,               // Valid length of B (1-4)
+    output reg result,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 3'b000;
+    localparam SEARCH = 3'b001;
+    localparam CHECK_MATCH = 3'b010;
+    localparam BACKTRACK = 3'b011;
+    localparam FINISHED = 3'b100;
+
+    // Internal registers
+    reg [2:0] state;
+    reg [2:0] i;  // Index for A
+    reg [2:0] j;  // Index for B
+    reg [2:0] start_idx;  // Starting position in A for current match attempt
+    
+    // Memory for arrays (using registers)
+    reg [7:0] arr_A [0:3];
+    reg [7:0] arr_B [0:3];
+    reg [2:0] valid_len_A;
+    reg [2:0] valid_len_B;
+
+    // Next state logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 0;
+            done <= 0;
+            i <= 0;
+            j <= 0;
+            start_idx <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        // Load arrays
+                        arr_A[0] <= A_0;
+                        arr_A[1] <= A_1;
+                        arr_A[2] <= A_2;
+                        arr_A[3] <= A_3;
+                        arr_B[0] <= B_0;
+                        arr_B[1] <= B_1;
+                        arr_B[2] <= B_2;
+                        arr_B[3] <= B_3;
+                        valid_len_A <= len_A;
+                        valid_len_B <= len_B;
+                        
+                        if (len_B == 0 || len_B > len_A) begin
+                            result <= 0;
+                            state <= FINISHED;
+                        end else begin
+                            i <= 0;
+                            j <= 0;
+                            start_idx <= 0;
+                            state <= SEARCH;
+                        end
+                    end
+                end
+
+                SEARCH: begin
+                    // Check if we need to start a new comparison
+                    if (j >= valid_len_B) begin
+                        // Match found
+                        result <= 1;
+                        state <= FINISHED;
+                    end else if (i >= valid_len_A) begin
+                        // Reached end of A without full match
+                        result <= 0;
+                        state <= FINISHED;
+                    end else begin
+                        // Compare elements
+                        state <= CHECK_MATCH;
+                    end
+                end
+
+                CHECK_MATCH: begin
+                    if (arr_A[i] == arr_B[j]) begin
+                        i <= i + 1;
+                        j <= j + 1;
+                        state <= SEARCH;
+                    end else begin
+                        // Mismatch - backtrack
+                        if (start_idx + 1 >= valid_len_A) begin
+                            // No more positions to try
+                            result <= 0;
+                            state <= FINISHED;
+                        end else begin
+                            start_idx <= start_idx + 1;
+                            i <= start_idx + 1;
+                            j <= 0;
+                            state <= SEARCH;
+                        end
+                    end
+                end
+
+                FINISHED: begin
+                    done <= 1;
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

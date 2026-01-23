@@ -1,0 +1,30 @@
+Design a sequential Verilog module named 'special_number_counter' that implements the logic to count how many integers x (1 <= x <= n) have a specific property related to the number of operations to reduce x to 1. 
+
+The operation is defined as replacing x with the number of set bits (popcount) in its binary representation. A number is 'special' if it takes exactly k operations to reduce it to 1. We need to count special numbers <= n.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [1023:0] n_binary // Binary representation of n, max 1024 bits (MSB at bit 1023)
+input [9:0] k_in // Target number of operations k (0 <= k <= 5)
+
+Outputs:
+output reg [31:0] result // The count of special numbers modulo 10^9 + 7
+output reg done // High when computation is finished
+
+Behavior:
+The module should compute the result in several stages:
+1.  Precompute popcount steps: Since k is small (<= 5), we can determine which bit counts 'm' require k-1 steps to reach 1. For example, if k=2, we need numbers whose initial popcount is in the set {2, 3, 5, 6, 7, ...} (numbers requiring 1 step to become 1).
+2.  Count numbers <= n with popcount = m: For each valid 'm' found in step 1, count how many integers <= n have exactly 'm' set bits. This requires iterating through the bits of n (provided as input string) and using combinatorial logic to calculate combinations (nCr).
+
+The module must use a state machine (IDLE, PRECOMPUTE, COUNTING, DONE). 
+Since n is provided as a binary string, you must parse it bit-by-bit in the COUNTING state.
+You need a combinational block to calculate nCr (combinations) modulo 10^9+7 for n <= 1024 and r <= 1024.
+Latency: Result valid ~5000 clock cycles after start (to accommodate iterating through bits and multiple popcount targets).
+
+Detailed State Machine:
+- IDLE: Wait for start signal.
+- PRECOMPUTE: Identify which integers 'm' (1 to 1024) require k_in - 1 steps to reach 1. Store this information (e.g., a bitmask or list of valid 'm' values).
+- COUNTING: Iterate through the bits of n_binary. For each '1' encountered, add combinations of remaining bits to the result for each valid 'm'.
+- DONE: Set done signal high.

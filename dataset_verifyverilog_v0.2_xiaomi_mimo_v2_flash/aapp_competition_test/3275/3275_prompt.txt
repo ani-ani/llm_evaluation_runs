@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'art_dealer_count' that counts valid purchase configurations for N=8 clients with C=2 minimum colored paintings requirement.
+
+Problem Adaptation:
+- N = 8 clients (fixed parameter)
+- C = 2 minimum colored paintings required
+- Each client i can purchase either a_i colored OR b_i black-white paintings (not both)
+- Each client must purchase at least 1 painting (a_i >= 1, b_i >= 1 always)
+- We need to count total valid configurations where at least 2 clients choose colored paintings
+
+Algorithm:
+1. Calculate total configurations = product of (a_i + b_i) for all i
+2. Calculate configurations where 0 clients get colored = product of b_i for all i
+3. Calculate configurations where exactly 1 client gets colored = sum over i of [a_i * product of b_j for j != i]
+4. Result = total - (config_0_colored + config_1_colored)
+5. Output result modulo 10007
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] client_idx // client index 0-7 for loading data
+input [7:0] a_in // a_i value for client_idx (max 255)
+input [7:0] b_in // b_i value for client_idx (max 255)
+
+Outputs:
+output reg [15:0] result // final count modulo 10007
+output reg done // high when computation complete
+output reg error // high if invalid state
+
+Latency: Result valid 5 clock cycles after start asserted (including 8 cycles for loading + computation).
+
+Behavioral Description:
+The module uses a state machine with states: IDLE, LOAD, COMPUTE, DONE.
+In LOAD state, it stores a_i and b_i values for 8 clients into internal registers.
+In COMPUTE state, it performs:
+- Calculates prod_ab = product of (a_i + b_i) for all 8 clients
+- Calculates prod_b = product of b_i for all 8 clients
+- Calculates sum_a_prod_b = sum of a_i * (product of b_j for j != i) for all i
+- result = (prod_ab - prod_b - sum_a_prod_b) mod 10007
+- Use 32-bit intermediate storage, modulo 10007 at each multiplication step to prevent overflow
+
+All arithmetic operations (multiplication and addition) must be performed modulo 10007.
+Use combinational logic blocks for the polynomial computation.
+Implement as a pipelined design where intermediate products are computed iteratively.

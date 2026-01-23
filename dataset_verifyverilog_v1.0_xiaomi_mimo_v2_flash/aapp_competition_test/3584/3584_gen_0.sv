@@ -1,0 +1,250 @@
+module max_onions_protected (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] onion0_x, onion0_y,
+    input wire [7:0] onion1_x, onion1_y,
+    input wire [7:0] onion2_x, onion2_y,
+    input wire [7:0] onion3_x, onion3_y,
+    input wire [7:0] onion4_x, onion4_y,
+    input wire [7:0] fence0_x, fence0_y,
+    input wire [7:0] fence1_x, fence1_y,
+    input wire [7:0] fence2_x, fence2_y,
+    input wire [7:0] fence3_x, fence3_y,
+    input wire [7:0] fence4_x, fence4_y,
+    output reg [2:0] max_onions,
+    output reg done
+);
+    localparam N = 5;
+    localparam M = 5;
+    localparam DATA_WIDTH = 8;
+    localparam IDX_WIDTH = 3;
+    localparam COUNT_WIDTH = 3;
+
+    // State definitions
+    localparam [4:0] IDLE = 5'd0;
+    localparam [4:0] LOAD_INPUTS = 5'd1;
+    localparam [4:0] INIT = 5'd2;
+    localparam [4:0] GET_FENCE_VERTICES = 5'd3;
+    localparam [4:0] LOAD_COORDINATES = 5'd4;
+    localparam [4:0] INIT_ONION_LOOP = 5'd5;
+    localparam [4:0] COMPUTE_AB = 5'd6;
+    localparam [4:0] COMPUTE_AP = 5'd7;
+    localparam [4:0] COMPUTE_CROSS1 = 5'd8;
+    localparam [4:0] COMPUTE_BC = 5'd9;
+    localparam [4:0] COMPUTE_BP = 5'd10;
+    localparam [4:0] COMPUTE_CROSS2 = 5'd11;
+    localparam [4:0] COMPUTE_CA = 5'd12;
+    localparam [4:0] COMPUTE_CP = 5'd13;
+    localparam [4:0] COMPUTE_CROSS3 = 5'd14;
+    localparam [4:0] CHECK_INSIDE = 5'd15;
+    localparam [4:0] UPDATE_COUNT = 5'd16;
+    localparam [4:0] NEXT_ONION = 5'd17;
+    localparam [4:0] UPDATE_MAX = 5'd18;
+    localparam [4:0] NEXT_S = 5'd19;
+    localparam [4:0] DONE = 5'd20;
+
+    // Input storage
+    reg [7:0] onion_x_reg [0:N-1];
+    reg [7:0] onion_y_reg [0:N-1];
+    reg [7:0] fence_x_reg [0:M-1];
+    reg [7:0] fence_y_reg [0:M-1];
+
+    // State and counters
+    reg [4:0] state;
+    reg [2:0] s;
+    reg [2:0] onion_idx;
+    reg [2:0] inside_count;
+    reg [2:0] max_onions_reg;
+
+    // Triangle vertices indices and coordinates
+    reg [2:0] A_idx, B_idx, C_idx;
+    reg [7:0] A_x, A_y, B_x, B_y, C_x, C_y;
+
+    // Intermediate calculations (signed)
+    reg signed [15:0] AB_x, AB_y;
+    reg signed [15:0] AP_x, AP_y;
+    reg signed [15:0] BC_x, BC_y;
+    reg signed [15:0] BP_x, BP_y;
+    reg signed [15:0] CA_x, CA_y;
+    reg signed [15:0] CP_x, CP_y;
+    reg signed [31:0] cross1, cross2, cross3;
+    reg inside_flag;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            max_onions_reg <= 0;
+            done <= 0;
+            s <= 0;
+            onion_idx <= 0;
+            inside_count <= 0;
+            A_idx <= 0; B_idx <= 0; C_idx <= 0;
+            A_x <= 0; A_y <= 0; B_x <= 0; B_y <= 0; C_x <= 0; C_y <= 0;
+            AB_x <= 0; AB_y <= 0; AP_x <= 0; AP_y <= 0;
+            BC_x <= 0; BC_y <= 0; BP_x <= 0; BP_y <= 0;
+            CA_x <= 0; CA_y <= 0; CP_x <= 0; CP_y <= 0;
+            cross1 <= 0; cross2 <= 0; cross3 <= 0;
+            inside_flag <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        state <= LOAD_INPUTS;
+                    end
+                end
+
+                LOAD_INPUTS: begin
+                    onion_x_reg[0] <= onion0_x; onion_y_reg[0] <= onion0_y;
+                    onion_x_reg[1] <= onion1_x; onion_y_reg[1] <= onion1_y;
+                    onion_x_reg[2] <= onion2_x; onion_y_reg[2] <= onion2_y;
+                    onion_x_reg[3] <= onion3_x; onion_y_reg[3] <= onion3_y;
+                    onion_x_reg[4] <= onion4_x; onion_y_reg[4] <= onion4_y;
+                    fence_x_reg[0] <= fence0_x; fence_y_reg[0] <= fence0_y;
+                    fence_x_reg[1] <= fence1_x; fence_y_reg[1] <= fence1_y;
+                    fence_x_reg[2] <= fence2_x; fence_y_reg[2] <= fence2_y;
+                    fence_x_reg[3] <= fence3_x; fence_y_reg[3] <= fence3_y;
+                    fence_x_reg[4] <= fence4_x; fence_y_reg[4] <= fence4_y;
+                    state <= INIT;
+                end
+
+                INIT: begin
+                    s <= 0;
+                    max_onions_reg <= 0;
+                    state <= GET_FENCE_VERTICES;
+                end
+
+                GET_FENCE_VERTICES: begin
+                    A_idx <= s;
+                    case (s)
+                        0: begin B_idx <= 1; C_idx <= 2; end
+                        1: begin B_idx <= 2; C_idx <= 3; end
+                        2: begin B_idx <= 3; C_idx <= 4; end
+                        3: begin B_idx <= 4; C_idx <= 0; end
+                        4: begin B_idx <= 0; C_idx <= 1; end
+                        default: begin B_idx <= 0; C_idx <= 0; end
+                    endcase
+                    A_x <= fence_x_reg[s];
+                    A_y <= fence_y_reg[s];
+                    state <= LOAD_COORDINATES;
+                end
+
+                LOAD_COORDINATES: begin
+                    B_x <= fence_x_reg[B_idx];
+                    B_y <= fence_y_reg[B_idx];
+                    C_x <= fence_x_reg[C_idx];
+                    C_y <= fence_y_reg[C_idx];
+                    state <= INIT_ONION_LOOP;
+                end
+
+                INIT_ONION_LOOP: begin
+                    onion_idx <= 0;
+                    inside_count <= 0;
+                    state <= COMPUTE_AB;
+                end
+
+                COMPUTE_AB: begin
+                    AB_x <= $signed({1'b0, B_x}) - $signed({1'b0, A_x});
+                    AB_y <= $signed({1'b0, B_y}) - $signed({1'b0, A_y});
+                    state <= COMPUTE_AP;
+                end
+
+                COMPUTE_AP: begin
+                    AP_x <= $signed({1'b0, onion_x_reg[onion_idx]}) - $signed({1'b0, A_x});
+                    AP_y <= $signed({1'b0, onion_y_reg[onion_idx]}) - $signed({1'b0, A_y});
+                    state <= COMPUTE_CROSS1;
+                end
+
+                COMPUTE_CROSS1: begin
+                    cross1 <= $signed(AB_x) * $signed(AP_y) - $signed(AB_y) * $signed(AP_x);
+                    state <= COMPUTE_BC;
+                end
+
+                COMPUTE_BC: begin
+                    BC_x <= $signed({1'b0, C_x}) - $signed({1'b0, B_x});
+                    BC_y <= $signed({1'b0, C_y}) - $signed({1'b0, B_y});
+                    state <= COMPUTE_BP;
+                end
+
+                COMPUTE_BP: begin
+                    BP_x <= $signed({1'b0, onion_x_reg[onion_idx]}) - $signed({1'b0, B_x});
+                    BP_y <= $signed({1'b0, onion_y_reg[onion_idx]}) - $signed({1'b0, B_y});
+                    state <= COMPUTE_CROSS2;
+                end
+
+                COMPUTE_CROSS2: begin
+                    cross2 <= $signed(BC_x) * $signed(BP_y) - $signed(BC_y) * $signed(BP_x);
+                    state <= COMPUTE_CA;
+                end
+
+                COMPUTE_CA: begin
+                    CA_x <= $signed({1'b0, A_x}) - $signed({1'b0, C_x});
+                    CA_y <= $signed({1'b0, A_y}) - $signed({1'b0, C_y});
+                    state <= COMPUTE_CP;
+                end
+
+                COMPUTE_CP: begin
+                    CP_x <= $signed({1'b0, onion_x_reg[onion_idx]}) - $signed({1'b0, C_x});
+                    CP_y <= $signed({1'b0, onion_y_reg[onion_idx]}) - $signed({1'b0, C_y});
+                    state <= COMPUTE_CROSS3;
+                end
+
+                COMPUTE_CROSS3: begin
+                    cross3 <= $signed(CA_x) * $signed(CP_y) - $signed(CA_y) * $signed(CP_x);
+                    state <= CHECK_INSIDE;
+                end
+
+                CHECK_INSIDE: begin
+                    if (cross1 < 0 && cross2 < 0 && cross3 < 0) begin
+                        inside_flag <= 1;
+                    end else begin
+                        inside_flag <= 0;
+                    end
+                    state <= UPDATE_COUNT;
+                end
+
+                UPDATE_COUNT: begin
+                    if (inside_flag) begin
+                        inside_count <= inside_count + 1;
+                    end
+                    state <= NEXT_ONION;
+                end
+
+                NEXT_ONION: begin
+                    if (onion_idx < N-1) begin
+                        onion_idx <= onion_idx + 1;
+                        state <= COMPUTE_AB;
+                    end else begin
+                        state <= UPDATE_MAX;
+                    end
+                end
+
+                UPDATE_MAX: begin
+                    if (inside_count > max_onions_reg) begin
+                        max_onions_reg <= inside_count;
+                    end
+                    state <= NEXT_S;
+                end
+
+                NEXT_S: begin
+                    if (s < M-1) begin
+                        s <= s + 1;
+                        state <= GET_FENCE_VERTICES;
+                    end else begin
+                        state <= DONE;
+                    end
+                end
+
+                DONE: begin
+                    max_onions <= max_onions_reg;
+                    done <= 1;
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

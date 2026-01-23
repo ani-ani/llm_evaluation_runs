@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'string_sequence' that generates a space-delimited string of numbers from 0 to n inclusive.
+
+INTERFACE SPECIFICATION:
+  Inputs:
+    - clk: clock signal
+    - rst_n: active-low reset (1 = normal operation, 0 = reset)
+    - start: start pulse (high for 1 cycle to begin computation)
+    - n[3:0]: 4-bit input (0-7, representing the ending number)
+  
+  Outputs:
+    - byte_out[7:0]: 8-bit ASCII character output
+    - valid: high when byte_out contains valid data
+    - done: high for 1 cycle when entire string is generated
+
+CONSTRAINTS:
+  - Maximum output length: 8 numbers * 2 digits + 7 spaces = 23 characters (limit to 32-byte buffer)
+  - Numbers are 0-7 (single digit for this implementation)
+  - Output format: '0 1 2 3 ... n' where n is input value
+  - Each character is output sequentially, one per clock cycle
+  - Valid signal indicates when to capture byte_out
+  - After done goes high, the module returns to IDLE state
+
+BEHAVIOR:
+  1. On start pulse, begin generating sequence
+  2. Generate ASCII digits for current number (0x30 + number)
+  3. After each number except the last, output a space (0x20)
+  4. Continue until reaching n
+  5. After last number, assert done for 1 cycle and return to IDLE
+  6. State machine states: IDLE, GENERATE_NUM, OUTPUT_SPACE, FINISHED
+
+IMPLEMENTATION NOTES:
+  - Use 4-bit counter for current number (starts at 0, increments by 1)
+  - Use ASCII encoding: '0' = 0x30, space = 0x20
+  - Two-phase output per number: digit first, then space (except after last number)
+  - Sequence for n=2: '0', ' ', '1', ' ', '2' (5 cycles)
+  - For n=0: just '0' (1 cycle)
+  - Output timing: valid and done are high for exactly 1 cycle each time data is ready
+
+STATE MACHINE:
+  - IDLE: Wait for start signal
+  - GENERATE_NUM: Output current number's ASCII digit
+  - OUTPUT_SPACE: Output space character, then increment number counter
+  - FINISHED: Assert done signal for 1 cycle
+
+TESTBENCH WILL:
+  - Test n=0: expects '0'
+  - Test n=3: expects '0 1 2 3'
+  - Test n=7: expects '0 1 2 3 4 5 6 7' (max test)
+  - Verify byte order and timing of valid/done signals

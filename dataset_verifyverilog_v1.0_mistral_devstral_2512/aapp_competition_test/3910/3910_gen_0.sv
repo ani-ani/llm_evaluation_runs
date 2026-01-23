@@ -1,0 +1,133 @@
+module FoodAssignment (
+  input clk, rst_n,
+  input config_en,
+  input [3:0] a_in, b_in,  // Chair indices (0-15)
+  input [3:0] n,           // Number of couples (1-8)
+  output reg done,
+  output reg output_valid,
+  output reg [2:0] output_index,
+  output reg [1:0] output_boy, output_girl
+);
+
+  // Internal arrays
+  reg [3:0] couple_list_a [0:7];  // Boy chairs
+  reg [3:0] couple_list_b [0:7];  // Girl chairs
+  reg [3:0] partner [0:15];       // Partner of each chair
+  reg [1:0] food [0:15];          // 00=unassigned, 01=food1, 10=food2
+
+  // States
+  localparam [1:0] IDLE = 2'd0;
+  localparam [1:0] CONFIG = 2'd1;
+  localparam [1:0] RUN = 2'd2;
+  localparam [1:0] OUTPUT = 2'd3;
+  reg [1:0] state;
+  reg [2:0] config_index;   // 0-7
+  reg [3:0] i_reg;          // Chair index counter
+  reg [3:0] temp_j;         // Chain traversal
+  reg [1:0] assign_state;   // 0=IDLE, 1=FIND_NEXT, 2=CHAIN
+  reg [3:0] max_chairs;     // 2*n
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      // Reset all
+      state <= IDLE;
+      config_index <= 3'd0;
+      done <= 1'b1;
+      output_valid <= 1'b0;
+      output_index <= 3'd0;
+      output_boy <= 2'd0;
+      output_girl <= 2'd0;
+      i_reg <= 4'd0;
+      temp_j <= 4'd0;
+      assign_state <= 2'd0;
+      max_chairs <= 4'd0;
+      
+      integer i;
+      for (i = 0; i < 16; i = i + 1) begin
+        partner[i] <= 4'd0;
+        food[i] <= 2'd0;
+      end
+      for (i = 0; i < 8; i = i + 1) begin
+        couple_list_a[i] <= 4'd0;
+        couple_list_b[i] <= 4'd0;
+      end
+    end else begin
+      case (state)
+        IDLE: begin
+          if (config_en) begin
+            // Start configuration
+            couple_list_a[config_index] <= a_in;
+            couple_list_b[config_index] <= b_in;
+            partner[a_in] <= b_in;
+            partner[b_in] <= a_in;
+            config_index <= config_index + 3'd1;
+            state <= CONFIG;
+            done <= 1'b0;
+            max_chairs <= (n << 1);  // 2*n
+          end
+        end
+
+        CONFIG: begin
+          if (config_en) begin
+            if (config_index < 3'd7) begin
+              couple_list_a[config_index] <= a_in;
+              couple_list_b[config_index] <= b_in;
+              partner[a_in] <= b_in;
+              partner[b_in] <= a_in;
+              config_index <= config_index + 3'd1;
+            end
+            if (config_index == n - 3'd1 && config_en) begin
+              state <= RUN;
+              i_reg <= 4'd0;
+              assign_state <= 2'd1;  // FIND_NEXT
+            end
+          end
+        end
+
+        RUN: begin
+          case (assign_state)
+            2'd1: begin  // FIND_NEXT
+              if (i_reg >= max_chairs) begin
+                state <= OUTPUT;
+                output_index <= 3'd0;
+                output_valid <= 1'b1;
+                output_boy <= food[couple_list_a[3'd0]];
+                output_girl <= food[couple_list_b[3'd0]];
+              end else if (food[i_reg] != 2'd0) begin
+                i_reg <= i_reg + 4'd1;
+              end else begin
+                temp_j <= i_reg;
+                assign_state <= 2'd2;  // CHAIN
+              end
+            end
+
+            2'd2: begin  // CHAIN
+              if (food[temp_j] != 2'd0) begin
+                i_reg <= i_reg + 4'd1;
+                assign_state <= 2'd1;  // Back to FIND_NEXT
+              end else begin
+                food[temp_j] <= 2'b01;       // Food type 1
+                food[temp_j ^ 4'd1] <= 2'b10;   // Food type 2
+                temp_j <= partner[temp_j ^ 4'd1];
+              end
+            end
+          endcase
+        end
+
+        OUTPUT: begin
+          if (output_index < n - 3'd1) begin
+            output_index <= output_index + 3'd1;
+            output_boy <= food[couple_list_a[output_index + 3'd1]];
+            output_girl <= food[couple_list_b[output_index + 3'd1]];
+          end else begin
+            output_valid <= 1'b0;
+            state <= IDLE;
+            done <= 1'b1;
+          end
+        end
+
+        default: state <= IDLE;
+      endcase
+    end
+  end
+endmodule

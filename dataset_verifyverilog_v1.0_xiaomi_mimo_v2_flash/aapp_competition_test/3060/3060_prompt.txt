@@ -1,0 +1,122 @@
+module kth_sequence (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,      // 2 <= n <= 8
+    input wire [13:0] k,     // 1 <= k <= 10000
+    output reg [2:0] seq_0, seq_1, seq_2, seq_3, seq_4, seq_5, seq_6, seq_7,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam FIND_A = 3'd1;
+localparam UPDATE = 3'd2;
+localparam NEXT = 3'd3;
+localparam DONE = 3'd4;
+
+// Registers
+reg [2:0] state;
+reg [3:0] s;           // current prefix sum modulo n
+reg [7:0] used;        // bitmask for used residues (bit i set if residue i used)
+reg [3:0] i;           // current position (1 to n-1)
+reg [13:0] rem_k;      // remaining k during search
+reg [3:0] a;           // current candidate a
+
+// Combinational signals for current candidate
+wire [3:0] new_s_temp = s + a;
+wire [3:0] new_s = (new_s_temp >= n) ? new_s_temp - n : new_s_temp;
+wire valid = (used[new_s] == 0);
+
+// Factorial lookup for count_per = factorial(n - i - 1)
+reg [13:0] count_per;
+always @(*) begin
+    case (n - i - 1)
+        0: count_per = 14'd1;
+        1: count_per = 14'd1;
+        2: count_per = 14'd2;
+        3: count_per = 14'd6;
+        4: count_per = 14'd24;
+        5: count_per = 14'd120;
+        6: count_per = 14'd720;
+        default: count_per = 14'd0;
+    endcase
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        seq_0 <= 0; seq_1 <= 0; seq_2 <= 0; seq_3 <= 0;
+        seq_4 <= 0; seq_5 <= 0; seq_6 <= 0; seq_7 <= 0;
+        s <= 0;
+        used <= 0;
+        i <= 0;
+        rem_k <= 0;
+        a <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    s <= 0;
+                    used <= 8'b00000001; // residue 0 used
+                    i <= 1;
+                    rem_k <= k;
+                    a <= 1;
+                    state <= FIND_A;
+                end
+            end
+
+            FIND_A: begin
+                if (valid) begin
+                    if (rem_k > count_per) begin
+                        rem_k <= rem_k - count_per;
+                        a <= a + 1;
+                        // Assume a <= n-1 always true
+                    end else begin
+                        state <= UPDATE;
+                    end
+                end else begin
+                    a <= a + 1;
+                    // Assume a <= n-1 always true
+                end
+            end
+
+            UPDATE: begin
+                // Assign sequence element based on position
+                case (i)
+                    1: seq_0 <= a;
+                    2: seq_1 <= a;
+                    3: seq_2 <= a;
+                    4: seq_3 <= a;
+                    5: seq_4 <= a;
+                    6: seq_5 <= a;
+                    7: seq_6 <= a;
+                    8: seq_7 <= a;
+                endcase
+                s <= new_s;
+                used <= used | (1 << new_s);
+                state <= NEXT;
+            end
+
+            NEXT: begin
+                i <= i + 1;
+                if (i + 1 > n - 1) begin
+                    state <= DONE;
+                end else begin
+                    state <= FIND_A;
+                    a <= 1;
+                end
+            end
+
+            DONE: begin
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

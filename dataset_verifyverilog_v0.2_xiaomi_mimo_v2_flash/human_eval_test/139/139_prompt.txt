@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'special_factorial' that computes the Brazilian factorial.
+
+The Brazilian factorial is defined as:
+brazilian_factorial(n) = n! * (n-1)! * (n-2)! * ... * 1!
+
+For example, special_factorial(4) = 4! * 3! * 2! * 1! = 24 * 6 * 2 * 1 = 288
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] n // input integer (1-8, constrained for hardware)
+
+Outputs:
+output reg [31:0] result // special factorial result
+output reg done // high when computation complete
+
+Specification:
+- Module must work for n = 1 to 8 (results fit in 32-bit for n≤8)
+- Use 32-bit unsigned arithmetic
+- Implement as a state machine with states: IDLE, CALCULATE_FACTORIALS, MULTIPLY_RESULTS, DONE
+- Compute factorial of each number from 1 to n, then multiply all together
+- Result for n=8 is 28! which is ~3.2e29 (exceeds 32-bit), so limit to n≤5 for 32-bit safety
+- Actually scale to n≤4: result(4)=288, result(5)=34560, result(6)=653837184000 (exceeds 32-bit)
+- Better approach: limit to n≤4 or use 64-bit if needed
+- Final decision: Support n≤4 with 32-bit results
+
+State Machine:
+- IDLE: Wait for start signal, initialize result=1, current_n=1
+- CALCULATE_FACTORIALS: For each i from 1 to n:
+  - Compute factorial of i (i!)
+  - Store in temp_reg
+  - Then multiply result = result * i!
+- DONE: Set done=1, hold result
+
+Latency: Approximately n * (max factorial computation cycles) + multiplication overhead
+For n=4: IDLE → CALCULATE(4 cycles) → MULTIPLY(4 cycles) → DONE
+Total: ~8-12 cycles after start
+
+Implementation notes:
+- Use separate counter for factorial computation
+- Store current factorial value during computation
+- Use state to track whether computing factorial or multiplying
+- For n=1: return 1
+- For n=2: return 1! * 2! = 1 * 2 = 2
+- For n=3: return 1! * 2! * 3! = 1 * 2 * 6 = 12
+- For n=4: return 1! * 2! * 3! * 4! = 1 * 2 * 6 * 24 = 288
+- For n=5: would be 34560 (requires careful timing with 32-bit)

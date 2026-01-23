@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'guitar_hero_scoring' that computes maximum score for simplified Guitar Hero Star Power optimization.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] num_notes // number of notes (1-16)
+input [3:0] num_phrases // number of SP phrases (0-4)
+input [15:0] note_times [0:15] // note timestamps in milliseconds (max 65535)
+input [15:0] phrase_start [0:3] // SP phrase start times
+input [15:0] phrase_end [0:3] // SP phrase end times
+
+Outputs:
+output reg [15:0] max_score // maximum achievable score
+output reg done // high when computation complete
+
+Specify latency: Result valid 100 clock cycles after start asserted.
+
+Behavioral Description:
+The module computes maximum score by considering all possible activation strategies for Star Power.
+For small inputs (≤16 notes, ≤4 phrases), use a state machine approach:
+
+1. IDLE state: Wait for start signal
+2. LOAD state: Transfer input data to internal registers
+3. COMPUTE state: Evaluate all possible activation windows
+   - Base score = number of notes (all notes hit perfectly)
+   - For each possible activation start time (at note boundaries)
+   - Calculate how long SP can last (based on charging time)
+   - Count notes that fall within activation window
+   - Check if activation overlaps with any SP phrase (degrades that phrase)
+   - Track maximum bonus points achievable
+4. DONE state: Output result
+
+Key constraints:
+- SP can only be charged during phrases (time between start and end)
+- Total possible charge = sum of all phrase durations
+- Activation at time T lasts for C seconds where C is total charge accumulated
+- If activation overlaps any phrase (even partially), that phrase is disabled
+- Notes during active SP give +1 bonus point (2 points total vs 1)
+- Activation can start at any note boundary or during continuous charging
+
+Implementation strategy:
+- Use bounded loop unrolling for ≤16 iterations
+- Pre-calculate phrase durations
+- Enumerate possible activation start times (at each note)
+- For each start, calculate maximum possible charge (sum of non-overlapping phrase durations)
+- Count bonus notes for each activation window
+- Use comparators and adders to find maximum
+
+States: IDLE → LOAD → COMPUTE → DONE
+
+Edge cases to handle:
+- No SP phrases (score = n)
+- Single note
+- All notes within one phrase
+- Activation exactly at phrase end
+- Overlapping activations

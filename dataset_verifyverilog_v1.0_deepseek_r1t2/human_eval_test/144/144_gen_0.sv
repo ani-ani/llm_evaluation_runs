@@ -1,0 +1,1 @@
+module fraction_simplify(\n    input [15:0] x_num,\n    input [15:0] x_den,\n    input [15:0] n_num,\n    input [15:0] n_den,\n    output result\n);\n    wire [31:0] prod_num = x_num * n_num;\n    wire [31:0] prod_den = x_den * n_den;\n    assign result = (prod_den != 32'd0) && ((prod_num % prod_den) == 32'd0);\nendmodule

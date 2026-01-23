@@ -1,0 +1,42 @@
+Module: table_sort_check
+
+Description: Checks if a table of permutations can be sorted to identity using at most one row swap per row and one column swap. The module takes a fixed-size table (n rows, m columns) and outputs whether it's possible.
+
+Parameters:
+  N = 4  (number of rows)
+  M = 4  (number of columns)
+  DATA_WIDTH = 4  (bits per element, enough for values 1-16)
+
+Inputs:
+  clk         : Clock signal (rising edge triggered)
+  rst_n       : Active-low synchronous reset
+  start       : Start pulse (assert for 1 cycle to begin computation)
+  table_in    : Packed array of N*M elements, each DATA_WIDTH bits
+                Layout: table_in[(i*M + j)*DATA_WIDTH +: DATA_WIDTH] represents element at row i, column j
+
+Outputs:
+  result      : 1-bit result (1 = possible, 0 = impossible)
+  done        : Asserted high for 1 cycle when computation completes
+
+Internal Behavior:
+  - On start pulse, unpack table_in into internal registers
+  - Try all possible column swaps (including no swap) and check if all rows can be fixed with at most one swap
+  - For each row, count misplaced elements (where element != column_index+1)
+  - A row is fixable if misplaced count is 0 or 2
+  - For Option B (row swaps first then column swap), check if each row can be fixed to target with swapped columns
+  - Result is YES if any column swap works in either option
+
+Timing:
+  - Assert start for 1 clock cycle
+  - done will go high within N*M*M cycles (worst case)
+  - Sample result on the same cycle done is high
+
+Reset behavior:
+  - On rst_n=0: done=0, result=0, internal state cleared
+  - Minimum 2 clock cycles of reset required
+
+Implementation notes:
+  - Use state machine to iterate through column swaps and row checks
+  - Use counters for row and column indices
+  - Implement helper logic to count mismatches and check fixability
+  - The design should handle the scaled-down problem (N=4, M=4) which matches typical HDL constraints

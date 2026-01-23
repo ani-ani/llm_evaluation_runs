@@ -1,0 +1,1 @@
+module even_bit_set(\n    input [15:0] n,\n    output [15:0] result\n);\n\n// Set all even bits (bit positions 0, 2, 4, 6, 8, 10, 12, 14)\n// Note: bit positions are 0-indexed from LSB\n// Even positions: 0, 2, 4, 6, 8, 10, 12, 14\n// Mask: 0101 0101 0101 0101 = 0x5555\n\nassign result = n | 16'h5555;\n\nendmodule

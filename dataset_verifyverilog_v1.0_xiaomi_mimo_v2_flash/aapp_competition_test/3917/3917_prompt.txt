@@ -1,0 +1,42 @@
+module min_distance (
+    input [3:0] n,          // 2..8
+    input signed [7:0] a0, a1, a2, a3, a4, a5, a6, a7,
+    output reg [31:0] result
+);
+    // Prefix sums (16 bits sufficient for 8*100=800)
+    wire signed [15:0] p [0:8];
+    assign p[0] = 0;
+    assign p[1] = a0;
+    assign p[2] = a0 + a1;
+    assign p[3] = a0 + a1 + a2;
+    assign p[4] = a0 + a1 + a2 + a3;
+    assign p[5] = a0 + a1 + a2 + a3 + a4;
+    assign p[6] = a0 + a1 + a2 + a3 + a4 + a5;
+    assign p[7] = a0 + a1 + a2 + a3 + a4 + a5 + a6;
+    assign p[8] = a0 + a1 + a2 + a3 + a4 + a5 + a6 + a7;
+
+    // Compute all pairwise distances
+    wire [31:0] dist [1:8][1:8];
+    genvar i, j;
+    generate
+        for (i=1; i<=8; i=i+1) begin : gen_i
+            for (j=i+1; j<=8; j=j+1) begin : gen_j
+                wire signed [3:0] dx = i - j;
+                wire signed [15:0] dy = p[i] - p[j];
+                assign dist[i][j] = dx*dx + dy*dy;
+            end
+        end
+    endgenerate
+
+    // Find minimum among valid pairs (i<=n, j<=n)
+    integer k, l;
+    always @(*) begin
+        result = 32'hFFFF_FFFF;
+        for (k=1; k<=8; k=k+1) begin
+            for (l=k+1; l<=8; l=l+1) begin
+                if (k <= n && l <= n && dist[k][l] < result)
+                    result = dist[k][l];
+            end
+        end
+    end
+endmodule

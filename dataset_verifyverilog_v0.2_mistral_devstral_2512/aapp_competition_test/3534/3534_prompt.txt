@@ -1,0 +1,79 @@
+Design a sequential Verilog module named 'mirka_optimizer' that solves a simplified version of the Mirka multi-piano problem.
+
+Problem Overview:
+Given a small sequence of up to 16 numbers (each 16-bit signed), find the optimal step size K and maximum correct notes count. Mirka starts with the correct first note, then for each subsequent note:
+- If composition increased, she plays previous + K
+- If composition decreased, she plays previous - K
+- If same, she repeats previous
+
+Module Interface:
+module mirka_optimizer (
+    input clk,                   // Clock signal
+    input rst_n,                 // Active-low reset
+    input start,                 // Start computation
+    input [3:0] num_notes,       // Number of notes (N, max 16)
+    input [15:0] note_data,      // Current note input (streamed)
+    input note_valid,            // Note data valid
+    output reg [15:0] max_correct, // Maximum correct notes found
+    output reg [31:0] best_k,    // Best K value (0 to 2000000000)
+    output reg done              // Computation complete
+);
+
+Key Details:
+1. Input Process: Notes are streamed in via note_data note_valid. Store in internal buffer.
+2. Processing: After receiving all notes, evaluate possible K values.
+3. K Candidates: Only consider K values from absolute differences between adjacent notes (|a[i+1] - a[i]|). Also consider K=0.
+4. Simulation: For each candidate K, simulate Mirka's playing and count matches.
+5. Output: Return max_correct and best_k.
+
+State Machine States:
+- IDLE: Wait for start, reset buffer index
+- COLLECT: Read notes into buffer (max 16 entries)
+- CANDIDATE: Generate K candidates from adjacent differences
+- SIMULATE: For current K, simulate playing and count matches
+- COMPARE: Compare with current best, update if better
+- DONE: Set done flag
+
+Latency: Approximately 16 + 16*16 + 16 clock cycles after start (408 cycles max).
+
+Internal Registers:
+- notes[0:15][15:0]: Buffer for input notes
+- k_values[0:15][31:0]: Buffer for candidate K values
+- k_count: Number of unique K candidates
+- current_k_index: Currently testing K
+- current_correct: Matches for current K
+- max_correct: Best matches found
+- best_k: Best K value found
+- sim_index: Simulation loop counter
+- prev_played: Previously played key
+- correct_count: Counter for matches
+
+Behavioral Description:
+1. Reset all counters and buffers
+2. Collect up to 16 notes
+3. Generate candidate K values: For each i from 0 to N-2, calculate |notes[i+1] - notes[i]|. Store unique non-zero values. Also add K=0.
+4. For each K, simulate:
+   - Initialize played = notes[0], correct = 1
+   - For i=1 to N-1:
+     - If notes[i] > notes[i-1]: expected = played + K
+     - Else if notes[i] < notes[i-1]: expected = played - K
+     - Else: expected = played
+     - If expected == notes[i]: correct++
+     - played = expected
+   - Update max_correct and best_k if correct is higher
+5. Output results
+
+Constraints:
+- K can be 0 to 2,000,000,000 (fits in 32 bits)
+- Notes are 16-bit signed (-32768 to 32767)
+- Max N = 16
+- Result always exists
+
+Example:
+Input: [1, 2, 0, 3, 1]
+K=0: Plays [1, 1, 1, 1, 1] -> matches 1
+K=1: Plays [1, 2, 1, 2, 1] -> matches 2
+K=2: Plays [1, 2, 0, 2, 0] -> matches 3 (correct)
+K=3: Plays [1, 2, -1, 2, -1] -> matches 2
+
+Return: max_correct = 3, best_k = 2

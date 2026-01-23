@@ -1,0 +1,61 @@
+Design a sequential Verilog module named 'cups_and_key_solver' that implements the probability calculation for the cups and key game.
+
+The module processes a sequence of inputs representing the array elements $a_1, a_2, ..., a_k$ to compute $n = \prod a_i$. It needs to determine:
+1. Parity of $n$ (even if any $a_i$ is even).
+2. $X = 2^{n-1} \pmod{10^9+7}$.
+3. The result fractions: If $n$ is even, $(X+1)/3$ over $3X$; if $n$ is odd, $(X-1)/3$ over $3X$. (Note: Original solution formula maps to $(2^{n-1} \pm 1)/3$ over $2^{n-1}$, so intermediate calc is $Y = (X \pm 1) \times \text{inv}(3) \pmod{10^9+7}$).
+
+**Interface:**
+- **Clock and Reset**: Standard synchronous logic.
+- **Streaming Input**: 64-bit data `a_in`, valid signal `valid_in`, and `last_in` flag to indicate the final element.
+- **Output**: `result_x` and `result_y` (both 32-bit), `done` flag.
+
+**Internal Logic:**
+- **Accumulator**: A 32-bit register `mod_acc` holding $n \pmod{10^9+6}$. On each valid input, update: `mod_acc = (mod_acc * (a_in % (10^9+6))) % (10^9+6)`.
+- **Parity Flag**: A single bit register `parity_flag`. It should be set to 1 (even) if `parity_flag` is currently 1 OR if `a_in[0]` is 0.
+- **Control**: When `last_in` is high, trigger the final calculation.
+- **Final Calculation**:
+  1. Calculate exponent: `exp = (mod_acc - 1 + (10^9+6)) % (10^9+6)`.
+  2. Calculate $X = 2^{exp} \pmod{10^9+7}$ using a modular exponentiation state machine.
+  3. Calculate $N = (parity_flag) ? (X + 1) \% MOD : (X - 1 + MOD) \% MOD$.
+  4. Calculate $Num = (N \times \text{inv}(3)) \% MOD$. Note: The Python solutions output $Num/Denom$ where $Num = (X \pm 1)/3$ and $Denom = X$. 
+  5. Wait, looking at test cases: Input 1 2 -> Output 1/2. Here n=2 (even). X = 2^(1) = 2. X+1=3. 3/3=1. Output 1/2. So numerator is 1, denominator is 2. Formula is $\frac{2^{n-1}+1}{3 \cdot 2^{n-1}}$ is wrong. It is $\frac{1}{2}$ vs $\frac{1}{3} + \frac{1}{2 \cdot 3^{n-1}}$? No. 
+  Let's trust the derived formula from the Python code logic which matches the problem: $Num = (X \pm 1) \times \text{inv}(3) \pmod{MOD}$, $Den = X$.
+  Wait, Example 1: n=2. X=2. Num=(2+1)/3=1. Den=2. Correct. 
+  Example 2: n=1. X=1. Num=(1-1)/3=0. Den=1. Correct.
+  So logic is: 
+  1. Compute $X = 2^{n-1} \pmod{MOD}$.
+  2. If even: $N = (X+1) \times \text{inv}(3)$.
+  3. If odd: $N = (X-1) \times \text{inv}(3)$.
+  4. Output $N$ and $X$.
+
+**State Machine:**
+`IDLE`: Wait for `valid_in`. Capture parity. Initialize `mod_acc`. If `last_in`, go to `CALC_EXP`. 
+`PROCESS_INPUT`: Update `mod_acc`. Update parity. If `last_in`, go to `CALC_EXP`. 
+`CALC_EXP`: Iterate to compute $2^{exp}$. Use binary exponentiation or iterative squaring. 
+`CALC_FINAL`: Compute $N$ and output.
+`DONE`: Assert `done`.
+
+**Bit Widths:**
+- `a_in`: [63:0]
+- `mod_acc`: [31:0] (holds 0 to 10^9+6)
+- `exp`: [31:0]
+- `X`: [31:0]
+- `N`: [31:0]
+- `result_x`, `result_y`: [31:0]
+
+**Module Definition:**
+module cups_and_key_solver (
+    input wire clk,
+    input wire rst_n,
+    input wire valid_in,
+    input wire last_in,
+    input wire [63:0] a_in,
+    output reg [31:0] result_x,
+    output reg [31:0] result_y,
+    output reg done
+);
+
+// ... implementation details ...
+
+endmodule

@@ -1,0 +1,225 @@
+module transit_card (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] l,          // number of price levels (1-4)
+    input wire [9:0] p0, p1, p2, p3, // prices
+    input wire [3:0] d0, d1, d2,     // durations for first three levels
+    input wire [3:0] n,          // number of away intervals (0-4)
+    input wire [3:0] away_a0, away_a1, away_a2, away_a3, // away start days
+    input wire [3:0] away_b0, away_b1, away_b2, away_b3, // away end days
+    input wire [4:0] t,          // total days (1-16)
+    output reg [15:0] result,
+    output reg done
+);
+
+// Internal registers and wires
+reg [3:0] state;
+reg [3:0] next_state;
+
+// State definitions
+localparam IDLE = 4'd0;
+localparam COMPUTE_SEGMENTS = 4'd1;
+localparam DP_INIT = 4'd2;
+localparam DP_OUTER_LOOP = 4'd3;
+localparam DP_INNER_LOOP = 4'd4;
+localparam COMPUTE_LENGTH = 4'd5;
+localparam COMPUTE_COST_START = 4'd6;
+localparam COMPUTE_COST_LEVEL = 4'd7;
+localparam UPDATE_DP = 4'd8;
+localparam NEXT_J = 4'd9;
+localparam NEXT_I = 4'd10;
+localparam DONE = 4'd11;
+
+// Data storage
+reg [4:0] seg [0:4];  // present segments, max 5
+reg [4:0] away [0:3]; // away segments, max 4
+reg [9:0] cum_dur [0:4]; // cumulative durations, up to 4 levels
+reg [15:0] dp [0:5];  // dp[0] to dp[5]
+reg [3:0] m;          // number of present segments
+reg [3:0] i, j;       // loop counters
+reg [4:0] L;          // length for current interval
+reg [15:0] cost_reg;  // cost for current length
+reg [4:0] remaining;  // remaining days in cost computation
+reg [3:0] level;      // current price level
+
+// Arrays for prices and durations
+wire [9:0] p_array [0:3];
+assign p_array[0] = p0;
+assign p_array[1] = p1;
+assign p_array[2] = p2;
+assign p_array[3] = p3;
+
+wire [3:0] d_array [0:2];
+assign d_array[0] = d0;
+assign d_array[1] = d1;
+assign d_array[2] = d2;
+
+// Next state logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// State transition and datapath
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: begin
+            if (start) begin
+                next_state = COMPUTE_SEGMENTS;
+            end
+        end
+
+        COMPUTE_SEGMENTS: begin
+            // Compute segments and away segments
+            if (n == 0) begin
+                m = 1;
+                seg[0] = t;
+            end else begin
+                m = n + 1;
+                // Compute seg[0]
+                seg[0] = away_a0 - 1;
+                // Compute away[0] and seg[1] if n>=1
+                if (n >= 1) begin
+                    away[0] = away_b0 - away_a0 + 1;
+                    if (n >= 2) begin
+                        seg[1] = away_a1 - away_b0 - 1;
+                        away[1] = away_b1 - away_a1 + 1;
+                        if (n >= 3) begin
+                            seg[2] = away_a2 - away_b1 - 1;
+                            away[2] = away_b2 - away_a2 + 1;
+                            if (n >= 4) begin
+                                seg[3] = away_a3 - away_b2 - 1;
+                                away[3] = away_b3 - away_a3 + 1;
+                                seg[4] = t - away_b3;
+                            end else begin // n==3
+                                seg[3] = t - away_b2;
+                            end
+                        end else begin // n==2
+                            seg[2] = t - away_b1;
+                        end
+                    end else begin // n==1
+                        seg[1] = t - away_b0;
+                    end
+                end
+            end
+            // Compute cumulative durations
+            cum_dur[0] = 0;
+            if (l >= 2) cum_dur[1] = d0;
+            if (l >= 3) cum_dur[2] = d0 + d1;
+            if (l >= 4) cum_dur[3] = d0 + d1 + d2;
+            next_state = DP_INIT;
+        end
+
+        DP_INIT: begin
+            dp[0] = 0;
+            i = 1;
+            next_state = DP_OUTER_LOOP;
+        end
+
+        DP_OUTER_LOOP: begin
+            if (i <= m) begin
+                dp[i] = 16'hFFFF; // infinity
+                j = 0;
+                next_state = DP_INNER_LOOP;
+            end else begin
+                next_state = DONE;
+            end
+        end
+
+        DP_INNER_LOOP: begin
+            if (j < i) begin
+                next_state = COMPUTE_LENGTH;
+            end else begin
+                next_state = NEXT_I;
+            end
+        end
+
+        COMPUTE_LENGTH: begin
+            // Compute L for current j and i
+            L = 0;
+            // Add present segments from j to i
+            for (integer k = j; k <= i; k = k + 1) begin
+                L = L + seg[k];
+            end
+            // Add away segments from j to i-1
+            for (integer k = j; k < i; k = k + 1) begin
+                L = L + away[k];
+            end
+            next_state = COMPUTE_COST_START;
+        end
+
+        COMPUTE_COST_START: begin
+            cost_reg = 0;
+            remaining = L;
+            level = 0;
+            next_state = COMPUTE_COST_LEVEL;
+        end
+
+        COMPUTE_COST_LEVEL: begin
+            if (level < l) begin
+                reg [4:0] days_in_level;
+                if (level < l-1) begin
+                    days_in_level = (remaining < d_array[level]) ? remaining : d_array[level];
+                end else begin
+                    days_in_level = remaining;
+                end
+                cost_reg = cost_reg + days_in_level * p_array[level];
+                remaining = remaining - days_in_level;
+                level = level + 1;
+                if (remaining > 0 && level < l) begin
+                    next_state = COMPUTE_COST_LEVEL;
+                end else begin
+                    next_state = UPDATE_DP;
+                end
+            end else begin
+                next_state = UPDATE_DP;
+            end
+        end
+
+        UPDATE_DP: begin
+            if (dp[j] + cost_reg < dp[i]) begin
+                dp[i] = dp[j] + cost_reg;
+            end
+            next_state = NEXT_J;
+        end
+
+        NEXT_J: begin
+            j = j + 1;
+            next_state = DP_INNER_LOOP;
+        end
+
+        NEXT_I: begin
+            i = i + 1;
+            next_state = DP_OUTER_LOOP;
+        end
+
+        DONE: begin
+            result = dp[m];
+            done = 1;
+        end
+
+        default: next_state = IDLE;
+    endcase
+end
+
+// Output assignments
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        done <= 0;
+        result <= 0;
+    end else begin
+        if (state == DONE) begin
+            done <= 1;
+            result <= dp[m];
+        end else begin
+            done <= 0;
+        end
+    end
+end
+
+endmodule

@@ -1,0 +1,124 @@
+// Module: palindrome_count
+// Description: Counts the number of palindromic strings of length 2N over alphabet {A,B} that contain the given string S as a subsequence.
+// Parameters:
+//   N: length of S (and half-length of palindrome), max 8 for synthesis, but design supports up to 8.
+// Inputs:
+//   clk: clock, rising edge
+//   rst_n: active-low reset
+//   start: start signal, pulse high for one cycle to begin computation
+//   S: packed vector of N bits, where S[i] is the i-th character of S (0 for A, 1 for B)
+// Outputs:
+//   result: 32-bit count modulo 1000000007
+//   done: asserted high for one cycle when result is ready
+//
+// Behavior:
+//   - When start is asserted, the module computes the count by enumerating all possible first halves (2^N possibilities).
+//   - For each first half, it constructs the palindrome of length 2N and checks if S is a subsequence.
+//   - The check is done by scanning the palindrome and greedily matching S.
+//   - After processing all first halves, the count modulo 1000000007 is output and done is asserted.
+//
+// Implementation notes:
+//   - The module uses a state machine with states: IDLE, SETUP, SCAN, UPDATE_COUNT, FINISH.
+//   - The first half is stored in a register 'first_half' of width N bits, ranging from 0 to 2^N-1.
+//   - For each first half, 'pos' scans from 0 to 2N-1, and 'matched' tracks how many characters of S have been matched.
+//   - The current character of the palindrome is determined by 'pos': if pos < N, it is first_half[pos]; else it is first_half[2*N-1-pos].
+//   - If the current character equals S[matched] (and matched < N), then matched is incremented.
+//   - After scanning all 2N positions, if matched == N, the count is incremented.
+//   - The count is kept modulo 1000000007.
+//
+// Timing:
+//   - The computation takes (2^N) * (2N) clock cycles plus some overhead.
+//   - For N=8, this is 256*16=4096 cycles.
+//
+// Reset:
+//   - On reset, all registers are cleared, state returns to IDLE, done=0, result=0.
+
+module palindrome_count #(parameter N=4) (
+    input clk,
+    input rst_n,
+    input start,
+    input [N-1:0] S,
+    output reg [31:0] result,
+    output reg done
+);
+
+// Constants
+localparam MOD = 1000000007;
+localparam MAX_FIRST_HALF = (1 << N) - 1;
+
+// States
+localparam IDLE = 0;
+localparam SETUP = 1;
+localparam SCAN = 2;
+localparam UPDATE_COUNT = 3;
+localparam FINISH = 4;
+
+reg [2:0] state;
+reg [N-1:0] first_half;
+reg [4:0] pos;          // position in palindrome (0..2N-1)
+reg [N-1:0] matched;
+reg [31:0] count;
+
+wire char;
+assign char = (pos < N) ? first_half[pos] : first_half[2*N-1-pos];
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 0;
+        done <= 0;
+        count <= 0;
+        first_half <= 0;
+        pos <= 0;
+        matched <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= SETUP;
+                    count <= 0;
+                    first_half <= 0;
+                end
+            end
+
+            SETUP: begin
+                pos <= 0;
+                matched <= 0;
+                state <= SCAN;
+            end
+
+            SCAN: begin
+                if (matched < N && char == S[matched]) begin
+                    matched <= matched + 1;
+                end
+                pos <= pos + 1;
+                if (pos == 2*N - 1) begin
+                    state <= UPDATE_COUNT;
+                end
+            end
+
+            UPDATE_COUNT: begin
+                if (matched == N) begin
+                    count <= count + 1;
+                end
+                if (first_half == MAX_FIRST_HALF) begin
+                    state <= FINISH;
+                end else begin
+                    first_half <= first_half + 1;
+                    state <= SETUP;
+                end
+            end
+
+            FINISH: begin
+                result <= count % MOD;
+                done <= 1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

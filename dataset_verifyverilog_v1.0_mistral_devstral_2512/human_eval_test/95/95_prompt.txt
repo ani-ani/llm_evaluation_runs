@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'check_dict_case' that validates if all keys in a simulated dictionary are either all lowercase or all uppercase strings.
+
+**Problem Adaptation:**
+- The dictionary is represented as an array of up to 8 entries.
+- Each key is a fixed-length 8-character string (8 bytes).
+- Special integer value `0` represents a non-string key or invalid data.
+- The module iterates through entries and checks case consistency.
+
+**Interface:**
+Inputs:
+  input clk          // Clock signal
+  input rst_n        // Active-low reset
+  input start        // Start computation (pulse high)
+  input [63:0] keys [0:7]  // 8 keys, each 64-bit (8 bytes). Index 0 is MSB of first key.
+  input [2:0] num_keys     // Number of valid keys (0 to 7).
+
+Outputs:
+  output reg result   // 1: All keys are valid and consistent case, 0: Otherwise
+  output reg done     // High for 1 cycle when computation is complete
+
+**Behavior:**
+1. On reset, `result` and `done` go to 0.
+2. On `start` pulse, reset internal counters and state.
+3. Iterate through `num_keys` entries:
+   - Check if the key is a valid string (non-zero bytes).
+   - Determine if the key is ALL lowercase, ALL uppercase, or MIXED.
+   - If any key is mixed, or contains non-alphabetic characters (except null termination), set result to 0.
+   - Maintain consistency: If the first key is lowercase, all subsequent must be lowercase (or empty). If uppercase, all must be uppercase.
+4. `done` goes high for 1 cycle when finished. Result is valid then.
+5. If `num_keys` is 0, `result` should be 0.
+
+**Constraints:**
+- Use a Moore FSM with states: IDLE, CHECK_LOOP, VALIDATE, COMPLETE.
+- Keys are provided as 64-bit values where bytes [63:56] is char 0, [55:48] is char 1, ... [7:0] is char 7.
+- Only ASCII 'a'-'z' and 'A'-'Z' are valid alphabetic characters. Null (0) is allowed for padding/empty keys.
+- Non-string keys (represented by integer `0` in the testbench) are treated as invalid.

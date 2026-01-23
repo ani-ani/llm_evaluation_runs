@@ -1,0 +1,66 @@
+Design a sequential Verilog module named 'priority_ceiling_scheduler' that simulates the execution of multiple tasks according to the Priority Ceiling Protocol.
+
+### Module Specifications
+
+**Module Name:** `priority_ceiling_scheduler`
+
+**Parameters:**
+- `NUM_TASKS**: 4 (maximum 4 tasks)
+- `NUM_RESOURCES`: 4 (maximum 4 resources)
+- `MAX_INSTRUCTIONS`: 8 (maximum 8 instruction blocks per task)
+- `MAX_COMPUTE`: 10 (maximum compute duration)
+
+**Inputs:**
+- `clk`: System clock
+- `rst_n`: Active-low reset
+- `start`: High to start the simulation
+- `config_valid`: High when configuration data is valid
+- `task_start_time [NUM_TASKS-1:0][15:0]`: Start time for each task
+- `task_priority [NUM_TASKS-1:0][3:0]`: Base priority for each task (unique, 1 is highest)
+- `task_inst_type [NUM_TASKS-1:0][MAX_INSTRUCTIONS-1:0][1:0]`: Instruction type (0: compute, 1: lock, 2: unlock)
+- `task_inst_data [NUM_TASKS-1:0][MAX_INSTRUCTIONS-1:0][3:0]`: Instruction data (compute duration or resource ID)
+- `task_inst_count [NUM_TASKS-1:0][3:0]`: Number of instructions for each task
+- `resource_ceiling [NUM_RESOURCES-1:0][3:0]`: Priority ceiling for each resource
+
+**Outputs:**
+- `result_valid`: High when all tasks have completed
+- `task_completion_time [NUM_TASKS-1:0][31:0]`: The clock time when each task completed
+- `current_clock [31:0]`: The current simulation time (for debugging)
+
+**Behavioral Description:**
+The module implements the scheduler loop:
+1. **Step 1 (Identify Running):** Checks if `current_clock >= task_start_time` and if the task has remaining instructions.
+2. **Step 2 (Update Priorities & Blocking):**
+   - Iteratively updates `current_priority` of each task (max of base priority and priorities of tasks it blocks).
+   - Determines `blocked` status: A task is blocked if its next instruction is Lock and:
+     - The resource is owned by another task, OR
+     - Any owned resource has a ceiling >= current priority of the task.
+   - If blocked, the task inherits the priority of the task blocking it.
+3. **Step 3 (Execute):**
+   - Selects the non-blocked running task with the highest current priority.
+   - If a task is selected:
+     - If Compute: Decrement counter. If counter reaches 0, move to next instruction. Increment `current_clock` by 1.
+     - If Lock: Mark resource as owned by task. Move to next instruction. Do NOT increment `current_clock`.
+     - If Unlock: Mark resource as free. Move to next instruction. Do NOT increment `current_clock`.
+     - If no more instructions: Mark task as complete. Output completion time = `current_clock`.
+   - If no task selected (idle): Increment `current_clock` by 1.
+
+**Implementation Details:**
+- Use a FSM to control the simulation loop (IDLE, LOAD_CONFIG, UPDATE_STATE, EXECUTE, FINISHED).
+- Use a loop counter (0 to NUM_TASKS-1) for the priority update phase.
+- Use a helper counter for the compute instruction duration.
+- All arithmetic is standard integer. Output times are in `current_clock` cycles.
+- Bit widths: `current_clock` 32-bit,TASKs 31
+- The module must handle the circular dependency of priority calculation by iterating until stable (or fixed passes given small N).
+
+**State Machine:**
+- `IDLE`: Wait for `start` signal.
+- `UPDATE_RUNNING`: Check which tasks are active based on clock and start time.
+- `CALC_PRIORITY`: Loop to update current priorities based on blocking.
+- `CHECK_BLOCKING`: Determine which tasks are blocked.
+- `EXECUTE`: Perform the instruction of the highest priority non-blocked task.
+- `DONE`: All tasks finished, assert `result_valid`.
+
+**Note:** The design assumes a simplified instruction interface where `task_inst_type` and `task_inst_data` are pre-loaded into registers. The computation involves multiple cycles per simulation step.
+
+**Latency:** The simulation runs cycle-by-cycle. Expect long latency proportional to the total compute time (max ~1000 cycles for test cases).

@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'triangle_area' that computes the area of a triangle given three side lengths using Heron's formula with fixed-point arithmetic.
+
+**Algorithm:**
+1. Validate triangle: Check if a+b>c, a+c>b, b+c>a (using 9-bit addition to prevent overflow)
+2. If invalid, return -1 (represented as 0xFFFFFFFF in Q16.16)
+3. If valid, compute area using Heron's formula: sqrt(s*(s-a)*(s-b)*(s-c)) where s=(a+b+c)/2
+4. Convert inputs to Q16.16 format (multiply by 65536)
+5. Use integer square root with binary search (16 cycles)
+6. Round to 2 decimal places (Q16.16 format provides 1/65536 precision)
+
+**Inputs:**
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] a // side length a (0-255)
+input [7:0] b // side length b (0-255)
+input [7:0] c // side length c (0-255)
+
+**Outputs:**
+output reg [31:0] result // Q16.16 fixed-point result (or 0xFFFFFFFF for invalid)
+output reg done // high when computation complete
+
+**Latency:** Maximum 50 clock cycles after start asserted.
+
+**State Machine:**
+- IDLE: Wait for start signal
+- VALIDATE: Check triangle validity (a+b>c, a+c>b, b+c>a) - 3 cycles
+- COMPUTE_S: Calculate s = (a+b+c)/2 in Q16.16 format - 2 cycles
+- COMPUTE_PRODUCT: Calculate P = s*(s-a)*(s-b)*(s-c) - 4 cycles
+- SQRT: Compute integer sqrt(P) using binary search (max 16 iterations) - 18 cycles
+- DONE: Set done flag high - 1 cycle
+
+**Fixed-Point Details:**
+- All internal calculations in Q16.16 format
+- Inputs scaled by 65536 (a_q16 = a << 16)
+- Final result represents area with 2 decimal places precision
+- For invalid triangles, result = 32'hFFFFFFFF
+
+**Implementation Notes:**
+- Use combinational logic for validation (a+b, a+c, b+c comparisons)
+- Use sequential multipliers for product calculation
+- Use iterative binary search for sqrt: start with high = product, low = 0, mid = (high+low)/2
+- Store intermediate values in registers
+- Each operation takes 1-4 cycles depending on complexity

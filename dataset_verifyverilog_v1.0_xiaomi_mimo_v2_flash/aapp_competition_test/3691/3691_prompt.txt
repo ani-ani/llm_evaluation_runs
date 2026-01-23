@@ -1,0 +1,86 @@
+module data_collection (
+  input wire clk,
+  input wire rst_n,
+  input wire start,
+  input wire [63:0] x0, y0, ax, ay, bx, by, xs, ys, t,
+  output reg [63:0] result,
+  output reg done
+);
+  parameter MAX_NODES = 100;
+  localparam IDLE=0, GENERATE=1, COMPUTE_DIST=2, DOUBLE_LOOP=3, DONE=4;
+  reg [2:0] state;
+  reg [6:0] node_idx, i, j;
+  reg [63:0] x[0:MAX_NODES-1], y[0:MAX_NODES-1];
+  reg [63:0] dist_prefix[0:MAX_NODES-1];
+  reg [63:0] max_count;
+  
+  wire [63:0] abs_x_i = (xs >= x[i]) ? (xs - x[i]) : (x[i] - xs);
+  wire [63:0] abs_y_i = (ys >= y[i]) ? (ys - y[i]) : (y[i] - ys);
+  wire [63:0] dist_i = abs_x_i + abs_y_i;
+  wire [63:0] abs_x_j = (xs >= x[j]) ? (xs - x[j]) : (x[j] - xs);
+  wire [63:0] abs_y_j = (ys >= y[j]) ? (ys - y[j]) : (y[j] - ys);
+  wire [63:0] dist_j = abs_x_j + abs_y_j;
+  wire [63:0] travel = dist_prefix[j] - dist_prefix[i];
+  wire [63:0] total1 = dist_i + travel;
+  wire [63:0] total2 = dist_j + travel;
+  wire condition = (total1 <= t) || (total2 <= t);
+  wire [63:0] count = j - i + 1;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      state <= IDLE;
+      done <= 0;
+      result <= 0;
+      node_idx <= 0;
+      i <= 0;
+      j <= 0;
+      max_count <= 0;
+    end else begin
+      case (state)
+        IDLE: if (start) begin
+          x[0] <= x0;
+          y[0] <= y0;
+          dist_prefix[0] <= 0;
+          node_idx <= 1;
+          state <= GENERATE;
+          done <= 0;
+        end
+        GENERATE: if (node_idx < MAX_NODES) begin
+          x[node_idx] <= ax * x[node_idx-1] + bx;
+          y[node_idx] <= ay * y[node_idx-1] + by;
+          state <= COMPUTE_DIST;
+        end else begin
+          state <= DOUBLE_LOOP;
+          i <= 0;
+          j <= 0;
+          max_count <= 0;
+        end
+        COMPUTE_DIST: begin
+          // Manhattan distance between node_idx-1 and node_idx
+          dist_prefix[node_idx] <= dist_prefix[node_idx-1] + 
+            ((x[node_idx] >= x[node_idx-1]) ? (x[node_idx] - x[node_idx-1]) : (x[node_idx-1] - x[node_idx])) +
+            ((y[node_idx] >= y[node_idx-1]) ? (y[node_idx] - y[node_idx-1]) : (y[node_idx-1] - y[node_idx]));
+          node_idx <= node_idx + 1;
+          state <= GENERATE;
+        end
+        DOUBLE_LOOP: begin
+          if (condition) 
+            max_count <= (count > max_count) ? count : max_count;
+          if (j < MAX_NODES-1) 
+            j <= j + 1;
+          else begin
+            j <= i + 1;
+            if (i < MAX_NODES-1) 
+              i <= i + 1;
+            else 
+              state <= DONE;
+          end
+        end
+        DONE: begin
+          result <= max_count;
+          done <= 1;
+        end
+      endcase
+    end
+  end
+endmodule

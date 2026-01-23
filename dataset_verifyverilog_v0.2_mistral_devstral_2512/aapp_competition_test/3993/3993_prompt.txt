@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'special_discard_counter' that implements the logic to count operations for discarding special items from paginated positions.
+
+The problem involves N items indexed 1 to N, paginated with page size K. Initially, item i is at position i. When special items at current positions are discarded, items below shift up. The process repeats: find the first page containing a special item, discard all special items on that page, wait for shifts, repeat until no special items remain.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [63:0] n_items // Total number of items (up to 10^18, but we limit internal logic)
+input [3:0] num_special // Number of special items (N <= 16)
+input [63:0] k_page // Page size K
+input [15:0][63:0] special_indices // Array of 16 special item original indices (p_1 to p_m). Unused entries should be 0.
+
+Outputs:
+output reg [7:0] result // Number of operations required
+output reg done // High when computation complete
+
+Implementation Details:
+- The module should use a state machine with states: IDLE, CHECK_PAGE, REMOVE_ITEMS, WAIT_SHIFT, DONE.
+- Since N is small (<=16), we can iterate through the process step-by-step.
+- We need to track current positions of items. Since items shift up, we can track how many items have been removed below a certain index.
+- However, tracking all 16 positions dynamically is complex. Instead, we can process the sorted list of special items.
+- Let's use a state machine that simulates the operations:
+  1. Find the first page containing a special item.
+  2. Identify all special items on that page.
+  3. Count 1 operation.
+  4. Remove these items.
+  5. Repeat.
+- To handle the large index values (10^18), we use 64-bit arithmetic.
+- The 'current position' of a special item `p_i` after `d` items before it have been removed is `p_i - d`.
+- The page number of a current position `pos` is `(pos - 1) // k_page`.
+
+The module should compute the result in `result` and assert `done` when finished.
+Specify latency: Result valid 50 clock cycles after start asserted (assuming worst case 16 items).
+Use state machine with states: IDLE, FIND_PAGE, REMOVE_ITEMS, DONE.

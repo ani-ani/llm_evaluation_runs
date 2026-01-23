@@ -1,0 +1,32 @@
+Design a sequential Verilog module named 'ice_cream_optimizer' that solves a scaled-down version of the ice cream optimization problem.
+
+Problem Adaptation:
+- Maximum scoops n = 16 (scaled from 2*10^9)
+- Flavours k = 4 (scaled from 100)
+- Tastiness and costs are integers, but final ratio is calculated in Q8.8 fixed-point format
+- Algorithm: For each scoop (1 to n), greedily select the flavour that maximizes (new_tastiness / new_cost) compared to the previous state.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] num_scoops // Max scoops (scaled to 0-16)
+input [7:0] cost_per_scoop // Parameter 'a'
+input [7:0] cost_cone // Parameter 'b'
+input [3:0][7:0] base_tastiness // Array of 4 base tastiness values (t_i)
+input [3:0][3:0][15:0] interaction // 4x4 matrix of u_{i,j} (16-bit to handle sums)
+
+Outputs:
+output reg [15:0] max_ratio // Result in Q8.8 format (integer.fraction)
+output reg done // High when computation complete
+
+Behavior:
+1. Initialize with 0 scoops: tastiness=0, cost=cost_cone
+2. For each scoop from 1 to num_scoops:
+   - Calculate potential new tastiness and cost for each flavour
+   - Calculate ratio = (tastiness + interaction + base) / (cost + cost_per_scoop)
+   - Select flavour that maximizes this ratio
+   - Update state with selected flavour
+3. Output the best ratio found during the process (not just at the end)
+4. Latency: Approximately 4*16 = 64 clock cycles plus overhead
+5. Use state machine: IDLE, INIT, CALCULATE_SCOOP, UPDATE_STATE, DONE

@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'nephren_solver' that implements the logic to find the k-th character of the recursively defined string f(n).
+
+The string definitions are:
+- f_0 = "What are you doing at the end of the world? Are you busy? Will you save us?"
+- f_i = "What are you doing while sending "" + f_{i-1} + ""? Are you busy? Will you send "" + f_{i-1} + ""?"
+
+The module must handle queries (n, k) where n is the recursion level and k is the 1-based index.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing a new query
+input [19:0] n_in // Recursion level (0 to 10^5)
+input [59:0] k_in // Index k (1 to 10^18, represented as 60-bit unsigned)
+
+Outputs:
+output reg [7:0] char_out // The ASCII character found (0 if dot '.')
+output reg done // High when computation is complete
+
+Behavior:
+1. The module uses a state machine with states IDLE, PROCESSING, and DONE.
+2. In PROCESSING state, it iteratively determines the segment of the current f(n) where k falls.
+3. Use pre-computed constants for string lengths:
+   - len_base = 75 (length of f_0)
+   - len_prefix = 34 (length of "What are you doing while sending "")
+   - len_mid = 32 (length of ""? Are you busy? Will you send "")
+   - len_suffix = 2 (length of ""?")
+4. Use a lookup table or formula for f(n) length (capped at 10^18): f_len[n] = min(10^18, 2 * f_len[n-1] + 68).
+   - For n > 55, treat length as infinite (or > 10^18).
+5. Algorithm Logic:
+   - If n == 0: Check if k <= 75. If yes, index into f_0 text. If no, output '.'.
+   - If n > 0:
+     - Check if k <= len_prefix. If yes, index into prefix string.
+     - Else k -= len_prefix.
+     - Check if f_len[n-1] >= k. If yes, set n = n-1 and repeat.
+     - Else k -= f_len[n-1].
+     - Check if k <= len_mid. If yes, index into mid string.
+     - Else k -= len_mid.
+     - Check if f_len[n-1] >= k. If yes, set n = n-1 and repeat.
+     - Else k -= f_len[n-1].
+     - Check if k <= len_suffix. If yes, index into suffix string.
+     - Else output '.'.
+6. The state machine should process one recursion level per cycle (or a few cycles) to keep the design synchronous and pipelined.
+7. Strings f_0, prefix, mid, and suffix must be stored in ROM (Case statements or Readmemh).
+8. Latency: Dependent on n (approx n cycles + overhead). Output valid when done is high.

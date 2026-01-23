@@ -1,0 +1,109 @@
+module rescue_rangers(
+    input clk, rst_n, start,
+    input [15:0] x1, y1, x2, y2,  // Original coordinates (signed)
+    input [15:0] v_max, t,         // Max speed, wind change time (unsigned)
+    input [15:0] vx, vy, wx, wy,   // Wind vectors (signed)
+    output reg [31:0] time_result,  // Q16.16 fixed-point result
+    output reg done
+);
+
+// Parameters and state definitions
+parameter IDLE = 2'b00, COMPUTE = 2'b01, ITERATE = 2'b10, FINISH = 2'b11;
+reg [1:0] state;
+reg [5:0] iterations;  // 50 iterations for 1e-6 precision
+reg [31:0] low, high, mid;  // Q16.16 fixed-point
+reg condition_met;
+
+// Fixed-point scaling: 1.0 = 16'h10000 (Q16.16)
+wire [31:0] t_scaled = t << 16;  // Convert t to Q16.16
+
+// Intermediate calculations (combinational)
+always @(*) begin
+    // Wind period: t1 = min(mid, t_scaled), t2 = max(mid - t_scaled, 0)
+    reg [31:0] t1, t2;
+    reg [31:0] dx, dy;  // Q16.16
+    reg [63:0] dx_sq, dy_sq;  // Q32.32
+    reg [63:0] left_sq, right_sq;  // Q32.32
+    
+    if (mid < t_scaled) begin
+        t1 = mid;
+        t2 = 0;
+    end else begin
+        t1 = t_scaled;
+        t2 = mid - t_scaled;
+    end
+    
+    // Wind displacement: (vx*t1 + wx*t2, vy*t1 + wy*t2)
+    // Multiply 16-bit signed by Q16.16, result is Q32.16, then shift to Q16.16
+    reg [31:0] wind_x = ($signed(vx) * $signed(t1)) + ($signed(wx) * $signed(t2));
+    reg [31:0] wind_y = ($signed(vy) * $signed(t1)) + ($signed(wy) * $signed(t2));
+    wind_x = wind_x >>> 16;  // Convert to Q16.16
+    wind_y = wind_y >>> 16;
+    
+    // Remaining displacement
+    dx = {x2 - x1, 16'b0} - wind_x;  // Convert coord diff to Q16.16
+    dy = {y2 - y1, 16'b0} - wind_y;
+    
+    // Square and compare
+    dx_sq = $signed(dx) * $signed(dx);  // Q32.32
+    dy_sq = $signed(dy) * $signed(dy);
+    left_sq = dx_sq + dy_sq;
+    
+    // Right side: (v_max * mid)^2
+    reg [31:0] v_max_mid = $signed(v_max) * $signed(mid);  // Q16.16 * Q16.16 = Q32.32
+    right_sq = v_max_mid * v_max_mid;  // Q64.64, but we only need comparison
+    
+    // Compare left_sq <= right_sq (both Q32.32, but we can compare as unsigned)
+    condition_met = (left_sq <= right_sq);
+end
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        time_result <= 0;
+        iterations <= 0;
+        low <= 0;
+        high <= 32'h4F1A0000;  // 1e9 in Q16.16: 1e9 * 65536 = 0x4F1A0000
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    state <= COMPUTE;
+                    iterations <= 0;
+                    low <= 0;
+                    high <= 32'h4F1A0000;
+                    done <= 0;
+                end
+            end
+            
+            COMPUTE: begin
+                mid <= (low + high) >> 1;  // Divide by 2
+                state <= ITERATE;
+            end
+            
+            ITERATE: begin
+                if (condition_met)
+                    high <= mid;
+                else
+                    low <= mid;
+                
+                if (iterations == 50) begin
+                    state <= FINISH;
+                    time_result <= mid;  // Or use high for final result
+                end else begin
+                    iterations <= iterations + 1;
+                    state <= COMPUTE;
+                end
+            end
+            
+            FINISH: begin
+                done <= 1;
+                if (!start) state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

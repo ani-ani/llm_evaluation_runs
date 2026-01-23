@@ -1,0 +1,1 @@
+module sum_to_n(\n    input [15:0] n,\n    output [31:0] result\n);\n    wire [31:0] n_ext = {16'd0, n};  // Zero-extend input\n    wire [31:0] product = n_ext * (n_ext + 32'd1);\n    assign result = product >> 1;  // Divide by 2 via right shift\nendmodule

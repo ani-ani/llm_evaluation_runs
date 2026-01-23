@@ -1,0 +1,70 @@
+Design a sequential Verilog module named 'maximum_k' that finds the k largest numbers from an array and returns them sorted.
+
+**Scaling Constraints:**
+- Maximum array size: 8 elements
+- Maximum k: 4
+- Integer width: 16-bit signed (-32768 to 32767)
+- k can be 0 (returns empty)
+
+**Algorithm:**
+Use a sequential algorithm that repeatedly finds the maximum, removes it, and finds the next, etc., until k elements are collected. This requires N*k cycles in worst case.
+
+**Interface:**
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start computation (pulse high for 1 cycle)
+  input [2:0] k          // Number of largest elements to return (0-4)
+  input [2:0] arr_len    // Length of input array (1-8)
+  input [15:0] arr [0:7] // Input array (8 elements, 16-bit signed each)
+
+Outputs:
+  output reg [15:0] result_0  // Largest element (index 0)
+  output reg [15:0] result_1  // Second largest (index 1)
+  output reg [15:0] result_2  // Third largest (index 2)
+  output reg [15:0] result_3  // Fourth largest (index 3)
+  output reg done             // High when all k elements computed
+
+**Behavior:**
+1. After start pulse, enter PROCESSING state
+2. Use internal state machine with:
+   - State 0: Reset internal flags
+   - State 1-N: Find current maximum among remaining valid elements
+   - State N+1: Store found maximum in next result register
+   - Repeat until k elements found
+3. Maintain a 'valid' flag for each array element (marks as used when extracted)
+4. Use a counter to track how many elements have been extracted
+5. Output result_0 to result_{k-1} will contain sorted maxima (descending order)
+6. For k=0, immediately go to DONE with no outputs
+7. Done signal goes high for 1 cycle when complete
+
+**State Machine:**
+- IDLE: Wait for start
+- FIND_MAX: Compare elements to find current maximum among valid elements
+- STORE: Save found maximum to output array
+- DONE: Wait for next start
+
+**Timing:**
+- Latency: approximately k*(arr_len+2) + 2 cycles
+- For worst case (k=4, arr_len=8): ~38 cycles
+- Done pulses high for 1 cycle
+
+**Fixed-Point Note:**
+All values are 16-bit signed integers (no floating point needed)
+
+**Implementation Notes:**
+- Must work with Icarus Verilog
+- Use non-blocking assignments for sequential logic
+- Initialize all result registers to 0
+- When k > arr_len, the behavior is undefined (assumed k <= arr_len per constraints)
+- Unused result_n (when k < 4) can contain garbage
+
+**Verification Interface:**
+The testbench will:
+1. Apply reset
+2. Load array elements into arr[0] to arr[arr_len-1]
+3. Set k and arr_len values
+4. Pulse start
+5. Wait for done signal
+6. Read result_0 through result_{k-1}
+7. Verify sorted order and correct values

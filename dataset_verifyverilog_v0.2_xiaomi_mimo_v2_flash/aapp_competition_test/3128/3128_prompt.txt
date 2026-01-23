@@ -1,0 +1,56 @@
+Design a sequential Verilog module named 'star_wars_movies' that maintains a dynamic array of movies, tracking both creation order and plot order indices.
+
+Module Specification:
+- Module name: star_wars_movies
+- Inputs:
+  input clk // clock signal
+  input rst_n // active-low reset
+  input start // start processing a query
+  input [1:0] query_type // 1: insert movie, 2: lookup creation index
+  input [7:0] query_value // the plot index for insertion or lookup query
+  
+- Outputs:
+  output reg [7:0] result // the creation index (for query_type=2) or confirmation
+  output reg done // high when query is complete
+
+- Parameters:
+  parameter MAX_MOVIES = 16 // maximum movies we can track
+  parameter MAX_QUERIES = 256 // maximum queries to process
+
+Behavior:
+The module maintains an array 'movies' of MAX_MOVIES elements, each element stores the creation index.
+Initially, the array is empty (n=0).
+
+For query_type = 1 (insert):
+  - Input x = query_value is the plot index where to insert (1-indexed)
+  - The movie created gets creation index = current number of movies + 1
+  - Shift existing movies at plot indices >= x to make room
+  - Store the new creation index at plot position x
+  - Increment the total movie count n
+
+For query_type = 2 (lookup):
+  - Input x = query_value is the plot index to lookup (1-indexed)
+  - Output result = movies[x-1] (creation index of movie at plot position x)
+
+Implementation Strategy:
+- Use a state machine with states: IDLE, PROCESS_QUERY, INSERT_SHIFT, LOOKUP, DONE
+- Maintain an array register file: reg [7:0] movies [0:MAX_MOVIES-1]
+- Maintain a counter for current number of movies (n)
+- For insertion: need to shift elements from end down to position x, then insert
+- For lookup: simply read from array index x-1
+- Use loop counters for shifting operation (bounded by MAX_MOVIES)
+- Start signal initiates processing of one query
+- Done signal indicates completion
+- Latency: Variable depending on operation (lookup: ~2 cycles, insert: up to MAX_MOVIES+2 cycles)
+
+Example operation sequence:
+Query 1: q=1, x=1 → Insert movie 1 at plot index 1. Creation index = 1. movies[0] = 1
+Query 2: q=1, x=2 → Insert movie 2 at plot index 2. Creation index = 2. movies[1] = 2
+Query 3: q=1, x=1 → Insert movie 3 at plot index 1. Shift movies[0]→movies[1], movies[1]→movies[2], movies[0] = 3
+
+For the testbench, we'll use this configuration:
+- Clock period: 10ns
+- Reset active low
+- Process queries one at a time using start/done handshake
+- Wait for done before sending next start
+- Assert final results match expected outputs

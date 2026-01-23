@@ -1,0 +1,29 @@
+We need to design a Verilog module that computes the spread of chess kings for two players. Due to hardware constraints, we scale down the board size to 8 rows and 8 columns (MAX_ROWS=8, MAX_COLS=8) and limit the maximum number of pieces per player to 16 (MAX_PIECES=16). The board is represented as a flattened vector of 2-bit values, where each 2-bit cell encodes: 2'b00 = empty, 2'b01 = Mirko's piece ('M'), 2'b10 = Slavko's piece ('S').
+
+The module should be a sequential state machine that operates on a clock and has an active-low reset. It starts when the 'start' signal is pulsed high for one clock cycle. After computation, 'done' is asserted high for one cycle, and the results are available on 'mirko_spread' and 'slavko_spread' (32-bit unsigned integers).
+
+Internal operation:
+
+1. Upon reset, all internal registers are cleared.
+2. When start is asserted, transition to the SCAN state.
+3. In SCAN state, iterate over all board cells (rows 0-7, columns 0-7) using counters row_idx and col_idx. For each cell, read the 2-bit value from the packed board vector. If the value is 2'b01, store the row and column into M_x[M_count] and M_y[M_count], then increment M_count. If 2'b10, store into S_x[S_count] and S_y[S_count], increment S_count. If M_count or S_count exceeds MAX_PIECES-1, stop storing further pieces (ignore overflow). After all cells are scanned (row_idx=MAX_ROWS-1 and col_idx=MAX_COLS-1), transition to COMPUTE_M.
+4. In COMPUTE_M state:
+   - If M_count <= 1, set mirko_spread = 0 and transition to COMPUTE_S.
+   - Else, initialize i_idx = 0, j_idx = 1, mirko_spread = 0, and transition to CALC_DIST_M.
+5. In CALC_DIST_M state:
+   - Compute dx = |M_x[i_idx] - M_x[j_idx]|, dy = |M_y[i_idx] - M_y[j_idx]|.
+   - dist = max(dx, dy).
+   - Add dist to mirko_spread.
+   - Increment j_idx. If j_idx >= M_count, set j_idx = i_idx + 2? Actually, after inner loop finishes, increment i_idx and set j_idx = i_idx + 1. If i_idx >= M_count - 1, transition to COMPUTE_S; else, continue with new i_idx.
+   - If j_idx < M_count, stay in CALC_DIST_M; otherwise, move to next i_idx.
+6. In COMPUTE_S state: similar to COMPUTE_M, but using S_x, S_y, S_count, and updating slavko_spread.
+7. After COMPUTE_S completes, transition to DONE, where done is asserted high for one cycle, and results are held.
+8. After DONE, return to IDLE.
+
+All internal counters and arrays should be sized appropriately (e.g., M_x, M_y, S_x, S_y are arrays of 8-bit registers indexed by 0..MAX_PIECES-1).
+
+The board_packed input is a vector of width MAX_ROWS*MAX_COLS*2 bits. The bits are arranged row-major: row 0 col 0 occupies bits [1:0], row 0 col 1 occupies bits [3:2], ..., row 0 col 7 occupies bits [15:14], row 1 col 0 bits [17:16], etc.
+
+Implement the state machine with synchronous logic. The module should reset cleanly on rst_n.
+
+Provide the complete Verilog code for this module, including the state machine, counters, and combinational logic for distance calculation.

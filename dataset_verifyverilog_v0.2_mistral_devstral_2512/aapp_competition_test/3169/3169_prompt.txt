@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'stick_sorter' that determines the order of stick removal from a table. 
+
+Problem Analysis:
+You have N sticks (line segments) on a square table. They must be removed one by one by translating them straight down towards the x-axis. A stick can only be removed if it does not overlap with any other stick during its translation. 
+- Stick A blocks Stick B if the vertical projection of A on the x-axis overlaps with Stick B's vertical projection AND Stick A is strictly higher (has larger y-coordinates) than Stick B.
+- We need to find a valid topological order where dependencies are resolved.
+
+Simplified for Hardware (N=8 max, fixed inputs):
+- Input: 8 sticks, each defined by (x1, y1, x2, y2). 
+- Geometry: We assume straight horizontal translation (constant y) is the primary movement, but the problem implies translation to the edge. Let's re-interpret the blocking condition: 
+  Stick A blocks Stick B if:
+  1. X-Projections overlap: max(A.x1, A.x2) >= min(B.x1, B.x2) AND min(A.x1, A.x2) <= max(B.x1, B.x2)
+  2. Height: Stick A is higher than Stick B (e.g., average y of A > average y of B).
+
+- Algorithm: Construct an 8x8 dependency matrix. Use a state machine to iteratively select a stick with no remaining dependencies (no sticks below it that haven't been removed), mark it as removed, and update dependencies.
+
+Module Interface:
+module stick_sorter (
+    input clk,
+    input rst_n,
+    input start,
+    // Inputs for 8 sticks: each stick has 4 coordinates (x1, y1, x2, y2)
+    // Using 16-bit signed integers to cover 0-10000 range
+    input [15:0] s0_x1, s0_y1, s0_x2, s0_y2,
+    input [15:0] s1_x1, s1_y1, s1_x2, s1_y2,
+    input [15:0] s2_x1, s2_y1, s2_x2, s2_y2,
+    input [15:0] s3_x1, s3_y1, s3_x2, s3_y2,
+    input [15:0] s4_x1, s4_y1, s4_x2, s4_y2,
+    input [15:0] s5_x1, s5_y1, s5_x2, s5_y2,
+    input [15:0] s6_x1, s6_y1, s6_x2, s6_y2,
+    input [15:0] s7_x1, s7_y1, s7_x2, s7_y2,
+    input [2:0] n_sticks, // Actual number of sticks (1 to 8)
+    output reg [3:0] order_0, // First stick to remove (index 0-7)
+    output reg [3:0] order_1,
+    output reg [3:0] order_2,
+    output reg [3:0] order_3,
+    output reg [3:0] order_4,
+    output reg [3:0] order_5,
+    output reg [3:0] order_6,
+    output reg [3:0] order_7,
+    output reg done
+);
+
+Behavioral Description:
+The module uses a Finite State Machine (FSM) with states: IDLE, COMPUTE_DEPS, FIND_NEXT, UPDATE_REMOVED, DONE.
+1. IDLE: Wait for 'start' signal.
+2. COMPUTE_DEPS: Calculate the dependency matrix. For every pair (i, j), if stick i blocks stick j, set dep_matrix[i][j] = 1.
+   - Overlap: (max(x1_i, x2_i) >= min(x1_j, x2_j)) && (min(x1_i, x2_i) <= max(x1_j, x2_j))
+   - Height: (avg_y_i > avg_y_j)
+3. FIND_NEXT: Iterate through all sticks. Find a stick 'k' such that it is NOT removed yet, and for all other sticks 'i', dep_matrix[i][k] == 0 (no one is blocking it).
+   - If found, select it. If not found and sticks remain, it's a cycle (should not happen with valid input, but handle gracefully).
+4. UPDATE_REMOVED: Record the selected stick index into the output order registers. Mark the stick as removed. 
+   - IMPORTANT: When a stick is removed, it no longer blocks others. Update the dependency matrix: for all 'j', set dep_matrix[selected_stick][j] = 0.
+5. Repeat FIND_NEXT and UPDATE_REMOVED until all sticks are removed.
+6. DONE: Set 'done' high.
+
+Note: Since combinational logic for 8 sticks is small, we can pre-calculate dependencies in a few cycles or unroll. The output order is a permutation of indices 0 to (n_sticks-1). Output order for unused slots can be 0 or don't care.

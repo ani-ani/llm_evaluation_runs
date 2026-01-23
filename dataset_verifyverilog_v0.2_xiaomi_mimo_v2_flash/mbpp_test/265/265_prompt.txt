@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'list_splitter' that implements list splitting with round-robin distribution.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] step // step size (1-4)
+input [4:0] num_elements // number of elements in input list (1-16)
+input [7:0] data_in // current element value (8-bit data)
+input data_valid // high when data_in is valid
+
+Outputs:
+output reg [1:0] buffer_id // which output buffer is being written (0-3)
+output reg [4:0] buffer_index // position in current buffer
+output reg [7:0] data_out // data written to buffer
+output reg write_enable // high when writing to buffer
+output reg done // high when all elements processed
+
+Specify latency: Processes one element per clock cycle when data_valid is high. For 16 elements with step=3, completes in 16 cycles plus startup.
+
+Use state machine with states: IDLE, READ_ELEMENT, PROCESS, COMPLETE.
+
+Behavior:
+The module reads elements sequentially via data_in and data_valid. For each element at index i (0-based), it computes output_buffer_id = i % step, and position_in_buffer = i / step. It then writes the element to the appropriate buffer location.
+
+For example, with step=3:
+- Element 0 (index 0): buffer_id=0, buffer_index=0
+- Element 1 (index 1): buffer_id=1, buffer_index=0
+- Element 2 (index 2): buffer_id=2, buffer_index=0
+- Element 3 (index 3): buffer_id=0, buffer_index=1
+- Element 4 (index 4): buffer_id=1, buffer_index=1
+- etc.
+
+The module outputs signals that external memory can use to store the split arrays. Since Verilog doesn't dynamically allocate arrays, the outputs provide addressing information for up to 4 output buffers, each holding up to 16 elements.
+
+Module must handle:
+- Reset: Clear all internal state
+- Start: Begin new computation, reset counters
+- Data valid: Sample data_in and advance state
+- Done: Assert when num_elements elements have been processed
+
+Note: step will be 1-4, num_elements will be 1-16. All outputs are registered.

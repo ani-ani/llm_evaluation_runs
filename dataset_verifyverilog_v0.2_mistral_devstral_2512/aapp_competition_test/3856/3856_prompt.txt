@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'photo_optimizer' that computes the minimum area for a group photo.
+
+PROBLEM SPECIFICATION:
+- n = 4 friends (scaled from up to 1000)
+- Each friend has dimensions w_i, h_i (10-bit values, 0-1023)
+- Constraint: at most floor(n/2) = 2 friends can lie down (swap width/height)
+- Total width W = sum of all rectangle widths
+- Total height H = max of all rectangle heights
+- Area = W * H
+- Goal: Find minimum possible Area
+
+ALGORITHM APPROACH:
+The module iterates through all possible heights (0-1023). For each candidate height H:
+1. Friends whose h_i > H must lie down (use h_i as width, w_i as height)
+2. If a friend that must lie down has w_i > H, this H is invalid
+3. Count mandatory lie-downs, remaining budget for optional lie-downs
+4. For remaining friends, sort by benefit (h_i - w_i) where h_i < w_i
+5. Use remaining budget to maximize width reduction
+6. Calculate area = W * H, keep minimum
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [9:0] friend_w [0:3] // friend widths (array of 4, 10 bits each)
+input [9:0] friend_h [0:3] // friend heights (array of 4, 10 bits each)
+
+Outputs:
+output reg [31:0] min_area // minimum area result
+output reg done // high when computation complete
+output reg valid // high when result is valid
+
+SPECS:
+- Latency: approximately 4100 clock cycles (1024 heights * ~4 cycles per height)
+- Use state machine with states: IDLE, LOAD_DATA, COMPUTE_HEIGHT, CHECK_FRIENDS, CALCULATE_AREA, UPDATE_MIN, DONE
+- For each height, process all 4 friends sequentially
+- Track: current_height, mandatory_lie_count, optional_lie_budget, current_width_sum, best_area
+- Use internal registers for sorting logic (simple comparison network)
+- Fixed-point arithmetic not needed - use integer math
+
+BEHAVIOR:
+1. IDLE: Wait for start signal
+2. LOAD_DATA: Load all 4 friends into internal registers
+3. COMPUTE_HEIGHT: Iterate height from 0 to 1023
+4. CHECK_FRIENDS: For current height, check each friend's constraint
+   - If h_i > current_height: must lie down
+   - Count these, check if any w_i > current_height (invalid)
+5. CALCULATE_AREA: Determine which friends to lie down to minimize width
+   - Sort by benefit of lying down (h_i - w_i) where h_i < w_i
+   - Use at most (2 - mandatory_lie_count) additional lie-downs
+6. UPDATE_MIN: Compare current area with minimum, update if smaller
+7. DONE: Set done and valid signals
+
+Note: The module must handle the constraint that only 2 friends can lie down total. For each height candidate, determine which orientation combination minimizes width while respecting height constraints.

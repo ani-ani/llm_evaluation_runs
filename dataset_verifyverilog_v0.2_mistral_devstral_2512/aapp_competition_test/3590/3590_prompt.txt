@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'polygon_cutter' that computes the minimum cost to cut out an inner convex polygon B from an outer convex polygon A using a greedy approach.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [5:0] num_vertices_a // number of vertices in polygon A (3-8)
+input [5:0] num_vertices_b // number of vertices in polygon B (3-8)
+input signed [31:0] ax [0:7] // x-coordinates of polygon A vertices
+input signed [31:0] ay [0:7] // y-coordinates of polygon A vertices
+input signed [31:0] bx [0:7] // x-coordinates of polygon B vertices
+input signed [31:0] by [0:7] // y-coordinates of polygon B vertices
+
+Outputs:
+output reg [31:0] min_cost // minimum cost in Q16.16 fixed-point format
+output reg done // high when computation complete
+
+Specifications:
+- Use Q16.16 fixed-point format for cost calculations
+- Implement a greedy iterative algorithm that repeatedly cuts along B's edges
+- For each edge of B, find the intersection with polygon A's boundary
+- Calculate cut length and update polygon A to the smaller portion containing B
+- Maximum 8 iterations (one per edge of B)
+- State machine states: IDLE, READ_INPUT, COMPUTE_CUT, UPDATE_POLY, DONE
+- Latency: Approximately 500-1000 clock cycles
+- Use signed 32-bit arithmetic for coordinates
+- Implement line-line intersection with orientation tests
+- Track current polygon A vertices (up to 8 vertices)
+- Cost accumulates in Q16.16 format
+- Each cut: find intersection points, calculate length using distance formula (sqrt), convert to Q16.16
+
+The algorithm:
+1. Start with original polygon A
+2. For each vertex of B (iterative): Extend edge of B to intersect with current A's boundary
+3. Cut along this extended line, keeping the side containing B
+4. Calculate cut length, add to cost
+5. Update A to the clipped polygon
+6. Repeat until all edges processed or B is isolated
+7. Output total cost
+
+For geometry operations:
+- Line intersection: Use cross product for orientation tests
+- Distance: sqrt(dx² + dy²), convert to Q16.16 (multiply by 65536)
+- Clipping: Determine which vertices of A are on the same side as B
+
+Note: This is a hardware-friendly approximation that may not be mathematically optimal but captures the problem essence.

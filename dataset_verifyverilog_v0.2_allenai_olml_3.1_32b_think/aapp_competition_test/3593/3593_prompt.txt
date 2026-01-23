@@ -1,0 +1,87 @@
+Design a sequential Verilog module named 'chess_domino_max_sum' that implements maximum sum covering with K dominoes on an N×3 board.
+
+Problem Adaptation:
+- Board size: N=8 rows maximum, 3 columns fixed
+- Dominoes: 2×1 tiles, can be placed vertically (cover 2 rows in same column) or horizontally (cover 2 columns in same row)
+- Max dominoes K=8
+- All numbers are scaled to fit in 32-bit signed integers
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] row_index // current row being loaded (0-7)
+input [31:0] board_value // value for current row/col (col 0,1,2 sequentially)
+input [3:0] K // number of dominoes to place
+input [2:0] N // number of rows in board
+
+Outputs:
+output reg [31:0] max_sum // maximum sum achievable
+output reg done // high when computation complete
+output reg valid // high when result is valid
+
+Specification:
+The module must load the 8×3 board values row-by-row through row_index and board_value inputs. After loading, it computes the maximum sum using dynamic programming.
+
+State Machine:
+- IDLE: Wait for start signal, initialize DP table
+- LOAD: Accept board values (8 rows × 3 columns)
+- COMPUTE: Perform DP computation with states for each row and domino count
+- DONE: Result ready
+
+DP State Definition:
+For each row i (0 to N-1) and dominoes k (0 to K), track maximum sum with column coverage state.
+Column state: 3-bit mask indicating which columns are covered by dominoes from previous row.
+
+Domino placement rules:
+1. Vertical domino: covers row i and i+1 in same column (requires both rows available)
+2. Horizontal domino: covers two adjacent columns in same row
+
+Implementation approach:
+- Use 4D array: dp[row][k][state][col_state] where state tracks placements
+- For each row, consider all valid domino configurations that don't overlap
+- Transition: place dominoes in current row considering coverage from previous row
+- Maximum K=8 dominoes, N=8 rows, so DP table size is manageable (8×9×256×256 = ~4M states - too large)
+
+Simplified approach:
+- Use iterative DP with state compression
+- dp[prev_covered_mask][dominoes_used] = maximum sum so far
+- For each row, compute new states by trying all valid domino placements in current row
+- Track which columns are covered by vertical dominoes extending to next row
+
+Optimized for hardware:
+- Process row-by-row
+- For each row, enumerate all valid horizontal domino placements (0-2 horizontal dominoes max)
+- For each column, decide if we place vertical domino (covers current and next row)
+- Use bitmask to represent column coverage
+
+Hardware-friendly algorithm:
+1. Load board values into 8×3 register array
+2. Initialize dp[0][0] = 0 for all states
+3. For each row i from 0 to N-1:
+   a. For each domino count k from 0 to K:
+      i. For each coverage state s from previous row:
+         - Enumerate all valid configurations for current row
+         - Try horizontal dominoes in current row
+         - Try vertical dominoes starting at current row
+         - Update dp_next for next iteration
+4. After processing all rows, find max among dp[N][K][state=0]
+
+State transitions:
+- Horizontal domino in columns 0-1: adds value[i][0] + value[i][1]
+- Horizontal domino in columns 1-2: adds value[i][1] + value[i][2]
+- Vertical domino in column c: adds value[i][c] + value[i+1][c] (if i+1 < N)
+
+Timing:
+- Loading: 8×3 = 24 cycles
+- Computation: Each row processes in fixed cycles, total ~N×K×states cycles
+- Done: After computation completes
+
+Latency: Result valid 5000 clock cycles after start asserted (worst case for N=8, K=8).
+
+Implementation notes:
+- Use state machine to control iteration
+- Use multiple DSP blocks for parallel sum calculations
+- Use BRAM for DP storage if needed
+- Ensure all arithmetic handles signed 32-bit values
+- Final result represents maximum sum using exactly K dominoes

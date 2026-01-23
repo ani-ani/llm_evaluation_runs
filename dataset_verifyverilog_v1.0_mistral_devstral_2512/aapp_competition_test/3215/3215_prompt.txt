@@ -1,0 +1,174 @@
+module shuffle_number #(
+    parameter N = 8,
+    parameter DATA_WIDTH = 4,
+    parameter RESULT_WIDTH = 3
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [DATA_WIDTH-1:0] perm_0,
+    input wire [DATA_WIDTH-1:0] perm_1,
+    input wire [DATA_WIDTH-1:0] perm_2,
+    input wire [DATA_WIDTH-1:0] perm_3,
+    input wire [DATA_WIDTH-1:0] perm_4,
+    input wire [DATA_WIDTH-1:0] perm_5,
+    input wire [DATA_WIDTH-1:0] perm_6,
+    input wire [DATA_WIDTH-1:0] perm_7,
+    output reg [RESULT_WIDTH-1:0] result,
+    output reg done
+);
+
+// Internal arrays
+reg [2:0] pos [0:N-1];
+reg [0:0] inc [0:N-2];
+reg [2:0] f [0:N-1][0:N-1];
+
+// State definitions
+localparam IDLE = 0;
+localparam INIT_POS_START = 1;
+localparam INIT_POS_LOOP = 2;
+localparam INIT_INC_START = 3;
+localparam INIT_INC_LOOP = 4;
+localparam DP_START = 5;
+localparam DP_INIT = 6;
+localparam DP_LEN_LOOP = 7;
+localparam DP_L_LOOP = 8;
+localparam DP_M_LOOP = 9;
+localparam DP_UPDATE = 10;
+localparam DONE = 11;
+
+reg [3:0] state;
+reg [2:0] len_cnt;
+reg [2:0] l_cnt;
+reg [2:0] m_cnt;
+reg [2:0] best;
+reg [2:0] temp;
+
+// Helper to access perm array
+wire [DATA_WIDTH-1:0] perm [0:N-1];
+assign perm[0] = perm_0;
+assign perm[1] = perm_1;
+assign perm[2] = perm_2;
+assign perm[3] = perm_3;
+assign perm[4] = perm_4;
+assign perm[5] = perm_5;
+assign perm[6] = perm_6;
+assign perm[7] = perm_7;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        len_cnt <= 0;
+        l_cnt <= 0;
+        m_cnt <= 0;
+        best <= 0;
+        temp <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= INIT_POS_START;
+                end
+            end
+
+            INIT_POS_START: begin
+                l_cnt <= 0;
+                state <= INIT_POS_LOOP;
+            end
+
+            INIT_POS_LOOP: begin
+                if (l_cnt < N) begin
+                    pos[ perm[l_cnt] - 1 ] <= l_cnt;
+                    l_cnt <= l_cnt + 1;
+                end else begin
+                    state <= INIT_INC_START;
+                end
+            end
+
+            INIT_INC_START: begin
+                l_cnt <= 0;
+                state <= INIT_INC_LOOP;
+            end
+
+            INIT_INC_LOOP: begin
+                if (l_cnt < N-1) begin
+                    if (pos[l_cnt] < pos[l_cnt+1])
+                        inc[l_cnt] <= 1'b1;
+                    else
+                        inc[l_cnt] <= 1'b0;
+                    l_cnt <= l_cnt + 1;
+                end else begin
+                    state <= DP_START;
+                end
+            end
+
+            DP_START: begin
+                l_cnt <= 0;
+                state <= DP_INIT;
+            end
+
+            DP_INIT: begin
+                if (l_cnt < N) begin
+                    f[l_cnt][l_cnt] <= 0;
+                    l_cnt <= l_cnt + 1;
+                end else begin
+                    len_cnt <= 2;
+                    state <= DP_LEN_LOOP;
+                end
+            end
+
+            DP_LEN_LOOP: begin
+                if (len_cnt <= N) begin
+                    l_cnt <= 0;
+                    state <= DP_L_LOOP;
+                end else begin
+                    result <= f[0][N-1];
+                    state <= DONE;
+                end
+            end
+
+            DP_L_LOOP: begin
+                if (l_cnt <= N - len_cnt) begin
+                    best <= 7;
+                    m_cnt <= l_cnt;
+                    state <= DP_M_LOOP;
+                end else begin
+                    len_cnt <= len_cnt + 1;
+                    state <= DP_LEN_LOOP;
+                end
+            end
+
+            DP_M_LOOP: begin
+                if (m_cnt <= l_cnt + len_cnt - 2) begin
+                    if (f[l_cnt][m_cnt] > f[m_cnt+1][l_cnt+len_cnt-1])
+                        temp <= f[l_cnt][m_cnt];
+                    else
+                        temp <= f[m_cnt+1][l_cnt+len_cnt-1];
+                    state <= DP_UPDATE;
+                end else begin
+                    f[l_cnt][l_cnt+len_cnt-1] <= best;
+                    l_cnt <= l_cnt + 1;
+                    state <= DP_L_LOOP;
+                end
+            end
+
+            DP_UPDATE: begin
+                if (temp + 1 < best)
+                    best <= temp + 1;
+                m_cnt <= m_cnt + 1;
+                state <= DP_M_LOOP;
+            end
+
+            DONE: begin
+                done <= 1;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

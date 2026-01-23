@@ -1,0 +1,51 @@
+Module: TreasureMapReconstructor
+
+Parameters:
+  MAX_PIECES = 4
+  MAX_W = 4
+  MAX_H = 4
+  MAX_AREA = 16
+
+Ports:
+  input  clk, rst_n, start
+  input  [3:0] num_pieces                           // 2..4
+  input  [3:0] piece_w [MAX_PIECES-1:0]
+  input  [3:0] piece_h [MAX_PIECES-1:0]
+  input  [3:0] piece_grid [MAX_PIECES-1:0][MAX_W-1:0][MAX_H-1:0] // fixed 4×4 per piece
+  output [3:0] out_width, out_height
+  output [3:0] out_grid [MAX_AREA-1:0]              // flattened final map
+  output [2:0] out_piece_map [MAX_AREA-1:0]         // piece index (1‑4)
+  output done, valid                                 // done when solution ready
+
+Functionality:
+1. On start, compute total area = Σ(piece_w[i]*piece_h[i]).
+2. Enumerate all (W,H) pairs with W*H = total area, W≤MAX_W, H≤MAX_H.
+3. For each candidate (W,H):
+   a. Initialize empty grid and piece_map.
+   b. Backtracking (depth‑first) over pieces:
+        i.  Pick next unplaced piece.
+        ii. For each rotation (0°,90°,180°,270°):
+            - Compute rotated dimensions and grid.
+            - For each possible (x,y) where the piece fits:
+                - Place piece if cells are empty.
+                - If all pieces placed, check consistency:
+                    * Find any treasure cell (x_t,y_t) such that for all cells,
+                      grid[x][y] == (|x-x_t|+|y-y_t|) mod 10.
+                    * If found, store solution and exit.
+                - If not consistent, backtrack.
+4. When solution found, assert done and valid, and present out_width/out_height/out_grid/out_piece_map.
+5. If no solution (should not happen per problem), valid=0.
+
+State Machine (high‑level):
+  IDLE → PREPARE → SOLVE → OUTPUT
+
+Implementation notes:
+- All arrays are unpacked for cocotb compatibility.
+- Use registers to hold current grid, piece_map, and backtracking stack.
+- Maximum depth = MAX_PIECES, stack stores placed piece index, rotation, x, y.
+- Rotation logic: pre‑compute rotated grids for each piece when piece is loaded.
+- Manhattan check: after full placement, test each cell as possible treasure.
+- Timing: expect up to thousands of cycles for worst‑case; use bounded loops.
+- Reset: rst_n=0 clears all state, outputs zero.
+
+The design is feasible for the given scale, providing a benchmark for HDL generation of combinatorial search with constraints.

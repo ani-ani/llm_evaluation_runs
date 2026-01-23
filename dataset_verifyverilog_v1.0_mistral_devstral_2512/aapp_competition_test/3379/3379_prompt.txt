@@ -1,0 +1,65 @@
+module topological_width #(
+    parameter N = 4,                      // Maximum number of nodes (4 for testing, can be increased to 8)
+    parameter GRAPH_WIDTH = N * N,        // Width of packed graph input
+    parameter RESULT_WIDTH = 4,           // Width of result output (enough for N up to 8)
+    parameter CLK_PERIOD = 10             // Clock period in ns (for testbench reference)
+)(
+    input wire clk,                       // Clock, rising edge active
+    input wire rst_n,                     // Active-low synchronous reset
+    input wire start,                     // Start pulse, high for one cycle
+    input wire [GRAPH_WIDTH-1:0] graph_packed, // Packed adjacency matrix: row-major order, N rows, N bits per row
+    output reg [RESULT_WIDTH-1:0] result, // Maximum S size (0 to N)
+    output reg done                       // High for one cycle when result is ready
+);
+
+// Functionality description:
+// The module computes the largest possible size of the set S in Kahn's algorithm
+// for the given directed graph, considering all possible choices.
+// This is equal to the size of the largest antichain in the DAG obtained by
+// removing all nodes that are part of cycles or reachable from cycles.
+//
+// Implementation approach (suggested):
+// 1. Unpack graph_packed into an adjacency matrix adj[N][N].
+// 2. Compute reachability matrix reach[N][N] using Floyd-Warshall algorithm.
+// 3. Identify nodes that are in cycles or reachable from cycles:
+//    - A node i is in a cycle if there exists j != i such that reach[i][j] && reach[j][i].
+//    - Mark all nodes i that are in cycles, and also all nodes j such that reach[i][j] for any such i.
+//    - The remaining nodes are "good" nodes, forming a DAG.
+// 4. Let M = number of good nodes.
+//    If M == 0, set result = 0 and go to done.
+// 5. Compute the width (largest antichain) of the DAG of good nodes.
+//    One way: brute-force over all subsets of good nodes (2^M possibilities, M <= N <= 8).
+//    For each subset, check if it is an antichain: for any two nodes u,v in the subset,
+//    neither reach[u][v] nor reach[v][u] holds. If yes, record the subset size.
+//    Take the maximum over all antichains.
+//    Alternative: compute maximum bipartite matching on the comparability graph.
+// 6. Output the width as result and assert done for one cycle.
+//
+// Timing:
+// - The module should be a finite state machine.
+// - After start is asserted, the computation takes a bounded number of cycles
+//   (e.g., for N=4, less than 100 cycles).
+// - When finished, done is asserted for one cycle, and result holds the answer.
+//
+// Reset behavior:
+// - On rst_n=0: all state machines reset, done=0, result=0.
+// - After reset, the module returns to IDLE state waiting for start.
+//
+// Notes:
+// - The graph_packed input is combinational; it should be stable before start and during computation.
+// - The module does not need to handle graphs with more than N nodes.
+// - The implementation should be synthesizable for FPGA/ASIC.
+//
+// Example packing: For N=4, graph_packed[15:0] corresponds to:
+//   bits 3:0   -> row 0 (edges from node 0 to nodes 0-3)
+//   bits 7:4   -> row 1
+//   bits 11:8  -> row 2
+//   bits 15:12 -> row 3
+// Each bit is 1 if there is an edge from that row node to that column node.
+// Note: self-edges are not allowed per problem statement, but may be ignored if present.
+//
+// The result is a number between 0 and N.
+//
+// The module should be able to handle any graph with up to N nodes and up to N*N edges.
+//
+endmodule

@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'cheetah_pack_minimum' that calculates the minimum distance between running cheetahs over time.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [3:0] num_cheetahs // Number of cheetahs (1 to 4)
+input [15:0] start_times [0:3] // Start times t_k in Q16.16 format
+input [15:0] velocities [0:3] // Velocities v_k in Q16.16 format
+
+Outputs:
+output reg [31:0] min_pack_length // Minimum pack length in Q16.16 format
+output reg done // High when computation complete
+
+Behavior:
+Given start times t_k and velocities v_k for N cheetahs (N <= 4), calculate the minimum pack length L = max(position_i(t)) - min(position_j(t)) at time t >= max(t_k). Position of cheetah k at time t is: pos_k(t) = v_k * (t - t_k) for t >= t_k.
+
+The module should iterate through all pairs of cheetahs (i, j) to find intersection times t where the order of cheetahs might change. The critical times are:
+1. The release times t_k (when cheetahs start running)
+2. Intersection times t where pos_i(t) = pos_j(t)
+
+For each pair (i, j) where v_i != v_j, the intersection time is t = (v_i*t_i - v_j*t_j) / (v_i - v_j).
+
+At each critical time t, calculate the maximum and minimum positions among all cheetahs that are running (t >= t_k). The pack length is max_pos - min_pos.
+
+The module should use a state machine:
+- IDLE: Wait for start signal
+- INIT: Initialize variables and reset indices
+- FIND_INTERSECTION: Calculate intersection times for all pairs
+- EVALUATE_TIMES: Evaluate pack length at critical times (release times and intersections)
+- DONE: Output result
+
+Use Q16.16 fixed-point format for all calculations. Intermediate calculations (multiplication, division) should use wider registers to maintain precision. Division can be implemented using a sequential restoring divider or approximated for the benchmark.
+
+Latency: Result valid approximately 200-300 clock cycles after start asserted (depending on implementation of division).
+
+The module must handle:
+- N < max_cheetahs (use num_cheetahs input)
+- Cases where all cheetahs have same velocity
+- Cases where intersection time is negative or before all cheetahs have started

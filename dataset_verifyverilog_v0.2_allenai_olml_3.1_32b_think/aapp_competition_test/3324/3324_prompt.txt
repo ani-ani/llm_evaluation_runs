@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'stoichiometry_balancer' that solves the chemical equation balancing problem. The module takes a pre-parsed input matrix representing molecules and their atomic compositions, and computes the balancing coefficients.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] num_molecules // Number of molecules (M)
+input [3:0] num_elements // Number of unique elements (N)
+input [15:0] matrix_in [0:19] [0:9] // Input matrix A (flattened for Verilog compatibility, 2D logically). Stores atom counts. Molecules x Elements. Indices: row=molecule, col=element.
+
+Outputs:
+output reg [9:0] coefficients [0:19] // Output coefficients C_m (one per molecule)
+output reg done // High when computation complete
+output reg valid // High if solution found
+
+Internal Logic:
+The module should implement Gaussian elimination to solve the homogeneous system Ax=0, subject to constraints (min positive integer solution).
+
+Algorithm:
+1. Initialize: The input matrix A is M x N. We need to find a non-trivial solution to Ax=0.
+2. Pivot: For each column (element) from 0 to N-1:
+   a. Find a row with non-zero entry in this column (from current row to M-1).
+   b. Swap rows if necessary.
+   c. Normalize the pivot row (scale so pivot is 1, or keep as integer for precision).
+   d. Eliminate this column from all other rows (make A[i][pivot_col] = 0 for i != pivot_row).
+3. Back Substitution: Since it's homogeneous, the solution vector corresponds to the free variables or rows in reduced row echelon form.
+   - If N < M, there will be M-N free variables (leading to multiple solutions). We want the integer solution where one of the free variables is 1 (or scaled) to get minimum positive integers.
+   - A standard approach for homogeneous systems: perform elimination, then assign values to free variables (usually set to 1 or scalar multiples) and compute dependent variables.
+   - *Simplified Approach for Hardware*: Assume we are looking for the solution in the kernel. Given the constraints (M<=20, N<=10), we can perform row reduction. 
+   - Let's use a simpler integer linear algebra approach often used in these problems: 
+     a. Perform Gaussian elimination to get Reduced Row Echelon Form (RREF) with integer arithmetic (multiply rows to avoid fractions).
+     b. Identify pivots and free columns.
+     c. Assign 1 to the first free variable, 0 to others (if multiple free variables). 
+     d. Solve for the dependent variables.
+     e. Ensure all results are positive.
+
+4. Normalization: 
+   - If the resulting vector has common factors, divide by the GCD to make it the "minimum" solution.
+   - Ensure all signs are consistent (if leading coefficient is negative, flip all signs).
+
+State Machine States:
+IDLE: Wait for start.
+INIT: Clear buffers.
+PARSED_DATA_READY: (Wait for external parser, or assume parsed data is available in memory).
+PIVOT_FIND: Find pivot for current column.
+PIVOT_NORMALIZE: Normalize pivot row.
+ELIMINATE: Eliminate column from other rows.
+BACK_SUBSTITUTE: Compute coefficients from RREF.
+NORMALIZE_OUTPUT: Divide by GCD and flip signs.
+DONE: Assert done.
+
+Constraints:
+- Use 32-bit fixed-point or integer arithmetic (since coefficients <= 1000 and atom counts <= 12, 32 bits is safe).
+- The matrix size is fixed size 20x10 internally, but we iterate based on num_molecules and num_elements.
+- The parser (which converts text like "H2O" to counts) is assumed to be a separate module. The input to THIS module is the numeric matrix.
+
+Note on Verilog Limits: Verilog doesn't support dynamic arrays easily in synthesis. We will use fixed-size arrays [19:0][9:0] and pass the valid dimensions.
+
+Testbench Requirement:
+The testbench will construct the matrix from the sample inputs and feed it to the module.
+
+Output format: The coefficients array.
+Latency: Estimate ~1000 cycles for the elimination loops.

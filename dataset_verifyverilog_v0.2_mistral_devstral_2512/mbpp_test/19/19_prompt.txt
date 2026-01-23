@@ -1,0 +1,156 @@
+Design a sequential Verilog module named 'duplicate_finder' that detects duplicates in a fixed-size array of integers.
+
+**Module Specification:**
+- **Name**: `duplicate_finder`
+- **Functionality**: The module iterates through the input array and checks if any element matches a previous element.
+- **Implementation Strategy**: 
+  - Use a parameter `N = 8` for the array size and `W = 32` for the bit width of each element.
+  - The module operates as a state machine.
+  - It uses two nested loops (outer loop index `i`, inner loop index `j` where `j < i`).
+  - It compares `array[i]` with `array[j]`.
+  - If a match is found, set `duplicate_found` high.
+  - If the loops complete without a match, `duplicate_found` is low.
+
+**Inputs:**
+- `clk`: System clock.
+- `rst_n`: Active-low reset.
+- `start`: Pulse high to start the check.
+- `array_in`: Input array of N elements, each 32 bits. `input [N-1:0][W-1:0] array_in`
+
+**Outputs:**
+- `result`: High (1 bit) if a duplicate exists, low otherwise. `output reg result`
+- `done`: High when the check is complete. `output reg done`
+
+**Behavior:**
+1. **IDLE state**: Wait for `start` signal.
+2. **PROCESSING state**: 
+   - Initialize indices `i = 1`, `j = 0`.
+   - Compare `array_in[i]` and `array_in[j]`.
+   - If equal, set `result = 1` and transition to DONE.
+   - Increment `j`. If `j == i`, increment `i` and reset `j = 0`.
+   - If `i == N`, transition to DONE (no duplicates found, `result = 0`).
+3. **DONE state**: Wait for reset or next start.
+
+**Latency**: Approximately N*(N-1)/2 cycles + overhead.
+
+**Signal Widths**: 
+- `array_in`: `[N-1:0][W-1:0]` (N=8, W=32)
+- `result`: 1 bit
+- `done`: 1 bit
+
+**Verilog Code:**
+```verilog
+module duplicate_finder #(
+    parameter N = 8,
+    parameter W = 32
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [N-1:0][W-1:0] array_in,
+    output reg result,
+    output reg done
+);
+
+    // State encoding
+    localparam IDLE = 2'b00;
+    localparam PROCESSING = 2'b01;
+    localparam DONE = 2'b10;
+
+    reg [1:0] state, next_state;
+    reg [3:0] i, j; // Indices for nested loops (N=8 fits in 4 bits)
+    reg found_dup;
+
+    // State Register
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 0;
+            done <= 0;
+        end else begin
+            state <= next_state;
+        end
+    end
+
+    // Next State Logic and Output Logic (Moore style)
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: begin
+                if (start) next_state = PROCESSING;
+            end
+            PROCESSING: begin
+                // Completion condition: i reaches N
+                if (i == N) next_state = DONE;
+            end
+            DONE: begin
+                // Stay in DONE until reset
+                next_state = DONE;
+            end
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // Datapath Logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            result <= 0;
+            done <= 0;
+            i <= 0;
+            j <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    result <= 0;
+                    i <= 1;      // Start outer loop at 1
+                    j <= 0;      // Start inner loop at 0
+                end
+
+                PROCESSING: begin
+                    // If we haven't reached the end of the array
+                    if (i < N) begin
+                        // Compare elements
+                        if (array_in[i] == array_in[j]) begin
+                            result <= 1; // Duplicate found
+                            // We can transition immediately or just wait for state transition logic
+                            // To ensure result is set before DONE, we rely on state transition next cycle
+                        end
+
+                        // Update indices
+                        j <= j + 1;
+                        if (j + 1 == i) begin // If j was the last element before i
+                            j <= 0;
+                            i <= i + 1;
+                        end
+                    end else begin
+                        // i == N, loops finished. result is already 0 (default)
+                        // State machine will transition to DONE next cycle
+                    end
+                end
+
+                DONE: begin
+                    done <= 1;
+                    // Keep result value
+                end
+            endcase
+        end
+    end
+
+endmodule
+```
+
+**Note on Logic Refinement**: The implementation above updates `result` as soon as a match is found. If the `PROCESSING` state exits when `i == N`, it means the loop finished without finding a duplicate. If a duplicate is found, the state machine logic should ideally transition immediately or ensure the result is captured. 
+
+To fix the immediate transition: 
+In the `PROCESSING` block, if `array_in[i] == array_in[j]`, we can force `result <= 1`. 
+To stop processing immediately: The next state logic can check `found_dup`. 
+
+**Revised Logic**: 
+In `always @(*)` for `next_state`: 
+In `PROCESSING`: 
+  if (i == N) -> DONE
+  else if (array_in[i] == array_in[j]) -> DONE (since we found a duplicate)
+  else -> PROCESSING
+
+This ensures that as soon as a duplicate is detected, the module moves to the DONE state.

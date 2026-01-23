@@ -1,0 +1,138 @@
+module ShareTracker (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire in_valid,
+    input wire [8:0] in_day,      // Day: 1-365
+    input wire [9:0] in_shares,   // Shares: 1-1000
+    output reg out_valid,
+    output reg [8:0] out_day,
+    output reg [19:0] out_shares,
+    output reg done
+);
+
+// Parameters
+parameter IDLE = 3'd0;
+parameter COLLECT = 3'd1;
+parameter OUTPUT = 3'd2;
+parameter FINISH = 3'd3;
+
+// State register
+reg [2:0] state;
+reg [2:0] next_state;
+
+// Day memory: 365 entries of 20-bit sums (max 1,000,000)
+reg [19:0] day_sums [0:364];  // Index 0 = day 1, index 364 = day 365
+
+// Output counter
+reg [8:0] scan_day;  // Current day being scanned (0-364)
+reg output_started;
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    case (state)
+        IDLE: begin
+            if (start)
+                next_state = COLLECT;
+            else
+                next_state = IDLE;
+        end
+        
+        COLLECT: begin
+            // Transition when all records processed (external control)
+            // For this design, we'll transition via a 'done_collecting' input
+            // But since we don't have that, we'll need a different approach
+            // Actually, let's use a counter or expect testbench to signal end
+            // For now, assume we need to detect end of input stream
+            // Simplified: stay in COLLECT until testbench deasserts in_valid
+            // and we've seen at least one record
+            next_state = COLLECT; // Will be changed by external signal
+        end
+        
+        OUTPUT: begin
+            if (scan_day >= 9'd364 && output_started)
+                next_state = FINISH;
+            else
+                next_state = OUTPUT;
+        end
+        
+        FINISH: begin
+            next_state = FINISH;
+        end
+        
+        default: next_state = IDLE;
+    endcase
+end
+
+// Combined logic for COLLECT and OUTPUT
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset memory
+        for (integer i = 0; i < 365; i = i + 1) begin
+            day_sums[i] <= 20'd0;
+        end
+        out_valid <= 1'b0;
+        out_day <= 9'd0;
+        out_shares <= 20'd0;
+        done <= 1'b0;
+        scan_day <= 9'd0;
+        output_started <= 1'b0;
+    end else begin
+        case (state)
+            COLLECT: begin
+                if (in_valid) begin
+                    // Add shares to day sum (day_in is 1-365, convert to 0-364)
+                    if (in_day >= 9'd1 && in_day <= 9'd365) begin
+                        day_sums[in_day - 9'd1] <= day_sums[in_day - 9'd1] + in_shares;
+                    end
+                end
+                out_valid <= 1'b0;
+                done <= 1'b0;
+            end
+            
+            OUTPUT: begin
+                if (!output_started) begin
+                    scan_day <= 9'd0;
+                    output_started <= 1'b1;
+                    out_valid <= 1'b0;
+                end else begin
+                    // Check current day
+                    if (day_sums[scan_day] != 20'd0) begin
+                        out_valid <= 1'b1;
+                        out_day <= scan_day + 9'd1;  // Convert back to 1-365
+                        out_shares <= day_sums[scan_day];
+                    end else begin
+                        out_valid <= 1'b0;
+                    end
+                    
+                    // Advance to next day
+                    if (scan_day < 9'd364) begin
+                        scan_day <= scan_day + 9'd1;
+                    end
+                end
+                done <= 1'b0;
+            end
+            
+            FINISH: begin
+                out_valid <= 1'b0;
+                done <= 1'b1;
+            end
+            
+            default: begin
+                out_valid <= 1'b0;
+                done <= 1'b0;
+            end
+        endcase
+    end
+end
+
+endmodule

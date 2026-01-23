@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'robot_path_solver' that determines if a robot moving according to a repeating command string can reach a target coordinate.
+
+**Input Scaling:**
+- Target coordinates `a` and `b` are 8-bit signed integers (range -128 to 127).
+- Command string length `N` is fixed to 8 characters.
+- The robot repeats the command sequence at most 2 times (total path length = 16 steps + initial position).
+
+**Inputs:**
+- `input clk`: Clock signal.
+- `input rst_n`: Active-low reset.
+- `input start`: Start computation (loads target and command).
+- `input [7:0] target_a`: Target X coordinate (signed).
+- `input [7:0] target_b`: Target Y coordinate (signed).
+- `input [3:0] cmd_addr`: Command memory address (0 to 7).
+- `input [7:0] cmd_char`: 8-bit ASCII character for the command (only 'U', 'D', 'L', 'R' are valid).
+
+**Outputs:**
+- `output reg found`: High if the target coordinate is reached.
+- `output reg done`: High when computation is complete.
+
+**Behavior:**
+1. The module uses a state machine with states: IDLE, LOAD_CMD, PROCESS, CHECK, FINISH.
+2. In IDLE state, waiting for `start` signal. On `start` rising edge, transition to LOAD_CMD.
+3. In LOAD_CMD state, the module reads 8 command characters from the provided `cmd_addr` and `cmd_char` inputs over 8 clock cycles. It stores the command sequence in an internal memory (8x8-bit array).
+4. In PROCESS state, the robot simulates movement. It maintains current position (curr_x, curr_y) and a repetition counter.
+   - Initialize: curr_x = 0, curr_y = 0, rep_count = 0.
+   - Loop: Iterate through the 8 stored commands. Update curr_x and curr_y based on the command.
+   - After processing 8 commands, increment rep_count. If rep_count < 2, repeat the loop. If rep_count == 2, transition to CHECK.
+   - During the loop, if (curr_x == target_a) && (curr_y == target_b), assert `found` and transition to FINISH.
+5. In CHECK state (if not found during processing), check if the final position (after 2 repetitions) matches the target. If so, assert `found`. Transition to FINISH.
+6. In FINISH state, assert `done`. Reset internal state when `start` is low.
+
+**Hardware Constraints:**
+- Use only combinational logic and registers (no memories inferred).
+- Use 8-bit signed arithmetic for coordinates.
+- State machine must be explicitly defined.

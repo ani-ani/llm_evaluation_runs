@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'hr_optimization' that computes the minimum number of HR people and their daily assignments for a scaled-down worker management problem.
+
+Problem Adaptation:
+- Max 8 days
+- Max 64 total workers
+- Max 8 workers hired/fired per day
+- Workers are represented by indices 0 to 63
+- Output assignment history for 8 days
+
+Inputs:
+input clk: Clock signal
+input rst_n: Active-low reset
+input start: Start processing (pulse once)
+input [5:0] hire_count: Number of workers hired today (0-8)
+input [5:0] fire_count: Number of workers fired today (0-8)
+input valid_in: High when hire/fire inputs are valid for current day
+input last_day: High indicates this is the last day of input
+
+Outputs:
+output reg [2:0] hr_id_out: HR person ID for the day (1-4, using 3 bits)
+output reg [3:0] day_index_out: Current day index (0-7)
+output reg valid_out: High when hr_id_out is valid for the day
+output reg [2:0] min_hr_count: Minimum number of HR people needed
+output reg done: High when all days processed
+
+Internal Logic:
+- Use a register array 'worker_stack[63:0]' to store the HR ID of each worker.
+- Use a pointer 'stack_ptr' indicating the number of workers currently employed.
+- Use a state machine: IDLE, READ_DAY, PROCESS_FIRE, PROCESS_HIRE, UPDATE_OUT, CHECK_DONE.
+- For firing: Pop 'fire_count' workers from stack, record their IDs to check uniqueness vs hires.
+- For hiring: Push 'hire_count' new workers onto stack. Assign them IDs based on the constraint.
+- Constraint: The person firing cannot be the same as the person who hired the fired workers.
+- Since we hire and fire on the same day, we need to assign a distinct HR person for the day if possible, or reuse an existing one that doesn't violate constraints.
+- Strategy: For each day, try IDs 1..4. If the ID is different from all IDs of workers being fired, it is valid. Pick the smallest valid ID. If no ID is valid, increment max ID count (up to 4).
+- Output the assigned ID and the min count after all days.
+
+Behavior:
+1. Reset sets stack to empty, state to IDLE.
+2. On start, transition to READ_DAY.
+3. In READ_DAY, wait for valid_in. Once received, go to PROCESS_FIRE.
+4. PROCESS_FIRE: Pop 'fire_count' workers from stack. Save popped IDs in a buffer. Decrement stack pointer. Transition to PROCESS_HIRE.
+5. PROCESS_HIRE: Check valid IDs (1..4) against the fired IDs. Select smallest valid ID (min_id). Push 'hire_count' copies of min_id onto stack. Increment stack pointer. Track max ID used. Transition to UPDATE_OUT.
+6. UPDATE_OUT: Output min_id and day index. Set valid_out high for one cycle. Transition to CHECK_DONE.
+7. CHECK_DONE: If last_day is high, output min_hr_count (max ID used) and set done high. Else, transition to READ_DAY.
+
+Timing:
+- Latency: ~5-10 cycles per day depending on counts.
+- Max 8 days -> completes within ~80 cycles.
+
+Testbench will feed sequential inputs and check outputs.

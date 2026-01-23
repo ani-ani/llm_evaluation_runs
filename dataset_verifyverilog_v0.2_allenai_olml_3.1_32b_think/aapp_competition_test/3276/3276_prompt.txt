@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'stamp_verification' that determines if a 4x4 grid of colors can be created using 3x3 stamp operations starting from an all-white grid.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [1:0] row_idx // current row index (0-3)
+input [1:0] col_idx // current column index (0-3)
+input [1:0] target_color // 00=White, 01=Red, 10=Green, 11=Blue
+
+Outputs:
+output reg result // 1 if possible, 0 if not
+output reg done // high when computation complete
+
+Behavior:
+The module processes a 4x4 grid. A 3x3 stamp can be placed starting at positions (0,0), (0,1), (1,0), or (1,1) since 3x3 must fit in 4x4. Each stamp paints all 9 cells in its region with a single color. Starting from all-white (00) grid, determine if target configuration can be achieved.
+
+Since stamps overwrite previous colors, the algorithm works backwards: each cell must be painted by the LAST stamp that covers it. For a 4x4 grid, the valid 3x3 stamp positions are:
+- Stamp A: covers rows 0-2, cols 0-2
+- Stamp B: covers rows 0-2, cols 1-3  
+- Stamp C: covers rows 1-3, cols 0-2
+- Stamp D: covers rows 1-3, cols 1-3
+
+A configuration is valid if for each of the 4 stamp regions, all cells that are ONLY covered by that region must have the same color, and cells covered by multiple regions must be consistent with the ordering.
+
+Implementation approach: Use a state machine to check consistency. States: IDLE, CHECK_A, CHECK_B, CHECK_C, CHECK_D, VALID, INVALID.
+
+On start, load target grid via row_idx/col_idx signals over multiple cycles, storing in a 4x4 register array. Then analyze stamp coverage:
+- Corner cells (0,0), (0,3), (3,0), (3,3) are only covered by one stamp
+- Edge cells are covered by two stamps
+- Center cells (1,1), (1,2), (2,1), (2,2) are covered by all four stamps
+
+The key insight: a cell at (r,c) can be any color if it's covered by some stamp that paints it that color, considering stamp order. Since we stamp sequentially, the last stamp determines the final color.
+
+For this 4x4 case, we check: if cells covered by only one stamp have consistent colors, and cells covered by multiple stamps can be explained by appropriate stamp ordering.
+
+Simplified check: All cells in each 3x3 region that are not shared with other regions must have the same color. For shared cells, they must have the color of the stamp that covers them last.
+
+Use 16-bit state variables to track consistency checks. Latency: 20 clock cycles after loading grid.

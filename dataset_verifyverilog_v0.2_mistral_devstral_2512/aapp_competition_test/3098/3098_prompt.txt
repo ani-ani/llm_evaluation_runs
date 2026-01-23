@@ -1,0 +1,49 @@
+Design a combinational Verilog module named 'expected_area' that computes the expected area of a k-vertex convex polygon selected from n vertices of a larger convex polygon.
+
+Problem Adaptation:
+- Input: n ≤ 5 vertices, k = 3 vertices (fixed triangle selection)
+- Coordinates in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+- Use shoelace formula: Area = 0.5 * |Σ(x_i*y_{i+1} - x_{i+1}*y_i)|
+- Expected area = (sum of all possible k-gon areas) / C(n,k)
+- For n=5, k=3: C(5,3) = 10 triangles to check
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] n // number of vertices (max 5)
+input [3:0] k // number of vertices to select (fixed to 3)
+input [15:0] x0, y0 // vertex 0 coordinates (Q16.16)
+input [15:0] x1, y1 // vertex 1 coordinates (Q16.16)
+input [15:0] x2, y2 // vertex 2 coordinates (Q16.16)
+input [15:0] x3, y3 // vertex 3 coordinates (Q16.16)
+input [15:0] x4, y4 // vertex 4 coordinates (Q16.16)
+
+Outputs:
+output reg [31:0] result // Expected area in Q16.16 format
+output reg done // High when computation complete
+
+Internal Logic:
+- Use state machine with states: IDLE, CALC_TRIANGLES, ACCUMULATE, DIVIDE, DONE
+- Pre-compute all C(n,3) triangle combinations using nested loops or unrolled logic
+- For each combination (i,j,l), compute signed area using shoelace formula
+- Accumulate sum of all triangle areas
+- Divide by C(n,3) using bit-shift (since C(5,3)=10 is not a power of 2, use iterative subtraction or lookup)
+- Handle multiplication overflow: (x*y) needs 32-bit result for Q16.16 * Q16.16
+- Expected area = sum / C(n,3)
+
+Latency: Result valid 80 clock cycles after start asserted.
+
+Shoelace Formula for triangle (i,j,l):
+Area = |(x_i*y_j + x_j*y_l + x_l*y_i - x_j*y_i - x_l*y_j - x_i*y_l)| / 2
+In Q16.16: divide by 2 after computing cross products.
+
+Implementation details:
+- Store vertices in registers
+- Use state machine to iterate through combinations
+- Use combinational multipliers (32-bit outputs)
+- Accumulator should be 48-bit to prevent overflow (sum of 10 triangles, each max ~20 bits)
+- Division by C(n,3) = 10 requires right shift by ~3.32 bits - use multiplication by 0.1 (0x1999 in Q16.16)
+
+For n=5, k=3:
+Triangles to compute (combinations of indices 0-4): (0,1,2), (0,1,3), (0,1,4), (0,2,3), (0,2,4), (0,3,4), (1,2,3), (1,2,4), (1,3,4), (2,3,4)

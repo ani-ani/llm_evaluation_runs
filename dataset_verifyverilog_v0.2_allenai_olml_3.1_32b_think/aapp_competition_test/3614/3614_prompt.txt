@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'grasshopper_path' that computes the maximum number of flowers a grasshopper can visit on an N×N grid.
+
+Problem Adaptation:
+- Grid size N is limited to 8 (parameter N=8)
+- Petal values are 8-bit unsigned integers (0-255)
+- The grasshopper can jump: |Δrow|=1 and |Δcol|>1, OR |Δcol|=1 and |Δrow|>1
+- Must visit flowers with strictly increasing petal counts
+- Output is the maximum path length (8-bit value)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] N // actual grid size (1-8)
+input [2:0] start_r // starting row (0-indexed)
+input [2:0] start_c // starting column (0-indexed)
+input [7:0] petals [0:7][0:7] // 8x8 grid of petal values (only first N×N used)
+
+Outputs:
+output reg [7:0] max_path_length // result: maximum number of flowers
+output reg done // high when computation complete
+
+Specifications:
+- Use dynamic programming with state machine
+- States: IDLE, LOAD_GRID, COMPUTE_DP, FIND_MAX, COMPLETE
+- Latency: Approximately N×N×N cycles worst case (up to 512 cycles for N=8)
+- DP approach: For each cell, track longest path starting from that cell
+- Process cells in descending petal order to ensure dependencies resolve
+- For each cell, check all valid jump destinations and update DP value
+- Finally, find DP value at start position
+
+Behavioral Description:
+1. IDLE: Wait for start signal
+2. LOAD_GRID: Store petal values into internal registers
+3. COMPUTE_DP: Process cells in order of descending petal values
+   - Create sorted order of cells by petal count
+   - For each cell in sorted order (high to low):
+     - Set dp[cell] = 1 (base case)
+     - Check all valid jump positions from this cell
+     - For each jump position with higher petals: dp[cell] = max(dp[cell], 1 + dp[jump_pos])
+4. FIND_MAX: Read DP value at start_r, start_c
+5. COMPLETE: Set done=1 and output result
+
+Optimization for Hardware:
+- Use parameterized size N=8 max
+- Store petals and DP as 64-element arrays (8×8 flattened)
+- Use combinational logic for jump validation
+- Parallel checking of valid jumps for each cell
+- Pipeline stages for better timing

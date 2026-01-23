@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'tree_avenue' that computes the minimum total distance to move trees to aligned pairs along a road.
+
+Problem Adaptation:
+- Maximum 8 trees total (4 pairs)
+- Road length L (0 to 10000, Q16.16 format)
+- Road width W (1 to 20, Q16.16 format)
+- Tree positions on left side: 0 to L (Q16.16 format)
+- Target positions: N/2 pairs at x = 0, L/(N/2-1), 2*L/(N/2-1), ... (right side at offset W from left)
+- Dynamic programming: sort trees, match to pairs to minimize sum of Euclidean distances
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_trees // N = 4 to 8, must be even
+input [31:0] road_len // L in Q16.16
+input [31:0] road_width // W in Q16.16
+input [31:0] tree_pos_0 // Tree position 0 in Q16.16
+input [31:0] tree_pos_1 // Tree position 1 in Q16.16
+input [31:0] tree_pos_2 // Tree position 2 in Q16.16
+input [31:0] tree_pos_3 // Tree position 3 in Q16.16
+input [31:0] tree_pos_4 // Tree position 4 in Q16.16
+input [31:0] tree_pos_5 // Tree position 5 in Q16.16
+input [31:0] tree_pos_6 // Tree position 6 in Q16.16
+input [31:0] tree_pos_7 // Tree position 7 in Q16.16
+
+Outputs:
+output reg [63:0] total_distance // Q16.16 fixed-point result
+output reg done // high when computation complete
+
+Specify latency: Result valid 200 clock cycles after start asserted.
+Use state machine with states: IDLE, SORT_INPUTS, CALCULATE_DP, OUTPUT_RESULT.
+
+Algorithm Description:
+1. Sort input tree positions (bubble sort, 28 iterations max for 8 elements)
+2. Pre-calculate target positions for N/2 pairs: pair i has left position i * L / (N/2 - 1) and right position (i * L / (N/2 - 1)) + W
+3. DP state: dp[i][j] = minimum cost to place first i sorted trees into first j pairs
+4. Transition: dp[i][j] = min(dp[i-1][j-1] + dist(tree[i-1], pair[j-1].left), dp[i-1][j] + dist(tree[i-1], pair[j-1].right))
+5. Use 64-bit intermediate storage for squared distances and square root
+6. Square root approximation: use iterative Newton-Raphson or lookup table
+7. Final answer is dp[N][N/2]
+
+Fixed-Point: All inputs are Q16.16. Square root output is Q16.16. Distances use Q32.32 intermediate for squared, then sqrt to Q16.16.

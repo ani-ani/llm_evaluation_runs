@@ -1,0 +1,56 @@
+## Flattened List with Order Preservation - Hardware Module
+
+Implement a Verilog module that flattens a nested list structure into a single sequence while preserving the insertion order of first occurrences.
+
+### SCALED REQUIREMENTS
+- **Maximum 3 inner lists** with **maximum 4 elements each** (total 12 elements)
+- **Element range**: 0 to 15 (4-bit values)
+- **Maximum unique elements**: 8 (output array size)
+- **Output**: Array of unique elements in order of first appearance
+
+### INTERFACE SPECIFICATION
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start pulse (assert for 1 cycle to begin computation)
+- `list_0`: 4-element array, each 4 bits (first inner list)
+- `list_1`: 4-element array, each 4 bits (second inner list)
+- `list_2`: 4-element array, each 4 bits (third inner list)
+- `list_0_valid`: 3-bit signal indicating valid elements in list_0 (1-4)
+- `list_1_valid`: 3-bit signal indicating valid elements in list_1 (0-4)
+- `list_2_valid`: 3-bit signal indicating valid elements in list_2 (0-4)
+
+**Outputs:**
+- `result`: 8-element array, each 4 bits (flattened unique elements, unused slots = 0)
+- `result_count`: 4-bit value indicating number of valid elements in result
+- `done`: Asserted high for 1 cycle when computation completes
+
+### FUNCTIONAL BEHAVIOR
+
+1. On `start` pulse: Begin processing the three lists in order (list_0 → list_1 → list_2)
+2. For each element in each list (up to `list_X_valid` elements):
+   - Check if element has been seen before
+   - If new: add to result array and mark as seen
+   - If seen: skip
+3. When complete: assert `done` for 1 cycle, present result
+
+### TIMING REQUIREMENTS
+- Start pulse must be held for 1 clock cycle
+- Computation completes within 30 clock cycles maximum
+- Reset must be held for minimum 2 clock cycles
+
+### RESET BEHAVIOR
+- On `rst_n=0`: All outputs = 0, seen elements table cleared, state reset
+- Module must be reset before first use and between operations
+
+### EXAMPLE
+Input lists: `[1, 2, 3], [2, 4], [3, 5, 1]`
+Expected output: `result = [1, 2, 3, 4, 5, 0, 0, 0]`, `result_count = 5`
+
+### IMPLEMENTATION NOTES
+- Use a lookup table to track seen elements (8 entries, 4-bit each)
+- Use a counter to track position in input lists
+- Use a shift register or RAM for result array
+- Element values are 4-bit unsigned integers
+- Maintain insertion order: first occurrence determines position

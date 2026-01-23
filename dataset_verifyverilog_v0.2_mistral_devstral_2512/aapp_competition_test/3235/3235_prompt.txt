@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'expense_settler' that implements a simplified debt cycle cancellation algorithm for expense sharing among friends.
+
+The module handles a fixed maximum of 8 friends (N=8) and uses integer debt amounts (scaled down from the original problem, supporting 0-255 range). The goal is to reduce debts by finding and cancelling cycles.
+
+**Inputs:**
+- `input clk`: Clock signal
+- `input rst_n`: Active-low reset
+- `input start`: Start the settlement process
+- `input [2:0] n`: Number of active friends (1-8)
+- `input [5:0] m`: Number of IOUs (0-40)
+- `input [2:0] a_in`: Index of debtor for current IOU
+- `input [2:0] b_in`: Index of creditor for current IOU
+- `input [7:0] c_in`: Amount for current IOU (scaled, max 255)
+- `input load_iou`: Signal to load the current IOU into the internal buffer
+
+**Outputs:**
+- `output reg [2:0] p`: Number of IOUs left after cancellation
+- `output reg [2:0] out_a`: Debtor index for output IOU
+- `output reg [2:0] out_b`: Creditor index for output IOU
+- `output reg [7:0] out_c`: Amount for output IOU
+- `output reg out_valid`: High when output IOU is valid
+- `output reg done`: High when all processing is complete
+
+**Behavior:**
+1. **Initialization**: When `start` is asserted, reset internal state. Wait for `load_iou` signals to populate the internal adjacency matrix `debt_matrix[7:0][7:0]` with values from `a_in`, `b_in`, `c_in`. The matrix stores debt from `a` to `b`.
+2. **Cycle Cancellation**: Use a state machine to process debts.
+   - Iterate through all possible triplets (i, j, k) to find cycles of length 3 (i->j, j->k, k->i).
+   - Alternatively, perform a simplified DFS to find any cycle (max depth N).
+   - Calculate the minimum amount `min_val` in the cycle.
+   - Subtract `min_val` from all edges in the cycle.
+   - Repeat until no cycles are found.
+   - Since cycles can be complex, a valid simplification is to simply search for any 2-node cycle (A owes B, B owes A) and cancel it. While the problem allows longer cycles, handling 2-cycles is sufficient for basic settlement and fits the hardware constraints better than a full generic cycle finder. We will implement a 2-cycle canceller that iterates through all pairs.
+   - *Refined Strategy*: To be more complete, implement a search for simple cycles of length up to N. A standard approach is: for each node, perform a DFS limited by depth N to find a path back to itself. If found, cancel the minimum amount.
+3. **Output**: Once no more cycles can be found (checked by a full pass with no updates), transition to an output state. Traverse the `debt_matrix` and output non-zero entries via `out_a`, `out_b`, `out_c`, setting `out_valid` high for each. Count entries into `p`.
+
+**Timing:**
+- The algorithm requires several clock cycles to scan for cycles. Latency will be high, roughly O(N * iterations). Assume result is valid after 1000-2000 cycles for simulation purposes, but behavior is what matters.
+- Use state machine states: IDLE, LOAD, SETTLE, CHECK_CYCLES, OUTPUT, DONE.
+
+**Constraints:**
+- Bit widths: Friends (3 bits), Amounts (8 bits), Counters (6 bits).
+- Internal Debt Matrix: 8x8 array of 8-bit values.
+- Do not allow debts between friends who never had an IOU (do not create new edges). This is naturally handled by only subtracting from existing edges.

@@ -1,0 +1,19 @@
+# Cocotb Makefile - Auto-generated
+SIM ?= icarus
+TOPLEVEL_LANG ?= verilog
+PWD := $(shell pwd)
+
+# Source files
+VERILOG_SOURCES = $(PWD)/3470_gen_0.sv
+
+# Top level module
+TOPLEVEL = minesweeper_safe
+
+# Python test module
+MODULE = 3470_testbench
+
+# SystemVerilog support
+COMPILE_ARGS += -g2012
+
+# Include cocotb's make rules
+include $(shell cocotb-config --makefiles)/Makefile.sim

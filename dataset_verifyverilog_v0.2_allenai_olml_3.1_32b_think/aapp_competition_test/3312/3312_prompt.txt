@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'johnny5_optimizer' that computes the maximum score for the Johnny5 game.
+
+**Problem Adaptation**:
+- Grid size: Fixed 4x4 (N=4)
+- Max cans: Fixed 4 (C=4)
+- Time: Max 8 seconds (T=8)
+- Energy: Max 16 units (E=16)
+- Coordinates: 0-3 (2 bits)
+
+**Inputs**:
+input clk                    // Clock signal
+input rst_n                  // Active-low reset
+input start                  // Start computation
+input [1:0] start_x          // Starting X coordinate (0-3)
+input [1:0] start_y          // Starting Y coordinate (0-3)
+input [3:0] start_energy     // Starting energy (0-15)
+input [1:0] can_count        // Number of cans (0-4)
+input [7:0] can_info [0:3]   // Array of can information
+// Each can_info[i] is packed as: [7:6]=unused, [5:4]=X, [3:2]=Y, [1:0]=Time
+
+**Outputs**:
+output reg [7:0] max_score   // Maximum score achieved
+output reg done              // High when computation complete
+
+**Behavior**:
+The module should use dynamic programming (DP) to find the optimal path. Since the grid and cans are small, you can use a 3D state array DP[time][x][y][energy] or iterate through cans.
+
+Recommended approach:
+1. Parse can information into a timeline array (cans_at_time[time][x][y])
+2. Use DP where state is (time, x, y, energy) -> max_score
+3. Iterate time from 0 to T_max (8)
+4. At each time step, consider all possible actions: stay, up, down, left, right (if energy > 0)
+5. Calculate score and energy gain based on cans appearing at that time
+6. Update DP table for next time step
+7. After T_max iterations, find maximum score across all ending states
+
+**Latency**: 2048 clock cycles (approximate, based on 8 time steps * 4 x * 4 y * 16 energy * small overhead)
+
+**States**: IDLE, PARSE_CANS, DP_INIT, DP_TIME_LOOP, DP_STATE_LOOP, DP_ACTION_LOOP, FIND_MAX, DONE
+
+**Constraints**:
+- Use parameter T_MAX = 8 (max time steps)
+- Use parameter GRID_SIZE = 4 (grid dimension)
+- Use parameter MAX_ENERGY = 16
+- Use parameter MAX_CANS = 4
+- Use parameter X_BITS = 2, Y_BITS = 2, TIME_BITS = 4, ENERGY_BITS = 4
+- Output max_score should hold the maximum possible score
+- Implement bounds checking for grid edges (0-3)
+- If energy is 0, only 'stay' action is possible

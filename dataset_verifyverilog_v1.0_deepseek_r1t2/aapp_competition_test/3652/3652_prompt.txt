@@ -1,0 +1,136 @@
+module min_deletions #(
+    parameter N = 8,
+    parameter DATA_WIDTH = 4,
+    parameter ADDR_WIDTH = 3
+)(
+    input clk,
+    input rst_n,
+    input start,
+    input [DATA_WIDTH-1:0] row1 [0:N-1],
+    input [DATA_WIDTH-1:0] row2 [0:N-1],
+    input [DATA_WIDTH-1:0] row3 [0:N-1],
+    output reg [DATA_WIDTH-1:0] deletions,
+    output reg done
+);
+    // State encoding
+    localparam IDLE = 2'b00;
+    localparam COMPUTE_POS = 2'b01;
+    localparam ITERATE_MASKS = 2'b10;
+    localparam CHECK_SUBSET = 2'b11;
+    
+    reg [1:0] state;
+    reg [DATA_WIDTH-1:0] pos [0:N-1];  // pos[value-1] = column index
+    reg [N-1:0] mask;                  // current subset mask
+    reg [DATA_WIDTH-1:0] i;            // loop variable
+    reg [DATA_WIDTH-1:0] max_size;
+    reg [DATA_WIDTH-1:0] current_size;
+    reg valid;
+    reg [1:0] check_stage;
+    reg seen2 [0:N-1];                 // seen values in row2 (indexed by value-1)
+    reg seen3 [0:N-1];                 // seen values in row3
+    reg [DATA_WIDTH-1:0] val2, val3;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            deletions <= 0;
+            max_size <= 0;
+            mask <= 0;
+            i <= 0;
+            check_stage <= 0;
+            valid <= 1;
+            current_size <= 0;
+            for (int k = 0; k < N; k = k + 1) begin
+                seen2[k] <= 0;
+                seen3[k] <= 0;
+            end
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        state <= COMPUTE_POS;
+                        i <= 0;
+                    end
+                end
+                
+                COMPUTE_POS: begin
+                    // Compute inverse mapping: for each column i, set pos[row1[i]-1] = i
+                    pos[row1[i]-1] <= i;
+                    if (i < N-1) begin
+                        i <= i + 1;
+                    end else begin
+                        i <= 0;
+                        mask <= 0;
+                        max_size <= 0;
+                        state <= ITERATE_MASKS;
+                    end
+                end
+                
+                ITERATE_MASKS: begin
+                    if (mask < (1 << N)) begin
+                        // Initialize for checking this mask
+                        i <= 0;
+                        valid <= 1;
+                        current_size <= 0;
+                        for (int k = 0; k < N; k = k + 1) begin
+                            seen2[k] <= 0;
+                            seen3[k] <= 0;
+                        end
+                        check_stage <= 0;
+                        state <= CHECK_SUBSET;
+                    end else begin
+                        deletions <= N - max_size;
+                        done <= 1;
+                        state <= IDLE;
+                    end
+                end
+                
+                CHECK_SUBSET: begin
+                    case (check_stage)
+                        0: begin
+                            if (i < N) begin
+                                if (mask[i]) begin
+                                    current_size <= current_size + 1;
+                                    val2 <= row2[i];
+                                    val3 <= row3[i];
+                                    check_stage <= 1;
+                                end else begin
+                                    i <= i + 1;
+                                end
+                            end else begin
+                                if (valid) begin
+                                    if (current_size > max_size)
+                                        max_size <= current_size;
+                                end
+                                mask <= mask + 1;
+                                state <= ITERATE_MASKS;
+                            end
+                        end
+                        
+                        1: begin
+                            // Check closure: pos[val2-1] and pos[val3-1] must be in mask
+                            if (!mask[pos[val2-1]] || !mask[pos[val3-1]])
+                                valid <= 0;
+                            // Check distinctness in row2
+                            if (seen2[val2-1])
+                                valid <= 0;
+                            else
+                                seen2[val2-1] <= 1;
+                            // Check distinctness in row3
+                            if (seen3[val3-1])
+                                valid <= 0;
+                            else
+                                seen3[val3-1] <= 1;
+                            i <= i + 1;
+                            check_stage <= 0;
+                        end
+                    endcase
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+endmodule

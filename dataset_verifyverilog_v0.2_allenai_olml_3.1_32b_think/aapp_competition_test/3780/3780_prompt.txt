@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'rescue_planner' that computes the minimum time required for a dirigible to reach a target point subject to changing wind conditions and maximum airspeed.
+
+Problem Adaptation:
+The module uses binary search to find the minimum time T. 
+Inputs are scaled to fit within 32-bit fixed-point arithmetic (Q16.16 format where integer part represents 1/65536 of the actual value).
+Coordinates and velocities are scaled down by a factor of 16 (divide by 16 on input) to prevent overflow in intermediate 32-bit calculations.
+Binary search runs for a fixed 32 iterations (sufficient for 10^-9 precision on scaled inputs).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input signed [31:0] dx // Target x coordinate (scaled Q16.16)
+input signed [31:0] dy // Target y coordinate (scaled Q16.16)
+input signed [31:0] v_max // Maximum airspeed (scaled Q16.16)
+input signed [31:0] t_wind // Time when wind changes (scaled Q16.16)
+input signed [31:0] vx // Wind x velocity (first period) (scaled Q16.16)
+input signed [31:0] vy // Wind y velocity (first period) (scaled Q16.16)
+input signed [31:0] wx // Wind x velocity (second period) (scaled Q16.16)
+input signed [31:0] wy // Wind y velocity (second period) (scaled Q16.16)
+
+Outputs:
+output reg done // High when computation is complete
+output reg [31:0] result // Minimum time T in Q16.16 format
+
+Implementation Details:
+The module implements a binary search algorithm over the time T.
+Range: [0, 200000.0] scaled to [0, 0x1E84800000].
+Update rule: mid = (low + high) >> 1.
+Condition check: For a candidate T, calculate the wind displacement.
+If T < t_wind: displacement = T * (vx, vy)
+If T >= t_wind: displacement = t_wind * (vx, vy) + (T - t_wind) * (wx, wy)
+Calculate target position relative to wind: (dx - wx_displ, dy - wy_displ).
+Check if distance to target <= v_max * T.
+Distance is calculated as sqrt(dx^2 + dy^2). Since sqrt is hard, compare squares: (dx^2 + dy^2) <= (v_max * T)^2.
+Intermediate values (multiplications) might exceed 32 bits; use 48-bit or 64-bit accumulators internally if needed, but optimize to fit 32-bit if possible by careful scaling.
+
+State Machine States:
+IDLE: Wait for start signal.
+SETUP: Initialize low (0), high (max_time), iteration counter (32).
+CALC_WIND: Calculate wind displacement for current mid.
+CHECK_DIST: Calculate squared distance and squared reachability. Compare.
+UPDATE: Update low or high based on comparison.
+ITERATE: Decrement counter, if > 0 go to SETUP, else go to DONE.
+DONE: Set done=1, capture result.
+
+Note: Input coordinates and velocities are effectively divided by 16 before use (by shifting right by 4) to ensure intermediate 32-bit products fit within reasonable bounds (values < 2^24 roughly).
+Latency: Approx 32 * (number of cycles per iteration) cycles after start asserted.

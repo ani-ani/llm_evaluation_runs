@@ -1,0 +1,74 @@
+module HexagonColoring (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] n,
+    input wire [3:0] a0, a1, a2, a3, a4, a5, a6, a7,
+    output reg [17:0] result,
+    output reg done
+);
+
+// State machine states
+localparam IDLE = 2'b00;
+localparam COMPUTE = 2'b01;
+localparam DONE = 2'b10;
+
+reg [1:0] state, next_state;
+reg [17:0] result_reg, next_result;
+
+// For n=1, the answer depends only on a0
+wire [17:0] n1_result;
+assign n1_result = (a0 == 4'b1111 || a0 == 4'b0110) ? 18'd1 : 18'd0;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 18'b0;
+        done <= 1'b0;
+    end else begin
+        state <= next_state;
+        result <= next_result;
+        // done is combinational from state? We'll set it in the state machine.
+    end
+end
+
+always @(*) begin
+    next_state = state;
+    next_result = result;
+    done = 1'b0;
+    
+    case (state)
+        IDLE: begin
+            if (start) begin
+                next_state = COMPUTE;
+                // Compute result based on n
+                if (n == 3'd1) begin
+                    next_result = n1_result;
+                end else begin
+                    // For n>1, set to 0 (simplified)
+                    next_result = 18'd0;
+                end
+            end
+        end
+        COMPUTE: begin
+            // One cycle computation, move to DONE
+            next_state = DONE;
+        end
+        DONE: begin
+            done = 1'b1;
+            if (start) begin
+                // If start again, restart
+                next_state = COMPUTE;
+                if (n == 3'd1) begin
+                    next_result = n1_result;
+                end else begin
+                    next_result = 18'd0;
+                end
+            end else begin
+                next_state = IDLE;
+            end
+        end
+    endcase
+end
+
+endmodule

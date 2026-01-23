@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'max_ranks' that computes the maximum number of distinct ranks for 2D data points under dominance constraints.
+
+Problem Adaptation:
+- N is scaled to maximum 8 assistants (input array size)
+- Measurements a_i, b_i and K are scaled to 8-bit unsigned integers (0-255)
+- Constraints: For any two assistants i and j, if (a_i + K < a_j) OR (b_i + K < b_j), then rank(j) >= rank(i)
+- Goal: Maximize number of distinct ranks
+- This is equivalent to finding the size of the minimum path cover in a DAG where edges represent forced dominance
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] n // Number of assistants (1-8)
+input [7:0] k // Measurement difference limit K
+input [7:0] a [0:7] // Array of joke quality measurements
+input [7:0] b [0:7] // Array of compliment quality measurements
+
+Outputs:
+output reg [3:0] result // Maximum distinct ranks (1-8)
+output reg done // High when computation complete
+
+Behavioral Specification:
+1. On start assertion, read n, k, and array a[0:7], b[0:7]
+2. Construct a directed graph where edge i->j exists if constraint forces rank(j) >= rank(i)
+   Edge condition: (a[i] + k < a[j]) OR (b[i] + k < b[j])
+3. Find the minimum path cover of this DAG
+   For DAG: min_path_cover = N - max_matching_size
+   where max_matching is in bipartite graph representation
+4. Implement using state machine with states: IDLE, BUILD_GRAPH, COMPUTE_MATCHING, DONE
+5. Since N ≤ 8, can use brute force or DP to compute maximum matching
+6. Result is the minimum path cover size
+
+Latency: Result valid within 256 clock cycles after start asserted.
+
+Implementation notes:
+- Use adjacency matrix to represent graph (8x8)
+- For matching, use Hopcroft-Karp or simple augmenting path since N is small
+- Store arrays in registers
+- Use combinational logic for constraint checking
+- The core algorithm is: min_path_cover = N - max_matching(bipartite_graph)
+
+Example:
+N=2, K=10, a=[1,5], b=[1,4]
+Constraints: 1+10 < 5? No. 1+10 < 4? No. So no forced edges.
+Result: 2 ranks possible (max distinct)

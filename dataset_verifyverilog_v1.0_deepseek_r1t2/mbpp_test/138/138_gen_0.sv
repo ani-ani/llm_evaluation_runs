@@ -1,0 +1,1 @@
+module is_sum_of_powers_of_two(\n    input [7:0] n,\n    output reg is_sum\n);\n    always @(*) begin\n        // Check if LSB is 0 (even number)\n        is_sum = (n[0] == 1'b0);\n    end\nendmodule

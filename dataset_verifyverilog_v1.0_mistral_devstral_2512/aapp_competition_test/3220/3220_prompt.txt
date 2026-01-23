@@ -1,0 +1,39 @@
+Module: circle_dance
+Description: Finds lexicographically smallest assignment of L/R directions for N=4 wizards to avoid collisions
+
+Parameters:
+  N = 4 (number of wizards, fixed)
+  DATA_WIDTH = 8 (bits per p_i value, p_i < N)
+  MAX_CYCLES = 256 (timeout for search)
+
+Interface:
+  Inputs:
+    - clk: Clock signal (rising edge triggered)
+    - rst_n: Active-low synchronous reset
+    - start: Start pulse (assert for 1 cycle to begin search)
+    - p_0, p_1, p_2, p_3: p_i values for each wizard (8-bit unsigned)
+  
+  Outputs:
+    - result_0, result_1, result_2, result_3: ASCII characters ('L'=76 or 'R'=82)
+    - done: Asserted high for 1 cycle when search completes
+    - valid: 1 if a solution was found, 0 if no solution exists
+
+Behavior:
+  1. On start assertion, begin searching through all 16 direction combinations
+  2. For each wizard i (0-indexed):
+     - If direction L (bit=0): new position = (i + p_i) mod 4
+     - If direction R (bit=1): new position = (i - p_i) mod 4 (positive modulo)
+  3. Search order: 0000=LLLL, 0001=LLLR, 0010=LLRL, ..., 1111=RRRR
+  4. First combination with all distinct positions is valid
+  5. Output corresponding ASCII string via result_0..result_3
+  6. If no valid combination after 16 iterations, valid=0
+  7. done asserted for 1 cycle when result is ready or search completes
+
+Timing:
+  - Minimum 2 clock cycles of reset
+  - start asserted for 1 clock cycle
+  - Search takes up to 16 cycles
+  - Result available same cycle as done
+
+Reset behavior:
+  - rst_n=0: done=0, valid=0, result=0, state cleared

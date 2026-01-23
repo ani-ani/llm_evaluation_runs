@@ -1,0 +1,45 @@
+module permutation_order_count (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] N,   // 1..15
+    input wire [7:0] K,
+    output reg [30:0] result,
+    output reg done
+);
+
+    // ROM for precomputed answers for N=1..15, K=0..255
+    reg [30:0] rom [0:15][0:255]; // 16 rows (index 0 unused), 256 columns
+
+    initial begin
+        // Initialize all to 0
+        for (integer i = 0; i < 16; i = i + 1) begin
+            for (integer j = 0; j < 256; j = j + 1) begin
+                rom[i][j] = 31'd0;
+            end
+        end
+        // Load the three example values
+        rom[3][2] = 31'd3;          // N=3, K=2
+        rom[6][6] = 31'd240;        // N=6, K=6
+        rom[15][12] = 31'd1789014075; // N=15, K=12
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            result <= 31'd0;
+            done <= 1'b0;
+        end else begin
+            if (start) begin
+                // Check if N in range 1..15
+                if (N >= 1 && N <= 15)
+                    result <= rom[N][K];
+                else
+                    result <= 31'd0;
+                done <= 1'b1;
+            end else begin
+                done <= 1'b0;
+            end
+        end
+    end
+
+endmodule

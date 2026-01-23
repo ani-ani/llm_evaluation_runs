@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'odometer_verifier' that verifies car service history for odometer tampering and sufficient service.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] num_entries // number of service entries (max 8)
+input [7:0] entry_year // current entry year (1950-2050, offset by 1950)
+input [3:0] entry_month // current entry month (1-12)
+input [31:0] entry_odometer // current odometer reading (0-99999)
+input entry_valid // indicates valid entry data
+output reg [1:0] result // 0=seems legit, 1=insufficient service, 2=tampered odometer
+output reg done // high when computation complete
+
+Specify latency: Processing all entries takes approximately 8 clock cycles (1 per entry) plus 2 cycles for final verdict.
+
+Algorithm:
+Use state machine with states: IDLE, READ_ENTRY, CHECK_INTERVAL, VERDICT.
+
+1. IDLE: Wait for start signal
+2. READ_ENTRY: Load entry data, store in buffer
+3. CHECK_INTERVAL: Compare with previous entry
+   - Calculate month difference
+   - Calculate odometer difference (account for rollover at 100000)
+   - Verify: 2000 <= distance/month <= 20000
+   - If invalid distance range: tampered
+   - Track if service interval exceeds 30000km OR 12 months
+4. VERDICT: After processing all entries
+   - If any tampering detected: result = 2
+   - Else if any interval violates service rules: result = 1
+   - Else: result = 0
+
+Rollover handling: If current_odometer < previous_odometer, add 100000 to current for distance calculation.
+
+Distance is in kilometers (integer). Use 32-bit registers for calculations.
+
+Month calculation: (year_diff * 12) + month_diff
+
+Service rule: Valid interval if distance <= 30000 OR months <= 12
+
+Edge cases:
+- Same month entries: months=0, must have same or increasing odometer
+- Multiple wraps: handle by checking distance per month range
+
+Internal state:
+- prev_year, prev_month, prev_odometer
+- total_months_since_service
+- max_distance_since_service
+- service_violation flag
+- tamper_flag
+
+Process each entry sequentially:
+  - First entry: initialize previous, no checks
+  - Subsequent entries: check validity and service rules
+  - After last entry: determine final result

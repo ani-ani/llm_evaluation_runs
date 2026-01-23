@@ -1,0 +1,112 @@
+module bond_assignment (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] N,           // Number of agents/missions (1-4)
+    input wire [127:0] prob,      // 16x8-bit probabilities, row-major (4x4)
+    output reg [31:0] max_product,
+    output reg done
+);
+
+    // Lookup table for number of set bits in 4-bit mask
+    reg [1:0] set_bits [0:15];
+    initial begin
+        set_bits[0] = 0;  set_bits[1] = 1;  set_bits[2] = 1;  set_bits[3] = 2;
+        set_bits[4] = 1;  set_bits[5] = 2;  set_bits[6] = 2;  set_bits[7] = 3;
+        set_bits[8] = 1;  set_bits[9] = 2;  set_bits[10] = 2; set_bits[11] = 3;
+        set_bits[12] = 2; set_bits[13] = 3; set_bits[14] = 3; set_bits[15] = 4;
+    end
+
+    // Unpack probabilities into 4x4 matrix
+    wire [7:0] prob_matrix [0:3][0:3];
+    assign prob_matrix[0][0] = prob[7:0];    assign prob_matrix[0][1] = prob[15:8];
+    assign prob_matrix[0][2] = prob[23:16];  assign prob_matrix[0][3] = prob[31:24];
+    assign prob_matrix[1][0] = prob[39:32];  assign prob_matrix[1][1] = prob[47:40];
+    assign prob_matrix[1][2] = prob[55:48];  assign prob_matrix[1][3] = prob[63:56];
+    assign prob_matrix[2][0] = prob[71:64];  assign prob_matrix[2][1] = prob[79:72];
+    assign prob_matrix[2][2] = prob[87:80];  assign prob_matrix[2][3] = prob[95:88];
+    assign prob_matrix[3][0] = prob[103:96]; assign prob_matrix[3][1] = prob[111:104];
+    assign prob_matrix[3][2] = prob[119:112];assign prob_matrix[3][3] = prob[127:120];
+
+    // State machine
+    reg [2:0] state;
+    parameter IDLE = 3'b000, UPDATE_AGENT = 3'b001, UPDATE_MASK = 3'b010, 
+              UPDATE_MISSION = 3'b011, DONE = 3'b100;
+
+    reg [1:0] current_agent;
+    reg [3:0] current_mask;
+    reg [1:0] current_mission;
+    reg [31:0] dp [0:15]; // DP states for each mask
+    integer i;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            max_product <= 0;
+            current_agent <= 0;
+            current_mask <= 0;
+            current_mission <= 0;
+            for (i = 0; i < 16; i = i + 1) dp[i] <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        for (i = 0; i < 16; i = i + 1) dp[i] <= 0;
+                        dp[0] <= 1;
+                        current_agent <= 0;
+                        state <= UPDATE_AGENT;
+                        done <= 0;
+                    end
+                end
+
+                UPDATE_AGENT: begin
+                    current_mask <= 0;
+                    state <= UPDATE_MASK;
+                end
+
+                UPDATE_MASK: begin
+                    if (current_mask < 16) begin
+                        if (set_bits[current_mask] == current_agent) begin
+                            current_mission <= 0;
+                            state <= UPDATE_MISSION;
+                        end else begin
+                            current_mask <= current_mask + 1;
+                        end
+                    end else begin
+                        if (current_agent < N - 1) begin
+                            current_agent <= current_agent + 1;
+                            state <= UPDATE_AGENT;
+                        end else begin
+                            state <= DONE;
+                        end
+                    end
+                end
+
+                UPDATE_MISSION: begin
+                    if (current_mission < N) begin
+                        if (!current_mask[current_mission]) begin
+                            reg [3:0] new_mask;
+                            reg [31:0] product;
+                            new_mask = current_mask | (1 << current_mission);
+                            product = dp[current_mask] * prob_matrix[current_agent][current_mission];
+                            if (product > dp[new_mask]) begin
+                                dp[new_mask] <= product;
+                            end
+                        end
+                        current_mission <= current_mission + 1;
+                    end else begin
+                        state <= UPDATE_MASK;
+                        current_mask <= current_mask + 1;
+                    end
+                end
+
+                DONE: begin
+                    max_product <= dp[(1 << N) - 1];
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule

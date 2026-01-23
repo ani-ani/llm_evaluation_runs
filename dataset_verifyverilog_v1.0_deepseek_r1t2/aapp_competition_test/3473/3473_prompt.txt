@@ -1,0 +1,132 @@
+module ContestScheduler (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [1:0] Z,          // Number of years (1 or 2)
+    input wire [2:0] dow_oct1_0, // Day of week of Oct 1, year 2019 (0=Sun, 1=Mon, ..., 6=Sat)
+    input wire [2:0] dow_oct1_1, // Day of week of Oct 1, year 2020
+    input wire [30:0] forbidden_mask_0, // 31-bit mask, bit i-1 = 1 if day i is forbidden
+    input wire [30:0] forbidden_mask_1,
+    output reg [4:0] day0,       // Chosen day for year 2019 (1-31)
+    output reg [4:0] day1,       // Chosen day for year 2020 (1-31, 0 if not used)
+    output reg [16:0] total_penalty,
+    output reg done
+);
+
+    // Parameters
+    parameter MAX_ALLOWED = 5; // Max allowed days per year
+
+    // Function to compute Friday before Thanksgiving (second Monday in October)
+    function [4:0] compute_tsg_friday;
+        input [2:0] dow; // day of week of Oct 1
+        integer offset, first_monday, second_monday;
+        begin
+            offset = (1 - dow + 7) % 7;          // days to first Monday
+            first_monday = 1 + offset;
+            second_monday = first_monday + 7;
+            compute_tsg_friday = second_monday - 2;
+        end
+    endfunction
+
+    // Internal signals for allowed days
+    reg [4:0] allowed_days_0 [0:MAX_ALLOWED-1];
+    reg [2:0] allowed_count_0;
+    reg [4:0] allowed_days_1 [0:MAX_ALLOWED-1];
+    reg [2:0] allowed_count_1;
+    reg [4:0] tsg_friday_0, tsg_friday_1;
+
+    // Combinational logic to compute allowed days for year 0
+    integer d;
+    reg is_friday, is_forbidden, is_tsg;
+    always @(*) begin
+        tsg_friday_0 = compute_tsg_friday(dow_oct1_0);
+        allowed_count_0 = 0;
+        for (d = 1; d <= 31; d = d + 1) begin
+            is_friday = ((dow_oct1_0 + d - 1) % 7 == 5);
+            is_forbidden = forbidden_mask_0[d-1];
+            is_tsg = (d == tsg_friday_0);
+            if (is_friday && !is_forbidden && !is_tsg) begin
+                if (allowed_count_0 < MAX_ALLOWED) begin
+                    allowed_days_0[allowed_count_0] = d;
+                    allowed_count_0 = allowed_count_0 + 1;
+                end
+            end
+        end
+    end
+
+    // Combinational logic to compute allowed days for year 1
+    always @(*) begin
+        tsg_friday_1 = compute_tsg_friday(dow_oct1_1);
+        allowed_count_1 = 0;
+        for (d = 1; d <= 31; d = d + 1) begin
+            is_friday = ((dow_oct1_1 + d - 1) % 7 == 5);
+            is_forbidden = forbidden_mask_1[d-1];
+            is_tsg = (d == tsg_friday_1);
+            if (is_friday && !is_forbidden && !is_tsg) begin
+                if (allowed_count_1 < MAX_ALLOWED) begin
+                    allowed_days_1[allowed_count_1] = d;
+                    allowed_count_1 = allowed_count_1 + 1;
+                end
+            end
+        end
+    end
+
+    // DP combinational logic (for Z=1 or Z=2)
+    integer i0, i1;
+    reg [16:0] best_penalty;
+    reg [4:0] best_day0, best_day1;
+    reg [16:0] penalty, penalty0, penalty1, total_pen;
+    reg [4:0] day0_val, day1_val;
+
+    always @(*) begin
+        best_penalty = 17'h1FFFF; // Large value
+        best_day0 = 0;
+        best_day1 = 0;
+        if (Z >= 1) begin
+            if (Z == 1) begin
+                // Only year 0
+                for (i0 = 0; i0 < allowed_count_0; i0 = i0 + 1) begin
+                    day0_val = allowed_days_0[i0];
+                    penalty = (day0_val - 12) * (day0_val - 12);
+                    if (penalty < best_penalty) begin
+                        best_penalty = penalty;
+                        best_day0 = day0_val;
+                        best_day1 = 0;
+                    end
+                end
+            end else begin // Z == 2
+                // Years 0 and 1
+                for (i0 = 0; i0 < allowed_count_0; i0 = i0 + 1) begin
+                    day0_val = allowed_days_0[i0];
+                    penalty0 = (day0_val - 12) * (day0_val - 12);
+                    for (i1 = 0; i1 < allowed_count_1; i1 = i1 + 1) begin
+                        day1_val = allowed_days_1[i1];
+                        penalty1 = (day1_val - day0_val) * (day1_val - day0_val);
+                        total_pen = penalty0 + penalty1;
+                        if (total_pen < best_penalty) begin
+                            best_penalty = total_pen;
+                            best_day0 = day0_val;
+                            best_day1 = day1_val;
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    // Sequential output register
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            done <= 0;
+            day0 <= 0;
+            day1 <= 0;
+            total_penalty <= 0;
+        end else if (start) begin
+            day0 <= best_day0;
+            day1 <= best_day1;
+            total_penalty <= best_penalty;
+            done <= 1;
+        end
+    end
+
+endmodule

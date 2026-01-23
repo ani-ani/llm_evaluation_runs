@@ -1,0 +1,173 @@
+module bomb_disarm #(
+    parameter R = 4,
+    parameter C = 4
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [R*C-1:0] grid,
+    output reg [7:0] result,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam PROCESS = 3'b001;
+localparam UNION = 3'b010;
+localparam COUNT = 3'b011;
+localparam DONE = 3'b100;
+
+reg [2:0] state;
+reg [2:0] row, col;
+reg [7:0] total_bombs;
+reg [7:0] comp_count;
+reg [2:0] parent [0:R+C-1];
+reg has_bomb [0:R+C-1];
+reg [2:0] root_list [0:R+C-1];
+reg [2:0] root_count;
+reg [2:0] node_iter;
+reg [2:0] root_u, root_v;
+reg [2:0] u, v;
+
+// Helper task to initialize DSU
+task init_dsu;
+    integer i;
+    for (i = 0; i < R+C; i = i + 1) begin
+        parent[i] = i[2:0];
+        has_bomb[i] = 0;
+    end
+endtask
+
+// Function to find root (combinational, with bounded loop)
+function automatic [2:0] find_root(input [2:0] node);
+    reg [2:0] current;
+    begin
+        current = node;
+        repeat (R+C) begin
+            if (parent[current] != current)
+                current = parent[current];
+        end
+        find_root = current;
+    end
+endfunction
+
+// Task to union two roots (by setting parent of v to u)
+task union_roots;
+    input [2:0] ru, rv;
+    begin
+        parent[rv] = ru;
+    end
+endtask
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        total_bombs <= 0;
+        comp_count <= 0;
+        row <= 0;
+        col <= 0;
+        root_count <= 0;
+        node_iter <= 0;
+        init_dsu();
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    total_bombs <= 0;
+                    comp_count <= 0;
+                    row <= 0;
+                    col <= 0;
+                    root_count <= 0;
+                    node_iter <= 0;
+                    init_dsu();
+                    state <= PROCESS;
+                end
+            end
+
+            PROCESS: begin
+                if (row < R) begin
+                    // Check current cell
+                    if (grid[row*C + col]) begin
+                        total_bombs <= total_bombs + 1;
+                        u <= row;
+                        v <= R + col;
+                        has_bomb[row] <= 1;
+                        has_bomb[R+col] <= 1;
+                        root_u <= find_root(row);
+                        root_v <= find_root(R+col);
+                        if (root_u != root_v) begin
+                            state <= UNION;
+                        end else begin
+                            // Move to next cell
+                            if (col == C-1) begin
+                                col <= 0;
+                                row <= row + 1;
+                            end else begin
+                                col <= col + 1;
+                            end
+                        end
+                    end else begin
+                        // No bomb, move to next cell
+                        if (col == C-1) begin
+                            col <= 0;
+                            row <= row + 1;
+                        end else begin
+                            col <= col + 1;
+                        end
+                    end
+                end else begin
+                    // Finished all cells
+                    state <= COUNT;
+                    node_iter <= 0;
+                    root_count <= 0;
+                    comp_count <= 0;
+                end
+            end
+
+            UNION: begin
+                union_roots(root_u, root_v);
+                if (col == C-1) begin
+                    col <= 0;
+                    row <= row + 1;
+                end else begin
+                    col <= col + 1;
+                end
+                state <= PROCESS;
+            end
+
+            COUNT: begin
+                if (node_iter < R+C) begin
+                    if (has_bomb[node_iter]) begin
+                        reg [2:0] root = find_root(node_iter);
+                        reg found = 0;
+                        for (integer i = 0; i < root_count; i = i + 1) begin
+                            if (root_list[i] == root) found = 1;
+                        end
+                        if (!found) begin
+                            root_list[root_count] <= root;
+                            root_count <= root_count + 1;
+                            comp_count <= comp_count + 1;
+                        end
+                    end
+                    node_iter <= node_iter + 1;
+                end else begin
+                    state <= DONE;
+                end
+            end
+
+            DONE: begin
+                result <= total_bombs - comp_count;
+                done <= 1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,56 @@
+Design a sequential Verilog module named 'phaser_optimal' that finds the maximum number of rooms hit by a phaser beam of fixed length.
+
+The module implements a simplified geometric algorithm:
+- Supports up to 8 rooms (parameter N=8)
+- Each room is defined by 4 coordinates in Q16.16 fixed-point format
+- Brute-forces all possible ray directions between room corners
+- Checks ray-segment intersection with each room
+- Returns maximum room count that can be hit
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [3:0] room_count // number of valid rooms (1-8)
+input [N-1:0][31:0] room_x1 // Q16.16 fixed-point x1 coordinates
+input [N-1:0][31:0] room_y1 // Q16.16 fixed-point y1 coordinates  
+input [N-1:0][31:0] room_x2 // Q16.16 fixed-point x2 coordinates
+input [N-1:0][31:0] room_y2 // Q16.16 fixed-point y2 coordinates
+input [31:0] beam_length // Q16.16 fixed-point beam length
+
+Outputs:
+output reg [3:0] max_rooms // maximum rooms that can be hit
+output reg done // high when computation complete
+
+Specify latency: 500 clock cycles (for exhaustive search of ~2000 ray candidates)
+
+Algorithm Details:
+1. Generate all 4*N corner points (x1,y1), (x1,y2), (x2,y1), (x2,y2)
+2. For each pair of corners (p1, p2) from different rooms:
+   - Compute direction vector (dx, dy) = (p2.x - p1.x, p2.y - p1.y)
+   - Normalize to unit vector and scale by beam_length to get ray end point
+   - For each room, check if ray segment [p1, ray_end] intersects rectangle
+   - Count hits, track maximum
+3. Use state machine: IDLE → EXTRACT_CORNERS → GENERATE_RAYS → INTERSECT_CHECK → UPDATE_MAX → DONE
+
+Intersection Check Logic (combinational per room):
+- Ray is segment from (x0,y0) to (x1,y1)
+- Check if segment intersects rectangle [rx1,ry1] to [rx2,ry2]
+- Use Liang-Barsky or simple parametric intersection
+- For simplicity: check if any corner of rectangle is on segment OR segment crosses rectangle edges
+
+State Machine States:
+- IDLE: Wait for start signal
+- EXTRACT_CORNERS: Copy room coordinates to corner array (4*N corners)
+- GENERATE_RAYS: Iterate through corner pairs (state counter for p1_idx, p2_idx)
+- INTERSECT_CHECK: For current ray, test all rooms for intersection (state counter for room_idx)
+- UPDATE_MAX: Update max_rooms if current count > max_rooms
+- DONE: Set done=1, wait for reset
+
+The module should use:
+- 32-bit Q16.16 fixed-point arithmetic
+- Parameters: N=8 for max rooms, MAX_CORNERS=32, MAX_RAYS=2000 (N*(4N-1)/2 ≈ 8*31=248 for N=8)
+- Intermediate registers for ray computation
+- Combinational blocks for intersection tests
+
+Note: Due to hardware constraints, we use exhaustive brute-force over all corner pairs, which is feasible for small N=8.

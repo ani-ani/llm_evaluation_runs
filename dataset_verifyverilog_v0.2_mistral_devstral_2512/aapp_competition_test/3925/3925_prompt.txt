@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'zebra_solver' that computes the maximum length of an alternating sequence ('b' and 'w' only) that can be formed from a given string. The problem is equivalent to finding the longest alternating substring, with the possibility of concatenating the prefix and suffix if the boundary characters differ.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] char_in // Current character input (ASCII 'b' or 'w')
+input [4:0] char_index // Index of the current character (0 to 15)
+input load // Signal to load the character into the buffer
+
+Outputs:
+output reg [7:0] max_len // Maximum zebra length found
+output reg done // High when computation is complete
+
+Constraints:
+- Maximum string length N = 16
+- Characters are 'b' (0x62) or 'w' (0x77)
+- The module should first load the string into an internal buffer (16x8 bit memory) using the 'load' signal and 'char_index'.
+- Once loaded, asserting 'start' initiates the calculation.
+- The algorithm should compute the maximum length of an alternating substring.
+- If the string starts and ends with different characters ('b' vs 'w'), it is possible to wrap around. The answer is then max(max_alternating_substring, length_of_prefix + length_of_suffix).
+- The calculation should be done using a state machine (IDLE, LOAD, PROCESS, DONE).
+- Latency: Result valid approximately 20-30 clock cycles after start (depends on loop unrolling).
+
+Behavioral Description:
+1. IDLE: Wait for 'start' signal.
+2. LOAD: When 'load' is high, store 'char_in' into buffer at 'char_index'.
+3. PROCESS: 
+   - Scan the buffer to find the longest contiguous alternating sequence.
+   - Check if buffer[0] != buffer[N-1]. If so, calculate prefix length (from 0) and suffix length (from N-1) where alternation holds.
+   - If wrapping is valid, max_len = max(max_len, prefix_len + suffix_len).
+   - Also cap max_len at N.
+4. DONE: Assert 'done' and present result on 'max_len'.

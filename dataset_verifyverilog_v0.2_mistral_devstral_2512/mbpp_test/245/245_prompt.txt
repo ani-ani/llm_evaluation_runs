@@ -1,0 +1,47 @@
+Design a sequential Verilog module named 'bitonic_max_sum' that computes the maximum sum of a bitonic subsequence for a small array of up to 8 elements.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] array_len // actual length of array (1-8)
+input [7:0] array_data [0:7] // 8-element array, each element 8-bit
+
+Outputs:
+output reg [15:0] max_sum_result // maximum bitonic sum result
+output reg done // high when computation complete
+
+Specification:
+- The module computes the maximum sum of a bitonic subsequence (increasing then decreasing)
+- Each array element is 8-bit (0-255)
+- Maximum array length is 8 elements
+- Result is 16-bit to accommodate sum up to 8*255 = 2040
+- Latency: Approximately 2000 clock cycles worst case (due to nested loops)
+- Use state machine with states: IDLE, CALC_MSIBS, CALC_MSDBS, CALC_RESULT, DONE
+
+Algorithm:
+1. MSIBS (Maximum Sum Increasing Subsequence): For each element, find max sum of increasing subsequence ending at that element
+2. MSDBS (Maximum Sum Decreasing Subsequence): For each element, find max sum of decreasing subsequence starting at that element
+3. Result: max over all i of MSIBS[i] + MSDBS[i] - arr[i] (subtract duplicate element)
+
+Internal Arrays (8 elements each):
+- msibs [0:7] [15:0] - stores MSIBS values
+- msdbs [0:7] [15:0] - stores MSDBS values
+- arr_reg [0:7] [7:0] - stores input array
+
+Behavioral Description:
+- On start, reset internal state and copy array to internal registers
+- CALC_MSIBS: Compute increasing subsequence sums
+  For i from 0 to len-1:
+    msibs[i] = arr[i] initially
+    For j from 0 to i-1:
+      If arr[i] > arr[j]: msibs[i] = max(msibs[i], msibs[j] + arr[i])
+- CALC_MSDBS: Compute decreasing subsequence sums (processing in reverse)
+  For i from len-1 down to 0:
+    msdbs[i] = arr[i] initially
+    For j from len-1 down to i+1:
+      If arr[i] > arr[j]: msdbs[i] = max(msdbs[i], msdbs[j] + arr[i])
+- CALC_RESULT: Find max of msibs[i] + msdbs[i] - arr[i] for all valid i
+- DONE: Set done signal high
+
+Note: For sequences that are purely increasing or decreasing, bitonic definition still applies with empty decreasing/increasing part.

@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'widget_profit_maximizer' that calculates the maximum profit from matching widget producers and consumers.
+
+Problem Adaptation:
+- Maximum 8 producers and 8 consumers (fixed-size arrays)
+- Prices scaled to 8-bit values (0-255)
+- Dates scaled to 8-bit values (0-255)
+- Profit per day = consumer_price - producer_price
+- Contract runs from max(producer_start_date, 1) to min(consumer_end_date-1, 255)
+- Number of days = max(0, consumer_end_date - producer_start_date)
+- Total profit = profit_per_day * number_of_days
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_producers // actual number of producers (1-8)
+input [2:0] num_consumers // actual number of consumers (1-8)
+input [7:0] producer_prices [0:7] // array of 8 producer prices
+input [7:0] producer_dates [0:7] // array of 8 producer start dates
+input [7:0] consumer_prices [0:7] // array of 8 consumer prices
+input [7:0] consumer_dates [0:7] // array of 8 consumer end dates
+
+Outputs:
+output reg [15:0] max_profit // maximum total profit found (16-bit for overflow protection)
+output reg done // high when computation complete
+
+Behavior:
+1. On start signal, reset and begin processing
+2. Iterate through all valid producer-consumer pairs
+3. For each pair:
+   - Calculate profit_per_day = consumer_price - producer_price
+   - If profit_per_day > 0:
+     - Calculate days = consumer_date - producer_date
+     - If days > 0: total = profit_per_day * days
+   - Update max_profit if total > current max
+4. State Machine: IDLE → CALCULATING → DONE
+5. Latency: 1 clock cycle per pair evaluation, maximum 64 cycles total for 8x8 pairs
+
+Example (from test case):
+Producer 0: price=1, date=3
+Producer 1: price=2, date=1
+Consumer 0: price=3, date=5  
+Consumer 1: price=7, date=2
+Best match: Producer 1 (price=2, start=1) with Consumer 1 (price=7, end=2)
+Days = 2-1 = 1, Profit/day = 7-2 = 5, Total = 5

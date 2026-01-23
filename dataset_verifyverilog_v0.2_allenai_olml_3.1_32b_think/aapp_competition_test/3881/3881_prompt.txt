@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'polar_bear_compress' that counts how many strings of length n (2-6) over alphabet {a,b,c,d,e,f} can be reduced to 'a' using given operations.
+
+The module uses a reverse dynamic programming approach:
+1. Start with set of valid strings = {'a'}
+2. For each step from 1 to n-1: expand set by applying reverse operations to first character of each string
+3. If final set size > 0, result is the count
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [5:0] q // number of operations (1-36)
+input [3:0] op_a_idx [0:35] // index of first char in operation (0-5 for a-f)
+input [3:0] op_b_idx [0:35] // index of second char in operation (0-5 for a-f)
+input [2:0] op_dest [0:35] // destination character index (0-5 for a-f)
+input [2:0] n // target string length (2-6)
+
+Outputs:
+output reg [23:0] result // count of valid strings
+output reg done // high when computation complete
+
+Latency: 20 clock cycles after start (for n=6, 19 expansions * ~1 cycle each)
+
+Internal Behavior:
+- Use state machine: IDLE, INIT, EXPAND_1..EXPAND_5, DONE
+- Maintain set of valid strings as bit masks for each possible string
+- Each iteration expands the set by applying reverse rules
+- For n=6, we need 5 expansion iterations
+- Each string is encoded as base-6 number with n digits
+- Output counts valid strings of exact length n
+
+Key optimization: Represent valid strings as a set of bit flags, but since 6^6 = 46656 is too large for FPGA BRAM in this context, we use a counting approach during expansion instead of full set storage.
+
+Alternative approach: Pre-compute during INIT phase all valid strings of length n by working backwards from 'a' using the operations as reverse rules, storing only the count.

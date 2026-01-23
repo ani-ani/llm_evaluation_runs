@@ -1,0 +1,97 @@
+module modulo_product (
+    input wire clk,              // Clock signal
+    input wire rst_n,            // Active-low reset
+    input wire start,            // Start pulse (1 cycle)
+    
+    // Input array - 8 elements, each 8-bit
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [7:0] arr_5,
+    input wire [7:0] arr_6,
+    input wire [7:0] arr_7,
+    
+    input wire [3:0] len,        // Number of valid elements (1-8)
+    input wire [7:0] mod_val,    // Modulo value n (max 255)
+    
+    output reg [15:0] result,    // 16-bit result (product can be large)
+    output reg done              // Done signal, high for 1 cycle
+);
+
+    // Internal state
+    reg [2:0] state;             // State machine
+    reg [2:0] index;             // Current array index
+    reg [15:0] acc;              // Accumulator
+    
+    // State definitions
+    localparam [2:0] IDLE = 3'd0;
+    localparam [2:0] COMPUTE = 3'd1;
+    localparam [2:0] DONE = 3'd2;
+    
+    // Combinational logic for array access
+    wire [7:0] current_val;
+    assign current_val = (index == 3'd0) ? arr_0 :
+                        (index == 3'd1) ? arr_1 :
+                        (index == 3'd2) ? arr_2 :
+                        (index == 3'd3) ? arr_3 :
+                        (index == 3'd4) ? arr_4 :
+                        (index == 3'd5) ? arr_5 :
+                        (index == 3'd6) ? arr_6 :
+                        arr_7;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            state <= IDLE;
+            result <= 16'd0;
+            done <= 1'b0;
+            acc <= 16'd1;
+            index <= 3'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        // Initialize computation
+                        acc <= 16'd1;
+                        index <= 3'd0;
+                        if (mod_val == 8'd0) begin
+                            // Modulo zero - undefined, return 0
+                            result <= 16'd0;
+                            state <= DONE;
+                        end else if (len == 4'd0) begin
+                            // Empty array - return 1 % n
+                            result <= (16'd1 % mod_val);
+                            state <= DONE;
+                        end else begin
+                            state <= COMPUTE;
+                        end
+                    end
+                end
+                
+                COMPUTE: begin
+                    // Multiply current element modulo n
+                    if (index < len) begin
+                        // acc = (acc * (current_val % mod_val)) % mod_val
+                        acc <= (acc * (current_val % mod_val)) % mod_val;
+                        index <= index + 1'b1;
+                    end else begin
+                        // Computation complete
+                        result <= acc;
+                        state <= DONE;
+                    end
+                end
+                
+                DONE: begin
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

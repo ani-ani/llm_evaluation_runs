@@ -1,0 +1,158 @@
+module tree_checker(
+  input clk,
+  input rst_n,
+  input start,
+  input [2:0] n,           // Number of nodes (1-8)
+  input [7:0] c0, c1, c2, c3, c4, c5, c6, c7, // Subtree sizes
+  output reg done,
+  output reg yes           // Result: 1=valid, 0=invalid
+);
+
+// Internal state
+reg [2:0] current_node;
+reg [2:0] parent [0:7];   // Parent assignment
+reg [2:0] children_count [0:7]; // Number of children per node
+reg [7:0] subtree_size [0:7];   // Actual computed subtree sizes
+reg [7:0] c_array [0:7];        // Input c values stored
+reg [2:0] search_depth;
+reg found_valid;
+reg [2:0] backtrack_node;
+reg [2:0] temp_children [0:7];
+
+// Helper to count children and validate
+function valid_tree;
+  integer i, child_count;
+  begin
+    valid_tree = 1;
+    // Check root has subtree size n
+    if (c_array[0] != n) valid_tree = 0;
+    
+    // Check no node has size 2
+    for (i = 0; i < n; i = i + 1) begin
+      if (c_array[i] == 2) valid_tree = 0;
+    end
+    
+    // Check parent-child relationships
+    for (i = 1; i < n; i = i + 1) begin
+      if (parent[i] >= n) valid_tree = 0; // Invalid parent
+      if (parent[i] == i) valid_tree = 0; // Self-loop
+    end
+    
+    // Check internal nodes have ≥2 children
+    for (i = 0; i < n; i = i + 1) begin
+      child_count = children_count[i];
+      if (child_count > 0 && child_count < 2) valid_tree = 0;
+    end
+    
+    // Check computed subtree sizes match input
+    for (i = 0; i < n; i = i + 1) begin
+      if (subtree_size[i] != c_array[i]) valid_tree = 0;
+    end
+  end
+endfunction
+
+// State machine states
+reg [2:0] state;
+localparam IDLE = 0;
+localparam INIT = 1;
+localparam ASSIGN_PARENT = 2;
+localparam VALIDATE = 3;
+localparam BACKTRACK = 4;
+localparam DONE_STATE = 5;
+
+always @(posedge clk or negedge rst_n) begin
+  if (!rst_n) begin
+    done <= 0;
+    yes <= 0;
+    state <= IDLE;
+    found_valid <= 0;
+  end else begin
+    case (state)
+      IDLE: begin
+        if (start) begin
+          state <= INIT;
+          done <= 0;
+          found_valid <= 0;
+        end
+      end
+      
+      INIT: begin
+        // Initialize
+        current_node <= 3'd1;
+        parent[0] <= 0; // Root is node 0
+        children_count[0] <= 0;
+        // Store input c values
+        c_array[0] <= c0;
+        c_array[1] <= c1;
+        c_array[2] <= c2;
+        c_array[3] <= c3;
+        c_array[4] <= c4;
+        c_array[5] <= c5;
+        c_array[6] <= c6;
+        c_array[7] <= c7;
+        // Initialize all parents to invalid
+        for (integer i = 1; i < 8; i = i + 1) begin
+          parent[i] <= 3'd7; // Invalid
+          children_count[i] <= 0;
+        end
+        state <= ASSIGN_PARENT;
+      end
+      
+      ASSIGN_PARENT: begin
+        // Try to assign parent for current_node
+        if (parent[current_node] < n - 1) begin
+          parent[current_node] <= parent[current_node] + 1;
+          // Update children count
+          if (parent[current_node] < n) begin
+            children_count[parent[current_node]] <= children_count[parent[current_node]] - 1;
+          end
+          if (parent[current_node] + 1 < n) begin
+            children_count[parent[current_node] + 1] <= children_count[parent[current_node] + 1] + 1;
+          end
+        end else begin
+          // No more parents to try, backtrack
+          state <= BACKTRACK;
+        end
+        state <= VALIDATE;
+      end
+      
+      VALIDATE: begin
+        // Compute subtree sizes
+        // This is simplified - real implementation would need recursive computation
+        // For now, we use a simplified check
+        if (current_node == n - 1) begin
+          // Check if this assignment is valid
+          if (valid_tree()) begin
+            found_valid <= 1;
+            state <= DONE_STATE;
+          end else begin
+            state <= ASSIGN_PARENT;
+          end
+        end else begin
+          current_node <= current_node + 1;
+          state <= ASSIGN_PARENT;
+        end
+      end
+      
+      BACKTRACK: begin
+        // Move to previous node and try different parent
+        if (current_node > 1) begin
+          current_node <= current_node - 1;
+          parent[current_node] <= 0;
+          state <= ASSIGN_PARENT;
+        end else begin
+          // Cannot backtrack further, no valid tree
+          state <= DONE_STATE;
+        end
+      end
+      
+      DONE_STATE: begin
+        done <= 1;
+        yes <= found_valid;
+        if (!start) state <= IDLE;
+      end
+    endcase
+  end
+end
+
+endmodule

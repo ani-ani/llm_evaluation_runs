@@ -1,0 +1,86 @@
+module gon_probability_generic #(
+    parameter MAX_STATES = 16,
+    parameter STATE_BITS = 4,
+    parameter ITERATIONS = 256
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [31:0] p,               // Q16.16 probability of H
+    input wire [3:0] num_states,        // Number of non-absorbing states (≤ MAX_STATES)
+    input wire [3:0] next_H [0:MAX_STATES-1], // Next state for H (0..MAX_STATES-1, 8=Gon, 9=Killua, 10=Draw)
+    input wire [3:0] next_T [0:MAX_STATES-1], // Next state for T
+    output reg [31:0] result,
+    output reg done
+);
+
+    localparam [31:0] ONE = 32'h00010000; // 1.0 in Q16.16
+    reg [31:0] p_inv;
+    reg [31:0] state_val [0:MAX_STATES-1];
+    reg [31:0] new_val [0:MAX_STATES-1];
+    reg [STATE_BITS-1:0] idx;
+    reg [7:0] iter;
+    reg busy;
+
+    // Multiplication function (Q16.16 * Q16.16 -> Q16.16)
+    function automatic [31:0] mul(input [31:0] a, input [31:0] b);
+        reg [63:0] tmp;
+        tmp = a * b;
+        mul = tmp[31:0] >> 16;
+    endfunction
+
+    // Get next value based on transition code
+    function automatic [31:0] next_val(input [3:0] nxt);
+        case (nxt)
+            4'd8:  next_val = ONE;          // Gon win
+            4'd9:  next_val = 32'd0;        // Killua win
+            4'd10: next_val = 32'd0;        // Draw
+            default: next_val = state_val[nxt];
+        endcase
+    endfunction
+
+    assign p_inv = ONE - p;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            busy <= 0;
+            done <= 0;
+            result <= 0;
+            iter <= 0;
+            idx <= 0;
+            for (integer i = 0; i < MAX_STATES; i = i + 1)
+                state_val[i] <= 0;
+        end else begin
+            if (start && !busy) begin
+                // Initialize all state values to 0
+                for (integer i = 0; i < MAX_STATES; i = i + 1)
+                    state_val[i] <= 0;
+                iter <= 0;
+                idx <= 0;
+                busy <= 1;
+                done <= 0;
+            end else if (busy) begin
+                if (iter < ITERATIONS) begin
+                    if (idx < num_states) begin
+                        // Compute new value for current state
+                        new_val[idx] <= mul(p, next_val(next_H[idx])) + mul(p_inv, next_val(next_T[idx]));
+                        idx <= idx + 1;
+                    end else begin
+                        // End of iteration: update state values
+                        for (integer i = 0; i < MAX_STATES; i = i + 1)
+                            state_val[i] <= new_val[i];
+                        idx <= 0;
+                        iter <= iter + 1;
+                    end
+                end else begin
+                    // Iterations done: output probability for initial state (0)
+                    result <= state_val[0];
+                    done <= 1;
+                    busy <= 0;
+                end
+            end else begin
+                done <= 0;
+            end
+        end
+    end
+endmodule

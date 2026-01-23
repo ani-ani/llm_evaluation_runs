@@ -1,0 +1,27 @@
+Design a sequential Verilog module named 'rescale_unit' that rescales a list of numbers to [0.0, 1.0] range using fixed-point arithmetic.
+
+**Inputs:**
+  input clk: System clock
+  input rst_n: Active-low reset
+  input start: Start computation pulse (high for one cycle)
+  input [15:0] data_in: Input number in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+  input [2:0] len: Number of elements to process (valid range 2 to 5)
+
+**Outputs:**
+  output reg [15:0] data_out: Output number in Q16.16 format
+  output reg out_valid: High when data_out contains valid rescaled value
+  output reg done: High for one cycle when entire list is processed
+
+**Behavior:**
+1. On start pulse, reset internal state and prepare to receive numbers.
+2. Accept numbers via `data_in` port. Since only one input port exists, assume numbers are fed sequentially.
+3. While receiving numbers, track minimum and maximum values.
+4. After all `len` numbers are received, calculate the scale factor: `scale = 65536 / (max - min)` (where 65536 is 1.0 in Q16.16).
+5. Then output the rescaled values sequentially: `out = (val - min) * scale / 65536`.
+6. Use a state machine with states: IDLE, COLLECT, COMPUTE, OUTPUT, DONE.
+7. Output latency: 10 cycles after last input is collected.
+8. Use 32-bit internal registers for intermediate calculations to avoid overflow.
+9. Division by (max-min) can be approximated using a small lookup table or iterative subtraction (limit to small divisors).
+
+**Note:** Input numbers are Q16.16 fixed-point. Output numbers must be Q16.16.
+Example: 0.0 is 0x00000000, 1.0 is 0x00010000, 0.5 is 0x00008000.

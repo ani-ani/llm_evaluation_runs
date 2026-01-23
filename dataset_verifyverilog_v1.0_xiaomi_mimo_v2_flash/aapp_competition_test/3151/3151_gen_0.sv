@@ -1,0 +1,23 @@
+module square_difference (
+    input wire [31:0] n,
+    output reg [31:0] m,
+    output reg [31:0] k,
+    output reg valid
+);
+    // Combinational logic
+    always @(*) begin
+        if (n[0]) begin // odd
+            m = (n + 1) >> 1;
+            k = (n - 1) >> 1;
+            valid = 1'b1;
+        end else if (n[1:0] == 2'b00) begin // divisible by 4
+            m = (n >> 2) + 32'd1;
+            k = (n >> 2) - 32'd1;
+            valid = 1'b1;
+        end else begin
+            m = 32'd0;
+            k = 32'd0;
+            valid = 1'b0;
+        end
+    end
+endmodule

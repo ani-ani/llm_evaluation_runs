@@ -1,0 +1,208 @@
+module golden_circle (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [4:0] n,      // number of restaurants, max 16
+    input wire [8:0] k,      // distance between restaurants, max 256
+    input wire [7:0] a,      // distance from start to nearest restaurant, max 128
+    input wire [7:0] b,      // distance from first stop to nearest restaurant, max 128
+    output reg [11:0] min_stops, // minimum number of stops
+    output reg [11:0] max_stops, // maximum number of stops
+    output reg done               // computation finished
+);
+
+    // Data width for nk, l, gcd, stops (12 bits: max 4096)
+    localparam DATA_WIDTH = 12;
+    localparam N_WIDTH = 5;
+    localparam K_WIDTH = 9;
+    localparam A_WIDTH = 8;
+    localparam B_WIDTH = 8;
+
+    // State definitions
+    localparam IDLE = 3'd0;
+    localparam CALC_L = 3'd1;
+    localparam COMPUTE_GCD = 3'd2;
+    localparam COMPUTE_STOPS = 3'd3;
+    localparam UPDATE_MIN_MAX = 3'd4;
+    localparam NEXT_COMBO = 3'd5;
+    localparam NEXT_I = 3'd6;
+    localparam DONE = 3'd7;
+
+    // Registers
+    reg [2:0] state;
+    reg [DATA_WIDTH-1:0] nk_reg;          // n*k
+    reg [N_WIDTH-1:0] i_reg;              // current i (0..n-1)
+    reg [1:0] combo_reg;                  // 0..3 for four combinations
+    reg [DATA_WIDTH-1:0] l_reg;           // current l value
+    reg [DATA_WIDTH-1:0] min_reg, max_reg;
+    reg [DATA_WIDTH-1:0] stops_temp;
+    reg gcd_start;
+    reg gcd_done_flag;
+    reg [DATA_WIDTH-1:0] gcd_result_reg;
+
+    // GCD module internal signals
+    reg [DATA_WIDTH-1:0] gcd_a, gcd_b, gcd_rem;
+    reg [1:0] gcd_state;
+    localparam GCD_IDLE = 2'd0;
+    localparam GCD_MOD = 2'd1;
+    localparam GCD_UPDATE = 2'd2;
+
+    // Combinational signals
+    wire [DATA_WIDTH-1:0] i_k = i_reg * k; // i*k
+    wire signed [DATA_WIDTH:0] nk_signed = nk_reg; // signed version for comparison
+    reg signed [DATA_WIDTH:0] l_temp_signed; // signed temporary l
+    wire [DATA_WIDTH-1:0] gcd_result = (l_reg == 0) ? nk_reg : gcd_result_reg;
+
+    // GCD block (sequential)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            gcd_state <= GCD_IDLE;
+            gcd_done_flag <= 0;
+            gcd_result_reg <= 0;
+        end else begin
+            gcd_done_flag <= 0;
+            case (gcd_state)
+                GCD_IDLE: begin
+                    if (gcd_start) begin
+                        if (gcd_b == 0) begin
+                            gcd_result_reg <= gcd_a;
+                            gcd_done_flag <= 1;
+                        end else begin
+                            gcd_state <= GCD_MOD;
+                        end
+                    end
+                end
+                GCD_MOD: begin
+                    gcd_rem <= gcd_a % gcd_b;
+                    gcd_state <= GCD_UPDATE;
+                end
+                GCD_UPDATE: begin
+                    gcd_a <= gcd_b;
+                    gcd_b <= gcd_rem;
+                    if (gcd_rem == 0) begin
+                        gcd_result_reg <= gcd_b;
+                        gcd_done_flag <= 1;
+                        gcd_state <= GCD_IDLE;
+                    end else begin
+                        gcd_state <= GCD_MOD;
+                    end
+                end
+            endcase
+        end
+    end
+
+    // Main state machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            min_stops <= 0;
+            max_stops <= 0;
+            min_reg <= {DATA_WIDTH{1'b1}}; // max value
+            max_reg <= 0;
+            i_reg <= 0;
+            combo_reg <= 0;
+            gcd_start <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        nk_reg <= n * k;
+                        i_reg <= 0;
+                        combo_reg <= 0;
+                        min_reg <= {DATA_WIDTH{1'b1}};
+                        max_reg <= 0;
+                        state <= CALC_L;
+                    end
+                end
+
+                CALC_L: begin
+                    // Compute l_temp based on combo
+                    case (combo_reg)
+                        2'd0: l_temp_signed = i_k + b - a;
+                        2'd1: l_temp_signed = i_k - b - a;
+                        2'd2: l_temp_signed = i_k + b - (k - a);
+                        2'd3: l_temp_signed = i_k - b - (k - a);
+                        default: l_temp_signed = 0;
+                    endcase
+                    // Adjust to [0, nk_reg-1]
+                    if (l_temp_signed >= nk_signed) begin
+                        l_reg <= l_temp_signed - nk_signed;
+                    end else if (l_temp_signed < 0) begin
+                        l_reg <= l_temp_signed + nk_signed;
+                    end else begin
+                        l_reg <= l_temp_signed[DATA_WIDTH-1:0];
+                    end
+                    state <= COMPUTE_GCD;
+                end
+
+                COMPUTE_GCD: begin
+                    if (l_reg == 0) begin
+                        // If l is zero, gcd is nk
+                        gcd_result_reg <= nk_reg;
+                        state <= COMPUTE_STOPS;
+                    end else begin
+                        if (!gcd_start && !gcd_done_flag) begin
+                            gcd_start <= 1;
+                            gcd_a <= nk_reg;
+                            gcd_b <= l_reg;
+                        end else if (gcd_done_flag) begin
+                            gcd_start <= 0;
+                            state <= COMPUTE_STOPS;
+                        end
+                    end
+                end
+
+                COMPUTE_STOPS: begin
+                    // stops = nk / gcd
+                    if (gcd_result != 0) begin
+                        stops_temp <= nk_reg / gcd_result;
+                    end else begin
+                        stops_temp <= 0; // should not happen
+                    end
+                    state <= UPDATE_MIN_MAX;
+                end
+
+                UPDATE_MIN_MAX: begin
+                    if (stops_temp < min_reg) begin
+                        min_reg <= stops_temp;
+                    end
+                    if (stops_temp > max_reg) begin
+                        max_reg <= stops_temp;
+                    end
+                    state <= NEXT_COMBO;
+                end
+
+                NEXT_COMBO: begin
+                    if (combo_reg < 2'd3) begin
+                        combo_reg <= combo_reg + 1;
+                        state <= CALC_L;
+                    end else begin
+                        combo_reg <= 0;
+                        state <= NEXT_I;
+                    end
+                end
+
+                NEXT_I: begin
+                    if (i_reg < n - 1) begin
+                        i_reg <= i_reg + 1;
+                        state <= CALC_L;
+                    end else begin
+                        state <= DONE;
+                    end
+                end
+
+                DONE: begin
+                    min_stops <= min_reg;
+                    max_stops <= max_reg;
+                    done <= 1;
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

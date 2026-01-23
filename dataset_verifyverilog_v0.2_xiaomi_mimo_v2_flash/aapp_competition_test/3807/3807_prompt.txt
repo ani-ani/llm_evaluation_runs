@@ -1,0 +1,62 @@
+Design a sequential Verilog module named 'limak_tower' that finds the maximum number of blocks and maximum X ≤ m for a tower building problem.
+
+Problem Context:
+- Limak adds blocks greedily: at each step, he picks the largest cube 'a^3' such that a^3 ≤ remaining volume.
+- Goal: Choose X ≤ m to maximize the number of blocks (primary) and X (secondary).
+- Algorithm Insight: At each step with value 'm', we can either:
+  1. Take the largest cube 'a^3' (where a^3 ≤ m) and recurse on m - a^3.
+  2. Restrict to the range where the largest cube is 'a-1', i.e., recurse on (a^3 - 1) - (a-1)^3, but add (a-1)^3 to the total.
+  This recursively splits the problem into smaller subproblems.
+  Base case: If m < 8, the optimal is to take all blocks of size 1 (m blocks, volume m).
+
+Input Constraints:
+- The maximum m is 10^15.
+- The maximum number of blocks is ~18 for m=10^15.
+- The recursion depth is bounded by ~18.
+- We need to represent m up to 10^15 (requires ~50 bits).
+- We need to handle cubes up to the cube root of 10^15 (approx 10^5).
+
+Module Specification:
+
+Inputs:
+- input clk: Clock signal
+- input rst_n: Active-low reset
+- input start: Start computation (loads m)
+- input [49:0] m_in: Input value m (50 bits covers 10^15)
+
+Outputs:
+- output reg [5:0] blocks_out: Maximum number of blocks (max ~18, 6 bits)
+- output reg [49:0] volume_out: Maximum volume X (50 bits)
+- output reg done: High when computation complete
+
+Internal Logic (State Machine):
+- States: IDLE, FIND_ROOT, CALCULATE_SUB1, CALCULATE_SUB2, COMPARE, UPDATE_STACK, DONE
+- Use a small stack (depth ~20) to simulate recursion.
+- For each subproblem 'val', find the largest cube 'a' such that a^3 ≤ val.
+  - Use a combinational lookup or iterative search for 'a' (since a ≤ 10^5, linear search from 1 is too slow; binary search is better but for Verilog, we can precompute a small table or use a state machine to find the root).
+- Store 'val', 'a', and state on the stack.
+- Process subproblems: val - a^3 and a^3 - 1 - (a-1)^3.
+- Track best (blocks, volume) for the current subproblem.
+
+Behavioral Description:
+1. On reset, clear stack and outputs.
+2. When start is high, push {m, 0, 0, 0} onto stack (val, a, stage, accum_volume).
+3. While stack is not empty:
+   - Pop top entry.
+   - If val < 8: Result is (val, val). Push to result stack.
+   - If stage == 0: Find 'a' (largest cube root). Push {val - a^3, 0, 0, accum + a^3} to process stack. Set stage to 1 and push back to stack to wait for result.
+   - If stage == 1: Result of first branch stored. Now process second branch. Push {a^3 - 1 - (a-1)^3, 0, 0, accum + (a-1)^3} to process stack. Set stage to 2. Store first result temporarily.
+   - If stage == 2: Compare two results. Result is max of first and second. 
+   - Propagate results back up the stack.
+4. When root result is available, output it and set done high.
+
+Fixed-Point Logic:
+Not applicable. Pure integer arithmetic.
+
+Resource Constraints:
+- Stack depth: 20 entries.
+- Each entry needs to store: val (50 bits), a (17 bits), stage (2 bits), accum_vol (50 bits), result_blocks (6 bits), result_vol (50 bits). Total ~130 bits per entry. RAM size ~2600 bits.
+- Root finding: Use a small lookup table for a^3 for a in [1, 1000] and a binary search state machine for larger values, or simply optimize for the specific constraints. Since we need a^3 and (a-1)^3, we can compute 'a' using a sequential search from 1 upwards, but checking a^3 against val. Given val decreases, 'a' decreases. Max 'a' is 10^5. Checking 10^5 cycles is acceptable for a slow clock or if we use a faster method.
+  *Optimized Root Finding*: Use a binary search state machine (17 cycles for 10^5).
+
+Latency: Depends on clock frequency. Depth ~18, each step involves finding root (binary search ~17 cycles) and comparisons. Total ~18 * 17 = ~300 cycles.

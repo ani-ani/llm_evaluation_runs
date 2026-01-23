@@ -1,0 +1,63 @@
+module newman_shanks_williams (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,        // n value (0-8)
+    output reg [15:0] result,
+    output reg done
+);
+
+// Sequential implementation of NS(n) = 2*NS(n-1) + NS(n-2)
+// Base cases: NS(0) = 1, NS(1) = 1
+// Max n=8: NS(8) = 577 (fits in 10 bits, using 16 for safety)
+
+reg [15:0] ns_prev;   // NS(n-2)
+reg [15:0] ns_curr;   // NS(n-1) / current result
+reg [3:0] counter;    // iteration counter
+reg computing;        // state machine state
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        result <= 16'd0;
+        done <= 1'b0;
+        ns_prev <= 16'd0;
+        ns_curr <= 16'd0;
+        counter <= 4'd0;
+        computing <= 1'b0;
+    end else begin
+        if (start && !computing) begin
+            // Initialize based on n
+            if (n == 4'd0) begin
+                result <= 16'd1;
+                done <= 1'b1;
+                computing <= 1'b0;
+            end else if (n == 4'd1) begin
+                result <= 16'd1;
+                done <= 1'b1;
+                computing <= 1'b0;
+            end else begin
+                // Start computation for n >= 2
+                ns_prev <= 16'd1;  // NS(0)
+                ns_curr <= 16'd1;  // NS(1)
+                counter <= 4'd2;   // Start from iteration 2
+                computing <= 1'b1;
+                done <= 1'b0;
+            end
+        end else if (computing) begin
+            // NS(i) = 2*NS(i-1) + NS(i-2)
+            ns_prev <= ns_curr;
+            ns_curr <= (ns_curr << 1) + ns_prev;
+            counter <= counter + 1'b1;
+            
+            if (counter + 1'b1 >= n) begin
+                computing <= 1'b0;
+                result <= (ns_curr << 1) + ns_prev;
+                done <= 1'b1;
+            end
+        end else begin
+            done <= 1'b0;
+        end
+    end
+end
+
+endmodule

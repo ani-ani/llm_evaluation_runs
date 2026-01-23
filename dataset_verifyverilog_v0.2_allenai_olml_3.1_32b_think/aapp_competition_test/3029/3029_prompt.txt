@@ -1,0 +1,42 @@
+Design a sequential Verilog module named 'tree_lis_solver' that computes the longest non-decreasing jumping path in a rooted tree. 
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input valid_in // High when node data is valid
+input [15:0] node_label // Label of the current node
+input [2:0] node_parent // Index of the parent node (0 for root)
+
+Outputs:
+output reg [3:0] max_length // The longest non-decreasing path length found so far
+output reg [15:0] path_count // The number of such paths modulo 11092019
+output reg done // High when all nodes processed
+
+Behavior:
+The module processes a tree traversal stream (DFS/BFS order doesn't strictly matter as long as parents are processed before children or we update incrementally, but here we assume input stream where parent info is available). 
+Since Verilog doesn't easily support dynamic recursion, we will simulate the DP update for a small tree (N <= 8).
+We maintain an internal array of DP states for each node index (0-7).
+DP state for node i consists of:
+  - len[i]: longest path ending at i
+  - cnt[i]: number of such paths
+
+Algorithm:
+For each incoming valid node (index inferred from order, say 0 to 7):
+  1. If node is root (parent == 0 and index == 0), set len[0] = 1, cnt[0] = 1.
+  2. For a child node i with parent p:
+     Initialize len[i] = 1, cnt[i] = 1.
+     Iterate through all ancestors j of p (including p):
+       If label[j] <= label[i]:
+         If len[j] + 1 > len[i]: 
+           len[i] = len[j] + 1, cnt[i] = cnt[j]
+         Else if len[j] + 1 == len[i]:
+           cnt[i] = (cnt[i] + cnt[j]) % MOD
+
+  3. Update global max_length and path_count.
+
+Constraint: N <= 8. All labels are 16-bit integers.
+MOD = 11092019.
+
+The module should be a state machine with states: IDLE, LOAD_NODE, PROCESS_ANCESTORS, UPDATE_GLOBAL, DONE.
+Latency: Result valid X clock cycles after start asserted (where X depends on number of nodes and ancestors).

@@ -1,0 +1,325 @@
+module card_game (
+  input clk,
+  input rst_n,
+  input start,
+  input [7:0] n, m,
+  input [15:0] jiro_strength [0:99],
+  input [99:0] jiro_type,  // 0 for DEF, 1 for ATK
+  input [15:0] ciel_strength [0:99],
+  output reg [15:0] result,
+  output reg done
+);
+
+// State definitions
+localparam IDLE = 0;
+localparam READ_N_M = 1;
+localparam READ_JIRO = 2;
+localparam READ_CIEL = 3;
+localparam SEPARATE = 4;
+localparam SORT_DEF = 5;
+localparam SORT_ATK = 6;
+localparam SORT_CIEL = 7;
+localparam COMPUTE_TOTAL_CIEL = 8;
+localparam POSS1_DEF = 9;
+localparam POSS1_ATK = 10;
+localparam POSS2 = 11;
+localparam COMPUTE_RESULT = 12;
+localparam DONE = 13;
+
+reg [3:0] state;
+reg [7:0] i, j, k;
+reg [15:0] def_list [0:99];
+reg [15:0] atk_list [0:99];
+reg [15:0] ciel_sorted [0:99];
+reg [99:0] used;
+reg [15:0] total_ciel;
+reg [15:0] sum_def_used;
+reg [15:0] damage1, damage2;
+reg [7:0] num_def, num_atk;
+reg [15:0] temp;
+reg found;
+
+// For Possibility 2
+reg [15:0] sum_c, sum_a;
+
+always @(posedge clk or negedge rst_n) begin
+  if (!rst_n) begin
+    state <= IDLE;
+    done <= 0;
+    result <= 0;
+    i <= 0;
+    j <= 0;
+    k <= 0;
+    num_def <= 0;
+    num_atk <= 0;
+    total_ciel <= 0;
+    sum_def_used <= 0;
+    damage1 <= 0;
+    damage2 <= 0;
+    sum_c <= 0;
+    sum_a <= 0;
+    used <= 0;
+  end else begin
+    case (state)
+      IDLE: begin
+        if (start) begin
+          state <= READ_N_M;
+          i <= 0;
+          j <= 0;
+          k <= 0;
+          num_def <= 0;
+          num_atk <= 0;
+          total_ciel <= 0;
+          sum_def_used <= 0;
+          damage1 <= 0;
+          damage2 <= 0;
+          sum_c <= 0;
+          sum_a <= 0;
+          used <= 0;
+          done <= 0;
+        end
+      end
+
+      READ_N_M: begin
+        // n and m are already provided, move to reading Jiro cards
+        state <= READ_JIRO;
+      end
+
+      READ_JIRO: begin
+        // Store Jiro cards into def_list and atk_list based on type
+        if (i < n) begin
+          if (jiro_type[i] == 0) begin
+            def_list[num_def] <= jiro_strength[i];
+            num_def <= num_def + 1;
+          end else begin
+            atk_list[num_atk] <= jiro_strength[i];
+            num_atk <= num_atk + 1;
+          end
+          i <= i + 1;
+        end else begin
+          i <= 0;
+          state <= READ_CIEL;
+        end
+      end
+
+      READ_CIEL: begin
+        // Store Ciel cards into ciel_sorted
+        if (i < m) begin
+          ciel_sorted[i] <= ciel_strength[i];
+          i <= i + 1;
+        end else begin
+          i <= 0;
+          state <= SEPARATE;
+        end
+      end
+
+      SEPARATE: begin
+        // Separate completed, move to sorting
+        state <= SORT_DEF;
+        i <= 0;
+        j <= 0;
+      end
+
+      SORT_DEF: begin
+        // Bubble sort def_list
+        if (i < num_def) begin
+          if (j < num_def - 1) begin
+            if (def_list[j] > def_list[j+1]) begin
+              temp <= def_list[j];
+              def_list[j] <= def_list[j+1];
+              def_list[j+1] <= temp;
+            end
+            j <= j + 1;
+          end else begin
+            j <= 0;
+            i <= i + 1;
+          end
+        end else begin
+          i <= 0;
+          j <= 0;
+          state <= SORT_ATK;
+        end
+      end
+
+      SORT_ATK: begin
+        // Bubble sort atk_list
+        if (i < num_atk) begin
+          if (j < num_atk - 1) begin
+            if (atk_list[j] > atk_list[j+1]) begin
+              temp <= atk_list[j];
+              atk_list[j] <= atk_list[j+1];
+              atk_list[j+1] <= temp;
+            end
+            j <= j + 1;
+          end else begin
+            j <= 0;
+            i <= i + 1;
+          end
+        end else begin
+          i <= 0;
+          j <= 0;
+          state <= SORT_CIEL;
+        end
+      end
+
+      SORT_CIEL: begin
+        // Bubble sort ciel_sorted
+        if (i < m) begin
+          if (j < m - 1) begin
+            if (ciel_sorted[j] > ciel_sorted[j+1]) begin
+              temp <= ciel_sorted[j];
+              ciel_sorted[j] <= ciel_sorted[j+1];
+              ciel_sorted[j+1] <= temp;
+            end
+            j <= j + 1;
+          end else begin
+            j <= 0;
+            i <= i + 1;
+          end
+        end else begin
+          i <= 0;
+          j <= 0;
+          state <= COMPUTE_TOTAL_CIEL;
+        end
+      end
+
+      COMPUTE_TOTAL_CIEL: begin
+        if (i < m) begin
+          total_ciel <= total_ciel + ciel_sorted[i];
+          i <= i + 1;
+        end else begin
+          i <= 0;
+          j <= 0;
+          used <= 0;
+          sum_def_used <= 0;
+          state <= POSS1_DEF;
+        end
+      end
+
+      POSS1_DEF: begin
+        if (i < num_def) begin
+          found <= 0;
+          if (j < m) begin
+            if (!used[j] && ciel_sorted[j] > def_list[i]) begin
+              used[j] <= 1;
+              sum_def_used <= sum_def_used + ciel_sorted[j];
+              found <= 1;
+            end
+            j <= j + 1;
+          end else begin
+            if (!found) begin
+              // Cannot destroy this DEF card
+              damage1 <= 0;
+              state <= POSS2;
+              i <= 0;
+              j <= 0;
+            end else begin
+              i <= i + 1;
+              j <= 0;
+            end
+          end
+        end else begin
+          // All DEF destroyed, move to ATK destruction
+          i <= 0;
+          j <= 0;
+          state <= POSS1_ATK;
+        end
+      end
+
+      POSS1_ATK: begin
+        if (i < num_atk) begin
+          found <= 0;
+          if (j < m) begin
+            if (!used[j] && ciel_sorted[j] >= atk_list[i]) begin
+              used[j] <= 1;
+              found <= 1;
+            end
+            j <= j + 1;
+          end else begin
+            if (!found) begin
+              damage1 <= 0;
+              state <= POSS2;
+              i <= 0;
+              j <= 0;
+            end else begin
+              i <= i + 1;
+              j <= 0;
+            end
+          end
+        end else begin
+          // All ATK destroyed, compute damage1
+          // damage1 = total_ciel - sum_def_used - sum(atk_list)
+          temp <= 0;
+          i <= 0;
+          state <= COMPUTE_RESULT;
+        end
+      end
+
+      POSS2: begin
+        // Possibility 2: destroy only some ATK cards
+        // We use the largest k Ciel cards and smallest k ATK cards
+        // Sort ATK already in ascending order, ciel_sorted in ascending order
+        // So largest k Ciel cards are ciel_sorted[m-1], ciel_sorted[m-2], ... 
+        // Smallest k ATK cards are atk_list[0], atk_list[1], ...
+        if (i < num_atk && i < m) begin
+          // Check if the i-th largest Ciel card (ciel_sorted[m-1-i]) >= i-th smallest ATK card (atk_list[i])
+          if (ciel_sorted[m-1-i] >= atk_list[i]) begin
+            sum_c <= sum_c + ciel_sorted[m-1-i];
+            sum_a <= sum_a + atk_list[i];
+            // Compute damage for this k = i+1
+            damage2 <= (sum_c + ciel_sorted[m-1-i]) - (sum_a + atk_list[i]);
+            i <= i + 1;
+          end else begin
+            // Stop when condition fails
+            state <= COMPUTE_RESULT;
+            i <= 0;
+          end
+        end else begin
+          state <= COMPUTE_RESULT;
+          i <= 0;
+        end
+      end
+
+      COMPUTE_RESULT: begin
+        if (i == 0) begin
+          // Compute damage1 if not done
+          if (damage1 == 0 && state == POSS1_ATK && i >= num_atk) begin
+            // Actually, we need to compute damage1 here
+            // damage1 = total_ciel - sum_def_used - sum(atk_list)
+            temp <= 0;
+            i <= 1; // Mark that we are computing damage1
+          end else begin
+            i <= 2; // Mark that we are comparing
+          end
+        end else if (i == 1) begin
+          // Compute sum of atk_list
+          if (j < num_atk) begin
+            temp <= temp + atk_list[j];
+            j <= j + 1;
+          end else begin
+            damage1 <= total_ciel - sum_def_used - temp;
+            i <= 2;
+            j <= 0;
+          end
+        end else if (i == 2) begin
+          // Compare damage1 and damage2
+          if (damage1 > damage2) begin
+            result <= damage1;
+          end else begin
+            result <= damage2;
+          end
+          state <= DONE;
+        end
+      end
+
+      DONE: begin
+        done <= 1;
+        state <= IDLE;
+      end
+
+      default: state <= IDLE;
+    endcase
+  end
+end
+
+endmodule

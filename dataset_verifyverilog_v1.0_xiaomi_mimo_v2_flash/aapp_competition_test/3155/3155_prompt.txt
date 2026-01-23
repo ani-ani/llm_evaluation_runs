@@ -1,0 +1,96 @@
+Module: binomial_solver
+
+Description: Finds n and k such that C(n,k) = X, with minimal n then minimal k. The module uses a precomputed ROM of binomial coefficients for n from 0 to 100 and k from 0 to 10, filtered to include only coefficients <= 1000. The ROM is sorted by n then k.
+
+Parameters:
+  - DATA_WIDTH = 16: Width of input X and coefficient storage (enough for X<=1000)
+  - N_WIDTH = 7: Width of n output (2^7=128 > 100)
+  - K_WIDTH = 4: Width of k output (2^4=16 > 10)
+  - ADDR_WIDTH = 9: Width of ROM address (2^9=512 > number of entries)
+  - NUM_ENTRIES = 300: Number of entries in ROM (exact value to be determined by precomputation)
+
+Inputs:
+  - clk: Clock signal, rising edge
+  - rst_n: Active-low synchronous reset
+  - start: Start pulse, assert for 1 cycle to begin search
+  - X [DATA_WIDTH-1:0]: Input integer X
+
+Outputs:
+  - n [N_WIDTH-1:0]: Result n
+  - k [K_WIDTH-1:0]: Result k
+  - done: Asserted high for 1 cycle when result is valid
+
+Internal Registers:
+  - state [1:0]: State machine (IDLE=0, SEARCH=1, DONE=2)
+  - addr [ADDR_WIDTH-1:0]: Current ROM address
+  - n_reg [N_WIDTH-1:0]: Stored n
+  - k_reg [K_WIDTH-1:0]: Stored k
+  - done_reg: Registered done signal
+
+ROM Arrays (initial block to be filled with precomputed values):
+  - rom_n [0:NUM_ENTRIES-1] [N_WIDTH-1:0]: n values
+  - rom_k [0:NUM_ENTRIES-1] [K_WIDTH-1:0]: k values
+  - rom_coeff [0:NUM_ENTRIES-1] [DATA_WIDTH-1:0]: binomial coefficient values
+
+Behavior:
+  On reset (rst_n=0):
+    state <= IDLE;
+    addr <= 0;
+    done_reg <= 0;
+    n_reg <= 0;
+    k_reg <= 0;
+
+  On rising clock edge:
+    case (state)
+      IDLE:
+        if (start) begin
+          state <= SEARCH;
+          addr <= 0;
+        end
+
+      SEARCH:
+        begin
+          // Compare current ROM coefficient with X
+          if (rom_coeff[addr] == X) begin
+            n_reg <= rom_n[addr];
+            k_reg <= rom_k[addr];
+            state <= DONE;
+          end else if (addr == NUM_ENTRIES-1) begin
+            // No match found
+            n_reg <= 0;
+            k_reg <= 0;
+            state <= DONE;
+          end else begin
+            addr <= addr + 1;
+          end
+        end
+
+      DONE:
+        begin
+          done_reg <= 1;
+          state <= IDLE; // Return to IDLE after one cycle
+        end
+    endcase
+
+  Assign outputs:
+    n = n_reg;
+    k = k_reg;
+    done = done_reg;
+
+Timing:
+  - Start pulse should be asserted for one clock cycle.
+  - The search may take up to NUM_ENTRIES cycles (plus a few for state transitions).
+  - When done is high, n and k are valid.
+  - After done, the module returns to IDLE and can accept a new start pulse.
+
+ROM Initialization:
+  The ROM should be precomputed using a script that generates all (n, k) pairs with n from 0 to 100, k from 0 to 10 (and k <= n), such that C(n,k) <= 1000. The pairs should be sorted by n then k. The generated Verilog should include an initial block that fills rom_n, rom_k, and rom_coeff arrays with these values.
+
+Example ROM entries (first few):
+  n=0, k=0, coeff=1
+  n=1, k=0, coeff=1
+  n=1, k=1, coeff=1
+  n=2, k=0, coeff=1
+  n=2, k=1, coeff=2
+  n=2, k=2, coeff=1
+  ...

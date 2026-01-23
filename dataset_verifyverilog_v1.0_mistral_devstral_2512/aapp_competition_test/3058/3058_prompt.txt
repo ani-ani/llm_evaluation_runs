@@ -1,0 +1,48 @@
+Module: EvolutionaryPaths
+
+// This module determines if fossil sequences can be partitioned into two evolutionary paths
+// Scaled down: 8 fossils, 8-character strings, 2 bits per character (A=00, C=01, M=10)
+
+interface:
+  Inputs:
+    - clk: Clock signal
+    - rst_n: Active-low reset
+    - start: Start pulse (1 cycle)
+    - current_species[15:0]: 8x2-bit packed array of current species
+    - fossils[7:0][15:0]: 8 fossils, each 8x2-bit packed array
+    - fossil_lengths[7:0][2:0]: Length of each fossil (1-8)
+    - current_length[2:0]: Length of current species (1-8)
+  
+  Outputs:
+    - possible: 1-bit indicating if partition exists
+    - assignment[7:0]: 8-bit assignment vector (0=chain1, 1=chain2)
+    - done: 1-bit pulse when computation complete
+  
+  Parameters:
+    - NUM_FOSSILS = 8
+    - MAX_STRING_LEN = 8
+    - CHAR_WIDTH = 2
+    - DATA_WIDTH = CHAR_WIDTH * MAX_STRING_LEN
+    - INDEX_WIDTH = 3
+  
+  Functionality:
+    1. Precompute subsequence relationships between all fossils and current species
+    2. Try all 256 possible assignments of fossils to two chains
+    3. For each assignment:
+       - Sort each chain by length (ascending)
+       - Verify chain condition: each fossil is subsequence of next
+       - Verify last fossil in each chain is subsequence of current species
+    4. Output first valid assignment found
+    5. If no valid assignment, possible=0
+  
+  Implementation:
+    - Use state machine with states: IDLE, PRECOMPUTE, CHECK_ASSIGN, VALID, DONE
+    - Subsequence check: sequential string matching (O(n*m))
+    - Sorting: Bubble sort for up to 8 elements
+    - All iterations bounded by constants
+  
+  Timing:
+    - Reset: 2 clock cycles
+    - Precompute: 8*9 = 72 subsequence checks (each takes up to 64 cycles)
+    - Assignment check: 256 iterations * (sort + verify)
+    - Total: < 100,000 cycles (feasible within testbench timeout)

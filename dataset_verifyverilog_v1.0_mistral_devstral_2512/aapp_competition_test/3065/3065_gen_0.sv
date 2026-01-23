@@ -1,0 +1,284 @@
+module borg_sentry (
+  input clk, rst_n, start,
+  input [3:0] N,  // number of nodes (2-8)
+  input [3:0] L,  // walk length (1-8)
+  // Walk sequence (8x4-bit)
+  input [3:0] walk0, walk1, walk2, walk3, walk4, walk5, walk6, walk7,
+  // Graph structure: degree and neighbors for each node
+  input [3:0] degree0, degree1, degree2, degree3, degree4, degree5, degree6, degree7,
+  // Neighbors for node 0
+  input [3:0] neighbors0_0, neighbors0_1, neighbors0_2, neighbors0_3,
+              neighbors0_4, neighbors0_5, neighbors0_6, neighbors0_7,
+  // Neighbors for node 1
+  input [3:0] neighbors1_0, neighbors1_1, neighbors1_2, neighbors1_3,
+              neighbors1_4, neighbors1_5, neighbors1_6, neighbors1_7,
+  // Neighbors for node 2
+  input [3:0] neighbors2_0, neighbors2_1, neighbors2_2, neighbors2_3,
+              neighbors2_4, neighbors2_5, neighbors2_6, neighbors2_7,
+  // Neighbors for node 3
+  input [3:0] neighbors3_0, neighbors3_1, neighbors3_2, neighbors3_3,
+              neighbors3_4, neighbors3_5, neighbors3_6, neighbors3_7,
+  // Neighbors for node 4
+  input [3:0] neighbors4_0, neighbors4_1, neighbors4_2, neighbors4_3,
+              neighbors4_4, neighbors4_5, neighbors4_6, neighbors4_7,
+  // Neighbors for node 5
+  input [3:0] neighbors5_0, neighbors5_1, neighbors5_2, neighbors5_3,
+              neighbors5_4, neighbors5_5, neighbors5_6, neighbors5_7,
+  // Neighbors for node 6
+  input [3:0] neighbors6_0, neighbors6_1, neighbors6_2, neighbors6_3,
+              neighbors6_4, neighbors6_5, neighbors6_6, neighbors6_7,
+  // Neighbors for node 7
+  input [3:0] neighbors7_0, neighbors7_1, neighbors7_2, neighbors7_3,
+              neighbors7_4, neighbors7_5, neighbors7_6, neighbors7_7,
+  output reg [31:0] result,  // Fixed-point probability (Q24.8)
+  output reg done
+);
+
+  // State definitions
+  localparam [3:0] S_IDLE = 4'd0;
+  localparam [3:0] S_LOAD = 4'd1;
+  localparam [3:0] S_INIT = 4'd2;
+  localparam [3:0] S_STEP_RESET = 4'd3;
+  localparam [3:0] S_STEP_LOOP = 4'd4;
+  localparam [3:0] S_FINAL_SUM = 4'd5;
+  localparam [3:0] S_DONE = 4'd6;
+
+  // Fixed-point constants
+  localparam [31:0] FIXED_ONE = 32'h01000000;  // 1.0 in Q24.8
+
+  // Internal registers
+  reg [3:0] state;
+  reg [3:0] t_count;      // Current step in walk (1 to L-1)
+  reg [3:0] u_count;      // Current node index for DP
+  reg [3:0] deg_count;    // Current neighbor index for node u
+  reg [31:0] dp_prev [0:7];  // Previous DP state
+  reg [31:0] dp_curr [0:7];  // Current DP state
+  reg [3:0] walk_reg [0:7];  // Registered walk
+  reg [3:0] degree_reg [0:7];  // Registered degrees
+  reg [3:0] neighbors_reg [0:7][0:7];  // Registered neighbors
+
+  // Function for reciprocal (1/value) in fixed-point
+  function [31:0] reciprocal;
+    input [3:0] denom;
+    begin
+      case(denom)
+        4'd1: reciprocal = 32'h01000000;  // 1.0
+        4'd2: reciprocal = 32'h00800000;  // 0.5
+        4'd3: reciprocal = 32'h00555555;  // 1/3
+        4'd4: reciprocal = 32'h00400000;  // 0.25
+        4'd5: reciprocal = 32'h00333333;  // 0.2
+        4'd6: reciprocal = 32'h002AAAAA;  // 1/6
+        4'd7: reciprocal = 32'h00249249;  // 1/7
+        4'd8: reciprocal = 32'h00200000;  // 0.125
+        default: reciprocal = 32'd0;
+      endcase
+    end
+  endfunction
+
+  // Temporary signals for multiplication
+  wire [63:0] product;
+  wire [63:0] product_rounded_64;
+  wire [31:0] product_rounded;
+
+  assign product = dp_prev[u_count] * reciprocal(degree_reg[u_count]);
+  assign product_rounded_64 = product + (1 << 23);  // Add 2^23 for rounding
+  assign product_rounded = product_rounded_64[55:24];  // Shift right by 24
+
+  // State machine and datapath
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      state <= S_IDLE;
+      done <= 1'b0;
+      result <= 32'd0;
+      t_count <= 4'd0;
+      u_count <= 4'd0;
+      deg_count <= 4'd0;
+      // Initialize arrays
+      for (integer i = 0; i < 8; i = i + 1) begin
+        dp_prev[i] <= 32'd0;
+        dp_curr[i] <= 32'd0;
+        walk_reg[i] <= 4'd0;
+        degree_reg[i] <= 4'd0;
+        for (integer j = 0; j < 8; j = j + 1) begin
+          neighbors_reg[i][j] <= 4'd0;
+        end
+      end
+    end else begin
+      case(state)
+        S_IDLE: begin
+          if (start) begin
+            state <= S_LOAD;
+            done <= 1'b0;
+          end
+        end
+
+        S_LOAD: begin
+          // Register all inputs
+          walk_reg[0] <= walk0;
+          walk_reg[1] <= walk1;
+          walk_reg[2] <= walk2;
+          walk_reg[3] <= walk3;
+          walk_reg[4] <= walk4;
+          walk_reg[5] <= walk5;
+          walk_reg[6] <= walk6;
+          walk_reg[7] <= walk7;
+          
+          degree_reg[0] <= degree0;
+          degree_reg[1] <= degree1;
+          degree_reg[2] <= degree2;
+          degree_reg[3] <= degree3;
+          degree_reg[4] <= degree4;
+          degree_reg[5] <= degree5;
+          degree_reg[6] <= degree6;
+          degree_reg[7] <= degree7;
+          
+          neighbors_reg[0][0] <= neighbors0_0;
+          neighbors_reg[0][1] <= neighbors0_1;
+          neighbors_reg[0][2] <= neighbors0_2;
+          neighbors_reg[0][3] <= neighbors0_3;
+          neighbors_reg[0][4] <= neighbors0_4;
+          neighbors_reg[0][5] <= neighbors0_5;
+          neighbors_reg[0][6] <= neighbors0_6;
+          neighbors_reg[0][7] <= neighbors0_7;
+          
+          neighbors_reg[1][0] <= neighbors1_0;
+          neighbors_reg[1][1] <= neighbors1_1;
+          neighbors_reg[1][2] <= neighbors1_2;
+          neighbors_reg[1][3] <= neighbors1_3;
+          neighbors_reg[1][4] <= neighbors1_4;
+          neighbors_reg[1][5] <= neighbors1_5;
+          neighbors_reg[1][6] <= neighbors1_6;
+          neighbors_reg[1][7] <= neighbors1_7;
+          
+          neighbors_reg[2][0] <= neighbors2_0;
+          neighbors_reg[2][1] <= neighbors2_1;
+          neighbors_reg[2][2] <= neighbors2_2;
+          neighbors_reg[2][3] <= neighbors2_3;
+          neighbors_reg[2][4] <= neighbors2_4;
+          neighbors_reg[2][5] <= neighbors2_5;
+          neighbors_reg[2][6] <= neighbors2_6;
+          neighbors_reg[2][7] <= neighbors2_7;
+          
+          neighbors_reg[3][0] <= neighbors3_0;
+          neighbors_reg[3][1] <= neighbors3_1;
+          neighbors_reg[3][2] <= neighbors3_2;
+          neighbors_reg[3][3] <= neighbors3_3;
+          neighbors_reg[3][4] <= neighbors3_4;
+          neighbors_reg[3][5] <= neighbors3_5;
+          neighbors_reg[3][6] <= neighbors3_6;
+          neighbors_reg[3][7] <= neighbors3_7;
+          
+          neighbors_reg[4][0] <= neighbors4_0;
+          neighbors_reg[4][1] <= neighbors4_1;
+          neighbors_reg[4][2] <= neighbors4_2;
+          neighbors_reg[4][3] <= neighbors4_3;
+          neighbors_reg[4][4] <= neighbors4_4;
+          neighbors_reg[4][5] <= neighbors4_5;
+          neighbors_reg[4][6] <= neighbors4_6;
+          neighbors_reg[4][7] <= neighbors4_7;
+          
+          neighbors_reg[5][0] <= neighbors5_0;
+          neighbors_reg[5][1] <= neighbors5_1;
+          neighbors_reg[5][2] <= neighbors5_2;
+          neighbors_reg[5][3] <= neighbors5_3;
+          neighbors_reg[5][4] <= neighbors5_4;
+          neighbors_reg[5][5] <= neighbors5_5;
+          neighbors_reg[5][6] <= neighbors5_6;
+          neighbors_reg[5][7] <= neighbors5_7;
+          
+          neighbors_reg[6][0] <= neighbors6_0;
+          neighbors_reg[6][1] <= neighbors6_1;
+          neighbors_reg[6][2] <= neighbors6_2;
+          neighbors_reg[6][3] <= neighbors6_3;
+          neighbors_reg[6][4] <= neighbors6_4;
+          neighbors_reg[6][5] <= neighbors6_5;
+          neighbors_reg[6][6] <= neighbors6_6;
+          neighbors_reg[6][7] <= neighbors6_7;
+          
+          neighbors_reg[7][0] <= neighbors7_0;
+          neighbors_reg[7][1] <= neighbors7_1;
+          neighbors_reg[7][2] <= neighbors7_2;
+          neighbors_reg[7][3] <= neighbors7_3;
+          neighbors_reg[7][4] <= neighbors7_4;
+          neighbors_reg[7][5] <= neighbors7_5;
+          neighbors_reg[7][6] <= neighbors7_6;
+          neighbors_reg[7][7] <= neighbors7_7;
+          
+          state <= S_INIT;
+        end
+
+        S_INIT: begin
+          // Initialize DP for t=0
+          if (u_count < N) begin
+            if (u_count == walk_reg[0]) begin
+              dp_prev[u_count] <= 32'd0;
+            end else begin
+              dp_prev[u_count] <= reciprocal(N);
+            end
+            u_count <= u_count + 4'd1;
+          end else begin
+            u_count <= 4'd0;
+            t_count <= 4'd1;
+            state <= (L > 4'd1) ? S_STEP_RESET : S_FINAL_SUM;
+          end
+        end
+
+        S_STEP_RESET: begin
+          // Reset dp_curr to 0 for all nodes
+          if (u_count < N) begin
+            dp_curr[u_count] <= 32'd0;
+            u_count <= u_count + 4'd1;
+          end else begin
+            u_count <= 4'd0;
+            deg_count <= 4'd0;
+            state <= S_STEP_LOOP;
+          end
+        end
+
+        S_STEP_LOOP: begin
+          if (u_count < N) begin
+            if (deg_count < degree_reg[u_count]) begin
+              // Check conditions
+              if (neighbors_reg[u_count][deg_count] != walk_reg[t_count] && 
+                  !(u_count == walk_reg[t_count] && neighbors_reg[u_count][deg_count] == walk_reg[t_count-4'd1])) begin
+                // Add to dp_curr[v]
+                dp_curr[neighbors_reg[u_count][deg_count]] <= dp_curr[neighbors_reg[u_count][deg_count]] + product_rounded;
+              end
+              deg_count <= deg_count + 4'd1;
+            end else begin
+              u_count <= u_count + 4'd1;
+              deg_count <= 4'd0;
+            end
+          end else begin
+            // Swap dp_prev and dp_curr
+            for (integer i = 0; i < 8; i = i + 1) begin
+              dp_prev[i] <= dp_curr[i];
+            end
+            t_count <= t_count + 4'd1;
+            if (t_count + 4'd1 < L) begin
+              u_count <= 4'd0;
+              state <= S_STEP_RESET;
+            end else begin
+              state <= S_FINAL_SUM;
+            end
+          end
+        end
+
+        S_FINAL_SUM: begin
+          // Sum dp_prev[v] for v=0 to N-1
+          if (u_count < N) begin
+            result <= result + dp_prev[u_count];
+            u_count <= u_count + 4'd1;
+          end else begin
+            state <= S_DONE;
+          end
+        end
+
+        S_DONE: begin
+          done <= 1'b1;
+          if (!start) state <= S_IDLE;
+        end
+      endcase
+    end
+  end
+endmodule

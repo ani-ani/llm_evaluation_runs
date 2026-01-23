@@ -1,0 +1,38 @@
+Design a sequential Verilog module named 'xorbonacci_query' that computes the XOR sum for a given range [l, r] of a K-bonacci XOR sequence. 
+
+The sequence is defined as:
+- x_1 to x_K are given inputs.
+- For n > K: x_n = x_{n-1} ^ x_{n-2} ^ ... ^ x_{n-K}
+- Query: Answer Q queries of form (l, r): result = x_l ^ x_{l+1} ^ ... ^ x_r
+
+Constraints for Hardware Implementation:
+- K (sequence order) is small, e.g., K=4 for sample cases. Let's parameterize K=8 max.
+- Sequence elements are up to 64 bits. We will use 64-bit wide signals.
+- Indices l and r can be large. We will implement a search for the period of the sequence P.
+- Since we cannot simulate infinite indices, the module will iterate up to MAX_CYCLES (e.g., 2048) to find a repeating pattern.
+- The module will act as a state machine:
+  1. Load initial K values into a history buffer.
+  2. Compute next sequence values iteratively, checking for a match with the buffer.
+  3. Once a period is found, compute the XOR sum for the query range using the pre-period and the period.
+
+Inputs:
+input clk // Clock
+input rst_n // Active low reset
+input start // Start computation
+input [2:0] K // Number of initial values (1 to 8)
+input [63:0] initial_values [0:7] // The first K values
+input [63:0] l // Query start index (1-based)
+input [63:0] r // Query end index (1-based)
+
+Outputs:
+output reg [63:0] result // XOR sum for range [l, r]
+output reg done // High when computation is finished
+
+The module should handle the following states:
+- IDLE: Wait for start signal.
+- LOAD: Load initial values into a circular buffer or array.
+- FIND_PERIOD: Generate sequence terms and detect a cycle (period). Since hardware constraints limit iterations, if period is not found within MAX_CYCLES, we output error (or best effort).
+- CALC_SUM: Compute the XOR sum using the found period P.
+- DONE: Set done flag.
+
+Note: This is a complex FSM. For the sake of the benchmark, focus on the core logic: generating terms and checking against history. Use a limited history buffer size of 16 to keep it feasible.

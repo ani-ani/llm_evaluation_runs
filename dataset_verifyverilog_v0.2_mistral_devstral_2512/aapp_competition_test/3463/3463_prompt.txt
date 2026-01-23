@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'game_probability' that computes Anthony's probability of winning a game where he starts with N points and Cora starts with M points. Each round, Anthony wins with probability p_i or Cora wins (round lost). Loser loses 1 point. Game ends when someone reaches 0 points.
+
+Adapted for hardware: N and M are limited to 5 each (max 9 rounds). Probabilities are in Q16.16 fixed-point format (16 integer, 16 fractional bits). Input p_i values are provided sequentially.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input valid // p_i input is valid
+input [31:0] p_i // Q16.16 probability, 0.0 to 1.0
+
+Outputs:
+output reg [31:0] result // Q16.16 probability of Anthony winning
+output reg done // high when computation complete
+output reg ready // high when ready for next p_i
+
+Specifications:
+- N=3, M=2 (hardcoded for synthesis) - total 4 rounds of probabilities needed
+- State machine: IDLE, COLLECT_PROBABILITIES, COMPUTE, DONE
+- Compute probability using dynamic programming: dp[a][c][r] where a=Anthony points, c=Cora points, r=round index
+- Base case: dp[0][c][r] = 0 (Anthony lost), dp[a][0][r] = 1 (Anthony won)
+- Recurrence: dp[a][c][r] = p_r * dp[a][c-1][r+1] + (1-p_r) * dp[a-1][c][r+1]
+- Use iterative computation from last round backwards
+- 32-bit Q16.16 arithmetic for all calculations
+- Latency: 100 clock cycles from start to done
+- Clock frequency assumed 100MHz
+
+Internal logic:
+- Store probability array dp[6][6] (0-5 for each player)
+- For Q16.16: 1.0 = 0x00010000, 0.5 = 0x00008000
+- Multiplication: result = (a * b) >> 16 for Q16.16 * Q16.16
+- Subtraction: (1-p) = 0x00010000 - p
+
+Example:
+Input: N=3, M=2, p=[1.0, 0.0, 1.0, 0.0]
+Expected: 1.0 (Anthony always wins due to probability pattern)

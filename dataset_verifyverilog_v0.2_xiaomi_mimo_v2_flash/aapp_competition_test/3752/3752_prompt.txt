@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'stove_cooking' that calculates the total time required to cook a chicken based on stove cycling rules.
+
+The problem is adapted to use Q16.16 fixed-point arithmetic (16 integer bits, 16 fractional bits).
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [63:0] k_in // Stove ON duration (scaled integer)
+input [63:0] d_in // Julia's visit interval (scaled integer)
+input [63:0] t_in // Required cooking units (scaled integer, representing 't' in Q16.16)
+
+Outputs:
+output reg [63:0] result // Total time in Q16.16 format
+output reg done // High when computation complete
+
+Specifications:
+- The module must simulate the binary search algorithm to find the minimum time.
+- The search space for 'time' is bounded to 64 iterations (simulating the log scale of 10^18).
+- Inside the loop, calculate 'cooking_done' for a given 'time' guess:
+  1. Determine cycle length: 'cycle_len' = ceil(k_in / d_in) * d_in. Note: Since inputs are integers, perform division: cycle_len = (k_in + d_in - 1) / d_in * d_in.
+  2. Determine ON time per cycle: 'on_time' = k_in.
+  3. Determine OFF time per cycle: 'off_time' = cycle_len - k_in.
+  4. 'heat_per_cycle' = (on_time * 2) + off_time. (This scales the cooking rate: ON=2 units/min, OFF=1 unit/min).
+  5. 'full_cycles' = time / cycle_len.
+  6. 'remaining_time' = time % cycle_len.
+  7. 'remaining_heat' = if remaining_time < on_time then (remaining_time * 2) else ((on_time * 2) + (remaining_time - on_time)).
+  8. 'total_cooking' = (full_cycles * heat_per_cycle) + remaining_heat.
+  9. Compare total_cooking with 2 * t_in (scaled requirement). If total_cooking >= 2 * t_in, the guess 'time' is sufficient.
+- The state machine should have states: IDLE, SETUP_ITER, CHECK_Cooking, UPDATE_Bounds, DONE.
+- Use a state machine to control the loop: Run 64 iterations of the binary search (low=0, high=2*t_in).
+- Latency: The result should be valid approximately 64 * (latency of cooking calc) cycles after start. This corresponds to a few hundred cycles.

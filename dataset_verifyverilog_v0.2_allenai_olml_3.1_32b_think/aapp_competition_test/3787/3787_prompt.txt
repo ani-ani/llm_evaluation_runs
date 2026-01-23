@@ -1,0 +1,123 @@
+Design a sequential Verilog module named 'permutation_generator' that constructs a permutation of numbers 1 to N such that the length of the longest increasing subsequence (LIS) is A and the length of the longest decreasing subsequence (LDS) is B.
+
+The module implements a specific constructive algorithm:
+1. The output sequence is composed of A groups.
+2. The last group (Group A) contains exactly A numbers: 1, 2, ..., A (which will be output in increasing order if the group is reversed, or decreasing if not, depending on the construction).
+3. The remaining B-1 groups distribute the numbers N-A down to A+1.
+4. The algorithm determines the size of each group such that the total count is N, and the LDS constraint B is met (by having B groups total if we count the increasing tail as separate blocks, or by adjusting block sizes).
+5. The module iterates through the groups and outputs numbers in reverse order within each group (to create decreasing sequences). If a group is too small (due to remainder), it is handled.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [9:0] N // Max 1023 (scaled from 300,000)
+input [5:0] A // Max 63 (scaled from 300,000)
+input [5:0] B // Max 63 (scaled from 300,000)
+
+Outputs:
+output reg [9:0] data_out // The value of the permutation element
+output reg valid_out // High when data_out is valid
+output reg done // High when the entire sequence is generated
+
+Behavior:
+The module uses a state machine: IDLE, CALCULATE_SIZES, OUTPUT_GROUPS.
+- IDLE: Waits for start.
+- CALCULATE_SIZES: Computes the distribution of the remaining N-A numbers into B-1 groups (base size = (N-A)/(B-1), remainder = (N-A)%(B-1)).
+- OUTPUT_GROUPS: Iterates through the groups. For each group, it maintains a start and end value. It outputs values in reverse order (end down to start). For the last group (which corresponds to the numbers 1..A), it might output in increasing order depending on the specific variant, but typically the construction is: [Group B-1 reversed] ... [Group 1 reversed] [Group 0 increasing]. To keep it simple, we will output the blocks in order, but values within each block are generated in reverse order to create decreasing subsequences. The final increasing tail is handled by the structure of the groups.
+
+Specific Algorithm Logic for Hardware:
+1. Calculate `rem = N - A`.
+2. Calculate `base = (B > 1) ? rem / (B - 1) : 0`.
+3. Calculate `rem_count = (B > 1) ? rem % (B - 1) : 0`.
+4. The blocks will be: B-1 blocks of size `base` or `base+1`, plus the final block of size `A`.
+5. We iterate from `current_val = N` downwards.
+   - Output `base` (or `base+1`) numbers in descending order: `current_val`, `current_val-1`, ... `current_val - base + 1`.
+   - `current_val` decreases by `base`.
+   - Handle `rem_count` blocks with `base+1` size first.
+   - Finally, output `A` numbers from 1 to A in ascending order (or depending on construction, usually ascending 1..A). Wait, the standard construction is: The LIS is A, achieved by the increasing tail (1, 2, ..., A). The LDS is B, achieved by the decreasing blocks. So the sequence should end with 1, 2, ..., A.
+   - Actually, the standard Python code `ans = list(range(1, A+1))` then appends `range(start, end, -1)` for the large numbers.
+   - Let's implement the standard one: 
+     - `tail = 1, 2, ..., A` (increasing).
+     - `head = N, N-1, ..., N-A+1` (decreasing block).
+     - `mid = [block B-1] ... [block 2]` (decreasing blocks).
+     This yields LIS=A (from the tail) and LDS=B (from B blocks: head + mid).
+     Wait, the Python code `ans = list(range(1, A+1))` then `ans = ans[::-1]` or just print? 
+     The sample `5 3 2`: `1 2 3` (tail) -> `4 5` (head) -> `4 5` reversed? No.
+     Sample output: `2 4 1 5 3`.
+     LIS: {2, 4, 5} or {1, 5}? No, {2, 4, 5} is LIS=3. LDS: {4, 1} or {4, 3}? No, {4, 3} is LDS=2. Wait, {2, 4, 1, 5, 3} has LIS=3 (2, 4, 5) and LDS=2 (4, 3) or (5, 3). Yes.
+     The construction `ans = [1, 2, ..., A]` then append blocks of decreasing numbers.
+     For 5 3 2: 
+       A=3, B=2. 
+       Tail: 1 2 3 (LIS=3). 
+       Remaining: N-A = 2 numbers. 
+       B-1 = 1 block. 
+       Block size = 2. 
+       Block values: N, N-1 = 5, 4. 
+       Order: Append block: `1 2 3 5 4`. 
+       LIS of this: 3 (1,2,3). LDS: 2 (5,4). 
+       This works but gives `1 2 3 5 4`. 
+       The sample is `2 4 1 5 3`. 
+       Alternative construction: 
+       Group 1: 1, 2, 3. 
+       Group 2: 5, 4. 
+       Sequence: Group 2 reversed? No.
+       Let's stick to the standard constructive algorithm that is simpler to implement in hardware:
+       1. Create `B` groups. 
+       2. Group sizes: 
+          `rem = N - A` 
+          `base = rem / (B - 1)` 
+          `cnt = rem % (B - 1)` 
+          `size[B-1] = A` 
+          `size[i] = base + (i < cnt ? 1 : 0)` for `i` in `0` to `B-2`. 
+          Actually, the groups usually go from 1 to B.
+          Let's define groups 0 to B-1. 
+          Group B-1: 1 to A. (Increasing) 
+          Groups 0 to B-2: 
+            We need to fill values from A+1 to N.
+            Split (N-A) items into B-1 groups.
+            Sizes: `s` = (N-A)/(B-1), `r` = (N-A)%(B-1).
+            Group 0: `s + (r > 0)` items (largest values) 
+            Group 1: `s + (r > 1)` items 
+            ... 
+            Group B-2: `s` items. 
+          Output: 
+            Output Group 0 reversed (decreasing). 
+            Output Group 1 reversed. 
+            ... 
+            Output Group B-1 normal (increasing). 
+          This guarantees LIS = A (from the last group) and LDS = B (from B groups, each being a decreasing sequence, or merged to form one).
+
+        Let's refine the hardware states:
+        IDLE: wait for start.
+        SETUP:
+          Calculate `rem = N - A`.
+          Calculate `base = (B > 1) ? rem / (B - 1) : 0`.
+          Calculate `rem_count = (B > 1) ? rem % (B - 1) : 0`.
+          Initialize `current_val = N`.
+          Initialize `group_index = 0`.
+        OUTPUT_BLOCK:
+          Determine block size `sz`.
+          If `group_index < B-1`: 
+             `sz = base + (group_index < rem_count ? 1 : 0)`.
+             Generate `sz` numbers starting from `current_val` downwards (i.e., `current_val, current_val-1, ...`).
+          If `group_index == B-1`: 
+             `sz = A`.
+             Generate `sz` numbers starting from 1 upwards (i.e., 1, 2, ... A).
+          Transition to NEXT_BLOCK after outputting `sz` numbers.
+          Done when all groups processed.
+
+        Wait, the sample `5 3 2`: 
+        N=5, A=3, B=2.
+        rem = 2. 
+        base = 2 / 1 = 2. 
+        rem_count = 0.
+        B=2 groups. 
+        Group 0 (index 0 < B-1=1): size 2. Values 5, 4. Output: 5, 4.
+        Group 1 (index 1 == B-1): size 3. Values 1, 2, 3. Output: 1, 2, 3.
+        Result: 5, 4, 1, 2, 3. 
+        LIS: {1, 2, 3} -> 3. 
+        LDS: {5, 4} -> 2. 
+        This works. 
+
+        Let's refine the module definition based on this logic.

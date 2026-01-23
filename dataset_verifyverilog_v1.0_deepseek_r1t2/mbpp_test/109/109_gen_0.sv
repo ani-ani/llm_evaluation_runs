@@ -1,0 +1,1 @@
+module odd_Equivalent(\n    input [7:0] binary_string,\n    output reg [3:0] count\n);\n    always @(*) begin\n        count[3:0] = binary_string[0] + binary_string[1] + binary_string[2] + binary_string[3] + binary_string[4] + binary_string[5] + binary_string[6] + binary_string[7];\n    end\nendmodule

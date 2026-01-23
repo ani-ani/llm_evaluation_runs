@@ -1,0 +1,61 @@
+Design a sequential Verilog module named 'pattern_probability_sorter' that computes and sorts pattern likelihoods for Rock-Paper-Scissors predictions.
+
+Problem Adaptation:
+- Input: n=64 rounds (max), s=8 predictions (max)
+- Pattern length L = 4 to 8 characters
+- Probability calculation: P(appears at least once) = 1 - P(never appears)
+- P(never appears) approximated as (1 - p)^k where p = 3^{-L} (probability of match at any position), k = n-L+1
+- For simplicity, use scoring function: Score = (n-L+1) * 3^{-L}
+- Self-overlaps reduce probability (patterns like 'RRR' have lower probability than 'PSR')
+- Implementation uses Q16.16 fixed-point arithmetic (16 integer, 16 fractional bits)
+- 3^{-L} computed via shift operations (3^2=9→9*9=81, etc.) and reciprocal approximation
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] num_patterns // Number of predictions (1-8)
+input [7:0] pattern_length // Length of each pattern (1-8)
+input [5:0][63:0] predictions // Up to 8 patterns, each 8 chars packed in 64 bits (8 bytes)
+// Each byte: 'R'=0x52, 'P'=0x50, 'S'=0x53
+// Actual input: 8 separate 64-bit signals, but modeled as array
+
+Outputs:
+output reg [2:0] sorted_indices [7:0] // Sorted indices (original order)
+output reg done // High when sorting complete
+
+Behavior:
+1. Parse patterns from packed 64-bit values (extract bytes)
+2. Compute 3^{-L} in Q16.16: Reciprocal of 3^L
+   - 3^1=3, 3^2=9, 3^3=27, 3^4=81, 3^5=243, 3^6=729, 3^7=2187, 3^8=6561
+   - Reciprocal = floor(65536 / 3^L) for Q16.16 (approximation)
+3. Compute overlap penalty: Check pattern self-overlaps (KMP failure function)
+   - For length L, count proper prefixes that are also suffixes
+   - Reduce effective count by 1 for each overlap
+4. Calculate score: (n - L + 1) * 3^{-L} * (1 - overlap_factor)
+   - Represent score as Q16.16
+5. Sort patterns by score (descending), maintaining input order for ties
+6. Output sorted indices
+
+States: IDLE, PARSE, COMPUTE_SCORES, SORT, DONE
+
+Latency: Approximately 64 clock cycles (8 patterns × 8 cycles each)
+
+Special Requirements:
+- Fixed-point arithmetic: All calculations in Q16.16
+- 3^{-L} approximation: Use lookup table or sequential division
+- Pattern overlap detection: Compare prefix and suffix of pattern
+- Sorting: Simple bubble sort or insertion sort for 8 elements
+- Handle ties by keeping original order
+
+Example:
+n=3, L=2, patterns=['PP','RR','PS','SS']
+3^{-2} = 1/9 ≈ 0.111 in Q16.16 = 0x1C71
+Score = (3-2+1) * 1/9 = 2/9 ≈ 0.222
+Output order by score: PS (no overlap), PP (no overlap), RR (no overlap), SS (no overlap)
+All have same score but PS output first due to input order.
+
+Note: The actual probability calculation is simplified to avoid floating-point. 
+We use integer approximation with Q16.16 format. 3^{-L} is pre-computed.
+For L=2, 3^{-2}=1/9, in Q16.16: (2^16)/9 = 7281 ≈ 0x1C71
+For sorting, compare (n-L+1) * reciprocal_3powL >> 16

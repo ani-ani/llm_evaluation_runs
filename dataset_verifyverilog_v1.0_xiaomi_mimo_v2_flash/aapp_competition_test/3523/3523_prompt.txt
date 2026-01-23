@@ -1,0 +1,134 @@
+module coin_optimizer (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] P,
+    input wire [7:0] N1,
+    input wire [7:0] N5,
+    input wire [7:0] N10,
+    input wire [7:0] N25,
+    output reg [7:0] result,
+    output reg valid,
+    output reg done
+);
+    // State encoding
+    localparam IDLE = 4'b0000;
+    localparam START_LOOP = 4'b0001;
+    localparam CHECK_X25 = 4'b0010;
+    localparam SET_X10 = 4'b0011;
+    localparam CHECK_X10 = 4'b0100;
+    localparam SET_X5 = 4'b0101;
+    localparam CHECK_X5 = 4'b0110;
+    localparam PROCESS = 4'b0111;
+    localparam INCR_X5 = 4'b1000;
+    localparam INCR_X10 = 4'b1001;
+    localparam INCR_X25 = 4'b1010;
+    localparam DONE = 4'b1011;
+
+    reg [3:0] state, next_state;
+    reg [3:0] x25;
+    reg [4:0] x10;
+    reg [5:0] x5;
+    reg [7:0] max_coins;
+    reg found;
+
+    wire [15:0] val25 = x25 * 8'd25;
+    wire [15:0] val10 = x10 * 8'd10;
+    wire [15:0] val5  = x5 * 8'd5;
+    wire [15:0] total = val25 + val10 + val5;
+    wire [7:0] x1 = P - total[7:0];
+    wire total_le_P = (total <= P);
+    wire x1_le_N1 = (x1 <= N1);
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 8'b0;
+            valid <= 1'b0;
+            done <= 1'b0;
+            x25 <= 4'b0;
+            x10 <= 5'b0;
+            x5 <= 6'b0;
+            max_coins <= 8'b0;
+            found <= 1'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        x25 <= 4'b0;
+                        x10 <= 5'b0;
+                        x5 <= 6'b0;
+                        max_coins <= 8'b0;
+                        found <= 1'b0;
+                        state <= CHECK_X25;
+                    end
+                end
+
+                CHECK_X25: begin
+                    if (x25 <= N25 && val25 <= P) begin
+                        x10 <= 5'b0;
+                        state <= CHECK_X10;
+                    end else begin
+                        state <= DONE;
+                    end
+                end
+
+                CHECK_X10: begin
+                    if (x10 <= N10 && (val25 + val10) <= P) begin
+                        x5 <= 6'b0;
+                        state <= CHECK_X5;
+                    end else begin
+                        if (x10 < N10) begin
+                            x10 <= x10 + 1;
+                            state <= CHECK_X10;
+                        end else begin
+                            x25 <= x25 + 1;
+                            state <= CHECK_X25;
+                        end
+                    end
+                end
+
+                CHECK_X5: begin
+                    if (x5 <= N5 && total <= P) begin
+                        if (x1_le_N1) begin
+                            if (x1 + x5 + x10 + x25 > max_coins) begin
+                                max_coins <= x1 + x5 + x10 + x25;
+                                found <= 1'b1;
+                            end
+                        end
+                        if (x5 < N5) begin
+                            x5 <= x5 + 1;
+                            state <= CHECK_X5;
+                        end else begin
+                            if (x10 < N10) begin
+                                x10 <= x10 + 1;
+                                state <= CHECK_X10;
+                            end else begin
+                                x25 <= x25 + 1;
+                                state <= CHECK_X25;
+                            end
+                        end
+                    end else begin
+                        if (x10 < N10) begin
+                            x10 <= x10 + 1;
+                            state <= CHECK_X10;
+                        end else begin
+                            x25 <= x25 + 1;
+                            state <= CHECK_X25;
+                        end
+                    end
+                end
+
+                DONE: begin
+                    result <= max_coins;
+                    valid <= found;
+                    done <= 1'b1;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

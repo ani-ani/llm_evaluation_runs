@@ -1,0 +1,162 @@
+module rearrange_to_divisible_by_7 (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] input_digits [0:15],
+    input wire [3:0] input_length,
+    output reg [3:0] output_digits [0:15],
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 3'b000;
+    localparam COUNT = 3'b001;
+    localparam DECREMENT = 3'b010;
+    localparam CALCULATE_MOD = 3'b011;
+    localparam LOOKUP = 3'b100;
+    localparam OUTPUT = 3'b101;
+
+    reg [2:0] state, next_state;
+    reg [4:0] count [0:9]; // counts for digits 0-9 (max 16)
+    reg [2:0] mod_result;
+    reg [3:0] digit_counter;
+    reg [3:0] output_index;
+    reg [15:0] current_perm;
+    
+    // Permutation table: for each possible modulo result (0-6), store 4-digit permutation
+    reg [15:0] perm_table [0:6];
+    initial begin
+        perm_table[0] = 16'h1869; // 1869
+        perm_table[1] = 16'h1896; // 1896
+        perm_table[2] = 16'h1986; // 1986
+        perm_table[3] = 16'h1698; // 1698
+        perm_table[4] = 16'h6198; // 6198
+        perm_table[5] = 16'h1689; // 1689
+        perm_table[6] = 16'h1968; // 1968
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            digit_counter <= 0;
+            output_index <= 0;
+            mod_result <= 0;
+            current_perm <= 0;
+            // Reset counts
+            for (integer i = 0; i < 10; i = i + 1) begin
+                count[i] <= 0;
+            end
+            // Reset output
+            for (integer i = 0; i < 16; i = i + 1) begin
+                output_digits[i] <= 0;
+            end
+        end else begin
+            state <= next_state;
+            
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        // Reset counters
+                        for (integer i = 0; i < 10; i = i + 1) begin
+                            count[i] <= 0;
+                        end
+                        digit_counter <= 0;
+                        mod_result <= 0;
+                        current_perm <= 0;
+                    end
+                end
+                
+                COUNT: begin
+                    if (digit_counter < input_length) begin
+                        count[input_digits[digit_counter]] <= count[input_digits[digit_counter]] + 1;
+                        digit_counter <= digit_counter + 1;
+                    end
+                end
+                
+                DECREMENT: begin
+                    count[1] <= count[1] - 1;
+                    count[6] <= count[6] - 1;
+                    count[8] <= count[8] - 1;
+                    count[9] <= count[9] - 1;
+                    digit_counter <= 0;
+                end
+                
+                CALCULATE_MOD: begin
+                    // Calculate modulo of remaining digits in ascending order
+                    if (digit_counter < 10) begin
+                        if (count[digit_counter] > 0) begin
+                            mod_result <= (mod_result * 10 + digit_counter) % 7;
+                            count[digit_counter] <= count[digit_counter] - 1;
+                        end else begin
+                            digit_counter <= digit_counter + 1;
+                        end
+                    end
+                end
+                
+                LOOKUP: begin
+                    current_perm <= perm_table[mod_result];
+                    output_index <= 0;
+                    digit_counter <= 1; // Start from digit 1 for output
+                end
+                
+                OUTPUT: begin
+                    if (output_index < input_length) begin
+                        if (digit_counter <= 9 && digit_counter != 0) begin
+                            if (count[digit_counter] > 0) begin
+                                output_digits[output_index] <= digit_counter;
+                                output_index <= output_index + 1;
+                                count[digit_counter] <= count[digit_counter] - 1;
+                            end else begin
+                                digit_counter <= digit_counter + 1;
+                            end
+                        end else if (digit_counter == 10) begin
+                            // Output permutation
+                            if (output_index < input_length - 4'd4) begin
+                                // Wait until we have space for 4 digits
+                                output_digits[output_index] <= current_perm[15:12];
+                                output_digits[output_index + 1] <= current_perm[11:8];
+                                output_digits[output_index + 2] <= current_perm[7:4];
+                                output_digits[output_index + 3] <= current_perm[3:0];
+                                output_index <= output_index + 4;
+                            end
+                            digit_counter <= 0; // Now for zeros
+                        end else if (digit_counter == 0) begin
+                            // Output zeros
+                            if (count[0] > 0) begin
+                                output_digits[output_index] <= 0;
+                                output_index <= output_index + 1;
+                                count[0] <= count[0] - 1;
+                            end else begin
+                                done <= 1;
+                            end
+                        end
+                    end else begin
+                        done <= 1;
+                    end
+                end
+            endcase
+        end
+    end
+
+    always @(*) begin
+        case (state)
+            IDLE: next_state = start ? COUNT : IDLE;
+            COUNT: next_state = (digit_counter >= input_length) ? DECREMENT : COUNT;
+            DECREMENT: next_state = CALCULATE_MOD;
+            CALCULATE_MOD: begin
+                if (digit_counter >= 10) next_state = LOOKUP;
+                else if (count[digit_counter] > 0) next_state = CALCULATE_MOD;
+                else next_state = CALCULATE_MOD; // Will increment counter
+            end
+            LOOKUP: next_state = OUTPUT;
+            OUTPUT: begin
+                if (done) next_state = IDLE;
+                else next_state = OUTPUT;
+            end
+            default: next_state = IDLE;
+        endcase
+    end
+
+endmodule

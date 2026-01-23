@@ -1,0 +1,152 @@
+module duel_game (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] initial_state,  // 8-bit initial state (0=down, 1=up)
+    input wire [3:0] k,              // flip length (1-8)
+    output reg [1:0] result,         // 0=Tokitsukaze, 1=Quailty, 2=Once again
+    output reg done
+);
+
+    // Constants
+    parameter MAX_CYCLES = 256;
+    parameter STATE_WIDTH = 8;
+    parameter MAX_K = 8;
+    
+    // Internal state
+    reg [STATE_WIDTH-1:0] current_state;
+    reg [7:0] cycle_count;
+    reg [1:0] game_state;  // 0=playing, 1=toki_win, 2=quailty_win, 3=draw
+    reg [STATE_WIDTH-1:0] state_history [0:15];  // History for cycle detection (last 16 states)
+    reg [3:0] history_index;
+    reg [STATE_WIDTH-1:0] temp_state;
+    
+    // Helper wires for state analysis
+    wire all_same;
+    wire [STATE_WIDTH-1:0] flipped_up;
+    wire [STATE_WIDTH-1:0] flipped_down;
+    wire can_win_next;
+    
+    // Check if all bits are the same
+    assign all_same = (current_state == 8'b00000000) || (current_state == 8'b11111111);
+    
+    // Check winning moves for current player
+    assign can_win_next = check_win(current_state, k);
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            current_state <= 8'b0;
+            cycle_count <= 8'b0;
+            game_state <= 2'b0;
+            history_index <= 4'b0;
+            done <= 1'b0;
+            result <= 2'b0;
+        end else if (start && !done) begin
+            // Initialize game
+            current_state <= initial_state;
+            cycle_count <= 8'b0;
+            history_index <= 4'b0;
+            if (all_same) begin
+                // Already uniform - Tokitsukaze wins immediately
+                game_state <= 2'b01;  // Tokitsukaze
+                done <= 1'b1;
+                result <= 2'b00;
+            end else begin
+                game_state <= 2'b00;  // Playing
+                done <= 1'b0;
+            end
+        end else if (game_state == 2'b00 && !done) begin
+            // Game logic
+            if (cycle_count >= MAX_CYCLES) begin
+                game_state <= 2'b11;  // Draw
+                done <= 1'b1;
+                result <= 2'b10;  // Once again
+            end else if (can_win_next) begin
+                // Current player can win
+                game_state <= (cycle_count[0] == 1'b0) ? 2'b01 : 2'b10;  // Tokitsukaze on even cycles, Quailty on odd
+                done <= 1'b1;
+                result <= (cycle_count[0] == 1'b0) ? 2'b00 : 2'b01;
+            end else begin
+                // Check for draw condition (cycle detection)
+                if (is_in_history(current_state, state_history, history_index)) begin
+                    game_state <= 2'b11;  // Draw
+                    done <= 1'b1;
+                    result <= 2'b10;  // Once again
+                end else begin
+                    // Make a move (simulate optimal play)
+                    // For simplicity, we flip the first k cards to alternating pattern
+                    if (k <= STATE_WIDTH) begin
+                        current_state <= simulate_move(current_state, k, cycle_count[0]);
+                    end
+                    // Update history
+                    state_history[history_index] <= current_state;
+                    history_index <= history_index + 1;
+                    cycle_count <= cycle_count + 1;
+                end
+            end
+        end
+    end
+    
+    // Functions for game logic
+    function automatic [STATE_WIDTH-1:0] simulate_move;
+        input [STATE_WIDTH-1:0] state;
+        input [3:0] flip_len;
+        input player;  // 0=Toki, 1=Quailty
+        integer i;
+        begin
+            simulate_move = state;
+            // Flip first flip_len cards to 0 for Toki, 1 for Quailty (heuristic)
+            for (i = 0; i < flip_len && i < STATE_WIDTH; i = i + 1) begin
+                simulate_move[i] = player ? 1'b1 : 1'b0;
+            end
+        end
+    endfunction
+    
+    function automatic check_win;
+        input [STATE_WIDTH-1:0] state;
+        input [3:0] flip_len;
+        integer i, j;
+        reg [STATE_WIDTH-1:0] test_state;
+        begin
+            check_win = 0;
+            // Check all possible flips
+            for (i = 0; i <= STATE_WIDTH - flip_len; i = i + 1) begin
+                // Try flipping to all 0s
+                test_state = state;
+                for (j = 0; j < flip_len; j = j + 1) begin
+                    test_state[i+j] = 1'b0;
+                end
+                if (test_state == 8'b00000000 || test_state == 8'b11111111) begin
+                    check_win = 1;
+                    return 1;
+                end
+                // Try flipping to all 1s
+                test_state = state;
+                for (j = 0; j < flip_len; j = j + 1) begin
+                    test_state[i+j] = 1'b1;
+                end
+                if (test_state == 8'b00000000 || test_state == 8'b11111111) begin
+                    check_win = 1;
+                    return 1;
+                end
+            end
+        end
+    endfunction
+    
+    function automatic is_in_history;
+        input [STATE_WIDTH-1:0] state;
+        input [STATE_WIDTH-1:0] history [0:15];
+        input [3:0] idx;
+        integer i;
+        begin
+            is_in_history = 0;
+            for (i = 0; i < 16 && i < idx; i = i + 1) begin
+                if (history[i] == state) begin
+                    is_in_history = 1;
+                    return 1;
+                end
+            end
+        end
+    endfunction
+
+endmodule

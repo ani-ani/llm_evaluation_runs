@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'polar_rect_converter' that performs polar to rectangular and rectangular to polar coordinate conversions using Q16.16 fixed-point arithmetic.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [1:0] mode // 0: polar->rect, 1: rect->polar
+input [31:0] input_a // first coordinate (x or r) in Q16.16
+input [31:0] input_b // second coordinate (y or theta) in Q16.16
+
+Outputs:
+output reg [31:0] output_x // x or r in Q16.16 format
+output reg [31:0] output_y // y or theta in Q16.16 format
+output reg done // high when computation complete
+
+Specifications:
+- Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+- All intermediate calculations must use 64-bit precision to avoid overflow
+- Implement square root using 16-cycle fixed-point iterative algorithm
+- Implement trigonometric functions using state machine with lookup table approximation
+- Implement atan2 using CORDIC-like iterations (max 16 cycles)
+- Module should complete in max 64 clock cycles per conversion
+- Use 4 states: IDLE, CALCULATE_SQRT, CALCULATE_TRIG, DONE
+
+Polar to Rectangular (mode=0):
+- input_a = r, input_b = theta (in radians Q16.16)
+- output_x = r * cos(theta) in Q16.16
+- output_y = r * sin(theta) in Q16.16
+
+Rectangular to Polar (mode=1):
+- input_a = x, input_b = y in Q16.16
+- output_x = sqrt(x^2 + y^2) in Q16.16
+- output_y = atan2(y, x) in Q16.16 (range -π to +π)
+
+Key Implementation Details:
+- For sqrt: use iterative bit-by-bit approximation (max 16 iterations)
+- For cos/sin: use quadrant-based lookup or polynomial approximation
+- For atan2: use CORDIC iterations or quadrant remapping
+- All operations must be synthesized to combinational logic with registers
+- The module should handle negative inputs correctly
+
+Example fixed-point representation:
+- 3.5 = 0x00038000 (3.5 * 65536 = 229376)
+- 5.0 = 0x00050000 (5 * 65536 = 327680)
+- π/2 ≈ 1.5708 = 0x00019220
+- π ≈ 3.1416 = 0x0003243F

@@ -1,0 +1,171 @@
+module pizza_delivery_optimizer (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] n,
+    input [3:0] m,
+    input [3:0] k,
+    input [3:0] edge_u [0:15],
+    input [3:0] edge_v [0:15],
+    input [31:0] edge_d [0:15],
+    input [31:0] order_s [0:7],
+    input [3:0] order_u [0:7],
+    input [31:0] order_t [0:7],
+    output reg [31:0] result,
+    output reg done
+);
+
+// Internal state machine
+reg [2:0] state;
+reg [3:0] i_cnt, j_cnt, k_cnt;
+reg [31:0] dist [0:7][0:7];
+reg [31:0] D_prev, D_curr, T_min;
+reg [3:0] order_idx;
+
+// State definitions
+localparam IDLE = 0;
+localparam INIT_DIST = 1;
+localparam FLOYD_UPDATE = 2;
+localparam COMPUTE_DELIVERY = 3;
+localparam DONE = 4;
+
+// Constants
+localparam INF = 32'h7FFFFFFF;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        i_cnt <= 0;
+        j_cnt <= 0;
+        k_cnt <= 0;
+        order_idx <= 0;
+        D_prev <= 0;
+        D_curr <= 0;
+        T_min <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    state <= INIT_DIST;
+                    i_cnt <= 0;
+                    j_cnt <= 0;
+                end
+            end
+            
+            INIT_DIST: begin
+                // Initialize distance matrix
+                if (i_cnt < n) begin
+                    if (j_cnt < n) begin
+                        if (i_cnt == j_cnt)
+                            dist[i_cnt][j_cnt] <= 0;
+                        else
+                            dist[i_cnt][j_cnt] <= INF;
+                        j_cnt <= j_cnt + 1;
+                    end else begin
+                        j_cnt <= 0;
+                        i_cnt <= i_cnt + 1;
+                    end
+                end else begin
+                    // Set edges
+                    i_cnt <= 0;
+                    state <= FLOYD_UPDATE;
+                end
+            end
+            
+            FLOYD_UPDATE: begin
+                // Floyd-Warshall algorithm
+                if (k_cnt < n) begin
+                    if (i_cnt < n) begin
+                        if (j_cnt < n) begin
+                            // dist[i][j] = min(dist[i][j], dist[i][k] + dist[k][j])
+                            if (dist[i_cnt][k_cnt] != INF && dist[k_cnt][j_cnt] != INF) begin
+                                if (dist[i_cnt][k_cnt] + dist[k_cnt][j_cnt] < dist[i_cnt][j_cnt]) begin
+                                    dist[i_cnt][j_cnt] <= dist[i_cnt][k_cnt] + dist[k_cnt][j_cnt];
+                                end
+                            end
+                            j_cnt <= j_cnt + 1;
+                        end else begin
+                            j_cnt <= 0;
+                            i_cnt <= i_cnt + 1;
+                        end
+                    end else begin
+                        i_cnt <= 0;
+                        k_cnt <= k_cnt + 1;
+                    end
+                end else begin
+                    // Set actual edge distances (after Floyd-Warshall initialization)
+                    if (i_cnt < m) begin
+                        if (edge_u[i_cnt] < n && edge_v[i_cnt] < n) begin
+                            // Convert to 0-based index
+                            dist[edge_u[i_cnt]-1][edge_v[i_cnt]-1] <= edge_d[i_cnt];
+                            dist[edge_v[i_cnt]-1][edge_u[i_cnt]-1] <= edge_d[i_cnt];
+                        end
+                        i_cnt <= i_cnt + 1;
+                    end else begin
+                        i_cnt <= 0;
+                        k_cnt <= 0;
+                        j_cnt <= 0;
+                        state <= COMPUTE_DELIVERY;
+                        order_idx <= 0;
+                        T_min <= 0;
+                    end
+                end
+            end
+            
+            COMPUTE_DELIVERY: begin
+                if (order_idx < k) begin
+                    if (order_idx == 0) begin
+                        // First order: D0 = max(t0, dist[1][u0])
+                        if (order_u[0] > 0 && order_u[0] <= n) begin
+                            if (dist[0][order_u[0]-1] > order_t[0]) begin
+                                D_prev <= dist[0][order_u[0]-1];
+                                T_min <= dist[0][order_u[0]-1] - order_s[0];
+                            end else begin
+                                D_prev <= order_t[0];
+                                T_min <= order_t[0] - order_s[0];
+                            end
+                        end
+                        order_idx <= order_idx + 1;
+                    end else begin
+                        // Subsequent orders
+                        if (order_u[order_idx-1] > 0 && order_u[order_idx-1] <= n &&
+                            order_u[order_idx] > 0 && order_u[order_idx] <= n) begin
+                            
+                            reg [31:0] travel_time = dist[order_u[order_idx-1]-1][order_u[order_idx]-1];
+                            reg [31:0] arrival_time = D_prev + travel_time;
+                            reg [31:0] new_T;
+                            
+                            if (arrival_time > order_t[order_idx]) begin
+                                D_curr <= arrival_time;
+                                new_T = arrival_time - order_s[order_idx];
+                            end else begin
+                                D_curr <= order_t[order_idx];
+                                new_T = order_t[order_idx] - order_s[order_idx];
+                            end
+                            
+                            if (new_T > T_min) begin
+                                T_min <= new_T;
+                            end
+                            
+                            D_prev <= (arrival_time > order_t[order_idx]) ? arrival_time : order_t[order_idx];
+                        end
+                        order_idx <= order_idx + 1;
+                    end
+                end else begin
+                    result <= T_min;
+                    state <= DONE;
+                    done <= 1;
+                end
+            end
+            
+            DONE: begin
+                done <= 0;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

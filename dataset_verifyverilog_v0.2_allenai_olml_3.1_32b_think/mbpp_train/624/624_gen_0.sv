@@ -1,0 +1,1 @@
+module string_to_upper(input [7:0][7:0] input_string, output [7:0][7:0] result); generate for(int i=0;i<8;i++)begin assign result[i] = (input_string[i] >= 'a' && input_string[i] <= 'z') ? (input_string[i] & 8'hDF) : input_string[i]; end endgenerate endmodule

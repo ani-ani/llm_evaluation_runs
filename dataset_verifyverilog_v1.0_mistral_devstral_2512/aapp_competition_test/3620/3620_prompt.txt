@@ -1,0 +1,39 @@
+Design a Verilog module that computes the number of proper k-colorings for a tree with N nodes, modulo P. The module should be sequential with the following interface:
+
+Inputs:
+- clk: clock signal, rising edge triggered
+- rst_n: active-low synchronous reset
+- start: start pulse, asserted for one clock cycle to begin computation
+- N[2:0]: number of nodes, value from 1 to 8
+- k[15:0]: number of colors
+- P[15:0]: modulo value
+
+Outputs:
+- result[15:0]: the number of colorings modulo P
+- done: asserted high for one cycle when result is valid
+
+Behavior:
+1. On reset (rst_n=0), the module clears all state, sets result=0, done=0.
+2. When start is asserted, the module begins computing T = (k-1)^{N-1} mod P using an iterative multiplication loop.
+   - Initialize T = 1.
+   - Loop N-1 times: multiply T by (k-1), then reduce modulo P.
+3. After computing T, compute result = k * T mod P.
+4. The module uses a 16-bit data path for k, P, and result.
+5. Intermediate products are stored in 32-bit registers to avoid overflow.
+6. The modulo operation is performed using a binary division algorithm that computes (a * b) mod P by first computing the product in 32 bits and then dividing by P to get remainder.
+7. The division algorithm: while remainder >= P, subtract P, using binary shifting to speed up (i.e., subtract multiples of P: P, 2P, 4P, ...).
+8. The module should have a state machine with states: IDLE, START, EXP_LOOP, MULT_LOOP, MOD_OP, DONE.
+9. The exponentiation loop uses a counter for N-1 iterations.
+10. The module asserts done when the final result is ready and stays in DONE state until next start.
+11. The result remains stable in DONE state.
+
+Implementation notes:
+- Use a 16x16 multiplier to compute products.
+- Use a 32-bit register for the product and remainder.
+- Use a 32-bit register for the divisor (P) and multiplicand.
+- The state machine should be implemented with a case statement.
+- The module should be synthesizable and use no more than a few hundred logic elements.
+- The maximum value of N is 8, so the exponentiation loop runs at most 7 cycles.
+- The division algorithm may take up to 32 cycles per division, so overall latency is acceptable.
+
+Provide the complete Verilog code for this module.

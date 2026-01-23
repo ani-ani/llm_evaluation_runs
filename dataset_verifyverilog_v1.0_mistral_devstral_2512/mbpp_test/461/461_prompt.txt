@@ -1,0 +1,89 @@
+module upper_ctr (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] char_in,
+    input wire [3:0] str_len,
+    output reg [7:0] count,
+    output reg done
+);
+
+    // State machine states
+    localparam IDLE = 2'b00;
+    localparam COUNTING = 2'b01;
+    localparam FINISHED = 2'b10;
+    
+    // Internal registers
+    reg [1:0] state;
+    reg [1:0] next_state;
+    reg [3:0] index;
+    reg [3:0] next_index;
+    reg [7:0] next_count;
+    reg next_done;
+    
+    // State register
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            index <= 4'd0;
+            count <= 8'd0;
+            done <= 1'b0;
+        end else begin
+            state <= next_state;
+            index <= next_index;
+            count <= next_count;
+            done <= next_done;
+        end
+    end
+    
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        next_index = index;
+        next_count = count;
+        next_done = done;
+        
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    next_state = COUNTING;
+                    next_index = 4'd0;
+                    next_count = 8'd0;
+                    next_done = 1'b0;
+                end
+            end
+            
+            COUNTING: begin
+                // Check if current character is uppercase (A-Z)
+                if (char_in >= 8'h41 && char_in <= 8'h5A) begin
+                    next_count = count + 8'd1;
+                end else begin
+                    next_count = count;
+                end
+                
+                // Move to next character
+                if (index < str_len - 4'd1) begin
+                    next_index = index + 4'd1;
+                end else begin
+                    next_state = FINISHED;
+                    next_done = 1'b1;
+                end
+            end
+            
+            FINISHED: begin
+                next_done = 1'b0;
+                if (!start) begin
+                    next_state = IDLE;
+                end
+            end
+            
+            default: begin
+                next_state = IDLE;
+                next_index = 4'd0;
+                next_count = 8'd0;
+                next_done = 1'b0;
+            end
+        endcase
+    end
+
+endmodule

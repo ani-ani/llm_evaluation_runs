@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'max_xor_subset' that computes the maximum XOR-sum of any subset from up to 8 numbers.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_count // number of valid inputs (1-8)
+input [31:0] data_in // current number to add to basis
+input data_valid // high when data_in is valid
+output reg [31:0] result // maximum XOR-sum
+output reg done // high when computation complete
+output reg busy // high when processing
+
+Latency: Approximately 8*32 + 32 = 288 clock cycles (processing each bit of each number, then maximization).
+
+Behavioral Description:
+The module implements Gaussian elimination over GF(2) to find basis vectors, then combines them greedily to maximize XOR-sum.
+
+Algorithm:
+1. Build basis: For each input number, try to reduce it using existing basis vectors. If it becomes non-zero, add it to basis.
+2. Maximization: Starting from highest bit, if XORing current result with a basis vector increases the result, XOR it.
+
+State Machine:
+- IDLE: Wait for start signal
+- COLLECT: Read input numbers into buffer (requires data_valid handshake)
+- BUILD_BASIS: Process each number to build basis array
+- MAXIMIZE: Greedily combine basis vectors to get maximum XOR
+- DONE: Set done flag and hold result
+
+The module maintains an internal basis array of up to 8 vectors (32-bit each).
+For each number in buffer:
+  For each basis vector (MSB to LSB):
+    If current number has same MSB as basis vector, XOR them
+  If result is non-zero, add to basis
+
+For maximization:
+  result = 0
+  For each basis vector (MSB to LSB):
+    If (result XOR basis) > result, then result = result XOR basis
+
+Note: The interface uses handshaking. The module expects num_count valid data_in values with data_valid pulses. The caller should pulse start, then provide exactly num_count numbers, each with data_valid high for one clock cycle.

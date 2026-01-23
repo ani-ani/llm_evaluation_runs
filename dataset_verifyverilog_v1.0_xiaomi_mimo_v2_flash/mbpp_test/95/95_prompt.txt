@@ -1,0 +1,48 @@
+Module: Find_Min_Length
+
+Description: Finds the minimum length (number of valid elements) among multiple arrays. Each inner array has a fixed maximum capacity, but a separate length signal indicates how many elements are valid.
+
+Parameters:
+  - NUM_LISTS: Number of inner lists (default: 4)
+  - MAX_LEN: Maximum capacity of each inner list (default: 8)
+  - LEN_WIDTH: Bit width for length values (default: 4, enough for 0-15)
+
+Interface:
+  Inputs:
+    - clk: Clock signal (rising edge triggered)
+    - rst_n: Active-low synchronous reset
+    - start: Start pulse (assert for 1 cycle to begin computation)
+    - lengths[NUM_LISTS]: Array of length values, each [LEN_WIDTH-1:0]
+                          Each value indicates number of valid elements in inner list
+                          Range: 0 to MAX_LEN
+  
+  Outputs:
+    - min_length: Minimum length found [LEN_WIDTH-1:0]
+    - done: Asserted high for 1 cycle when result is valid
+
+Timing Behavior:
+  - Assert start for 1 clock cycle to initiate comparison
+  - Computation completes in NUM_LISTS cycles (one comparison per cycle)
+  - done goes high for 1 cycle when minimum is found
+  - min_length holds the result when done is high
+
+Reset Behavior:
+  - On rst_n=0: min_length=0, done=0, internal state cleared
+  - Minimum 2 clock cycles of reset recommended
+
+Implementation Requirements:
+  - Use a state machine to iterate through all length values
+  - Initialize min register with first length value
+  - Compare each subsequent length with current min
+  - Update min if new length is smaller
+  - Must handle the case where NUM_LISTS = 1 (no comparison needed)
+
+Example:
+  Input lengths = [3, 7, 2, 5]
+  Expected output = 2
+  Cycles to complete = 4
+
+Testing Interface:
+  The testbench will write to lengths[0], lengths[1], ... lengths[NUM_LISTS-1]
+  It will pulse start, wait for done, then read min_length
+  All length values will be 0 to MAX_LEN inclusive

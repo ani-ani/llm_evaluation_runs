@@ -1,0 +1,94 @@
+module remove_odd (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0, arr_1, arr_2, arr_3, arr_4, arr_5, arr_6, arr_7,
+    input wire [3:0] len,  // Number of valid elements (1-8)
+    output reg [7:0] out_0, out_1, out_2, out_3, out_4, out_5, out_6, out_7,
+    output reg [3:0] out_len,
+    output reg done
+);
+
+    // State machine states
+    reg [1:0] state;
+    reg [3:0] idx;
+    reg [3:0] write_idx;
+    
+    localparam IDLE = 2'b00;
+    localparam PROCESS = 2'b01;
+    localparam COMPLETE = 2'b10;
+    
+    // Input buffer (for pipelined access)
+    reg [7:0] buffer [0:7];
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            idx <= 0;
+            write_idx <= 0;
+            out_len <= 0;
+            done <= 0;
+            // Clear outputs
+            out_0 <= 0; out_1 <= 0; out_2 <= 0; out_3 <= 0;
+            out_4 <= 0; out_5 <= 0; out_6 <= 0; out_7 <= 0;
+            // Clear buffer
+            buffer[0] <= 0; buffer[1] <= 0; buffer[2] <= 0; buffer[3] <= 0;
+            buffer[4] <= 0; buffer[5] <= 0; buffer[6] <= 0; buffer[7] <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        // Load input buffer
+                        buffer[0] <= arr_0;
+                        buffer[1] <= arr_1;
+                        buffer[2] <= arr_2;
+                        buffer[3] <= arr_3;
+                        buffer[4] <= arr_4;
+                        buffer[5] <= arr_5;
+                        buffer[6] <= arr_6;
+                        buffer[7] <= arr_7;
+                        idx <= 0;
+                        write_idx <= 0;
+                        out_len <= 0;
+                        state <= PROCESS;
+                        // Clear outputs
+                        out_0 <= 0; out_1 <= 0; out_2 <= 0; out_3 <= 0;
+                        out_4 <= 0; out_5 <= 0; out_6 <= 0; out_7 <= 0;
+                    end
+                end
+                
+                PROCESS: begin
+                    if (idx < len) begin
+                        // Check if number is even (LSB = 0)
+                        if (buffer[idx][0] == 1'b0) begin
+                            // Even number - write to output
+                            case (write_idx)
+                                0: out_0 <= buffer[idx];
+                                1: out_1 <= buffer[idx];
+                                2: out_2 <= buffer[idx];
+                                3: out_3 <= buffer[idx];
+                                4: out_4 <= buffer[idx];
+                                5: out_5 <= buffer[idx];
+                                6: out_6 <= buffer[idx];
+                                7: out_7 <= buffer[idx];
+                            endcase
+                            write_idx <= write_idx + 1;
+                        end
+                        idx <= idx + 1;
+                    end else begin
+                        // Processing complete
+                        out_len <= write_idx;
+                        state <= COMPLETE;
+                    end
+                end
+                
+                COMPLETE: begin
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule

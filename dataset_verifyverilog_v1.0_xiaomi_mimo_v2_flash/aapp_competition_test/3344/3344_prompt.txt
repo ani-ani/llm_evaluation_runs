@@ -1,0 +1,47 @@
+Module: luggage_speed
+Function: Computes the maximum speed v such that no collisions occur on a circular conveyor belt.
+
+Parameters:
+  MAX_N = 4          // Maximum number of luggage pieces
+  POS_WIDTH = 8      // Bit width for positions
+  L_WIDTH = 8        // Bit width for belt length
+  V_INT_WIDTH = 8    // Integer part bits of v
+  V_FRAC_WIDTH = 8   // Fractional part bits of v
+  CLK_PERIOD = 10    // Clock period in ns
+
+Inputs:
+  clk         : system clock, rising edge
+  rst_n       : active-low synchronous reset
+  start       : start computation, asserted for one cycle
+  pos         : array of MAX_N positions, each [POS_WIDTH-1:0]
+  num_luggage : [2:0] number of valid luggage (1..MAX_N)
+  L           : belt length [L_WIDTH-1:0]
+
+Outputs:
+  v           : maximum speed [V_INT_WIDTH+V_FRAC_WIDTH-1:0], fixed-point with V_FRAC_WIDTH fractional bits
+  done        : asserted high for one cycle when v is valid
+
+Behavior:
+  1. On start, latch num_luggage, L, and the first num_luggage positions.
+  2. For each pair of luggage (i < j), compute absolute difference d = |pos[i] - pos[j]|.
+  3. For each pair, iterate k from 0 to K_MAX (where K_MAX ensures intervals overlap [0.1,10]):
+       a = d / (k*L + L - 1)
+       b = d / (k*L + 1)
+       Interval [a, b] is allowed for this pair.
+     (Division uses fixed‑point arithmetic; result is rounded to V_FRAC_WIDTH fractional bits.)
+  4. Maintain a global set of allowed intervals (initially [0.1, 10]). For each new interval, intersect it with the global set.
+  5. After processing all pairs, find the maximum v in the global allowed intervals.
+  6. Output v as fixed‑point value; assert done for one cycle.
+
+Timing:
+  The computation completes within a bounded number of cycles (e.g., ≤ 1000). Use a state machine to control iteration.
+
+Reset:
+  On rst_n = 0, all internal state is cleared, done = 0, v = 0.
+
+Implementation notes:
+  - Division can be implemented using a sequential restoring divider or precomputed reciprocals for constants (k*L + L - 1) and (k*L + 1).
+  - Interval intersection can be done by maintaining a sorted list of disjoint intervals and updating with each new interval.
+  - The maximum v is the largest value in the final allowed set that is ≤ 10.
+
+Interface details match the testbench expectations.

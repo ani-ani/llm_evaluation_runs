@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'steel_age_solver' that finds the minimum number of settlers needed to claim at least one iron ore and one coal cell in a directed graph.
+
+Problem Adaptation:
+- Maximum 8 cells (nodes 1-8)
+- Node 1 is always the starting palace (no settler needed)
+- Iron ore cells: up to 4 distinct nodes
+- Coal cells: up to 4 distinct nodes
+- Directed edges: each node has 0-10 outgoing edges to other nodes
+- When settlers first move to a cell, 1 settler stays behind to claim it
+- Starting cell (1) is pre-claimed, no settler cost
+- Need to find path that claims at least one iron ore AND one coal cell with minimal total settlers
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+
+// Graph structure: adjacency matrix for 8 nodes
+// graph[i][j] = 1 if edge exists from node i to node j
+input [7:0] graph [7:0][7:0] // 8x8 adjacency matrix
+
+// Resource location flags (node indices 0-7, where 0=cell1, 7=cell8)
+input [7:0] iron_mask // bit i=1 if cell i+1 has iron ore
+input [7:0] coal_mask // bit i=1 if cell i+1 has coal
+
+Outputs:
+output reg [3:0] min_settlers // minimal settlers needed (0-15)
+output reg done // high when computation complete
+output reg possible // high if solution exists
+
+Behavior:
+The module should implement a breadth-first search with state tracking:
+- State: IDLE, EXPLORE, CHECK_PATHS, COMPLETE
+- Tracks visited nodes and accumulated settler costs
+- Explores all paths from node 0 (cell 1) to find minimal cost to reach both resource types
+- Settlement cost = number of unique non-starting nodes claimed along path
+- Use a simple state machine that explores up to 8 levels deep
+- Latency: maximum 64 clock cycles to complete
+
+Implementation approach:
+1. Maintain frontier queue of nodes to explore
+2. Track distance/settler cost to each node
+3. When reaching a node with resource, record cost
+4. Find minimum cost combination of one iron-reachable and one coal-reachable node
+5. For each node, the cost is the number of distinct non-starting nodes on shortest path from start

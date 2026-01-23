@@ -1,0 +1,143 @@
+module frog_escape (
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] d,
+    input [7:0] l0, w0, h0,
+    input [7:0] l1, w1, h1,
+    input [7:0] l2, w2, h2,
+    input [7:0] l3, w3, h3,
+    input [7:0] l4, w4, h4,
+    input [7:0] l5, w5, h5,
+    input [7:0] l6, w6, h6,
+    input [7:0] l7, w7, h7,
+    output reg [7:0] result,
+    output reg done
+);
+
+    // Internal registers for frogs
+    reg [7:0] l [0:7];
+    reg [7:0] w [0:7];
+    reg [7:0] h [0:7];
+    reg [0:7] escapable;
+
+    // State machine
+    reg [3:0] state;
+    localparam [3:0] IDLE = 4'd0;
+    localparam [3:0] CHECK_DIRECT = 4'd1;
+    localparam [3:0] CHECK_PAIRS = 4'd2;
+    localparam [3:0] CHECK_TRIPLES = 4'd3;
+    localparam [3:0] COUNT_RESULT = 4'd4;
+    localparam [3:0] DONE = 4'd5;
+
+    // Loop counters
+    reg [2:0] i, j, k;
+    integer idx;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 8'd0;
+            done <= 1'b0;
+            escapable <= 8'd0;
+            i <= 3'd0;
+            j <= 3'd0;
+            k <= 3'd0;
+            for (idx = 0; idx < 8; idx = idx + 1) begin
+                l[idx] <= 8'd0;
+                w[idx] <= 8'd0;
+                h[idx] <= 8'd0;
+            end
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    escapable <= 8'd0;
+                    i <= 3'd0;
+                    j <= 3'd0;
+                    k <= 3'd0;
+                    if (start) begin
+                        l[0] <= l0; w[0] <= w0; h[0] <= h0;
+                        l[1] <= l1; w[1] <= w1; h[1] <= h1;
+                        l[2] <= l2; w[2] <= w2; h[2] <= h2;
+                        l[3] <= l3; w[3] <= w3; h[3] <= h3;
+                        l[4] <= l4; w[4] <= w4; h[4] <= h4;
+                        l[5] <= l5; w[5] <= w5; h[5] <= h5;
+                        l[6] <= l6; w[6] <= w6; h[6] <= h6;
+                        l[7] <= l7; w[7] <= w7; h[7] <= h7;
+                        state <= CHECK_DIRECT;
+                    end
+                end
+
+                CHECK_DIRECT: begin
+                    if (l[i] > d) begin
+                        escapable[i] <= 1'b1;
+                    end
+                    if (i < 3'd7) begin
+                        i <= i + 3'd1;
+                    end else begin
+                        i <= 3'd0;
+                        j <= 3'd0;
+                        state <= CHECK_PAIRS;
+                    end
+                end
+
+                CHECK_PAIRS: begin
+                    if (i != j && w[i] < w[j] && (h[j] + l[i]) > d) begin
+                        escapable[i] <= 1'b1;
+                    end
+                    if (j < 3'd7) begin
+                        j <= j + 3'd1;
+                    end else begin
+                        j <= 3'd0;
+                        if (i < 3'd7) begin
+                            i <= i + 3'd1;
+                        end else begin
+                            i <= 3'd0;
+                            j <= 3'd1;
+                            k <= 3'd2;
+                            state <= CHECK_TRIPLES;
+                        end
+                    end
+                end
+
+                CHECK_TRIPLES: begin
+                    if (i != j && i != k && j != k && w[i] < w[j] && w[j] < w[k] && (h[k] + h[j] + l[i]) > d) begin
+                        escapable[i] <= 1'b1;
+                    end
+                    if (k < 3'd7) begin
+                        k <= k + 3'd1;
+                    end else begin
+                        k <= 3'd0;
+                        if (j < 3'd6) begin
+                            j <= j + 3'd1;
+                            k <= j + 3'd1;
+                        end else begin
+                            j <= 3'd0;
+                            if (i < 3'd5) begin
+                                i <= i + 3'd1;
+                                j <= i + 3'd1;
+                                k <= i + 3'd2;
+                            end else begin
+                                state <= COUNT_RESULT;
+                            end
+                        end
+                    end
+                end
+
+                COUNT_RESULT: begin
+                    result <= escapable[0] + escapable[1] + escapable[2] + escapable[3] +
+                              escapable[4] + escapable[5] + escapable[6] + escapable[7];
+                    state <= DONE;
+                end
+
+                DONE: begin
+                    done <= 1'b1;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

@@ -1,0 +1,38 @@
+Design a combinational Verilog module named 'positive_ratio' that computes the ratio of positive numbers in an array of integers.
+
+Inputs:
+input [7:0] data_in        // 8-bit signed integer input (two's complement)
+input [2:0] index          // Index for current array element (0-7)
+input valid                // Indicates valid input data
+
+Outputs:
+output reg [31:0] result   // Result in Q16.16 fixed-point format
+output reg result_valid    // High when result is computed and valid
+
+Functionality:
+- The module processes an 8-element array of 8-bit signed integers
+- Count how many elements are positive (> 0)
+- Compute ratio = (count / 8) * 65536 to get Q16.16 format
+- Since this is combinational, the module expects all 8 values to be provided in parallel
+- For sequential operation, the module should internally accumulate count over 8 cycles
+- After processing all 8 elements, output the ratio in Q16.16 format
+
+Implementation details:
+- Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+- Example: ratio 0.5 = 0x00008000 (0.5 * 65536 = 32768)
+- Example: ratio 0.54 = 0x00008A3D (0.54 * 65536 = 35389)
+- Example: ratio 0.69 = 0x0000B333 (0.69 * 65536 = 45875)
+- The module should accumulate count as positive values are detected
+- Divide by 8 using right shift by 3, then multiply by 65536
+
+Internal operation:
+- Accumulate count of positive numbers (data_in > 0)
+- When index reaches 7 (last element), compute: result = (count << 13) because: (count/8)*65536 = count * 8192 = count << 13
+- Set result_valid high for one cycle after processing element 7
+
+Test cases:
+Test 1: Array [0, 1, 2, -1, -5, 6, 0, -3] should yield 0x00008A3D (0.54)
+Test 2: Array [2, 1, 2, -1, -5, 6, 4, -3] should yield 0x0000B333 (0.69)
+Test 3: Array [2, 4, -6, -9, 11, -12, 14, -5] should yield 0x00008F5C (0.56)
+
+The module processes data sequentially over 8 cycles based on index values 0-7.

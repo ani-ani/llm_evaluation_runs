@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'pebble_transform' that computes the number of distinct starting circles that produce the same result after K transformations.
+
+Problem Adaptation:
+- N (number of pebbles) scaled to max 8 for hardware feasibility
+- K (transformations) scaled to max 4 iterations
+- Circle represented as 8-bit vector (0=W, 1=B)
+- Rotation equivalence handled by canonical representation
+- Count computed via exhaustive search over 2^N possibilities (256 max)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] N // actual number of pebbles (3-8)
+input [3:0] K // number of transformations (1-4)
+input [7:0] target_circle // target configuration (LSB = position 0)
+
+Outputs:
+output reg [7:0] result // count of matching starting circles (max 255)
+output reg done // high when computation complete
+
+Behavior:
+1. Reset: Initialize state, set result=0
+2. Start: Begin exhaustive search over all 2^N possible starting circles
+3. For each candidate starting circle:
+   - Apply transformation K times
+   - Compare result with target_circle (considering rotation equivalence)
+   - If equivalent, increment result counter
+4. Done: Signal completion with final count
+
+Transformation Rule:
+Given circle C of length N:
+- New circle C' where C'[i] = (C[i] == C[(i+1)%N]) ? 1 : 0
+- (1=black, 0=white)
+
+Rotation Equivalence:
+Two circles are equivalent if one can be rotated to match the other.
+For circles A and B of length N:
+- A is equivalent to B if for some shift S (0 to N-1), A[(i+S)%N] == B[i] for all i
+
+State Machine States:
+- IDLE: Wait for start signal
+- INIT_CANDIDATE: Setup next candidate circle
+- APPLY_TRANSFORM: Apply one transformation step
+- CHECK_EQUIVALENCE: Compare with target (all rotations)
+- INCREMENT_RESULT: Count matching circles
+- NEXT_CANDIDATE: Move to next candidate
+- DONE: Computation complete
+
+Latency: Approximately 2^N * K * N clock cycles worst case (for N=8, K=4: 8192 cycles)
+
+Implementation Notes:
+- Use shift registers for circle representation
+- Use counter for candidate generation (0 to 2^N-1)
+- Use temporary registers for transformation results
+- Use loop counter for K transformations
+- Use rotation counter for equivalence checking
+- Result can be up to 2^N (max 256), use 8-bit register

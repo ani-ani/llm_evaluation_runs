@@ -1,0 +1,174 @@
+module gcd_split (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [7:0] arr_5,
+    input wire [7:0] arr_6,
+    input wire [7:0] arr_7,
+    output reg done,
+    output reg result,
+    output reg [7:0] assignment
+);
+
+// State machine states
+localparam IDLE = 3'b000;
+localparam COMPUTE = 3'b001;
+localparam CHECK = 3'b010;
+localparam FINISHED = 3'b011;
+
+reg [2:0] state;
+reg [7:0] mask;  // Current split mask (bit i = 1 means arr[i] in group 1)
+reg [7:0] gcd1, gcd2;
+reg [7:0] count1, count2;
+
+// Helper: GCD function for two numbers
+function automatic [7:0] gcd2;
+    input [7:0] a, b;
+    begin
+        if (b == 0) gcd2 = a;
+        else gcd2 = gcd2(b, a % b);
+    end
+endfunction
+
+// Helper: GCD of array subset
+function automatic [7:0] gcd_array;
+    input [7:0] arr [0:7];
+    input [7:0] mask;
+    input [7:0] current_gcd;
+    integer i;
+    begin
+        gcd_array = current_gcd;
+        for (i = 0; i < 8; i = i + 1) begin
+            if (mask[i]) begin
+                if (gcd_array == 0)
+                    gcd_array = arr[i];
+                else
+                    gcd_array = gcd2(gcd_array, arr[i]);
+            end
+        end
+    end
+endfunction
+
+// Combinational logic for GCD computation
+reg [7:0] arr_reg [0:7];
+reg [7:0] gcd1_temp, gcd2_temp;
+reg [7:0] count1_temp, count2_temp;
+
+always @(*) begin
+    // Initialize
+    gcd1_temp = 0;
+    gcd2_temp = 0;
+    count1_temp = 0;
+    count2_temp = 0;
+    
+    // Compute GCD for group 1
+    for (integer i = 0; i < 8; i = i + 1) begin
+        if (mask[i]) begin
+            if (gcd1_temp == 0)
+                gcd1_temp = arr_reg[i];
+            else
+                gcd1_temp = gcd2(gcd1_temp, arr_reg[i]);
+            count1_temp = count1_temp + 1;
+        end
+    end
+    
+    // Compute GCD for group 2
+    for (integer i = 0; i < 8; i = i + 1) begin
+        if (~mask[i]) begin
+            if (gcd2_temp == 0)
+                gcd2_temp = arr_reg[i];
+            else
+                gcd2_temp = gcd2(gcd2_temp, arr_reg[i]);
+            count2_temp = count2_temp + 1;
+        end
+    end
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        assignment <= 8'b0;
+        mask <= 8'b0;
+        gcd1 <= 0;
+        gcd2 <= 0;
+        count1 <= 0;
+        count2 <= 0;
+        // Initialize array registers
+        for (integer i = 0; i < 8; i = i + 1) begin
+            arr_reg[i] <= 0;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Capture inputs
+                    arr_reg[0] <= arr_0;
+                    arr_reg[1] <= arr_1;
+                    arr_reg[2] <= arr_2;
+                    arr_reg[3] <= arr_3;
+                    arr_reg[4] <= arr_4;
+                    arr_reg[5] <= arr_5;
+                    arr_reg[6] <= arr_6;
+                    arr_reg[7] <= arr_7;
+                    mask <= 8'b00000001;  // Start with first element in group 1
+                    state <= COMPUTE;
+                end
+            end
+            
+            COMPUTE: begin
+                // Use combinational results
+                gcd1 <= gcd1_temp;
+                gcd2 <= gcd2_temp;
+                count1 <= count1_temp;
+                count2 <= count2_temp;
+                state <= CHECK;
+            end
+            
+            CHECK: begin
+                // Check if this split is valid
+                if (count1 > 0 && count2 > 0 && gcd1 == 1 && gcd2 == 1) begin
+                    result <= 1;
+                    assignment <= mask;
+                    done <= 1;
+                    state <= FINISHED;
+                end else begin
+                    // Try next mask
+                    if (mask == 8'b11111110) begin
+                        // All possibilities tried
+                        result <= 0;
+                        assignment <= 8'b0;
+                        done <= 1;
+                        state <= FINISHED;
+                    end else begin
+                        // Increment mask to next valid split (skip 0 and 255)
+                        if (mask == 8'b00000000) 
+                            mask <= 8'b00000001;
+                        else if (mask == 8'b11111111)
+                            mask <= 8'b00000001;
+                        else
+                            mask <= mask + 1;
+                        state <= COMPUTE;
+                    end
+                end
+            end
+            
+            FINISHED: begin
+                // Wait for reset or new start
+                if (!start) begin
+                    done <= 0;
+                end
+            end
+        endcase
+    end
+end
+
+endmodule

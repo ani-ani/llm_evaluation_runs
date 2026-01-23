@@ -1,0 +1,44 @@
+Module: roller_coaster_optimization
+
+Description: Optimizes roller coaster selection to maximize fun within given time budget. Implements dynamic programming for bounded knapsack with decreasing item values.
+
+Interface Specification:
+
+  Inputs:
+    - clk         : Clock signal (rising edge triggered)
+    - rst_n       : Active-low synchronous reset
+    - start       : Start computation (assert for 1 cycle)
+    - N           : Number of coasters (2 bits, valid values 1-4)
+    - coeff0..3   : 32-bit coefficient bundles for each coaster
+                    Format: {a[11:0], b[11:0], t[7:0]}
+    - T           : Query time budget (7 bits, 0-127)
+  
+  Outputs:
+    - result      : Maximum fun achievable (16 bits)
+    - done        : Result valid signal (asserted for 1 cycle)
+  
+  Internal Parameters:
+    - MAX_TIME    : 127 (maximum time budget)
+    - MAX_RIDES   : 31 (maximum rides per coaster)
+  
+  Behavior:
+    1. On start=1, loads coefficients from coeff0..3
+    2. Clears DP array
+    3. Processes each coaster up to N
+    4. For each coaster, tries rides k=1..31
+    5. Calculates fun = a - (k-1)^2 * b
+    6. If fun > 0 and time_needed = k*t <= MAX_TIME, updates DP
+    7. DP update: dp[t] = max(dp[t], dp[t - time_needed] + fun)
+    8. After all coasters, outputs dp[T] and asserts done
+  
+  Timing:
+    - start must be asserted for 1 clock cycle
+    - Computation completes within 5000 cycles
+    - done asserts for 1 cycle when result is valid
+    - After done, return to IDLE when start is deasserted
+  
+  Reset Behavior:
+    - rst_n=0: All state cleared, dp array zeroed, done=0, result=0
+    - rst_n=1: Normal operation
+
+Implementation Note: Uses 12-bit coefficients (0-4095) and 8-bit time values to handle original constraints up to 1000, scaled to fit hardware budget.

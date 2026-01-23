@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'swerc_fee_calculator' that computes the largest extra fee 'T' such that SWERC provides the cheapest path between banks X and Y.
+
+Problem Context:
+- There are two paths from X to Y: a 'swerc_path' using only SWERC banks, and a 'comp_path' using any banks.
+- Total cost = path_cost + T * num_transfers
+- We need: swerc_cost + T*swerc_hops < comp_cost + T*comp_hops
+- If comp_hops <= swerc_hops, the answer is Impossible (SWERC cannot win for large T)
+- If comp_hops > swerc_hops, we solve for T: T < (comp_cost - swerc_cost) / (comp_hops - swerc_hops)
+- The largest integer T is floor((comp_cost - swerc_cost - 1) / (comp_hops - swerc_hops))
+- If the numerator is negative (swerc_cost > comp_cost and comp_hops > swerc_hops), T can be arbitrarily large -> Infinity.
+- Inputs are scaled: max path cost ~1000, max hops ~7.
+- Use 16-bit arithmetic (signed) for calculations. Values are provided as 16-bit integers.
+
+Inputs:
+input clk // Clock
+input rst_n // Active-low reset
+input start // Start calculation
+input signed [15:0] swerc_cost // Cost of SWERC path
+input [3:0] swerc_hops // Number of transfers in SWERC path
+input signed [15:0] comp_cost // Cost of competitor path
+input [3:0] comp_hops // Number of transfers in competitor path
+
+Outputs:
+output reg [15:0] result // The calculated max fee 'T' (valid if status is 01)
+output reg [1:0] status // 00: Computing, 01: Valid Result, 10: Infinity, 11: Impossible
+output reg done // High when computation complete
+
+Behavior:
+The module uses a state machine (IDLE, CHECK, DIVIDE, DONE).
+1. IDLE: Wait for start. On start, go to CHECK.
+2. CHECK: Analyze the feasibility.
+   - If comp_hops <= swerc_hops: status = 11 (Impossible), go to DONE.
+   - Else, calculate numerator = comp_cost - swerc_cost, denominator = comp_hops - swerc_hops.
+   - If numerator < 0: status = 10 (Infinity), go to DONE.
+   - Else, go to DIVIDE.
+3. DIVIDE: Calculate result = (numerator - 1) / denominator.
+   - Perform integer division. If numerator is 0, result is 0.
+   - If numerator is 1, result is 0.
+   - This takes a few cycles. Use a simple subtractive divider or combinational logic if small enough.
+   - Set status = 01 (Valid), go to DONE.
+4. DONE: Set done high. Wait for start to go low.
+
+Latency: 5-10 clock cycles.

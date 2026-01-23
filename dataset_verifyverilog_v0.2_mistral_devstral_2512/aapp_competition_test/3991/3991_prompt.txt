@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'subset_sum_solver' that computes the sum of maximum pairwise distances for all non-empty subsets of a set of coordinates, modulo 10^9 + 7.
+
+The problem is adapted for N=8 inputs. The algorithm works as follows:
+1. Input coordinates are sorted.
+2. For each coordinate x[i], its contribution to the total sum is x[i] * (2^i - 2^(N-1-i)).
+3. Sum all contributions and take modulo 10^9 + 7.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset (synchronous)
+input start // High for 1 cycle to start computation
+input [63:0] x_in [0:7] // Array of 8 sorted coordinates in Q16.16 fixed-point format. Values are multiplied by 65536.
+
+Outputs:
+output reg [63:0] result // The final sum in Q16.16 format
+output reg done // High when computation is complete
+
+Internal Logic:
+- Use a state machine with states: IDLE, LOAD, CALC, DONE.
+- Handle arithmetic modulo 10^9 + 7 using integer math on the 64-bit inputs. Since inputs are Q16.16, intermediate terms might exceed 64 bits; use a wide accumulator (e.g., 128 bits) for intermediate products to prevent overflow before modulo.
+- Pre-calculate powers of 2: 1, 2, 4, 8, 16, 32, 64, 128.
+- Latency: 9 clock cycles from start to done.
+
+Behavioral Description:
+1. IDLE: Wait for start signal. On start, transition to LOAD.
+2. LOAD: The inputs x_in are captured into an internal register.
+3. CALC: Iterates from i=0 to 7. For each i, it computes: 
+   term = (x_reg[i] * (pow2[i] - pow2[7-i])) % MOD
+   result = (result + term) % MOD
+   MOD = 1000000007
+   Note: To handle fixed-point, the multiplication of x (Q16.16) by the scalar coefficient effectively preserves the Q16.16 format. The final result is Q16.16.
+4. DONE: Set done high and return to IDLE on next clock.
+
+Assumptions:
+- Inputs are sorted.
+- N is fixed to 8.
+- Q16.16 format: integer part in upper 16 bits of lower 32 bits, fractional in lower 16 bits. Example: 3.5 = 0x00038000.

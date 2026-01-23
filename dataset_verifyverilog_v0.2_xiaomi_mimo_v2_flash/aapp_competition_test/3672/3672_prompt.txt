@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'el_garizm_coexistence' that determines if two factions can coexist on islands while accessing all resources.
+
+Problem Adaptation:
+- Maximum 8 islands (indexed 0-7)
+- Maximum 8 resources (indexed 0-7)
+- Each resource appears on exactly 2 islands
+- Output YES if islands can be partitioned into two sets such that each set contains all resources (both islands for each resource must be in opposite sets)
+
+This is equivalent to 2-SAT / Graph 2-coloring where:
+- Each resource creates an edge between its two islands (they must be in opposite factions)
+- The graph must be bipartite for a solution to exist
+
+Module Interface:
+Inputs:
+input clk               // Clock signal
+input rst_n             // Active-low reset
+input start             // Start computation
+input [2:0] island_idx  // Island index (0-7) for resource input
+input [2:0] resource_idx // Resource index (0-7)
+input resource_valid    // High when resource resource_idx is present on island_idx
+input input_done        // High when all island-resource data has been provided
+
+Outputs:
+output reg result       // 1 if coexistence possible (YES), 0 if not (NO)
+output reg done         // High when computation is complete
+
+Latency: Result valid 256 clock cycles after start (worst-case for 2^8 brute force search)
+
+Internal Logic:
+1. Input Phase: Store resource-to-island mappings in an 8x8 adjacency matrix
+   - Use 8x8 register array: reg [7:0] adj_matrix [7:0]
+   - For each resource r on island i: adj_matrix[i][r] = 1
+   - After input_done, find pairs: for each resource, find two islands
+
+2. Computation Phase: Use 8-bit state machine for brute-force assignment
+   - Iterate through all 2^8 possible island assignments (0 to 255)
+   - For each assignment, check if valid:
+     * Each assignment bit represents island ownership (0=Zax, 1=Xaz)
+     * For each resource, check if its two islands are in opposite sets
+   - If any assignment is valid, set result=1
+   - If no assignment is valid after checking all, set result=0
+
+3. Output Phase: Set done=1 and hold result
+
+State Machine States:
+- IDLE: Wait for start
+- INPUT: Collect island-resource data
+- VERIFY: Check all 256 assignments (iterate with 8-bit counter)
+- DONE: Computation complete
+
+The module should synthesize into sequential logic with bounded iteration.

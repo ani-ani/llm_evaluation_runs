@@ -1,0 +1,162 @@
+module field_of_wonders (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n,          // Actual word length (≤8)
+    input wire [63:0] pattern,   // Packed pattern (8 chars, 8-bit each)
+    input wire [3:0] m,          // Number of words (≤8)
+    input wire [63:0] word0,     // Packed word0 (8 chars)
+    input wire [63:0] word1,
+    input wire [63:0] word2,
+    input wire [63:0] word3,
+    input wire [63:0] word4,
+    input wire [63:0] word5,
+    input wire [63:0] word6,
+    input wire [63:0] word7,
+    output reg [4:0] result,     // Result (0-26)
+    output reg done              // Computation complete
+);
+
+// State definitions
+localparam IDLE = 2'd0;
+localparam CHECK_WORDS = 2'd1;
+localparam COUNT_LETTERS = 2'd2;
+localparam DONE = 2'd3;
+
+reg [1:0] state;
+reg [2:0] word_idx;             // Current word index (0-7)
+reg [4:0] letter_idx;           // Current letter (0-25)
+reg [25:0] revealed_mask;       // Revealed letters bitmask
+reg [7:0] valid_words;          // Valid word flags
+reg [25:0] hidden_masks [0:7];  // Hidden letters per word
+reg [3:0] total_valid;          // Count of valid words
+reg [4:0] result_reg;           // Result accumulator
+
+// Combinational word selection
+wire [63:0] current_word;
+assign current_word = (word_idx == 3'd0) ? word0 :
+                      (word_idx == 3'd1) ? word1 :
+                      (word_idx == 3'd2) ? word2 :
+                      (word_idx == 3'd3) ? word3 :
+                      (word_idx == 3'd4) ? word4 :
+                      (word_idx == 3'd5) ? word5 :
+                      (word_idx == 3'd6) ? word6 : word7;
+
+// Combinational logic for word validation
+reg valid_flag;
+reg [25:0] hidden_mask;
+integer j;
+
+always @(*) begin
+    valid_flag = 1;
+    hidden_mask = 0;
+    
+    if (state == CHECK_WORDS) begin
+        for (j = 0; j < 8; j = j + 1) begin
+            if (j < n) begin
+                // Extract characters
+                reg [7:0] char_pat = pattern[8*j +: 8];
+                reg [7:0] char_word = current_word[8*j +: 8];
+                
+                if (char_pat != 8'h2A) begin
+                    // Revealed position - must match
+                    if (char_pat != char_word) valid_flag = 0;
+                end else begin
+                    // Hidden position - must not use revealed letters
+                    if (char_word >= 8'h61 && char_word <= 8'h7A) begin
+                        reg [4:0] bit_idx = char_word - 8'h61;
+                        if (revealed_mask[bit_idx]) 
+                            valid_flag = 0;  // Uses revealed letter
+                        else 
+                            hidden_mask[bit_idx] = 1;  // Track hidden letter
+                    end else begin
+                        valid_flag = 0;  // Invalid character
+                    end
+                end
+            end
+        end
+    end
+end
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        word_idx <= 0;
+        letter_idx <= 0;
+        result <= 0;
+        done <= 0;
+        revealed_mask <= 0;
+        valid_words <= 0;
+        total_valid <= 0;
+        result_reg <= 0;
+        for (integer i = 0; i < 8; i = i + 1)
+            hidden_masks[i] <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Build revealed letters mask
+                    revealed_mask <= 0;
+                    for (integer k = 0; k < 8; k = k + 1) begin
+                        if (k < n) begin
+                            reg [7:0] cp = pattern[8*k +: 8];
+                            if (cp != 8'h2A && cp >= 8'h61 && cp <= 8'h7A) 
+                                revealed_mask[cp - 8'h61] <= 1;
+                        end
+                    end
+                    // Reset counters
+                    word_idx <= 0;
+                    total_valid <= 0;
+                    valid_words <= 0;
+                    result_reg <= 0;
+                    state <= CHECK_WORDS;
+                end
+            end
+            
+            CHECK_WORDS: begin
+                if (word_idx < m) begin
+                    // Validate current word
+                    if (valid_flag) begin
+                        valid_words[word_idx] <= 1;
+                        hidden_masks[word_idx] <= hidden_mask;
+                        total_valid <= total_valid + 1;
+                    end
+                    word_idx <= word_idx + 1;
+                end else begin
+                    // Move to counting
+                    letter_idx <= 0;
+                    state <= COUNT_LETTERS;
+                end
+            end
+            
+            COUNT_LETTERS: begin
+                if (letter_idx < 26) begin
+                    // Skip revealed letters
+                    if (!revealed_mask[letter_idx]) begin
+                        reg [4:0] count = 0;
+                        // Count valid words with this letter
+                        for (integer w = 0; w < 8; w = w + 1) begin
+                            if (w < m && valid_words[w] && hidden_masks[w][letter_idx])
+                                count = count + 1;
+                        end
+                        if (count == total_valid)
+                            result_reg <= result_reg + 1;
+                    end
+                    letter_idx <= letter_idx + 1;
+                end else begin
+                    result <= result_reg;
+                    state <= DONE;
+                    done <= 1;
+                end
+            end
+            
+            DONE: begin
+                // Stay done until reset
+            end
+        endcase
+    end
+end
+
+endmodule

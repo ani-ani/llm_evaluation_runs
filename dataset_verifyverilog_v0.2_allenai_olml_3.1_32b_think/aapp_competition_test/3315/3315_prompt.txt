@@ -1,0 +1,45 @@
+Design a sequential Verilog module named 'loda_teleport' that calculates the length of the longest subsequence of strings where each string is both a prefix and a suffix of the next string.
+
+Constraints:
+- Maximum N = 8 strings
+- Each string has max length 8 characters
+- Characters are uppercase English letters ('A'-'Z', ASCII 65-90)
+- Strings are provided as fixed-width byte arrays
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] num_strings // Number of valid strings (1 to 8)
+input [7:0] strings [0:7] // Array of 8 strings, each 8 chars. Unused strings are filled with 0.
+
+Outputs:
+output reg [3:0] result // Maximum subsequence length (max 8)
+output reg done // High when computation is complete
+
+Behavior:
+The module should compute the longest valid subsequence. A valid subsequence consists of indices i1 < i2 < ... < ik such that for all consecutive pairs (ia, ia+1), string[ia+1] starts with string[ia] AND string[ia+1] ends with string[ia].
+
+Implementation Strategy:
+1. Accept input strings. Assume strings are packed into the 8-byte array. The first byte is the start of the string. The string length is determined by looking for the first null byte (0) or the end of the fixed 8-byte width.
+2. Comparison Logic: For every pair (i, j) where i < j, check if string[j] starts with and ends with string[i]. This must be done in hardware, possibly over multiple clock cycles.
+3. DP Calculation: Use a state machine to calculate DP[i] = 1 + max(DP[j]) for all j < i where the condition holds, or 1 if no such j exists.
+4. Final Result: Find max(DP[0..7]).
+
+State Machine States:
+- IDLE: Wait for start signal.
+- INPUT_PARSE: Determine lengths of all strings (if not pre-calculated).
+- COMPARE: Iterate through pairs (i, j) to build a dependency matrix (N x N). This may take several cycles.
+- DP_CALC: Iterate through indices 0 to N-1 to calculate DP values.
+- RESULT: Find the maximum value in DP array.
+- DONE: Assert done signal.
+
+Latency: Approximately 100-200 clock cycles depending on implementation details.
+
+Fixed-Point/Format Details:
+- Strings are ASCII bytes. 'A' = 0x41, 'Z' = 0x5A.
+- Input strings are exactly 8 bytes wide. If a string is shorter, it is padded with 0x00 (null terminator) or spaces, but the logic should handle finding the effective length.
+- Example Input: "AA" (0x41 0x41 0x00 ...). "A" (0x41 0x00 ...).
+- String A is a prefix of B if B[0..len(A)-1] == A.
+- String A is a suffix of B if B[len(B)-len(A)..len(B)-1] == A.
+- Comparison must account for variable lengths within the fixed 8-byte width.

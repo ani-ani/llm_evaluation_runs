@@ -1,0 +1,93 @@
+module min_cost(
+  input clk, rst_n, start,
+  input [15:0] a,   // 16-bit binary string (a[0]=first char, a[15]=last char)
+  input [31:0] x, y, // Operation costs
+  output reg [39:0] result,
+  output reg done
+);
+  // States
+  localparam IDLE = 2'b00;
+  localparam TRAVERSE = 2'b01;
+  localparam COMPUTE = 2'b10;
+  localparam FINISH = 2'b11;
+
+  reg [1:0] state, next_state;
+  reg [4:0] idx;          // 0-16 counter
+  reg [3:0] groups;       // Zero group count (max 16)
+  reg prev_bit;           // Previous bit (1 at start)
+  reg [31:0] min_val;     // min(x,y)
+  reg [3:0] add_count;    // Addition counter
+  reg [39:0] accumulator; // Sum accumulator
+  reg [39:0] result_reg;  // Registered result
+  reg done_reg;
+
+  // State transition
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      state <= IDLE;
+      done_reg <= 0;
+      result_reg <= 0;
+    end else begin
+      state <= next_state;
+      done_reg <= (state == FINISH);
+      if (state == COMPUTE && add_count == 0)
+        result_reg <= accumulator + y;
+    end
+  end
+
+  // Next state logic
+  always @(*) begin
+    next_state = state;
+    case (state)
+      IDLE: if (start) next_state = TRAVERSE;
+      TRAVERSE: if (idx == 16) next_state = (groups == 0) ? FINISH : COMPUTE;
+      COMPUTE: if (add_count == 0) next_state = FINISH;
+      FINISH: if (!start) next_state = IDLE;
+    endcase
+  end
+
+  // Datapath
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      idx <= 0;
+      groups <= 0;
+      prev_bit <= 1;
+      min_val <= 0;
+      add_count <= 0;
+      accumulator <= 0;
+    end else begin
+      case (state)
+        IDLE: begin
+          idx <= 0;
+          groups <= 0;
+          prev_bit <= 1;
+        end
+
+        TRAVERSE: begin
+          if (idx < 16) begin
+            // Count new zero group: current=0 and previous=1
+            if (a[idx] == 0 && prev_bit == 1)
+              groups <= groups + 1;
+            prev_bit <= a[idx];
+            idx <= idx + 1;
+          end else if (groups > 0) begin
+            min_val <= (x < y) ? x : y;
+            add_count <= groups - 1;  // Number of additions needed
+            accumulator <= 0;
+          end
+        end
+
+        COMPUTE: begin
+          if (add_count > 0) begin
+            accumulator <= accumulator + min_val;
+            add_count <= add_count - 1;
+          end
+        end
+      endcase
+    end
+  end
+
+  // Output assignments
+  assign result = result_reg;
+  assign done = done_reg;
+endmodule

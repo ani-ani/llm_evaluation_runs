@@ -1,0 +1,70 @@
+Design a sequential Verilog module named 'min_path' that finds the lexicographically minimum path of length k in a 4x4 grid.
+
+Problem Adaptation:
+- Grid size is fixed 4x4 (N=4) containing values 1-16
+- Path length k is limited to 16
+- Lexicographically means comparing sequences element by element
+- Path can revisit cells (not necessarily simple path)
+- Result is sequence of k values
+
+Module Interface:
+Inputs:
+  input clk             // Clock signal
+  input rst_n           // Active-low reset
+  input start           // Start computation (pulse high for 1 cycle)
+  input [5:0] k         // Desired path length (1-16)
+  input [3:0] grid_0_0, grid_0_1, grid_0_2, grid_0_3  // 4x4 grid values
+  input [3:0] grid_1_0, grid_1_1, grid_1_2, grid_1_3
+  input [3:0] grid_2_0, grid_2_1, grid_2_2, grid_2_3
+  input [3:0] grid_3_0, grid_3_1, grid_3_2, grid_3_3
+
+Outputs:
+  output reg [3:0] path_0, path_1, path_2, path_3, path_4, path_5, path_6, path_7, path_8, path_9, path_10, path_11, path_12, path_13, path_14, path_15  // Result path values
+  output reg done       // High when computation complete (1 cycle)
+
+Algorithm Description:
+1. Find all cells containing value '1' (starting positions)
+2. Use BFS to explore paths, tracking lexicographic ordering
+3. At each step, consider all neighbors of current frontier
+4. Keep best path prefix found so far
+5. Extend path greedily choosing minimum next value that leads to lexicographically smallest result
+
+Implementation Strategy:
+- State Machine: IDLE -> FIND_START -> BUILD_PATH -> DONE
+- At each step of path construction (0 to k-1), explore all valid positions reachable from current frontier
+- Store current best path prefix and extend it
+- For step 0: find minimum value '1' in grid
+- For subsequent steps: from current cell position, examine neighbors (up, down, left, right), choose minimum value
+- If multiple paths with same prefix, need to look ahead (implement greedy: choose minimum next value)
+- Since we can revisit cells, always choose minimum neighbor value at each step
+
+State Definitions:
+  S_IDLE = 0: Waiting for start signal
+  S_FIND_START = 1: Locate cell with value 1
+  S_BUILD_PATH = 2: Construct path step by step (0 to k-1)
+  S_DONE = 3: Path complete
+
+Output Format:
+- Path stored in 16 registers (path_0 through path_15)
+- Only first k elements are valid
+- Default value for unused elements: 0
+
+Timing:
+- Result valid ~20-30 clock cycles after start (depends on k)
+- done signal pulses high for 1 cycle when complete
+- Use done signal to sample outputs
+
+Constraints:
+- k is 6-bit to allow values up to 63, but actual max is 16
+- Grid values are 4-bit (1-16)
+- Position encoding: {row[1:0], col[1:0]}
+- Neighbor checking: handle boundary conditions
+
+Icarus Verilog Compatible: Avoid array slices, use explicit indexing
+
+Example Walkthrough for grid [1,2,3; 4,5,6; 7,8,9], k=3:
+- Find value 1 at position (0,0)
+- Step 0: path[0] = 1
+- Step 1: neighbors of (0,0) are (0,1)=2, (1,0)=4. Choose min=2
+- Step 2: neighbors of (0,1) are (0,0)=1, (0,2)=3, (1,1)=5. Choose min=1
+- Result: [1, 2, 1]

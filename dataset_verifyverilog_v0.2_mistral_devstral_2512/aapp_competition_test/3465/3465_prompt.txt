@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'road_assignment' that implements a simplified version of the road assignment problem for Absurdistan.
+
+**Problem Adaptation:**
+- Limit number of cities/nodes (n) to 8.
+- City IDs range from 1 to 8 (represented as 4-bit unsigned integers).
+- Total number of roads (edges) is 8.
+- Input is provided as two parallel arrays (flattened edges).
+- The goal is to assign each city to exactly one road connected to it.
+- Algorithm: Use a state machine to iterate through cities 1 to 8. For each city, iterate through the list of roads to find the first unassigned road that connects to this city. Once found, mark the road as assigned and output the pair.
+
+**Module Interface:**
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start the assignment computation
+input [3:0] city_a [0:7] // Array of 8 roads, first endpoint (city ID 1-8)
+input [3:0] city_b [0:7] // Array of 8 roads, second endpoint (city ID 1-8)
+
+Outputs:
+output reg [3:0] out_city // The city that built the road
+output reg [3:0] out_road_end // The other city connected by the road
+output reg out_valid // High when output is valid
+output reg out_done // High when all cities are assigned (computation complete)
+
+**Behavioral Description:**
+1. **Reset:** On reset (rst_n low), clear internal state and reset counters.
+2. **State Machine:**
+   - `IDLE`: Wait for `start` signal. When start goes high, initialize current_city = 1, and clear `assigned` flags for all roads.
+   - `SEARCH`: For the current city, check each road (0 to 7) in sequence. A road is valid if it hasn't been assigned yet AND (road endpoint A matches current_city OR road endpoint B matches current_city).
+     - If a valid road is found: 
+       - Mark the road as assigned.
+       - Output `out_city` = current_city.
+       - Output `out_road_end` = the other endpoint of the road.
+       - Assert `out_valid` for one cycle.
+       - Increment current_city.
+       - If current_city > 8, go to `DONE`. Else, go back to `SEARCH`.
+     - If no valid road found after checking all 8 roads (though a solution is guaranteed), continue to next city (or error handling).
+3. **DONE:** Assert `out_done` high and stay in this state until reset.
+
+**Latency:** The computation takes variable time depending on the search, but roughly 8 (cities) * 8 (roads check) = 64 clock cycles worst case plus overhead. Result valid pulses occur periodically during the process.
+
+**Constraints:**
+- Use a registered output for `out_city`, `out_road_end`, `out_valid`, `out_done`.
+- `out_valid` should be high for exactly one clock cycle when a pair is found.
+- The internal state must track which roads have been used (an 8-bit register vector).
+- The internal state must track which city is currently being processed (counter 1-8).
+- The internal state must track which road is currently being checked for the current city (counter 0-7).
+

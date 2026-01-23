@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'delivery_time_calculator' that computes the minimum delivery time for a package handoff between two people moving on a 2D plane.
+
+The problem is simplified for hardware:
+- Misha has up to 3 path segments (4 points)
+- Nadia has up to 3 path segments (4 points)
+- Both move at speed 1 unit/time
+- Messenger moves in straight line at speed 1 unit/time
+- Use Q16.16 fixed-point arithmetic (16 integer, 16 fractional bits)
+- Coordinates are integers 0-30000, so 16 bits suffice for integer part
+
+Module Interface:
+Inputs:
+- clk: clock signal
+- rst_n: active-low reset  
+- start: start computation
+- misha_points [6:0][31:0]: flattened array of Misha's points (max 4 points, each x,y pair, 32-bit Q16.16)
+- nadia_points [6:0][31:0]: flattened array of Nadia's points (max 4 points, each x,y pair, 32-bit Q16.16)
+- misha_count: number of Misha's points (2-4)
+- nadia_count: number of Nadia's points (2-4)
+
+Outputs:
+- result [31:0]: minimum delivery time in Q16.16 format
+- done: high when computation complete
+- impossible: high if delivery is impossible
+
+Algorithm:
+1. Parse segments: For each consecutive pair of points, compute segment vector and length
+2. State Machine:
+   - IDLE: wait for start
+   - CALCULATE: iterate through all combinations of Misha segment i and Nadia segment j
+   - For each pair, compute optimal handoff:
+     * Misha moves along his segment to some point P (parameter t in [0,1])
+     * Nadia moves along her segment to some point Q (parameter s in [0,1])
+     * Messenger goes straight from P to Q
+     * Time = max(t*len_M, s*len_N, distance(P,Q))
+   - MINIMIZE: find minimum time across all valid (t,s) pairs
+   - DONE: output result
+
+3. For each segment pair, solve for optimal (t,s) by checking:
+   - Endpoints: (t=0,1) with various s, or (s=0,1) with various t
+   - Interior points where messenger arrives exactly when Misha and Nadia meet
+   - Use binary search or fixed iteration (16 steps) for finding minimum
+
+4. Output the minimum valid delivery time. If no valid handoff found (package can't reach before Nadia finishes), set impossible=1.
+
+Timing: Result valid ~100-200 cycles after start (depends on segment counts). Use state machine with bounded loops.
+
+Behavioral Description:
+The module uses a sequential state machine to process the geometric constraints. It maintains current segment indices and iterates through combinations. Fixed-point arithmetic handles fractional coordinates. The core computation finds min{max(t*len_M, s*len_N, |P-Q|)} for valid t,s in [0,1]. For hardware feasibility, we use a grid search over t and s with 16 steps each per segment pair, checking constraints. The result represents time as a Q16.16 number (e.g., 4.0 = 0x00040000).

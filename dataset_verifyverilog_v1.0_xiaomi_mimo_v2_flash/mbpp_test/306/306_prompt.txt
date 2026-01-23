@@ -1,0 +1,49 @@
+Module: MaxSumIncreasingSubseq
+
+Description:
+Computes the maximum sum of an increasing subsequence from the prefix up to index `index` that includes element `k` (where k > index). Implements a dynamic programming solution using a reduced array size N=8 for hardware feasibility.
+
+Interface Specification:
+  Inputs:
+    - clk         : Clock signal (rising edge triggered)
+    - rst_n       : Active-low synchronous reset
+    - start       : Start pulse (assert for 1 cycle to begin computation)
+    - arr_0 to arr_7 : 8-element input array, each 8-bit unsigned (0-255)
+    - target_index : 3-bit index (0-7), corresponds to 'index' in Python code
+    - target_k     : 3-bit index (0-7), corresponds to 'k' in Python code, must be > target_index
+
+  Outputs:
+    - result      : 16-bit maximum sum result
+    - done        : Asserted high for 1 cycle when computation is complete
+
+  Constraints:
+    - N = 8 elements maximum
+    - Input values: 8-bit unsigned (0-255)
+    - Result: 16-bit unsigned (max 2040)
+    - target_k must be > target_index (hardware may assume valid input)
+
+Behavioral Specification:
+1. On reset: All internal state cleared, done=0, result=0
+2. On start pulse: Load inputs and begin DP computation
+3. Algorithm: 
+   - Initialize DP table (8x8)
+   - Row 0 initialization: 
+     - If arr[j] > arr[0]: dp[0][j] = arr[j] + arr[0]
+     - Else: dp[0][j] = arr[j]
+   - Rows 1..7:
+     - If arr[j] > arr[i] and j > i:
+       - dp[i][j] = max(dp[i-1][i] + arr[j], dp[i-1][j])
+     - Else:
+       - dp[i][j] = dp[i-1][j]
+4. Output dp[target_index][target_k] when done
+
+Timing:
+- After start, done will go high after approximately 70-80 clock cycles (for N=8)
+- Result is valid on the same cycle done is high
+- Accept new start after done is asserted
+
+Implementation Notes:
+- Use internal BRAM or registers for DP table storage
+- Implement row-by-row computation with state machine
+- Since N=8, full 8x8 DP table requires 64 entries of 16-bit each
+- Alternative optimized architecture: Compute only required diagonal elements to save resources

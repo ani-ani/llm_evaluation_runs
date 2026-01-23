@@ -1,0 +1,1 @@
+module highest_power_of_2(\n    input [15:0] n,\n    output [15:0] result\n);\n    wire [15:0] step1, step2, step3, step4;\n    \n    assign step1 = n | (n >> 1);\n    assign step2 = step1 | (step1 >> 2);\n    assign step3 = step2 | (step2 >> 4);\n    assign step4 = step3 | (step3 >> 8);\n    assign result = (step4 + 16'd1) >> 1;\nendmodule

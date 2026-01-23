@@ -1,0 +1,53 @@
+Module: fuel_calculator
+
+Description:
+Computes minimum fuel required for a rocket traveling through n planets and returning to Earth. Uses fixed-point arithmetic (Q32.32) to handle fractions. Implements a state machine that sequentially computes product of a_i/(a_i-1) and b_i/(b_i-1) terms.
+
+Parameters:
+- MAX_PLANETS = 8: Maximum number of planets
+- DATA_WIDTH = 10: Width for m, a_i, b_i (supports up to 1023)
+- FIXED_POINT_WIDTH = 64: Total width for fixed-point numbers (32 integer + 32 fractional bits)
+- INT_BITS = 32: Integer bits in fixed-point
+- FRAC_BITS = 32: Fractional bits in fixed-point
+
+Interface:
+Inputs:
+  - clk: Clock signal (rising edge triggered)
+  - rst_n: Active-low synchronous reset
+  - start: Start pulse (assert for 1 cycle to begin computation)
+  - n[3:0]: Number of planets (1 to 8)
+  - m[9:0]: Payload mass (1 to 1000)
+  - a_i_0 to a_i_7[9:0]: Take-off coefficients for planets 1 to 8
+  - b_i_0 to b_i_7[9:0]: Landing coefficients for planets 1 to 8
+
+Outputs:
+  - fuel[63:0]: Minimum initial fuel in Q32.32 format (integer part [63:32], fractional part [31:0])
+  - done: Asserted high for 1 cycle when computation completes
+  - impossible: Asserted high if any a_i or b_i ≤ 1 (invalid input)
+
+Behavior:
+1. On start, checks if any a_i or b_i ≤ 1. If found, sets impossible=1 and done=1.
+2. If valid, computes product = m * Π(a_i/(a_i-1)) * Π(b_i/(b_i-1)) in Q32.32 format.
+3. Final fuel = product - m (in Q32.32).
+4. Computation takes multiple cycles: roughly 2*n*64 cycles for division steps.
+
+Important: 
+- Use fixed-point arithmetic with Q32.32 format
+- Implement sequential divider for computing a_i/(a_i-1) and b_i/(b_i-1)
+- Input coefficients must be >1, otherwise set impossible flag
+- Output fuel is in Q32.32 format; convert to float as: fuel_int / 2^32
+
+Divider Module:
+fixed_point_divider #(.WIDTH(64)) divides 64-bit dividend by 10-bit divisor.
+
+Implementation Details:
+- State machine: IDLE → CHECK → COMPUTE_A → COMPUTE_B → MULTIPLY → DONE
+- Multiply steps use: product = (product * multiplier) >> 32
+- Divider uses restoring division algorithm
+- Registers store intermediate product and state
+
+Example:
+Input: n=2, m=12, a=[11,8], b=[7,5]
+Expected fuel: 10.0 (Q32.32 = 10 * 2^32 = 0x0000000A00000000)
+
+Note: Testbench will provide inputs via individual ports and verify outputs.

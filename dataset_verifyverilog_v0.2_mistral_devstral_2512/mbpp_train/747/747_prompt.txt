@@ -1,0 +1,70 @@
+Design a sequential Verilog module named 'lcs_3strings' that computes the Longest Common Subsequence (LCS) length for three fixed-width strings.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation, asserted for one cycle
+input [7:0] char_x // Character from string X (ASCII value)
+input [7:0] char_y // Character from string Y (ASCII value)
+input [7:0] char_z // Character from string Z (ASCII value)
+input [2:0] idx_x // Index for string X (0-7)
+input [2:0] idx_y // Index for string Y (0-7)
+input [2:0] idx_z // Index for string Z (0-7)
+input char_valid // Valid signal for character inputs
+
+Outputs:
+output reg [3:0] result // LCS length (max 8)
+output reg done // High when computation complete
+output reg ready // High when ready for new input
+
+Constraints:
+- String length limit: 8 characters
+- Characters are ASCII values
+- LCS length will not exceed 8
+- Use combinational logic for DP state transition
+- Sequential state machine to fill 3D table
+
+Specification:
+The module should implement a 3D dynamic programming approach for LCS of 3 strings.
+Since we have max 8 chars each, the DP table size is 9x9x9 (513 entries total).
+
+State Machine:
+IDLE: Wait for start signal
+LOAD_CHARS: Load character array (8 chars per string)
+INIT_TABLE: Initialize first row/column/layer to 0
+COMPUTE_DP: Iterate through i=1..8, j=1..8, k=1..8 to fill table
+FETCH_STATE: Read previous DP values from memory
+MATCH_CHECK: Check if chars at current indices match
+UPDATE_DP: Compute new DP value
+STORE_RESULT: Store in DP table
+DONE: Output final result
+
+Behavior:
+1. When start asserted, load 8 characters for each string (requires external feed or internal storage)
+2. Initialize L[0][j][k] = L[i][0][k] = L[i][j][0] = 0
+3. For i=1..8, j=1..8, k=1..8:
+   if X[i-1]==Y[j-1]==Z[k-1]: L[i][j][k] = L[i-1][j-1][k-1] + 1
+   else: L[i][j][k] = max(L[i-1][j][k], L[i][j-1][k], L[i][j][k-1])
+4. Return L[8][8][8]
+
+Implementation Notes:
+- Since 9x9x9 = 513 entries, we need memory for DP table
+- Use 4-bit wide values (max LCS length 8)
+- The module expects character input in sequence (or assume internal storage)
+- For simplicity, we'll implement with 3 BRAMs or distributed RAM
+- Total cycles needed: ~513 + overhead
+
+Memory Organization:
+We need to store DP values for (i,j,k). Since we process sequentially, we can use:
+- Current layer storage for j-k plane (9x9 = 81 values)
+- Previous layer storage (another 81 values)
+
+Character Storage:
+Assume 8 characters are loaded into registers:
+reg [7:0] str_x [0:7];
+reg [7:0] str_y [0:7];
+reg [7:0] str_z [0:7];
+
+Output:
+result[3:0] contains final LCS length
+assert done when finished

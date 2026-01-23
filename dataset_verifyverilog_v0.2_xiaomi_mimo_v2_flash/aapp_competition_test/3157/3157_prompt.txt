@@ -1,0 +1,136 @@
+Design a sequential Verilog module named 'hash_word_counter' that counts the number of words of length N with hash value K given the recursive hash function f(word) = (f(word) * 33) ^ ord(letter) % MOD where MOD = 2^M. 
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] N // word length (1-10)
+input [24:0] K // target hash value (0 <= K < 2^M)
+input [4:0] M // exponent for MOD (6-25)
+
+Outputs:
+output reg [31:0] result // number of words with hash K
+output reg done // high when computation complete
+
+Specify latency: Result valid after approximately 26 * N clock cycles (worst case). 
+
+The module should implement an iterative state machine:
+- IDLE: Wait for start signal
+- PROCESSING: Iterate through positions 1 to N, maintaining a lookup table of hash counts
+- DONE: Output final result
+
+Use a state machine with states: IDLE, PROCESSING, DONE.
+Inside PROCESSING state, iterate through characters 'a' (1) to 'z' (26) and update hash counts.
+Since M can be up to 25, the hash space is 2^25 which is too large for full lookup. However, for N ≤ 10, we can track counts for the current iteration only using a sparse representation or by iterating through possible hash values of the previous step. 
+
+Actually, since N is small (≤10) and the alphabet is 26, the total number of words is 26^10 which is large, but the hash space is 2^M (up to 2^25). We need an efficient way.
+
+Alternative approach: Since N ≤ 10, we can use a DP table dp[step][hash] = count. But hash space is up to 2^25 ~ 33 million, which is too large for FPGA BRAM if not careful. 
+
+Wait, N is only up to 10. The number of steps is small. The hash function is (prev * 33) ^ ord(char) % 2^M. 
+
+We can use a dynamic programming approach where we only keep the counts for the current step. Since we need to find the count for a specific K at step N, we can iterate step by step. 
+
+For each step from 1 to N:
+  Initialize new_counts to 0
+  For each hash value h in 0..2^M-1 (if counts[h] > 0):
+    For each char c in 1..26:
+      new_hash = ((h * 33) ^ c) % 2^M
+      new_counts[new_hash] += counts[h]
+
+The issue is the hash space size (2^M) might be too large to store in FPGA logic/BRAM for M=25 (33 million entries). 
+
+However, notice that for N=10, the number of reachable hash values is limited. The recursion involves multiplication by 33 and XOR with small values. 
+
+Given the constraints and the need for a hardware solution, we should simplify:
+Option 1: Assume M is small enough (e.g., M ≤ 14) so that 2^M fits in reasonable memory (16k entries).
+Option 2: Since N is very small, the number of possible paths is limited. But we can't enumerate all 26^10 paths.
+
+Let's look at the constraints again. N ≤ 10. M ≤ 25. 
+The problem statement says M is up to 25. 
+
+Let's reconsider the hardware mapping. The problem is fundamentally counting paths in a DAG of depth N. 
+
+If we cannot store the full DP table due to BRAM limits (M=25 is too big), we must scale down. 
+
+SCALE DOWN: We will assume M is limited to 12 for the hardware implementation, allowing 2^12 = 4096 entries which fits in distributed RAM. 
+
+Wait, the prompt asks to be creative. 
+
+Let's use the fact that N is very small. We can potentially unroll the DP for N steps. 
+
+Actually, let's look at the provided example: N=3, M=10. 
+
+Let's refine the plan. 
+We will implement a sequential module that processes one character per cycle (or one DP update per cycle). 
+
+The state machine will:
+1. IDLE: Wait for start.
+2. INIT: Initialize DP table. dp[0] = 1 (empty string hash is 0), others 0.
+3. STEP_LOOP: Loop from i=1 to N.
+   Inside STEP_LOOP, we need to compute new DP table from old DP table.
+   Since we can't store 2^25 entries, we need to be clever.
+   
+   Actually, for N=10, the maximum number of reachable states might be much smaller than 2^M.
+   We can use a Content-Addressable Memory (CAM) or a sparse representation, but that's complex.
+
+   Let's follow the 'Aggressive Requirement Scaling' rule. 
+   We will limit M to 12 or 14. 
+   The problem says M <= 25. 
+   
+   Let's try to implement it for M <= 12. This is a valid simplification for benchmarking.
+
+   Module spec:
+   - Inputs: N, K, M (M will be limited to 12 in the prompt description for feasibility)
+   - Output: Result
+   - Internal: DP table of size 4096 (2^12). 
+
+   Algorithm in HW:
+   1. Initialize RAM[0] = 1, others 0.
+   2. For step = 1 to N:
+      Clear NewRAM.
+      For h from 0 to (2^M - 1):
+        If RAM[h] != 0:
+          For c = 1 to 26:
+            new_h = ((h * 33) ^ c) % (2^M)
+            NewRAM[new_h] += RAM[h]
+      Copy NewRAM to RAM.
+   3. Read RAM[K].
+
+   This triple loop is too slow for N=10, M=12 (4096 * 26 = 106k iterations per step, 10 steps = 1M iterations). 
+   At 100MHz, 1M cycles is 10ms, acceptable for a testbench but slow. 
+
+   Can we parallelize? 
+   The inner loop (c=1 to 26) is independent for a fixed h. 
+   We can process all 26 characters in parallel if we have enough resources, or pipeline it.
+   
+   Let's stick to a simple iterative approach that runs in software-like sequence but in hardware.
+   State machine:
+   - IDLE
+   - INIT_CLEAR: Clear RAM (address counter)
+   - INIT_SET: Set RAM[0] = 1
+   - STEP_START: Reset address counter for h
+   - CHECK_H: Check if RAM[h] > 0
+   - CALC_HASH: Loop c=1..26, compute new hash, accumulate into temp RAM (or accumulate directly? No, need old values).
+     - We need a dual-port RAM to read old and write new? Or separate RAMs.
+     - Let's use two RAMs: DP_A and DP_B. Ping-pong.
+   - UPDATE_DP: Write accumulated values to new RAM.
+   - INCREMENT_H: h++
+   - NEXT_STEP: step++
+   - DONE
+
+   Given the complexity and the need for a 'prompt', let's scale down slightly more to make it fit a standard FPGA flow comfortably.
+   
+   Let's set MAX_M = 12. 
+   RAM depth = 4096.
+   Iterations per step: 4096 * 26 = 106,496.
+   Total iterations: 1,064,960 for N=10.
+   At 50MHz, this is ~20ms. 
+   
+   This is a valid hardware implementation. 
+   
+n   Prompt adjustment: Explicitly mention the scaling for M.
+   
+   Also, the XOR operation is bitwise. The modulus is 2^M, which is just a mask (bits [M-1:0]).
+
+   Let's write the prompt.

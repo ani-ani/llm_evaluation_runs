@@ -1,0 +1,282 @@
+module convex_hull_protection(
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] onion_x,  // Q8.8 fixed-point for onion x coordinate
+    input [15:0] onion_y,  // Q8.8 fixed-point for onion y coordinate
+    input [15:0] post_x,   // Q8.8 fixed-point for current fence post x
+    input [15:0] post_y,   // Q8.8 fixed-point for current fence post y
+    input [2:0] post_index,// Index of current post (0-7)
+    input [2:0] num_posts, // Number of posts selected (M parameter)
+    input [2:0] k_posts,   // Number of posts to upgrade (K parameter)
+    input [2:0] num_onions,// Number of onions (N parameter)
+    output reg [7:0] max_onions,  // Maximum onions protected
+    output reg done,
+    output reg error
+);
+
+// Parameters for fixed sizes - scaled down from original problem
+parameter MAX_POSTS = 8;
+parameter MAX_ONIONS = 8;
+parameter MAX_K = 5;
+parameter Q_SHIFT = 8;  // Q8.8 format
+
+// State machine states
+parameter IDLE = 3'b000;
+parameter LOAD_POSTS = 3'b001;
+parameter LOAD_ONIONS = 3'b010;
+parameter COMPUTE_COMBOS = 3'b011;
+parameter CHECK_HULL = 3'b100;
+parameter UPDATE_MAX = 3'b101;
+parameter DONE_STATE = 3'b110;
+
+reg [2:0] state, next_state;
+
+// Memory for posts and onions (Q8.8 format)
+reg signed [15:0] posts_x [0:MAX_POSTS-1];
+reg signed [15:0] posts_y [0:MAX_POSTS-1];
+reg signed [15:0] onions_x [0:MAX_ONIONS-1];
+reg signed [15:0] onions_y [0:MAX_ONIONS-1];
+
+// Tracking indices
+reg [2:0] load_idx;
+reg [2:0] onion_idx;
+reg [2:0] combo_idx;
+reg [2:0] check_idx;
+reg [2:0] hull_idx;
+
+// Combination storage (which posts are selected)
+reg [MAX_POSTS-1:0] selected_mask;
+reg [2:0] selected_count;
+reg [2:0] current_onion;
+
+// Computation registers
+reg signed [31:0] cross_product;  // 32-bit for intermediate
+reg signed [15:0] vec1_x, vec1_y, vec2_x, vec2_y;
+reg inside_hull;
+reg [7:0] onions_in_hull;
+reg [7:0] best_result;
+
+// Helper: compute cross product (vec1 x vec2) in Q8.8 format
+// Result is Q16.16 but we only need sign for orientation
+function signed [31:0] cross_product;
+    input signed [15:0] v1x, v1y, v2x, v2y;
+    begin
+        cross_product = (v1x * v2y) - (v1y * v2x);
+    end
+endfunction
+
+// Helper: check if point is inside convex polygon
+// Assumes posts are in clockwise order
+function is_inside_convex;
+    input signed [15:0] px, py;  // Point to check
+    input [2:0] num_vertices;     // Number of vertices in hull
+    reg signed [31:0] cp;        // Cross product result
+    reg sign_check;
+    integer i, j;
+    begin
+        is_inside_convex = 1'b1;
+        sign_check = 1'b0;
+        
+        // Check all edges
+        for (i = 0; i < num_vertices; i = i + 1) begin
+            j = (i + 1) % num_vertices;
+            // Edge vector: posts[j] - posts[i]
+            vec1_x = posts_x[j] - posts_x[i];
+            vec2_x = px - posts_x[i];
+            vec1_y = posts_y[j] - posts_y[i];
+            vec2_y = py - posts_y[i];
+            cp = cross_product(vec1_x, vec1_y, vec2_x, vec2_y);
+            
+            // For clockwise polygon, point is inside if cross product is >= 0 for all edges
+            // Actually for clockwise, edge cross (edge x point) should be <= 0 for inside
+            if (cp > 0) begin
+                is_inside_convex = 1'b0;
+                break;
+            end
+        end
+    end
+endfunction
+
+// Next state logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 1'b0;
+        error <= 1'b0;
+        max_onions <= 8'b0;
+        load_idx <= 3'b0;
+        onion_idx <= 3'b0;
+        combo_idx <= 3'b0;
+        check_idx <= 3'b0;
+        hull_idx <= 3'b0;
+        selected_mask <= {MAX_POSTS{1'b0}};
+        selected_count <= 3'b0;
+        current_onion <= 3'b0;
+        onions_in_hull <= 8'b0;
+        best_result <= 8'b0;
+        inside_hull <= 1'b0;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// State transition and operations
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: begin
+            if (start) next_state = LOAD_POSTS;
+        end
+        
+        LOAD_POSTS: begin
+            // Posts loaded via external writes, wait for completion
+            if (load_idx >= num_posts) next_state = LOAD_ONIONS;
+        end
+        
+        LOAD_ONIONS: begin
+            // Onions loaded via external writes, wait for completion
+            if (onion_idx >= num_onions) next_state = COMPUTE_COMBOS;
+        end
+        
+        COMPUTE_COMBOS: begin
+            // Generate combinations - simplified: increment mask until valid K-bit combination
+            // For hardware, we'd use a combinatorial generator
+            next_state = CHECK_HULL;
+        end
+        
+        CHECK_HULL: begin
+            // Check each onion against current hull
+            if (current_onion >= num_onions) next_state = UPDATE_MAX;
+            else next_state = CHECK_HULL;  // Stay to process
+        end
+        
+        UPDATE_MAX: begin
+            // Update best result and generate next combination
+            if (combo_idx >= num_posts) next_state = DONE_STATE;
+            else next_state = COMPUTE_COMBOS;
+        end
+        
+        DONE_STATE: begin
+            next_state = DONE_STATE;
+        end
+        
+        default: next_state = IDLE;
+    endcase
+end
+
+// Main computation logic
+always @(posedge clk) begin
+    if (state == LOAD_POSTS && start) begin
+        // External loader writes posts_x[load_idx] and posts_y[load_idx]
+        load_idx <= load_idx + 1'b1;
+    end
+    
+    if (state == LOAD_ONIONS && start) begin
+        // External loader writes onions_x[onion_idx] and onions_y[onion_idx]
+        onion_idx <= onion_idx + 1'b1;
+    end
+    
+    if (state == COMPUTE_COMBOS) begin
+        // Generate next valid K-combination
+        // Simplified: find next mask with K bits set
+        combo_idx <= combo_idx + 1'b1;
+        selected_count <= k_posts;  // Assume K posts are selected
+        // For real implementation: combinatorial logic to generate combinations
+        // Here we'll simulate with a simple pattern
+        if (combo_idx == 0) selected_mask <= 3'b111;  // First 3 posts
+        else if (combo_idx == 1) selected_mask <= 5'b11010;  // Posts 1,3,4
+        else if (combo_idx == 2) selected_mask <= 6'b101001;  // Posts 0,3,5
+        else if (combo_idx == 3) selected_mask <= 7'b1001001;  // Posts 0,3,6
+        else if (combo_idx == 4) selected_mask <= 8'b10001001;  // Posts 0,3,7
+    end
+    
+    if (state == CHECK_HULL) begin
+        // Check if current onion is inside current hull
+        if (selected_count >= 3) begin
+            // Build temporary hull from selected posts
+            // For simplicity, we check point against selected posts in order
+            // In real HW, this would be a more complex state machine
+            
+            // Quick check: is point inside convex hull of selected posts?
+            // Using simplified point-in-polygon test
+            inside_hull = 1'b1;
+            
+            // Check against all selected posts
+            if (selected_mask[0] && selected_mask[1] && selected_mask[2]) begin
+                // Test with posts 0,1,2 as a sample hull
+                vec1_x = posts_x[1] - posts_x[0];
+                vec2_x = onions_x[current_onion] - posts_x[0];
+                vec1_y = posts_y[1] - posts_y[0];
+                vec2_y = onions_y[current_onion] - posts_y[0];
+                cross_product = (vec1_x * vec2_y) - (vec1_y * vec2_x);
+                if (cross_product > 0) inside_hull = 1'b0;
+                
+                vec1_x = posts_x[2] - posts_x[1];
+                vec2_x = onions_x[current_onion] - posts_x[1];
+                vec1_y = posts_y[2] - posts_y[1];
+                vec2_y = onions_y[current_onion] - posts_y[1];
+                cross_product = (vec1_x * vec2_y) - (vec1_y * vec2_x);
+                if (cross_product > 0) inside_hull = 1'b0;
+                
+                vec1_x = posts_x[0] - posts_x[2];
+                vec2_x = onions_x[current_onion] - posts_x[2];
+                vec1_y = posts_y[0] - posts_y[2];
+                vec2_y = onions_y[current_onion] - posts_y[2];
+                cross_product = (vec1_x * vec2_y) - (vec1_y * vec2_x);
+                if (cross_product > 0) inside_hull = 1'b0;
+            end
+            
+            if (inside_hull) begin
+                onions_in_hull <= onions_in_hull + 1'b1;
+            end
+            
+            current_onion <= current_onion + 1'b1;
+        end else begin
+            // Need at least 3 points for hull
+            current_onion <= current_onion + 1'b1;
+        end
+    end
+    
+    if (state == UPDATE_MAX) begin
+        if (onions_in_hull > best_result) begin
+            best_result <= onions_in_hull;
+            max_onions <= onions_in_hull;
+        end
+        onions_in_hull <= 8'b0;
+        current_onion <= 3'b0;
+        combo_idx <= combo_idx + 1'b1;
+    end
+    
+    if (state == DONE_STATE) begin
+        done <= 1'b1;
+    end
+end
+
+endmodule
+
+// Helper module to load data
+module data_loader(
+    input clk,
+    input rst_n,
+    input load_en,
+    input [15:0] data_x,
+    input [15:0] data_y,
+    input is_onion,
+    output reg [2:0] index,
+    output reg write_en
+);
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        index <= 3'b0;
+        write_en <= 1'b0;
+    end else if (load_en) begin
+        write_en <= 1'b1;
+        index <= index + 1'b1;
+    end else begin
+        write_en <= 1'b0;
+    end
+end
+
+endmodule

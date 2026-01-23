@@ -1,0 +1,44 @@
+module stream_scheduler (
+    input clk,
+    input rst_n,
+    input start,
+    // 4 streams: each with start (8-bit), duration (8-bit), priority (8-bit)
+    input [7:0] s0, d0, p0,
+    input [7:0] s1, d1, p1,
+    input [7:0] s2, d2, p2,
+    input [7:0] s3, d3, p3,
+    output reg [15:0] result,
+    output reg done
+);
+
+// Behavior:
+// When start is asserted, load inputs and compute max priority.
+// Enumerate all 16 subsets of 4 streams.
+// For each subset:
+//   - Sum priorities of included streams.
+//   - Check feasibility: No crossing intervals.
+//     Two intervals i and j cross if:
+//       (s_i < s_j < e_i < e_j) or (s_j < s_i < e_j < e_i)
+//     where e_i = s_i + d_i, e_j = s_j + d_j.
+//   - If feasible, update maximum.
+// After computation, assert done and output max priority.
+// Completes within 100 cycles.
+
+// Reset behavior:
+// On rst_n = 0: done = 0, result = 0, state machine reset to IDLE.
+// Minimum 2 clock cycles of reset required.
+
+// Interface details:
+// - Clock: rising edge triggered.
+// - Start: pulse high for one cycle when inputs are valid.
+// - Done: high for one cycle when result is valid.
+// - Result: 16-bit maximum total priority.
+
+// Implementation notes:
+// - Use a state machine with states: IDLE, LOAD, COMPUTE, UPDATE, DONE.
+// - Compute end times as s_i + d_i (use 16-bit to avoid overflow).
+// - For each subset, iterate over all 6 unordered pairs.
+// - Use combinational comparisons for crossing checks.
+// - Update result when a feasible subset has higher total priority.
+
+endmodule

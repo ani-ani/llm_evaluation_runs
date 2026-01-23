@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'horse_chase' that computes the optimal capture time for a pursuit-evasion game.
+
+Problem Adaptation:
+- L (length of trail) is scaled to max 16 meters (4 bits)
+- Positions A, B, P are 4-bit inputs
+- We implement a Breadth-First Search (BFS) to find the minimum capture time
+- State: {horse_pos, cow1_pos, cow2_pos, time}
+- BFS explores all reachable states by cows (move 0 or 1) and horse (move 0, 1, or 2, restricted if occupied)
+- Since L <= 16, state space size is manageable: 16 * 16 * 16 = 4096 states
+- Limit maximum time to 16 cycles/steps for the sake of hardware constraints
+- A separate controller manages the BFS queue operations.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [3:0] L // Max 16 meters
+input [3:0] A // Cow 1 position (0-15)
+input [3:0] B // Cow 2 position (0-15)
+input [3:0] P // Horse position (0-15)
+
+Outputs:
+output reg [3:0] result // The minimum capture time (minutes)
+output reg done // High when computation is complete
+
+Behavioral Description:
+The module uses a state machine to simulate the game. It starts at the initial configuration and performs a search for the capture state. 
+1. Reset: Sets all state memories to idle/invalid. result = 0.
+2. Start: Loads initial positions and begins the search process.
+3. Processing: Explores states level by level (minute by minute). It applies valid moves for cows (positions +/- 1 or stay) and horse (positions +/- 1 or +/- 2, or stay, respecting collision rules).
+4. Capture: If horse position equals any cow position at the end of a minute, capture has occurred. The time is recorded.
+5. Done: Sets the output `result` to the capture time and asserts `done`.
+
+Note on Hardware Optimization:
+Since we cannot implement a full dynamic memory queue easily, we will use a set of registers to store the current frontier (states at time T) and the next frontier (states at time T+1). The state space (Cow1, Cow2, Horse) uses 12 bits. We iterate up to a fixed maximum depth (e.g., 16 steps).
+
+Required Signals (Internal):
+- state: Current FSM state (IDLE, CALCULATE, FINISHED)
+- frontier_valid [4095:0]: Bitmask indicating valid states in current frontier (optional, or we use explicit registers)
+- Alternatively, use a flattened array of registers for visited states to prevent cycles, width 4096 bits.
+
+Latency: Result valid approximately 100-200 clock cycles after start asserted (depends on queue implementation depth).
+
+The module must assert `done` high when the answer is found. If the capture time exceeds the internal loop limit (16), it should output the limit (or 0 for error, but assume inputs are such that capture is inevitable within small bounds).

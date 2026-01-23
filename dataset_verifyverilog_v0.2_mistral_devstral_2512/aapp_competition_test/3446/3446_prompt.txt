@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'assembly_optimizer' that computes the minimum time to assemble a sequence of components. The module implements a simplified dynamic programming solution for matrix chain multiplication adapted to assembly operations.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] num_symbols // number of symbols (1-3)
+input [2:0] seq_length // length of assembly sequence (1-8)
+input [2:0] sequence [0:7] // sequence of symbols, each encoded as 0,1,2
+input [17:0] time_table [0:2][0:2] // time cost for assembling symbol i and j
+input [1:0] result_table [0:2][0:2] // resulting symbol (0,1,2) for assembling i and j
+
+Outputs:
+output reg [19:0] min_time // minimum assembly time
+output reg [1:0] result_symbol // resulting symbol type (0,1,2)
+output reg done // high when computation complete
+
+Specifications:
+- Use state machine with states: IDLE, LOAD_SEQ, INIT_DP, DP_OUTER, DP_MIDDLE, DP_INNER, FIND_RESULT, DONE
+- The module should compute optimal assembly using DP: dp[i][j][k] represents minimum time to assemble subsequence from i to j resulting in symbol k
+- Use Q16.16 fixed-point format for times (multiply by 65536)
+- Latency: approximately 1000 clock cycles for worst case
+- Clock frequency: assume 100 MHz for cycle calculations
+- Sequence length max: 8 symbols
+- Symbols max: 3 types (encoded as 2-bit values 0,1,2)
+- Time values: max 1000000, so use 20 bits for time values
+- The result_table maps (symbol_i, symbol_j) to resulting symbol and time
+
+Behavior:
+1. IDLE: Wait for start signal
+2. LOAD_SEQ: Load sequence into internal memory
+3. INIT_DP: Initialize DP table for length-1 subsequences (base cases)
+4. DP_OUTER: Outer loop over sequence length (2 to seq_length)
+5. DP_MIDDLE: Middle loop over start position
+6. DP_INNER: Inner loop over split position, compute min time
+7. FIND_RESULT: Find optimal result from dp[0][seq_length-1][*]
+8. DONE: Set done signal, output results
+
+The DP recurrence:
+For subsequence from i to j:
+dp[i][j][k] = min over all splits p and all symbols l,m such that result_table[l][m] == k:
+    dp[i][p][l] + dp[p+1][j][m] + time_table[l][m]
+
+For base case (i=j): dp[i][i][seq[i]] = 0, all others = infinity
+
+Tie-breaking: If multiple results have same minimum time, choose the one that appears first in the original symbol order.

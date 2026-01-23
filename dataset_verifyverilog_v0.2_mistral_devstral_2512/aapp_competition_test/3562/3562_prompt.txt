@@ -1,0 +1,39 @@
+Design a sequential Verilog module named 'grade_optimizer' that computes the maximum average grade allocation for study time.
+
+The module implements a greedy algorithm that allocates time in discrete steps to the subject with the highest marginal grade increase. Since true continuous optimization is complex, we use a fixed-point iterative approach:
+1. Start with 0 hours allocated to each subject
+2. In each clock cycle, calculate the marginal return (derivative) for all subjects at current time allocation
+3. Allocate a small time step (dt = 0.01 hours) to the subject with highest marginal return
+4. Repeat until total time T is reached
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] num_subjects // N (1 to 10)
+input [7:0] total_time // T in hours, scaled by 100 (e.g., 96.00 becomes 9600)
+input [9:0][31:0] params_a // Q16.16 coefficients a_i for up to 10 subjects
+input [9:0][31:0] params_b // Q16.16 coefficients b_i for up to 10 subjects
+input [9:0][31:0] params_c // Q16.16 coefficients c_i for up to 10 subjects
+
+Outputs:
+output reg [31:0] avg_grade // Q16.16 format result
+output reg done // high when computation complete
+
+Specifications:
+- Use Q16.16 fixed-point format for all calculations
+- Time allocation resolution: 0.01 hours (represented as 0x000028F6 in Q16.16)
+- Maximum iterations: 24000 (for T=240 hours with 0.01 steps)
+- Implement as a state machine: IDLE, CALC_DERIV, ALLOCATE_TIME, CHECK_DONE, DONE
+- The derivative of f_i(t) = 2*a_i*t + b_i
+- Average grade = sum(f_i(t_i)) / N
+- Latency: approximately 25000 cycles (one per time step + overhead)
+
+Module must handle:
+- Resetting all allocations to zero
+- Parallel calculation of derivatives for all active subjects
+- Selection of subject with maximum derivative
+- Accumulation of total time and per-subject time
+- Final calculation of average grade
+
+Use saturating arithmetic for safety. Output result in Q16.16 format.

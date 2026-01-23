@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'otherside_rightangle' that calculates the hypotenuse of a right-angled triangle given two sides using fixed-point arithmetic.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] w // Side w in Q16.16 fixed-point format
+input [31:0] h // Side h in Q16.16 fixed-point format
+
+Outputs:
+output reg [31:0] result // Hypotenuse in Q16.16 fixed-point format
+output reg done // High when computation complete
+
+Specifications:
+1. Use Q16.16 fixed-point format for all inputs and outputs (16 integer bits, 16 fractional bits).
+2. The module must compute s = sqrt(w^2 + h^2).
+3. The calculation should be performed sequentially to manage resource usage.
+4. Latency: Maximum 100 clock cycles after 'start' is asserted.
+
+Behavioral Description:
+The module operates as a state machine with states: IDLE, SQUARING, ADDING, SQRT, DONE.
+- IDLE: Waits for start signal. When start goes high, calculate w^2 and h^2. Since multiplier latency might be multiple cycles, we can assume a single-cycle multiplier or split into pipeline stages. For this problem, assume a 32-bit integer multiplier (resulting in 64-bit product) takes 1 cycle, or we can split the logic.
+- SQUARING: Wait for multiplication results. Accumulate sum: sum = w^2 + h^2. Note: Q16.16 multiplication yields Q32.32. We must normalize back to Q16.16 for the square root input or handle the bits correctly. Standard approach: (A >> 8) * (B >> 8) keeps roughly Q16.16 -> Q16.16 if we shift 16 bits, but loses precision. A better way: (A * B) >> 16. Since we need square, we do (A * A) >> 16. So we calculate Sum = ((w * w) >> 16) + ((h * h) >> 16).
+- ADDING: Add the normalized squares.
+- SQRT: Calculate integer square root of the 32-bit integer sum (which represents the scaled value). Use a standard iterative restoring square root algorithm (shift-and-add).
+- DONE: Set done signal high and wait for start to go low.
+
+Square Root Algorithm Details:
+Use a 32-cycle restoring square root algorithm.
+Input to sqrt is the 64-bit concatenated sum (Sum_H, Sum_L), but effectively we are finding sqrt(Sum) where Sum is 32-bit fixed-point. To preserve precision, we can treat the number as having 32 fractional bits in the sum, but actually we shifted 16 bits. So the input to sqrt is effectively 32-bit integer representing the value * 2^16. The result of sqrt(x * 2^16) is sqrt(x) * 2^8. We need result in Q16.16. So the final result needs to be shifted left by 8 bits (or multiply by 256) to match Q16.16 output format.
+Specifically: Result = sqrt((w^2 >> 16) + (h^2 >> 16)) << 8.
+Wait, let's refine:
+1. w_sq = w * w (Result is Q32.32). We take upper 32 bits (w_sq[63:32]) which is Q32.0. We need Q16.16. So we shift right by 16: w_sq_q16 = w_sq[47:16].
+2. Sum = w_sq_q16 + h_sq_q16. This sum is roughly Q16.16 (but potentially integer part overflows if sides are large, let's assume inputs are small enough, e.g., < 256).
+3. To perform sqrt, we shift Sum left by 16 bits to make it Q32.0 integer: Val = Sum << 16.
+4. Perform integer sqrt(Val). Result is 16-bit integer part of sqrt(Val), which corresponds to sqrt(Sum) * 2^8.
+5. To get back to Q16.16, we shift the 16-bit result left by 16 bits: Result = sqrt_result << 16.
+
+State Machine:
+- IDLE (0): if start, go to SQUARING.
+- SQUARING (1): Compute w^2 and h^2 (1 cycle). Go to ADDING.
+- ADDING (2): Add them. Go to SQRT_START.
+- SQRT (3): Run iterative sqrt for 32 cycles. Go to DONE.
+- DONE (4): Set done=1. Wait for start=0 to go to IDLE.
+
+Square Root Implementation Detail:
+Standard iterative algorithm:
+remainder = input (64-bit)
+result = 0
+for i in 0 to 31:
+  temp = result | (1 << (31 - i))
+  if remainder >= temp:
+    remainder = remainder - temp
+    result = result | (1 << (31 - i))
+  else:
+    result = result | (0 << (31 - i))
+  shift remainder left by 2
+This requires 32 iterations. We need a counter for this.

@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'card_game_dp' that computes the maximum certain coins Donald can end up with in a card game against a lucky opponent.
+
+The game proceeds for up to N rounds. In each round, Donald bets B (0 < B <= min(D, G)). If distracted (K rounds total), Donald wins the pot (2*B). If not distracted, Donald loses the pot (2*B).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] n // Number of rounds (max 16)
+input [4:0] k // Number of distractions (max 16)
+input [4:0] d_init // Initial Donald coins (max 16)
+input [4:0] g_init // Initial Gladstone coins (max 16)
+
+Outputs:
+output reg [4:0] result // Maximum certain coins Donald can have
+output reg done // High when computation is complete
+
+Specification:
+- The module must implement a dynamic programming approach using a state machine.
+- Since full DP table storage is large, implement a simplified iterative solver or a state machine that iterates through rounds.
+- To keep it synthesizable and bounded, assume N, D, G, K <= 16.
+- Use states: IDLE, COMPUTE_DP, FETCH_RESULT.
+- The core logic is: Let DP[d][g][round][distractions] be the max certain coins Donald can get. Transitions: 
+  If distracted: DP[d][g][r][k] = min over bets B of DP[d+2B][g-2B][r+1][k-1]. 
+  If not distracted: DP[d][g][r][k] = min over bets B of DP[d-2B][g+2B][r+1][k]. 
+  Base case: if round == n or d==0 or g==0, return d.
+- Since we can't use full block RAM easily for 4D arrays in a simple module, we can implement the logic by iterating rounds and storing only the previous and current layer, or use a hardcoded iterative solver.
+- However, to fit in a standard benchmark, let's use a combinational solver if N is small or a state machine that fills a small lookup table.
+- Let's define the interface to accept inputs and compute the result. The internal implementation will be a state machine that iterates through valid states (d, g, r, k).
+- Latency: Variable, but roughly O(N * D * G * K * B). With D,G,N,K <= 16, this is feasible in a few hundred cycles.
+
+Example Trace:
+Input: d=2, g=10, n=3, k=2.
+Strategy: Bet 1 in round 1 (Distraction -> +2 -> d=4, g=8). Bet 1 in round 2 (Distraction -> +2 -> d=6, g=6). Bet 0 in round 3 (No distraction, cannot lose). Result: 4.

@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'wind_chill' that calculates the wind chill index using Q16.16 fixed-point arithmetic.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] v // wind velocity in km/h (0-120)
+input [15:0] t // temperature in celsius (Q16.16 format)
+
+Outputs:
+output reg [15:0] result // wind chill index (rounded integer)
+output reg done // high when computation complete
+
+Behavioral Description:
+The module implements the formula: windchill = 13.12 + 0.6215*t - 11.37*(v^0.16) + 0.3965*t*(v^0.16)
+All constants are converted to Q16.16 format:
+- 13.12 = 0x000D1F48
+- 0.6215 = 0x00009EB8
+- 11.37 = 0x000B5E64
+- 0.3965 = 0x0000659F
+
+The term v^0.16 must be approximated for v in range 0-120. Use a lookup table (combinational logic) mapping v to the Q16.16 value of v^0.16. Since v is small, this can be a case statement or parallel comparators.
+
+The calculation must be done in fixed-point math. Intermediate results need 32-bit width to prevent overflow. The final result should be rounded to the nearest integer.
+
+Latency: 10 clock cycles after start is asserted.
+
+State Machine: IDLE -> CALC1 -> CALC2 -> CALC3 -> CALC4 -> DONE.
+
+In IDLE: Wait for start signal.
+In CALC1: Compute 0.6215 * t and load v^0.16 from LUT.
+In CALC2: Compute 0.3965 * t * (v^0.16) and compute 11.37 * (v^0.16).
+In CALC3: Sum intermediate terms (13.12 + term1 - term2 + term3).
+In CALC4: Round to nearest integer.
+In DONE: Set done flag.
+
+Note: t is provided in Q16.16 format. v is a raw integer 0-120. Result is integer (no fractional bits).

@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'wcd_solver' that implements a simplified version of the Weakened Common Divisor (WCD) algorithm.
+
+The module finds a valid divisor > 1 that divides at least one number in each of N pairs of 32-bit inputs.
+
+**Scaling**:
+- Number of pairs N: Fixed to 4 (hardcoded in logic).
+- Input bit width: 32 bits.
+- Input range: 0 to 2^32-1.
+- Prime factor set: Limited to maximum 8 distinct factors derived from the first pair.
+- Algorithm: Extract prime factors of the first pair (a0, b0). Then, for the next 3 pairs (a1,b1 ... a3,b3), check each stored factor. If a factor divides neither number in the current pair, remove it. If the set becomes empty, output -1. Otherwise, output the first remaining factor.
+
+**Inputs**:
+input clk // System clock
+input rst_n // Active-low reset
+input start // Start computation pulse
+input [31:0] a_i, b_i // Input pair values
+
+**Outputs**:
+output reg [31:0] result // The valid divisor or -1
+output reg done // High when computation is complete
+
+**Behavior**:
+1. **IDLE**: Wait for `start` signal.
+2. **FACTOR_FIRST**: When `start` is high, receive (a0, b0). Decompose them into prime factors (max 8). Store these in a register file or temporary storage.
+3. **ITERATE**: Loop 3 times for pairs (a1,b1), (a2,b2), (a3,b3). In each iteration:
+    - Receive inputs (a_i, b_i).
+    - Check stored factors: `if (factor != (a_i % factor) && factor != (b_i % factor))` then mark factor as invalid.
+4. **RESULT**: If any factor remains valid, set `result` to the first valid factor. If none, set `result` to 32'hFFFFFFFF (-1).
+5. Set `done` high and return to IDLE.
+
+**Note on Prime Factorization**: Since arbitrary factorization is complex in hardware, the module will implement a simplified check. For the purpose of this specification, assume we are checking factors 2, 3, 5, 7, 11, 13, 17, 19. The module must filter these based on the input pairs. This avoids runtime prime generation logic.
+
+**State Machine States**:
+- IDLE
+- FACTOR_FIRST
+- CHECK_PAIR_1
+- CHECK_PAIR_2
+- CHECK_PAIR_3
+- DONE
+
+**Control Signals**:
+- `valid_factors [7:0]`: One-hot vector indicating which of the 8 hard-coded factors are currently candidates.
+- `current_factor_index [2:0]`: Index for iterating through factors during the check phase.
+- `pair_index [1:0]`: Tracks which of the 3 subsequent pairs is being processed (0, 1, 2).

@@ -1,0 +1,78 @@
+Design a sequential Verilog module named 'frog_pathfinder' that implements a simplified frog pathfinding algorithm.
+
+**Simplification Strategy**:
+- Graph size reduced to 8 nodes (plants) on an 8x8 grid
+- Coordinates X and Y are 3-bit values (0-7)
+- Flies per plant: 8-bit unsigned (0-255)
+- Energy cost per jump: parameter K (default 5, 8-bit)
+- Maximum path length: 8 nodes
+- Movement: can only move right (x+1, y same) or up (y+1, x same)
+
+**Problem**: Given 8 plants with coordinates and flies, find the path from plant 0 to plant 7 (lowest to highest index) that maximizes final energy. Initial energy is flies at plant 0. Each jump costs K energy. Energy must be >= K before jumping.
+
+**Inputs** (all registered at clock edge):
+- `clk`: clock signal
+- `rst_n`: active-low reset
+- `start`: start computation (loads plants and computes)
+- `plant_addr`: [2:0] address for writing plant data
+- `plant_x`: [2:0] x-coordinate (0-7)
+- `plant_y`: [2:0] y-coordinate (0-7)
+- `plant_flies`: [7:0] number of flies at this plant
+- `plant_write`: write plant data to RAM
+
+**Outputs**:
+- `result_energy`: [7:0] final energy after reaching destination
+- `result_length`: [3:0] number of plants in path
+- `result_path`: [31:0] packed path (8 nodes × 4 bits each, where 4 bits = index of next plant, 0xF = end)
+- `done`: high when computation complete
+- `valid`: high when output is valid
+
+**Specification**:
+- Latency: 256 clock cycles after start (processes all possible paths)
+- State Machine: IDLE → WRITE_PLANTS (wait for all 8 plants) → COMPUTE (evaluate all paths) → DONE
+- Use DP approach: for each plant, track max energy to reach it from plant 0
+- Store energy values in 8-entry RAM (8-bit each)
+- Store predecessor pointers for path reconstruction
+- Moves are valid only if (current_x+1 == next_x and current_y == next_y) OR (current_x == next_x and current_y+1 == next_y)
+- Energy constraint: can only jump if current_energy >= K
+
+**Behavioral Description**:
+1. In IDLE state, wait for start signal
+2. During WRITE_PLANTS, accept plant data via plant_write signal and store coordinates and flies in RAM
+3. After all 8 plants written, transition to COMPUTE state
+4. In COMPUTE state, perform 8 passes over all plants to compute maximum energy paths:
+   - Initialize energy[0] = flies[0], all others = 0
+   - For each pair of plants (i, j), check if jump i→j is valid
+   - If valid and energy[i] >= K, update energy[j] = max(energy[j], energy[i] - K + flies[j])
+   - Store predecessor pointers for path reconstruction
+5. In DONE state, output the energy at plant 7 and reconstruct path
+6. Path reconstruction: backtrack from plant 7 to plant 0 using predecessor pointers
+7. Pack path indices into result_path output (4 bits per node)
+
+**Note**: If plant 7 is unreachable (energy[7] == 0), output energy 0 and empty path.
+
+**Clock cycles**:
+- Reset: 1 cycle
+- Plant writing: variable (up to 8 cycles, one per plant)
+- Compute phase: ~64 cycles (8 nodes × 8 passes)
+- Path reconstruction: 8 cycles
+- Total: ~80 cycles from start to done
+
+**Edge cases**:
+- Plant 0 must have flies to start (guaranteed)
+- Some plants may be unreachable
+- Multiple paths may exist, choose any valid one
+- Jumps must strictly increase x or y (not equal)
+
+**Output packing**:
+- result_path[3:0] = first node after plant 0
+- result_path[7:4] = second node
+- ... up to 8 nodes
+- Use 0xF to indicate end of path
+- result_length includes plant 0 and plant 7
+
+**Example**: If path is 0→2→7:
+- result_path[3:0] = 2
+- result_path[7:4] = 7
+- result_path[11:8] = 0xF
+- result_length = 3

@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'aladin_box_sim' that simulates Aladin's box system with 8 boxes.
+
+Problem Adaptation:
+- Total boxes: 8 (labeled 0 to 7)
+- Max A, B values: 255 (8-bit unsigned)
+- Two types of queries:
+  1. Update: Set box values in range [L, R] (0-indexed) to (i * A) % B
+     i is the index relative to L (i=0 for L, i=1 for L+1, etc.)
+  2. Query: Sum values in range [L, R]
+
+Module Interface:
+Inputs:
+  input clk           // System clock
+  input rst_n         // Active-low reset
+  input start         // Start processing a new query
+  input [2:0] op_type // 0: Update, 1: Query
+  input [2:0] L       // Start index (0-7)
+  input [2:0] R       // End index (0-7)
+  input [7:0] A       // Parameter A for update
+  input [7:0] B       // Parameter B for update
+
+Outputs:
+  output reg [7:0] result // Result of query (sum) or 0 during update
+  output reg done         // High when query is complete
+
+Internal Behavior:
+- The module maintains an array of 8 registers (8-bit each) initialized to 0.
+- Update Operation (op_type=0):
+  - Iterate index 'i' from L to R.
+  - Calculate val = ( (i - L + 1) * A ) % B.
+    Note: Since i is the absolute index, the multiplier is (i - L + 1).
+    Example: L=1, R=3. Box 1 gets (1-1+1)*A = 1*A. Box 2 gets 2*A. Box 3 gets 3*A.
+  - Store val in box[i].
+- Query Operation (op_type=1):
+  - Iterate index 'i' from L to R.
+  - Accumulate box[i] into sum.
+  - Output sum to 'result'.
+
+Timing:
+- Latency: Max 64 clock cycles (8 boxes * 8 ops max, safe bound).
+- State Machine:
+  - IDLE: Wait for start signal.
+  - PROCESSING: Iterate through L to R. Perform calculation in steps.
+    - Sub-states: Calculate Value, Store/Sum.
+  - DONE: Assert done and result valid.
+
+Constraints:
+- Use 8-bit arithmetic for A, B, and box values.
+- Modulo operator: Use simple subtraction loop (max B=255, so max 255 subtractions, or optimize). 
+  To keep it feasible, assume we perform the multiplication (max 255*255 = 65025, fits in 16 bits) and then modulo.
+- Ensure result is zeroed initially.

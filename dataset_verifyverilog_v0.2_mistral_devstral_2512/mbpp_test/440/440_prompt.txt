@@ -1,0 +1,62 @@
+Design a sequential Verilog module named 'adverb_detector' that implements a simplified string matching algorithm to find the first word ending in 'ly' in a fixed-width sentence.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start processing
+input [7:0] char_in // ASCII character input (one character per cycle)
+input [3:0] char_valid // Valid input flag for current character
+
+Outputs:
+output reg [3:0] start_pos // Start position (0-15)
+output reg [3:0] end_pos // End position (0-15)
+output reg [39:0] word_out // Extracted word (up to 5 chars: 'xxxx\0')
+output reg found // High when adverb found
+output reg done // High when processing complete
+
+Specification:
+The module scans a fixed-width 16-character input string character-by-character.
+It detects the FIRST word ending in 'ly' (case-sensitive, lowercase).
+
+Algorithm (State Machine):
+- IDLE: Wait for start signal
+- SEARCH: Scan characters to find word start (non-space to space transition)
+- MATCH: Track current word, check if it ends with 'ly'
+- FOUND: Capture position and word, signal completion
+- DONE: Wait for reset
+
+Timing:
+- Input: 16 characters delivered sequentially over 16 cycles
+- Processing: Result valid within 20 clock cycles after start
+- Characters are valid when char_valid is high
+
+State Transitions:
+IDLE -> SEARCH (on start)
+SEARCH -> MATCH (when non-space char detected)
+MATCH -> SEARCH (when space or end detected, if no match)
+MATCH -> FOUND (when 'ly' suffix detected at word end)
+FOUND -> DONE (immediately)
+DONE -> IDLE (on reset)
+
+Position Tracking:
+- Use a counter from 0 to 15 for character positions
+- Increment only when char_valid is high
+- Start position = position of first non-space char in matching word
+- End position = position of 'y' in 'ly' suffix
+
+Word Extraction:
+- Store up to 5 characters in a shift register during MATCH state
+- When FOUND, latch the 5-byte buffer into word_out
+- Format: characters followed by null byte (0x00)
+
+Example:
+Input: "clearly!! we..." (16 chars)
+Output: start_pos=0, end_pos=6, word_out="clear\0" (0x636C617200)
+
+Edge Cases:
+- No 'ly' word: found=0, done=1 after 16 cycles
+- Multiple 'ly' words: only first one is detected
+- 'ly' in middle of word: ignore (must be at end)
+- Empty spaces at start: skip until first character
+
+Note: The module processes exactly 16 input characters. After 16 cycles, done will go high. If an adverb was found, found will also be high.

@@ -1,0 +1,187 @@
+module next_power_of_2 (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] n,          // 8-bit input number (0-255)
+    output reg [8:0] result,      // 9-bit output (max: 256)
+    output reg done               // Done signal, high for 1 cycle
+);
+
+    // State machine states
+    localparam IDLE = 2'd0;
+    localparam CALC = 2'd1;
+    localparam FINISH = 2'd2;
+    
+    reg [1:0] state;
+    reg [7:0] temp_n;             // Working copy of n
+    reg [3:0] count;              // Bit counter (0-8)
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset state
+            state <= IDLE;
+            result <= 9'd0;
+            done <= 1'b0;
+            temp_n <= 8'd0;
+            count <= 4'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        // Handle special case: n = 0
+                        if (n == 8'd0) begin
+                            result <= 9'd1;  // 2^0 = 1
+                            done <= 1'b1;
+                            state <= FINISH;
+                        end else begin
+                            temp_n <= n;
+                            count <= 4'd0;
+                            state <= CALC;
+                        end
+                    end
+                end
+                
+                CALC: begin
+                    // Right shift until zero
+                    if (temp_n != 8'd0) begin
+                        temp_n <= {1'b0, temp_n[7:1]};  // Divide by 2
+                        count <= count + 1'b1;
+                    end else begin
+                        // Done shifting, compute result
+                        // If n was already power of 2, return n
+                        // Otherwise return 1 << count
+                        // Check if original n was power of 2
+                        // For simplicity, always return 1 << count
+                        // This works because:
+                        //   If n=4 (100), count becomes 3, result=8
+                        //   But we want 4, not 8
+                        // Need to handle: if n == (1 << (count-1)) then result = n else result = 1 << count
+                        
+                        // Alternative: use bit detection
+                        // Actually, let's fix the logic:
+                        // count tracks how many bits needed
+                        // For n=4 (100), after 3 shifts: temp_n=0, count=3
+                        // But 2^(3-1) = 4, so we need count-1
+                        // Exception: if n is already power of 2, return n
+                        // Let's change to: result = 1 << count, then adjust
+                        
+                        // Easier: detect if n is power of 2 using n & (n-1) == 0
+                        // But we don't have original n anymore
+                        
+                        // Final approach: result = 1 << count
+                        // Then check if result/2 >= original n
+                        // But we need original n
+                        
+                        // Let's restart with better approach:
+                        // count = number of bits in n (for n=5=101b, count=3)
+                        // result = 1 << count, but if (1 << (count-1)) == n, return n
+                        // Actually: for n=5, bits=3, 2^3=8 ✓
+                        // for n=4, bits=3, but want 4 not 8
+                        // So: if n == (1 << (count-1)) then result = n else result = 1 << count
+                        
+                        // Store original n in a register before shifting
+                        // Or recalculate: we need to detect if n was already power of 2
+                        
+                        // Simplest: start over with correct logic in next cycle
+                        state <= FINISH;
+                        // Compute result now
+                        if (temp_n == 8'd0 && count > 4'd0) begin
+                            // Need to check if original was power of 2
+                            // We'll compute in next state
+                        end
+                    end
+                end
+                
+                FINISH: begin
+                    done <= 1'b0;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+    
+endmodule
+
+// REVISED CORRECT MODULE:
+module next_power_of_2 (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] n,          // 8-bit input number (0-255)
+    output reg [8:0] result,      // 9-bit output (max: 256)
+    output reg done               // Done signal, high for 1 cycle
+);
+
+    localparam IDLE = 2'd0;
+    localparam CALC = 2'd1;
+    localparam CHECK = 2'd2;
+    localparam FINISH = 2'd3;
+    
+    reg [1:0] state;
+    reg [7:0] temp_n;
+    reg [7:0] original_n;         // Keep original n
+    reg [3:0] count;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            result <= 9'd0;
+            done <= 1'b0;
+            temp_n <= 8'd0;
+            original_n <= 8'd0;
+            count <= 4'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        if (n == 8'd0) begin
+                            result <= 9'd1;
+                            done <= 1'b1;
+                            state <= FINISH;
+                        end else begin
+                            original_n <= n;
+                            temp_n <= n;
+                            count <= 4'd0;
+                            state <= CALC;
+                        end
+                    end
+                end
+                
+                CALC: begin
+                    if (temp_n != 8'd0) begin
+                        temp_n <= {1'b0, temp_n[7:1]};
+                        count <= count + 1'b1;
+                    end else begin
+                        state <= CHECK;
+                    end
+                end
+                
+                CHECK: begin
+                    // count is number of bits in original_n
+                    // Check if original_n is already power of 2
+                    // Power of 2 has only one bit set: original_n & (original_n-1) == 0
+                    // But we need original_n for this
+                    // Easier: compute 1 << (count-1) and compare with original_n
+                    // Since count is at least 1 here
+                    
+                    if (count > 4'd1 && (original_n & (original_n - 1'b1)) == 8'd0) begin
+                        // Already power of 2
+                        result <= {1'b0, original_n};
+                    end else begin
+                        result <= 1 << count;
+                    end
+                    done <= 1'b1;
+                    state <= FINISH;
+                end
+                
+                FINISH: begin
+                    done <= 1'b0;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+    
+endmodule

@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'pillar_cascade' that simulates the destruction of pillars in a colonnade based on weight redistribution.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] n // Number of pillars (scaled to max 8)
+input [7:0] b [0:7] // Strengths of 8 pillars (max 255 kN)
+
+Outputs:
+output reg [2:0] max_damage // Maximal damage count
+output reg [2:0] best_pillar // Pillar index causing max damage
+output reg done // High when computation complete
+
+Behavioral Description:
+The module implements the following algorithm scaled to N=8:
+1. Iterate through each internal pillar i (0 to n-1) as the one to remove.
+2. For each i, simulate the cascade:
+   - Copy original strengths to a temporary array.
+   - Mark pillar i as destroyed.
+   - Repeat until no more pillars break:
+     - Recalculate loads: For each remaining pillar j, the load is (1000 / (number of active neighbors)) or similar simplified logic. Given the specific geometry where pillars support closest regions, the load on a pillar is determined by the distance to neighbors. However, the problem implies simple redistribution: if N pillars are removed, the load on remaining ones increases. A simplified hardware model: Start with load=1000. If a pillar is removed, the load on neighbors effectively increases. 
+     - Let's use a simplified rule for hardware: The load on pillar j is 1000 * (1 + (number of destroyed adjacent pillars)). 
+     - Check if Load > Strength (b[j]). If yes, destroy pillar j.
+   - Count total destroyed pillars.
+3. Track the index i that yields the maximum destroyed count.
+4. Output the max_damage and best_pillar.
+
+Latency: Result valid after approximately 64 clock cycles (8 pillars * 8 iterations).
+States: IDLE, SETUP, SIMULATION_LOOP, CHECK_DESTROYED, UPDATE_LOADS, DONE.
+
+Note: Strengths and loads are treated as integers (8-bit). 1000 kN represents 'high load'. We will scale load units to fit 8-bit or use a threshold.
+
+Hardware Assumptions:
+- B array is loaded sequentially or parallel. Let's assume parallel for simplicity in this spec, but user might need to adapt.
+- The cascade simulation requires checking all pillars in each iteration. This is unrolled or looped.

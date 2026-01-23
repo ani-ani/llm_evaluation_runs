@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'max_polygon_area' that computes the maximum area polygon that can be formed from given fence segments.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] segment_length // current segment length (1-10)
+input [2:0] num_segments // number of segments (3-8)
+input load_segment // load next segment signal
+
+Outputs:
+output reg [31:0] max_area // Q16.16 fixed-point format result
+output reg done // high when computation complete
+
+Specification:
+- The module processes up to 8 segments, each of length 1-10
+- First, load all segments using load_segment signal
+- Then compute maximum area using frequency counting and regular polygon formulas
+- Use Q16.16 fixed-point arithmetic (16 integer, 16 fractional bits)
+- For regular polygon with k sides of length s: Area = (k * s^2) / (4 * tan(π/k))
+- Pre-compute constants for k=3,4,5,6,7,8 as Q16.16 values
+- Store frequency counts in a small RAM (8 entries for lengths 1-10)
+- Iterate through possible polygon sizes (3 to available segments)
+- For each size, find maximum area using available segment frequencies
+- Latency: 100 clock cycles from start to done
+- States: IDLE, LOAD_SEGMENTS, COUNT_FREQ, COMPUTE_AREA, DONE
+- Load sequence: assert load_segment with segment_length, wait for next clock
+
+Pre-computed constants (Q16.16 format):
+- tan(π/3) = 0.577350269 * 65536 = 37838
+- tan(π/4) = 1.0 * 65536 = 65536
+- tan(π/5) = 0.726542528 * 65536 = 47626
+- tan(π/6) = 0.577350269 * 65536 = 37838
+- tan(π/7) = 0.481574619 * 65536 = 31564
+- tan(π/8) = 0.414213562 * 65536 = 27144
+
+Note: Area = (k * s^2) / (4 * tan(π/k)) = (k * s^2 * 65536) / (4 * tan_const) in Q16.16

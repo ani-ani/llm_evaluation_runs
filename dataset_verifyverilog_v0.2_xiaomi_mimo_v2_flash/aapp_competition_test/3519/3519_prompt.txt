@@ -1,0 +1,26 @@
+Design a sequential Verilog module named 'memory_game_expected_turns' that computes the expected number of turns to finish the Memory game with N pairs of cards, scaled to N <= 16 pairs. The module implements an iterative dynamic programming approach to calculate the expected value.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [4:0] N // Number of pairs (1 to 16)
+
+Outputs:
+output reg [31:0] result // Expected turns in Q16.16 fixed-point format
+output reg done // High when computation is complete
+
+Behavior:
+The module computes the expectation using the state (u, v) where u is the number of unmatched pairs and v is the number of known single cards. 
+Base Case: E(0, 0) = 0.
+Transitions (simplified for hardware):
+1. If v > 0: Known pair exists (Probability 1/u). E = 1 + E(u-1, v-1). 
+   Otherwise (Probability (u-1)/u): 
+   - If v < 2u: Match found (Prob 1/(2u-1)). E = 1 + E(u-1, v-1).
+   - Else: No match (Prob (2u-2)/(2u-1)). E = 1 + E(u, v+2).
+2. If v == 0: Unknown state. 
+   - Always turn 1. Result 1 + E(u, 2).
+
+Since floating-point division is complex, use a pre-calculated lookup table for division results (1/u, 1/(2u-1), etc.) scaled to Q16.16 integers. 
+Latency: Result valid approximately 5000 clock cycles after start (enough to process N=16 states iteratively).
+Use state machine: IDLE -> LOAD_U -> ITERATE_STATES -> DONE.

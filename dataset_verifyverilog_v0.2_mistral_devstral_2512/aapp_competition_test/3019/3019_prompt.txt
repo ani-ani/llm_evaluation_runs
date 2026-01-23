@@ -1,0 +1,33 @@
+Design a sequential Verilog module named 'max_revenue' that computes the maximum revenue from partitioning N pieces of data (N ≤ 8). Each piece has value S_i ≤ 1000. Revenue for a group = number of distinct prime factors of the sum of S_i in that group.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] N // number of data pieces (1-8)
+input [9:0] S [0:7] // array of 8 values, each 10 bits (0-1023)
+
+Outputs:
+output reg [7:0] max_rev // maximum revenue (0-255)
+output reg done // high when computation complete
+
+Latency: Approximately 5000-10000 clock cycles after start (depends on implementation)
+
+Behavioral Description:
+Use state machine with states: IDLE, PRECOMPUTE_SUMS, PRECOMPUTE_FACTORS, DP_INIT, DP_OUTER, DP_INNER, DONE.
+
+Algorithm (scaled):
+1. Pre-compute sum of each subset (256 subsets, 3 elements each max)
+2. For each subset sum, compute distinct prime factors count (up to 14000)
+3. DP: dp[mask] = max revenue for data pieces in mask
+   dp[0] = 0
+   For each mask from 1 to (1<<N)-1:
+     For each submask of mask:
+       dp[mask] = max(dp[mask], dp[submask] + prime_factors[complement])
+   where complement = mask ^ submask
+4. Answer = dp[(1<<N)-1]
+
+Note: Use 16-bit sums, 8-bit prime factor counts, 8-bit dp values.
+Implement bounded loops with counters: max 256 iterations for outer, max 256 for inner.
+Use combinational logic for sum computation and prime factor counting.
+Prime factor counting: iterate through primes ≤ sqrt(8000) ≈ 90 (primes: 2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89).

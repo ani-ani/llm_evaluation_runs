@@ -1,0 +1,35 @@
+Design a sequential Verilog module named 'figurine_4pack' that computes statistics for 4-packs of figurines.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] w0, w1, w2, w3 // Weights of 4 distinct figurines (8-bit unsigned integers)
+
+Outputs:
+output reg [13:0] max_weight // Maximum 4-pack weight (4 * 60000 = 240000 < 16384*16)
+output reg [13:0] min_weight // Minimum 4-pack weight
+output reg [13:0] distinct_weights_count // Number of distinct weights
+output reg [31:0] expected_weight // Expected weight in Q16.16 fixed-point format
+output reg done // High when computation complete
+
+Specification:
+- The 4-pack is formed by selecting 4 figurines with replacement from the set {w0, w1, w2, w3}
+- Each selection is independent with uniform distribution
+- Maximum weight: sum of 4 largest weights (all equal to max(w0..w3))
+- Minimum weight: sum of 4 smallest weights (all equal to min(w0..w3))
+- Distinct weights: Count of unique sums possible from picking 4 items (with replacement)
+- Expected weight: (w0 + w1 + w2 + w3) / 4 * 65536 for Q16.16 format
+
+Implementation details:
+- Use a state machine with states: IDLE, CALC_MAX_MIN, ENUMERATE, COMPUTE_EXPECTED, DONE
+- Latency: Result valid 80 clock cycles after start asserted
+- For enumeration: Use a nested state machine or counter to generate all 4^4 = 256 combinations (4 selections, each with 4 options)
+- Use a register array to store computed sums and count distinct values
+- The expected weight can be computed analytically: E = 4 * (w0+w1+w2+w3)/4 / 4 * 65536 = (w0+w1+w2+w3) * 16384 (since sum/4 * 65536 / 4 = sum * 16384)
+  Actually: Expected weight = (sum of all 256 combinations) / 256
+  But sum of all combinations = 64 * (w0 + w1 + w2 + w3) because each figurine appears exactly 4^3 = 64 times in each position
+  So Expected weight = 64 * (w0 + w1 + w2 + w3) / 256 = (w0 + w1 + w2 + w3) / 4
+  In Q16.16: (w0 + w1 + w2 + w3) * 65536 / 4 = (w0 + w1 + w2 + w3) * 16384
+- For distinct weight counting: Use a bit mask to mark reachable sums. Since max possible sum is 4*60000=240000, but with 4 weights scaled to 8-bit, max sum is 4*255=1020, so a 1024-bit register (or 32x32 array) can track seen sums.
+- The module should operate on the 4 input weights and produce the 4 output values.

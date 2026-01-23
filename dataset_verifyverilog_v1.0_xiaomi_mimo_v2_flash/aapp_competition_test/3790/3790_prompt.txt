@@ -1,0 +1,162 @@
+module longest_non_decreasing_subsequence(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] n,          // Size of base array (1-8)
+    input [7:0] T,          // Number of repetitions (1-8)
+    input [7:0] base_array_0, base_array_1, base_array_2, base_array_3,
+    input [7:0] base_array_4, base_array_5, base_array_6, base_array_7,
+    output reg [15:0] result,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam EXPAND = 3'b001;
+localparam INIT_DP = 3'b010;
+localparam DP_OUTER = 3'b011;
+localparam DP_INNER = 3'b100;
+localparam FIND_MAX = 3'b101;
+localparam COMPLETE = 3'b110;
+
+// Internal registers
+reg [7:0] arr [0:63];     // Expanded array (max 64 elements)
+reg [7:0] dp [0:63];      // DP table
+reg [7:0] L;              // Total length = n * T
+reg [7:0] rep;            // Repetition counter
+reg [7:0] base_idx;       // Base array index
+reg [7:0] base_addr;      // Starting address for current repetition
+reg [7:0] i_index, j_index; // Loop counters
+reg [7:0] max_val;        // Maximum value in dp
+reg [2:0] state;          // Current state
+
+// Multiplexer for base array input
+wire [7:0] base_val;
+assign base_val = (base_idx == 0) ? base_array_0 :
+                  (base_idx == 1) ? base_array_1 :
+                  (base_idx == 2) ? base_array_2 :
+                  (base_idx == 3) ? base_array_3 :
+                  (base_idx == 4) ? base_array_4 :
+                  (base_idx == 5) ? base_array_5 :
+                  (base_idx == 6) ? base_array_6 :
+                  base_array_7;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset all control registers and arrays
+        state <= IDLE;
+        done <= 0;
+        result <= 0;
+        L <= 0;
+        rep <= 0;
+        base_idx <= 0;
+        base_addr <= 0;
+        i_index <= 0;
+        j_index <= 0;
+        max_val <= 0;
+        // Initialize arrays (optional in synthesis)
+        for (integer k = 0; k < 64; k = k + 1) begin
+            arr[k] <= 0;
+            dp[k] <= 0;
+        end
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    // Compute total length L = n * T
+                    L <= n * T;
+                    // Initialize expand counters
+                    rep <= 0;
+                    base_idx <= 0;
+                    base_addr <= 0;
+                    state <= EXPAND;
+                end
+            end
+
+            EXPAND: begin
+                if (rep < T) begin
+                    if (base_idx < n) begin
+                        // Store base array element at correct position
+                        arr[base_addr + base_idx] <= base_val;
+                        base_idx <= base_idx + 1;
+                    end else begin
+                        // Move to next repetition
+                        base_idx <= 0;
+                        rep <= rep + 1;
+                        base_addr <= base_addr + n;  // Next repetition starts here
+                    end
+                end else begin
+                    // Expansion complete, initialize DP
+                    state <= INIT_DP;
+                    i_index <= 0;
+                end
+            end
+
+            INIT_DP: begin
+                // Initialize all DP values to 1
+                if (i_index < L) begin
+                    dp[i_index] <= 1;
+                    i_index <= i_index + 1;
+                end else begin
+                    // Start DP computation
+                    state <= DP_OUTER;
+                    i_index <= 0;
+                    j_index <= 0;
+                end
+            end
+
+            DP_OUTER: begin
+                // Outer loop over each element
+                if (i_index < L) begin
+                    // Start inner loop for current i
+                    state <= DP_INNER;
+                    j_index <= 0;
+                end else begin
+                    // Find maximum in dp array
+                    state <= FIND_MAX;
+                    i_index <= 0;
+                    max_val <= dp[0];
+                end
+            end
+
+            DP_INNER: begin
+                // Inner loop: j from 0 to i_index-1
+                if (j_index < i_index) begin
+                    // Check if arr[j] <= arr[i] and update dp[i] if needed
+                    if (arr[j_index] <= arr[i_index]) begin
+                        if (dp[j_index] + 1 > dp[i_index]) begin
+                            dp[i_index] <= dp[j_index] + 1;
+                        end
+                    end
+                    j_index <= j_index + 1;
+                end else begin
+                    // Inner loop complete, move to next i
+                    state <= DP_OUTER;
+                    i_index <= i_index + 1;
+                end
+            end
+
+            FIND_MAX: begin
+                // Find maximum value in dp array
+                if (i_index < L) begin
+                    if (dp[i_index] > max_val)
+                        max_val <= dp[i_index];
+                    i_index <= i_index + 1;
+                end else begin
+                    state <= COMPLETE;
+                end
+            end
+
+            COMPLETE: begin
+                result <= max_val;
+                done <= 1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

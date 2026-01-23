@@ -1,0 +1,102 @@
+module troublemakers (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] k,
+    input wire [7:0] n,
+    output reg [7:0] result,
+    output reg done
+);
+
+// State definitions with explicit widths
+localparam [2:0] IDLE      = 3'd0;
+localparam [2:0] COMPUTE   = 3'd1;
+localparam [2:0] CHECK     = 3'd2;
+localparam [2:0] INCREMENT = 3'd3;
+localparam [2:0] DONE      = 3'd4;
+
+// Registers
+reg [7:0] i;
+reg [7:0] count;
+reg [15:0] F_prev_prev;
+reg [15:0] F_prev;
+reg [15:0] F_curr;
+reg [2:0] state;
+reg is_wonderful;
+reg [7:0] temp_i_plus_1;
+
+// Combination: check if F_curr is product of two primes (lookup table)
+always @(*) begin
+    case (F_curr)
+        16'd121, 16'd143, 16'd1147, 16'd1457: is_wonderful = 1'b1;
+        default: is_wonderful = 1'b0;
+    endcase
+end
+
+// Main FSM
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        i <= 8'd0;
+        count <= 8'd0;
+        F_prev_prev <= 16'd0;
+        F_prev <= 16'd0;
+        F_curr <= 16'd0;
+        done <= 1'b0;
+        result <= 8'd0;
+        state <= IDLE;
+        temp_i_plus_1 <= 8'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    i <= 8'd1;
+                    count <= 8'd0;
+                    F_prev_prev <= 16'd0;
+                    F_prev <= 16'd0;
+                    state <= COMPUTE;
+                end
+            end
+
+            COMPUTE: begin
+                if (i == 8'd1) begin
+                    F_curr <= 16'd42;
+                end else if (i == 8'd2) begin
+                    F_curr <= (11 * k) + 77;
+                end else begin
+                    F_curr <= (F_prev << 1) - F_prev_prev + (10 * k);
+                end
+                state <= CHECK;
+            end
+
+            CHECK: begin
+                if (is_wonderful) begin
+                    count <= count + 1;
+                end
+                state <= INCREMENT;
+            end
+
+            INCREMENT: begin
+                F_prev_prev <= F_prev;
+                F_prev <= F_curr;
+                temp_i_plus_1 <= i + 8'd1;
+                i <= i + 8'd1;
+                if (i + 8'd1 > n) begin
+                    state <= DONE;
+                end else begin
+                    state <= COMPUTE;
+                end
+            end
+
+            DONE: begin
+                result <= count;
+                done <= 1'b1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'deduce_common' that implements the logic for determining the shared number based on communicated pairs.
+
+The module operates on sets of pairs of numbers (values 1-9). The core logic is:
+1. Find all possible candidate numbers that could be the shared number given the sets of pairs.
+2. If exactly one candidate exists, output that number.
+3. If multiple candidates exist, check if for every pair in set A, the intersection with valid pairs in set B yields only one possible number (and vice versa for set B). If this holds, output 0.
+4. Otherwise, output -1.
+
+Since n and m are up to 12, but standard Verilog ports can't handle variable arrays easily without unpacked arrays, we will scale this to a fixed number of pairs to fit a hardware design pattern. Let's assume max 8 pairs per participant.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+
+// Set A (participant 1) - 8 pairs of 2 numbers each
+// Each pair is {num1, num2}. 0 indicates empty slot.
+input [3:0] n_a // Number of valid pairs in set A (1-8)
+input [7:0][1:0][3:0] set_a // 8 pairs, 2 numbers each, 4 bits for 1-9
+
+// Set B (participant 2) - 8 pairs of 2 numbers each
+input [3:0] m_b // Number of valid pairs in set B (1-8)
+input [7:0][1:0][3:0] set_b // 8 pairs, 2 numbers each, 4 bits for 1-9
+
+Outputs:
+output reg [3:0] result // The deduced number (1-9), 0, or -1 (15)
+output reg done // high when computation complete
+
+Specify latency: Result valid 1 clock cycle after start asserted (assuming combinational logic inside or very short FSM). Use state machine with states: IDLE, PROCESSING, DONE.
+
+The module should implement the following logic:
+- Iterate through all pairs (i from 0 to n_a-1, j from 0 to m_b-1).
+- Check if pair_a[i] and pair_b[j] share exactly one number.
+- Collect all such shared numbers into a set of candidates.
+- If candidates count == 1, output that number.
+- Else, check 'determinism':
+  - For each pair_a[i], collect possible shared numbers (intersection with all valid pair_b[j]). If any pair_a[i] has >1 possibility, determinism fails.
+  - For each pair_b[j], collect possible shared numbers (intersection with all valid pair_a[i]). If any pair_b[j] has >1 possibility, determinism fails.
+- If determinism holds, output 0. Else output -1.
+
+Note: Values 1-9 are encoded as 4-bit integers. -1 will be encoded as 15. 0 is 0.

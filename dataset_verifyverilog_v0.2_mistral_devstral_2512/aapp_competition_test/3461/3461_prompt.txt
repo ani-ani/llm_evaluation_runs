@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'hearing_optimizer' that implements a dynamic programming strategy to maximize the expected number of hearings attended. The problem is scaled down: maximum 8 hearings, start times up to 255, and duration ranges [1, 255].
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation pulse
+input [2:0] n // Number of hearings (1-8)
+input [7:0] s [0:7] // Start times
+input [7:0] a [0:7] // Minimum durations
+input [7:0] b [7:0] // Maximum durations
+
+Outputs:
+output reg [31:0] result // Q16.16 fixed-point expected value
+output reg done // High when computation complete
+
+Behavior:
+The module computes the expected value using dynamic programming backwards from the last hearing. It must handle the weighted probability of finishing in the interval [a, b] and transitioning to the next compatible hearing. Since true floating point is complex, use fixed-point arithmetic where 2^16 = 65536 represents 1.0. 
+
+Algorithm Steps:
+1. Sort hearings by start time (inputs are guaranteed sorted, but ensure indexing).
+2. For each hearing i (from n-1 down to 0):
+   a. Calculate expected value if we attend hearing i (E_attend):
+      - Determine possible end times t in [s[i]+a[i], s[i]+b[i]].
+      - For each t, find the first hearing j > i that starts at or after t.
+      - The probability of hearing i ending at t is 1/(b[i]-a[i]+1).
+      - Sum (1/(b[i]-a[i]+1)) * (1 + DP[j]).
+      - Note: Since we are in hardware, we can sum the numerators and divide by (b[i]-a[i]+1) at the end.
+   b. Calculate expected value if we skip hearing i (E_skip): This is simply DP[i+1].
+   c. DP[i] = max(E_attend, E_skip).
+3. Return DP[0] as result.
+
+Fixed-Point Rules:
+- Use Q16.16 format.
+- Multiplication: (A * B) >> 16.
+- Division: Convert numerator to 64-bit, shift left 16, then divide.
+- Max expected value is small (< 8), so 16 integer bits are sufficient.
+
+Latency: Result valid 10,000 clock cycles after start asserted (allows for iterative calculation). Use a state machine with states: IDLE, LOAD, CALCULATE, DIVIDE, FINALIZE, DONE.
+
+Constraints:
+- Max hearings: 8
+- Max start time: 255
+- Max duration: 255
+- Result precision: 0.001 (Q16.16 provides ~1.5e-5 resolution).

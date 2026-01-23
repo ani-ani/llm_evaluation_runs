@@ -1,0 +1,232 @@
+module frog_tower_finder (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    input wire [7:0] frog_x_0, frog_d_0,
+    input wire [7:0] frog_x_1, frog_d_1,
+    input wire [7:0] frog_x_2, frog_d_2,
+    input wire [7:0] frog_x_3, frog_d_3,
+    input wire [1:0] num_frogs,
+    
+    output reg [7:0] best_position,
+    output reg [7:0] tower_size,
+    output reg done
+);
+
+    // State machine states
+    localparam [2:0] IDLE = 3'd0;
+    localparam [2:0] GENERATE_POS = 3'd1;
+    localparam [2:0] SORT = 3'd2;
+    localparam [2:0] COUNT = 3'd3;
+    localparam [2:0] FINISHED = 3'd4;
+
+    reg [2:0] state, next_state;
+
+    // Buffers for positions (max 256 positions)
+    reg [7:0] positions [0:255];
+    reg [7:0] sorted_positions [0:255];
+    reg [8:0] pos_count;
+    reg [8:0] sort_idx, sort_limit;
+    reg [7:0] temp;
+
+    // Counting variables
+    reg [7:0] current_pos;
+    reg [7:0] current_count;
+    reg [7:0] max_count;
+    reg [7:0] best_pos;
+
+    // Frog generation variables
+    reg [2:0] frog_idx;
+    reg [7:0] current_x, current_d;
+    reg [7:0] step_count;
+    reg [7:0] next_pos_reg;
+
+    // Helper function: check if distance is valid prime (scaled)
+    function valid_prime(input [7:0] d);
+        begin
+            valid_prime = (d == 8'd2) || (d == 8'd3) || (d == 8'd5) || (d == 8'd7);
+        end
+    endfunction
+
+    // State transition
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+        end else begin
+            state <= next_state;
+        end
+    end
+
+    // Next state logic
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE: begin
+                if (start && num_frogs >= 1 && num_frogs <= 2'd3) begin
+                    next_state = GENERATE_POS;
+                end
+            end
+
+            GENERATE_POS: begin
+                if (frog_idx >= num_frogs && step_count == 0) begin
+                    next_state = SORT;
+                end else begin
+                    next_state = GENERATE_POS;
+                end
+            end
+
+            SORT: begin
+                if (sort_idx >= sort_limit) begin
+                    next_state = COUNT;
+                end else begin
+                    next_state = SORT;
+                end
+            end
+
+            COUNT: begin
+                if (pos_count == 0 || sort_idx >= pos_count) begin
+                    next_state = FINISHED;
+                end else begin
+                    next_state = COUNT;
+                end
+            end
+
+            FINISHED: next_state = IDLE;
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // Datapath logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            pos_count <= 9'd0;
+            frog_idx <= 3'd0;
+            step_count <= 8'd0;
+            sort_idx <= 9'd0;
+            sort_limit <= 9'd0;
+            max_count <= 8'd0;
+            best_pos <= 8'd0;
+            done <= 1'b0;
+            best_position <= 8'd0;
+            tower_size <= 8'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    pos_count <= 9'd0;
+                    frog_idx <= 3'd0;
+                    step_count <= 8'd0;
+                    sort_idx <= 9'd0;
+                    max_count <= 8'd0;
+                    best_pos <= 8'd0;
+
+                    if (start && num_frogs >= 1 && num_frogs <= 2'd3) begin
+                        case (frog_idx)
+                            0: begin current_x <= frog_x_0; current_d <= frog_d_0; end
+                            1: begin current_x <= frog_x_1; current_d <= frog_d_1; end
+                            2: begin current_x <= frog_x_2; current_d <= frog_d_2; end
+                            3: begin current_x <= frog_x_3; current_d <= frog_d_3; end
+                        endcase
+                        step_count <= 8'd0;
+                    end
+                end
+
+                GENERATE_POS: begin
+                    if (frog_idx < num_frogs) begin
+                        if (step_count == 8'd0) begin
+                            if (current_x <= 8'd255 && valid_prime(current_d)) begin
+                                positions[pos_count[7:0]] <= current_x;
+                                pos_count <= pos_count + 9'd1;
+                            end
+                            step_count <= step_count + 8'd1;
+                            next_pos_reg <= current_x + current_d;
+                        end else begin
+                            if (next_pos_reg <= 8'd255 && valid_prime(current_d)) begin
+                                positions[pos_count[7:0]] <= next_pos_reg;
+                                pos_count <= pos_count + 9'd1;
+                                step_count <= step_count + 8'd1;
+                                next_pos_reg <= next_pos_reg + current_d;
+                            end else begin
+                                frog_idx <= frog_idx + 3'd1;
+                                step_count <= 8'd0;
+                                case (frog_idx + 3'd1)
+                                    0: begin current_x <= frog_x_0; current_d <= frog_d_0; end
+                                    1: begin current_x <= frog_x_1; current_d <= frog_d_1; end
+                                    2: begin current_x <= frog_x_2; current_d <= frog_d_2; end
+                                    3: begin current_x <= frog_x_3; current_d <= frog_d_3; end
+                                endcase
+                            end
+                        end
+                    end
+                end
+
+                SORT: begin
+                    if (sort_idx < sort_limit) begin
+                        if (positions[sort_idx[7:0]] > positions[(sort_idx + 9'd1)[7:0]]) begin
+                            temp <= positions[sort_idx[7:0]];
+                            positions[sort_idx[7:0]] <= positions[(sort_idx + 9'd1)[7:0]];
+                            positions[(sort_idx + 9'd1)[7:0]] <= temp;
+                        end
+                        sort_idx <= sort_idx + 9'd1;
+                    end else begin
+                        sort_limit <= sort_limit - 9'd1;
+                        sort_idx <= 9'd0;
+                        if (sort_limit <= 9'd1) begin
+                            for (integer i = 0; i < 256; i = i + 1) begin
+                                sorted_positions[i] <= positions[i];
+                            end
+                        end
+                    end
+                end
+
+                COUNT: begin
+                    if (pos_count > 9'd0 && sort_idx < pos_count) begin
+                        if (sort_idx == 9'd0) begin
+                            current_pos <= sorted_positions[8'd0];
+                            current_count <= 8'd1;
+                            max_count <= 8'd1;
+                            best_pos <= sorted_positions[8'd0];
+                            sort_idx <= 9'd1;
+                        end else begin
+                            if (sorted_positions[sort_idx[7:0]] == current_pos) begin
+                                current_count <= current_count + 8'd1;
+                            end else begin
+                                if (current_count > max_count) begin
+                                    max_count <= current_count;
+                                    best_pos <= current_pos;
+                                end else if (current_count == max_count && current_pos < best_pos) begin
+                                    best_pos <= current_pos;
+                                end
+                                current_pos <= sorted_positions[sort_idx[7:0]];
+                                current_count <= 8'd1;
+                            end
+                            sort_idx <= sort_idx + 9'd1;
+                        end
+                    end else begin
+                        if (current_count > max_count) begin
+                            max_count <= current_count;
+                            best_pos <= current_pos;
+                        end else if (current_count == max_count && current_pos < best_pos) begin
+                            best_pos <= current_pos;
+                        end
+                    end
+                end
+
+                FINISHED: begin
+                    best_position <= best_pos;
+                    tower_size <= max_count;
+                    done <= 1'b1;
+                end
+
+                default: begin
+                    pos_count <= 9'd0;
+                    frog_idx <= 3'd0;
+                    step_count <= 8'd0;
+                    sort_idx <= 9'd0;
+                end
+            endcase
+        end
+    end
+
+endmodule

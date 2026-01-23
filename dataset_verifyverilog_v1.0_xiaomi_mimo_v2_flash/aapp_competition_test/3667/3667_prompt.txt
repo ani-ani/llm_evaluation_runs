@@ -1,0 +1,81 @@
+Module Specification:
+
+Module name: water_robots
+
+Parameters:
+- MAX_WELLS = 4
+- MAX_PIPES = 8
+- DATA_WIDTH = 16  (signed, two's complement)
+- INDEX_WIDTH = 3  (for well and pipe indices 0-7)
+
+Ports:
+  input  wire                clk;
+  input  wire                rst_n;
+  input  wire                start;
+  input  wire [2:0]          well_count;  // number of wells (1-4)
+  input  wire [2:0]          pipe_count;  // number of pipes (1-8)
+  // Well coordinates (4 wells)
+  input  wire [15:0]         well_x_0, well_y_0;
+  input  wire [15:0]         well_x_1, well_y_1;
+  input  wire [15:0]         well_x_2, well_y_2;
+  input  wire [15:0]         well_x_3, well_y_3;
+  // Pipes (8 pipes)
+  input  wire [2:0]          pipe_start_0, pipe_start_1, pipe_start_2, pipe_start_3;
+  input  wire [2:0]          pipe_start_4, pipe_start_5, pipe_start_6, pipe_start_7;
+  input  wire [15:0]         pipe_end_x_0, pipe_end_y_0;
+  input  wire [15:0]         pipe_end_x_1, pipe_end_y_1;
+  input  wire [15:0]         pipe_end_x_2, pipe_end_y_2;
+  input  wire [15:0]         pipe_end_x_3, pipe_end_y_3;
+  input  wire [15:0]         pipe_end_x_4, pipe_end_y_4;
+  input  wire [15:0]         pipe_end_x_5, pipe_end_y_5;
+  input  wire [15:0]         pipe_end_x_6, pipe_end_y_6;
+  input  wire [15:0]         pipe_end_x_7, pipe_end_y_7;
+  output wire                result;  // 1 if possible, 0 if impossible
+  output wire                done;    // asserted when computation finished
+
+Functionality:
+
+1. Reset Behavior:
+   - On rst_n=0: internal state cleared, done=0, result=0.
+   - Minimum 2 clock cycles of reset required.
+
+2. Operation:
+   - The module waits for a start pulse (asserted for one clock cycle).
+   - Upon start, it captures all input values (well_count, pipe_count, well coordinates, pipe data).
+   - It then computes the intersection graph:
+     - For each pair of pipes (i, j) with i < j, determine if they intersect at a point that is not a well.
+     - Intersection detection:
+       * Let A = (well_x_{pipe_start_i}, well_y_{pipe_start_i}), B = (pipe_end_x_i, pipe_end_y_i)
+       * Let C = (well_x_{pipe_start_j}, well_y_{pipe_start_j}), D = (pipe_end_x_j, pipe_end_y_j)
+       * First check endpoint equality:
+         - If A == C, A == D, B == C, or B == D, then the shared point is either a well (if it is a well coordinate) or an intersection.
+         - To check if a point P is a well, compare P to all well coordinates (within well_count). If P matches any well, it is excluded.
+         - If the shared point is not a well, then it is an intersection.
+       * If no endpoint equality, check for crossing using cross products:
+         - Let orient1 = (B.x - A.x)*(C.y - A.y) - (B.y - A.y)*(C.x - A.x)
+         - Let orient2 = (B.x - A.x)*(D.y - A.y) - (B.y - A.y)*(D.x - A.x)
+         - Let orient3 = (D.x - C.x)*(A.y - C.y) - (D.y - C.y)*(A.x - C.x)
+         - Let orient4 = (D.x - C.x)*(B.y - C.y) - (D.y - C.y)*(B.x - C.x)
+         - If orient1 and orient2 have opposite signs (product < 0) and orient3 and orient4 have opposite signs (product < 0), then the segments cross at an interior point, which is an intersection (since interior points are never wells).
+     - If an intersection exists, set adj[i][j] = 1 and adj[j][i] = 1.
+   - After building the adjacency matrix, perform a bipartite check:
+     - Initialize all node colors to unassigned.
+     - For each node i from 0 to pipe_count-1, if color unassigned, assign color 0 and start BFS/DFS.
+     - For each neighbor j, if color unassigned, assign opposite color; if assigned and same color, conflict -> bipartite = 0.
+     - If no conflict, bipartite = 1.
+   - Set result = bipartite, assert done for one clock cycle.
+
+3. Timing:
+   - The module may take multiple clock cycles to complete (e.g., up to 100 cycles). The exact number is implementation-dependent.
+   - The done signal will be asserted for one cycle when computation is finished. The result should be sampled at that cycle.
+
+4. Input Assumptions:
+   - well_count and pipe_count are within 1-4 and 1-8 respectively.
+   - well indices in pipe_start are between 0 and well_count-1.
+   - pipe_start values are valid well indices.
+   - Pipes have positive length (start ≠ end).
+   - No three pipes intersect at the same non-well point.
+
+5. Output:
+   - result = 1: possible (intersection graph is bipartite).
+   - result = 0: impossible (not bipartite).

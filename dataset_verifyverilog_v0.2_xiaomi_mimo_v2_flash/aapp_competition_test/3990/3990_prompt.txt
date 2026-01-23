@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'shortest_path_solver' that implements a scaled-down version of the Absurdistan transportation problem.
+
+Problem Context:
+- There are n towns (scaled to 2-8) and m bidirectional railways.
+- Roads exist between towns if and only if railways do not (complement graph).
+- Train uses railways, Bus uses roads.
+- They must not meet at any intermediate town (only allowed at town n).
+- If direct railway exists (1-n), train must use railways and bus must use roads.
+- If no direct railway (1-n), train uses roads and bus uses railways.
+- Goal: Find minimum time for the slower vehicle to reach town n.
+
+Module Interface:
+module shortest_path_solver (
+    input clk,              // Clock signal
+    input rst_n,            // Active-low reset
+    input start,            // Start computation
+    input [2:0] n,          // Number of towns (2-8, scaled from 2-400)
+    input [2:0] num_edges,  // Number of railways (0-28 for n=8)
+    input [23:0] edge_data, // Packed edge data: each edge is 3-bit u and 3-bit v (max 4 edges fit in 24 bits)
+    output reg [3:0] result, // Minimum time (max 15 for n=8)
+    output reg done         // High when computation complete
+);
+
+Implementation Details:
+1. Use a 8x8 adjacency matrix (stored in 64-bit shift register or computed on-the-fly from edge_data)
+2. Determine graph type: Check if direct railway exists between town 1 (index 0) and town n (index n-1)
+3. State Machine States: IDLE, BUILD_GRAPH, BFS_INIT, BFS_PROCESSING, DONE
+4. BFS Implementation:
+   - Use a 8-bit visited array
+   - Use a 8-bit queue (FIFO) with max depth 8
+   - Track current distance
+5. Graph Selection:
+   - If direct edge exists: Use original railway graph for BFS
+   - If no direct edge: Use complement graph for BFS
+6. Edge data format: edge_data[23:0] contains up to 4 edges. Each edge: bits[2:0]=u, bits[5:3]=v, etc.
+7. Latency: Maximum 256 clock cycles (worst case: 8 nodes * 32 cycles per state)
+
+Operation:
+- On start, reset state machine
+- Parse edge_data to build adjacency matrix
+- Check direct connection between town 1 and town n
+- Perform BFS on appropriate graph
+- Output distance to town n
+- If unreachable, output 15 (indicating -1)
+- Assert done signal
+
+Key Constraints:
+- Use 3-bit node indices (0-7)
+- Maximum 8 nodes
+- Maximum 4 edges in input (fits in 24 bits)
+- Output 4-bit result (0-15)
+- State machine must handle 3-bit node addressing (subtract 1 from input values)

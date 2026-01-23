@@ -1,0 +1,1 @@
+module check_values_same(input reg [7:0] target_value, input reg [3:0][7:0] array_values, output reg result); assign result = (array_values[0] == target_value) && (array_values[1] == target_value) && (array_values[2] == target_value) && (array_values[3] == target_value); endmodule

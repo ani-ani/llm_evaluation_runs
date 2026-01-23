@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'fibonacci' that computes the n-th Fibonacci number using an iterative state machine approach.
+
+Requirements:
+- Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits)
+- Input n can range from 0 to 20 (maximum to fit in 16-bit result)
+- Implement iterative calculation: start with F(0)=0, F(1)=1, then compute F(n) in n-1 cycles
+- Use state machine with states: IDLE, INIT, CALCULATE, DONE
+- Maximum 256 clock cycles to prevent timeout
+- Output valid Fibonacci number in Q16.16 format
+
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start computation (pulse high for 1 cycle)
+  input [4:0] n          // Input n (0-20 range, 5 bits)
+
+Outputs:
+  output reg [31:0] result  // Fibonacci result in Q16.16 format
+  output reg done            // High when computation complete (1 cycle)
+
+Interface Details:
+- result is in Q16.16 format: value = actual_number * 65536
+- Example: fib(10)=55 → result = 55 * 65536 = 3604480 (0x00370000)
+- done signal goes high for 1 clock cycle when result is ready
+- After done goes high, result is valid until next start
+
+Behavior:
+1. In IDLE state: wait for start signal
+2. When start received: transition to INIT
+3. INIT state: initialize variables (a=0, b=1, counter=0, target=n)
+4. CALCULATE state: iterate until counter >= target-1
+   - Compute next_fib = a + b
+   - Update a = b, b = next_fib
+   - Increment counter
+5. DONE state: assign result = b << 16 (convert to Q16.16), set done=1, then return to IDLE
+
+Edge Cases:
+- n=0 → result=0
+- n=1 → result=1 (i.e., 0x00010000)
+
+Reset Sequence:
+On rst_n=0: all registers cleared, state machine goes to IDLE, done=0, result=0
+
+Make sure to specify internal register widths to handle values up to fib(20)=6765.

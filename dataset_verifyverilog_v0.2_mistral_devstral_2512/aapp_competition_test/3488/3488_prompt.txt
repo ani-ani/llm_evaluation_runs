@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'min_vertices_finder' that finds the minimum number of vertices from a convex polygon needed to contain K given points.
+
+Given:
+- Original convex polygon with N vertices (N ≤ 8)
+- K points strictly inside the polygon (K ≤ 8)
+- Need to find smallest subset of vertices that form a convex polygon containing all K points
+
+Algorithm adaptation:
+Since vertices must be in cyclic order, the optimal polygon is a convex polygon formed by some subset of original vertices in cyclic order. We can use dynamic programming: DP[i][j] = minimum vertices to form a valid polygon from vertex i to j (cyclic order) that contains all points. For small N, we can iterate all possible subsets and check validity.
+
+Simplified approach for hardware:
+- Use exhaustive search over all possible subsets of vertices (2^N combinations for N ≤ 8)
+- For each subset: check if vertices are in convex position (which they will be since original is convex) and if all K points are strictly inside
+- Track minimum subset size
+
+Module Interface:
+Inputs:
+- clk, rst_n, start
+- N[3:0] (number of vertices, max 8)
+- K[3:0] (number of points, max 8)
+- vertices[7:0][63:0] (8 vertices, each 64-bit: 32-bit x, 32-bit y in Q16.16 format)
+- points[7:0][63:0] (8 points, each 64-bit: 32-bit x, 32-bit y in Q16.16 format)
+
+Outputs:
+- result[3:0] (minimum number of vertices)
+- done (computation complete flag)
+
+Latency: ~2^N * K * N cycles (bounded for N ≤ 8)
+
+State Machine: IDLE → SEARCHING → DONE
+
+For point-in-polygon check (convex polygon): Use cross products. Point P is inside polygon V if for all edges (Vi, Vi+1), cross(Vi+1-Vi, P-Vi) has consistent sign (all positive or all negative for CCW order).
+
+For subset validation: Ensure selected vertices maintain convexity (they will if in cyclic order) and all points are inside.

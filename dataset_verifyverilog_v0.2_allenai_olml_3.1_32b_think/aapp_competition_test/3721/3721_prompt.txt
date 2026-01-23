@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'chemical_table' that computes the minimal number of elements to purchase to obtain all elements in a periodic table based on the nuclear fusion rule.
+
+The problem is modeled as a bipartite graph where rows (0 to n-1) and columns (0 to m-1) are nodes. An existing element at (r, c) represents an edge between row node r and column node c. The fusion rule implies that if rows r1 and r2 share a column c (i.e., elements (r1, c) and (r2, c) exist), and row r1 also has element (r1, c2), then (r2, c2) can be produced. This means the problem reduces to finding the number of connected components in the bipartite graph. The answer is (number of connected components - 1).
+
+Constraints scaled for hardware: n and m are between 1 and 8. The number of existing elements q is up to 20. Use 4-bit unsigned integers for coordinates (since 8 < 16). The module should perform a Disjoint Set Union (DSU) operation sequentially.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation pulse
+input [3:0] n // Number of rows (1-8)
+input [3:0] m // Number of columns (1-8)
+input [3:0] q // Number of existing elements (0-20)
+input valid_in // High when r and c are valid inputs
+input [3:0] r // Row index of existing element (0-based)
+input [3:0] c // Column index of existing element (0-based)
+
+Outputs:
+output reg [7:0] result // Minimal elements to purchase
+output reg done // High when computation is complete
+output reg rden // Read enable for input buffer (optional, but useful for flow control)
+
+Behavior:
+1. Initialize DSU structures for n rows and m columns. Total nodes N = n + m. Rows are indices 0 to n-1. Columns are indices n to n+m-1.
+2. Wait for start signal.
+3. Read q pairs of (r, c) inputs sequentially. For each pair, map column index c to graph index (c + n).
+4. Perform Union operation on the two nodes (r, c+n).
+5. Count the number of connected components (roots in DSU).
+6. Result = (number_of_components - 1).
+7. Assert done.
+
+Internal Logic:
+- Use a state machine: IDLE, READ_INPUTS, PROCESS_INPUTS, COUNT_COMPONENTS, FINALIZE.
+- DSU Arrays: parent[15:0] (size 16 for max n+m=16), rank[15:0].
+- Implement iterative Find and Union operations.
+- Latency: Expect several hundred clock cycles to handle the sequential DSU operations (Find/Union are log(N) depth, repeated Q times plus component counting).

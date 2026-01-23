@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'maze_solver' that implements a 0-1 BFS algorithm to find reachable cells in a grid with constraints on left/right moves.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [2:0] grid_size_x // Number of rows (1-8)
+input [2:0] grid_size_y // Number of columns (1-8)
+input [2:0] start_x // Starting row (0-indexed)
+input [2:0] start_y // Starting column (0-indexed)
+input [5:0] max_left // Maximum allowed left moves (0-63)
+input [5:0] max_right // Maximum allowed right moves (0-63)
+input [7:0] grid_data [63:0] // Flattened 8x8 grid. Index = row * 8 + col. 0=obstacle, 1=free.
+
+Outputs:
+output reg [6:0] result // Number of reachable cells
+output reg done // High when computation complete
+
+Behavior:
+The module should perform a Breadth-First Search to explore the grid. Since movement up/down costs 0 and left/right costs 1 (in terms of respective budgets), this is a 0-1 BFS problem.
+
+Constraints:
+- Grid size is fixed at maximum 8x8 (small enough for unrolled logic or a small FSM).
+- Left/Right budgets are tracked as 6-bit counters.
+- A queue is needed. Since max cells is 64, use a circular buffer of size 64 with 6-bit pointers.
+- A visited array must store the best (max left, max right) state found for each cell to avoid cycles and redundant paths.
+- Because true dynamic state updates are complex in pure combinational logic, implement a state machine that processes one cell per clock cycle (or sequence of cycles).
+
+State Machine:
+1. IDLE: Wait for start signal. Initialize grid registers.
+2. PUSH_START: Push initial position to queue with full budgets.
+3. PROCESS_LOOP:
+   - Pop head from queue.
+   - Check boundaries and obstacles.
+   - Update reachable count.
+   - Check neighbors (Up, Down, Left, Right).
+   - For Up/Down: if state improves (more budget remaining), push to queue front (cost 0).
+   - For Left/Right: if budget available and state improves, push to queue back (cost 1).
+   - Continue until queue is empty.
+4. DONE: Set done signal high.
+
+Timing: Due to the sequential nature of processing the queue, the module will take several cycles to complete (approx. 64 * constant cycles).
+
+Output Format: Output result in Q16.16 fixed-point format (or simply as integer if the specification implies integer output, here it is a count). The prompt asks for integer count.
+
+Required Interface: The inputs and outputs must allow the testbench to configure the grid and retrieve the count of reachable cells.

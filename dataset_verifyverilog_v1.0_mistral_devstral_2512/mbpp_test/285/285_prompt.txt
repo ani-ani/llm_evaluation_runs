@@ -1,0 +1,67 @@
+## String Pattern Matcher Module
+
+### Description
+Implements a finite state machine to detect if a fixed-width string contains the pattern 'a' followed by exactly 2 or 3 'b' characters (regex: 'ab{2,3}'). The module processes a 16-element byte array.
+
+### Module Name
+`pattern_matcher`
+
+### Interface Specification
+
+**Inputs**:
+- `clk`: System clock, rising edge triggered
+- `rst_n`: Active-low synchronous reset
+- `start`: Start pulse, 1 cycle high to begin operation
+- `str[15:0][7:0]`: 16-element input array of 8-bit ASCII characters
+  - Access pattern: `str[0]`, `str[1]`, ..., `str[15]`
+- `valid_len[3:0]`: Number of valid characters in array (0-15, zero means empty string)
+
+**Outputs**:
+- `result`: 1-bit output, HIGH if pattern found, LOW otherwise
+- `done`: 1-bit output, asserted high for 1 cycle when operation completes
+
+### Functional Requirements
+1. On `start` pulse, begin pattern detection on the loaded string
+2. Scan through the string array sequentially
+3. Detect patterns:
+   - "abb" (a followed by exactly 2 b's)
+   - "abbb" (a followed by exactly 3 b's)
+4. Pattern must be contiguous (no intervening characters)
+5. Set `result` based on detection, assert `done` for 1 cycle
+
+### State Machine States
+- `IDLE`: Waiting for start pulse
+- `SCAN`: Scanning characters for 'a' followed by b's
+- `COUNT_B`: Counting consecutive 'b' characters (2 or 3 required)
+- `DONE`: Result valid, assert done signal
+
+### Timing
+- Start pulse must be 1 clock cycle
+- After start, done will be asserted within 18 cycles (max 16 chars + 2 cycles)
+- Result is valid when done=1
+
+### Reset Behavior
+- On rst_n=0: result=0, done=0, all internal counters and state cleared
+- Minimum 2 clock cycles of reset required
+
+### Constraints
+- Maximum string length: 16 characters
+- Character width: 8 bits (ASCII)
+- All signals are single-bit or byte-wide
+- Maximum 20 cycles per operation
+- No dynamic memory allocation
+
+### Test Cases
+- Input: "ac\0..." with valid_len=2 → result=0
+- Input: "dc\0..." with valid_len=2 → result=0
+- Input: "abbbba\0..." with valid_len=6 → result=1
+- Input: "abb\0..." with valid_len=3 → result=1
+- Input: "abbb\0..." with valid_len=4 → result=1
+- Input: "ab\0..." with valid_len=2 → result=0
+- Input: "abbbb\0..." with valid_len=5 → result=0
+
+### Implementation Notes
+- Use sequential logic to scan one character per cycle
+- Implement counters for consecutive 'b' characters
+- Track state transitions: IDLE → SCAN → COUNT_B → DONE
+- Ensure pattern detection resets if interrupted by non-'b' characters

@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'card_game_solver' that computes the maximal damage Jiro can get in a simplified card game.
+
+**Problem Adaptation**:
+- Jiro has up to 4 cards: 2 Attack cards and 2 Defense cards (parameterized: N_ATK=2, N_DEF=2)
+- Ciel has up to 8 Attack cards (parameterized: M=8)
+- Strength values are 8-bit integers (0-255)
+- The module implements a state machine to compute the maximum damage using greedy strategies:
+  1. Strategy 1 (Clear Board): Try to destroy all Jiro's cards, then attack directly
+  2. Strategy 2 (Attack Only): Only attack Jiro's ATK cards
+  Take the maximum of both strategies
+
+**Inputs**:
+- `clk`: Clock signal
+- `rst_n`: Active-low reset
+- `start`: Start computation (load inputs and begin)
+- `jatk_en [N_ATK-1:0]`: Bitmask indicating which ATK slots are valid
+- `jatk_str [N_ATK-1:0][7:0]`: Strength of Jiro's ATK cards
+- `jdef_en [N_DEF-1:0]`: Bitmask indicating which DEF slots are valid
+- `jdef_str [N_DEF-1:0][7:0]`: Strength of Jiro's DEF cards
+- `ciel_str [M-1:0][7:0]`: Strength of Ciel's cards
+
+**Outputs**:
+- `result [15:0]`: Maximal damage (16-bit to hold sum of differences)
+- `done`: High when computation is complete
+
+**Behavior**:
+The module should:
+1. Load inputs when start is asserted
+2. Sort Ciel's cards (insertion sort network or bubble sort)
+3. Compute Strategy 1:
+   - Match smallest DEF cards with smallest Ciel cards > DEF strength
+   - Match smallest ATK cards with smallest Ciel cards >= ATK strength
+   - If all Jiro cards destroyed, sum remaining Ciel cards as direct damage
+   - Subtract used cards from sum
+4. Compute Strategy 2:
+   - Match largest Ciel cards with smallest ATK cards (greedy)
+   - Sum (Ciel - ATK) for valid matches
+5. Store maximum of both strategies
+6. Output result and assert done
+
+**Latency**: Maximum 256 clock cycles (enough for sorting and linear passes)
+
+**State Machine States**: IDLE, LOAD, SORT, STRATEGY1_CHECK, STRATEGY1_MATCH_DEF, STRATEGY1_MATCH_ATK, STRATEGY1_DIRECT, STRATEGY2_MATCH, STORE_RESULT, DONE
+
+**Implementation Details**:
+- Use internal registers for sorting and matching
+- For sorting, implement a simple bubble sort over 8 elements (max 28 cycles)
+- For matching, iterate through arrays with index pointers
+- Use combinatorial blocks for comparisons within states

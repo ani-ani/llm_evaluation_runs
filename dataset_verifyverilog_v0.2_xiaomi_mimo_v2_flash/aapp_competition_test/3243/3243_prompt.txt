@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'network_merger' that checks if a network can be merged into a single connected component within a limited number of edits (add/remove edges) given fixed node capacities.
+
+The module operates on a fixed-size network of 8 nodes (N=8). Edges are represented as an 8x8 adjacency matrix. Since the maximum number of edges in an 8-node undirected graph is 28, we can represent the edges using a 64-bit signal where bit [i*8 + j] represents the edge between node i and node j (upper triangular).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing
+input [7:0] num_nodes // Actual number of nodes used (1-8)
+input [7:0] k // Maximum number of edits allowed (0-8)
+input [63:0] edge_mask // Bitmask representing existing edges: bit [u*8 + v] = 1 if edge exists
+input [63:0] capacity_mask // Bitmask representing node capacities. Bit [4*i +: 4] contains capacity of node i (0-15). We treat capacity >= 2 as sufficient.
+
+Outputs:
+output reg result // 1 if possible to merge, 0 otherwise
+output reg done // High when computation is complete
+
+Internal Logic:
+1. Parse capacities: Identify nodes with capacity >= 2 (bits 1:0 of capacity byte must be >= 2).
+2. Count Connected Components using Floyd-Warshall (unrolled for 8 nodes).
+   - Initialize reachability matrix R where R[i][j] = 1 if i==j or edge exists.
+   - Iterate k from 0 to 7: R[i][j] = R[i][j] | (R[i][k] & R[k][j]).
+   - Count components by finding reachable nodes from node 0, marking them, repeating.
+3. Determine Edges to Remove: For nodes with degree > 1 (derived from edge_mask), calculate how many edges can be removed to free up sockets. We assume we can remove edges if the node has degree >= 2. We sum available "free" sockets across all nodes.
+4. Check Feasibility:
+   - Calculate required additions: components - 1.
+   - If required additions > k -> NO.
+   - If we have enough sockets to form the tree (sum of capacities >= n) -> YES.
+   - If we need to remove edges to free sockets: Check if (available_removals + existing_free_sockets) >= required_additions.
+   - Simplification for benchmarking: If 'k' is provided and sufficient, and sum of capacities >= n, return YES.
+   - Strict check: If k < components - 1, NO. Else YES.
+
+Latency: Result valid 50 clock cycles after start asserted.
+State Machine: IDLE, PARSE, FLOYD_ITER, COUNT_COMPONENTS, CHECK_CONDITIONS, DONE.
+
+Note: Since this is a benchmark, we prioritize checking the core logic: sufficient edits (k >= components-1).

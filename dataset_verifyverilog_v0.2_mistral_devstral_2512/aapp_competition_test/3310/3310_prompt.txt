@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'restaurant_occupancy' that calculates expected occupancy after t hours.
+
+Problem Adaptation:
+- n (tables): 2-8 tables (scaled from 1-100)
+- t (hours): 2-8 hours (scaled from 1-100)
+- g (max group size): 2-8 (scaled from 1-200)
+- Capacities: 1-8 per table (scaled from 1-200)
+- Expected output: Q16.16 fixed-point format
+
+The restaurant operates for t hours. Each hour, a group arrives with size uniformly random between 1 and g. They occupy the smallest unoccupied table that fits them (capacity >= group size). Groups never leave. Need expected total people after t hours.
+
+Approach:
+For small parameters, we can use dynamic programming over time and table states. Since n ≤ 8, each table can be in 9 states (empty, or occupied by group sizes 1-8). But we need expected value.
+
+Simpler approach: For small t and n, we can simulate the probability distribution over states. Each state is a bitmask of which tables are occupied (8 bits max). For each hour, we process possible group arrivals and update expected occupancy.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] n_in // number of tables (2-8)
+input [2:0] t_in // number of hours (2-8)
+input [2:0] g_in // max group size (2-8)
+input [7:0] capacity_0, capacity_1, capacity_2, capacity_3, capacity_4, capacity_5, capacity_6, capacity_7 // table capacities
+
+Outputs:
+output reg [31:0] expected_occupancy // Q16.16 fixed-point result
+output reg done // high when computation complete
+
+Specification:
+- State machine with states: IDLE, INIT, COMPUTE_PROB, UPDATE_EXPECTATION, DONE
+- Use DP table: for each hour h (0 to t) and each table occupancy state, track probability and expected occupancy
+- Since t ≤ 8 and 2^8 = 256 states, this is feasible
+- Each clock cycle, process one state transition
+- For each state at hour h, for each possible group size s from 1 to g:
+  - Find smallest unoccupied table with capacity >= s
+  - If found: new state with that table occupied, probability *= 1/g
+  - If not found: state unchanged (group leaves)
+- Accumulate expected values
+- Output final expected occupancy (sum over all states at hour t of prob * sum_of_people)
+- Use Q16.16 format for all probabilities and expected values
+- Latency: Maximum ~1000 cycles (t * 2^n * g operations)
+
+Internal structures:
+- State registers for DP table (probability and occupancy)
+- Counter for current hour
+- Counter for current state
+- Counter for current group size
+- Wires for table lookup and comparison
+- Temporary registers for intermediate calculations

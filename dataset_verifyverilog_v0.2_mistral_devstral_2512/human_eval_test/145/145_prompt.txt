@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'order_by_points' that sorts a list of integers in ascending order according to the sum of their digits, with stable sorting for equal digit sums (preserving original index order).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [4:0] count // number of elements (max 8)
+input signed [15:0] nums [0:7] // array of 8 signed 16-bit integers
+
+Outputs:
+output reg [4:0] done_count // number of elements processed
+output reg signed [15:0] result [0:7] // sorted output array
+output reg done // high when computation complete
+
+Specification:
+- Support maximum 8 elements (count 0-8)
+- Each integer is signed 16-bit (-32768 to 32767)
+- Sort by sum of decimal digits (absolute values for negative numbers)
+- For equal digit sums, preserve original index order (stable sort)
+- Result array contains sorted values in positions 0 to count-1
+- Latency: approximately 100 clock cycles for 8 elements (allow 128 cycles max)
+- Use bubble-sort-like sequential algorithm with digit sum computation FSM
+
+Digit Sum Calculation:
+- For negative numbers, use absolute value then sum digits
+- Example: -12 -> absolute 12 -> digit sum 1+2=3
+- Example: -11 -> absolute 11 -> digit sum 1+1=2
+- Example: 123 -> 1+2+3=6
+- Example: 0 -> 0
+
+Algorithm Implementation:
+1. Use state machine: IDLE, CALCULATE, COMPARE, SWAP, DONE
+2. In CALCULATE state, compute digit sum for two elements being compared
+3. In COMPARE state, compare digit sums; if equal, compare original positions
+4. In SWAP state, swap if needed for bubble sort pass
+5. Multiple passes through array until sorted
+6. Track original indices implicitly through position in array during sorting
+
+State Machine Details:
+- IDLE: Wait for start signal, initialize internal state
+- CALCULATE: Extract two numbers, compute their digit sums (one digit at a time)
+- COMPARE: Compare digit sums, if equal then compare positions (lower index first)
+- SWAP: Swap values if first > second (by digit sum, then by index)
+- DONE: Set done signal high
+
+Key Constraints:
+- Digit sum of any 16-bit number fits in 6 bits (max 5 digits * 9 = 45)
+- Use shift-and-divide by 10 algorithm for digit extraction
+- Bubble sort needs at most 7 passes for 8 elements
+- Each pass needs 7 comparisons for 8 elements
+- Total operations: 7 passes * 7 comparisons = 49 comparisons max
+
+Implementation Hints:
+- Store temporary digit sums in registers
+- Use a small counter for digit extraction loop
+- Use two nested counters for bubble sort passes and element indices
+- Maintain array in-place, swapping as needed
+- Original index order is preserved in initial array, so bubble sort stability is inherent if swap only when strictly greater
+
+Timing:
+- Each comparison takes several cycles for digit sum calculation
+- Allow ~2-3 cycles per digit sum, ~10 cycles per comparison
+- Total latency should be within 128 cycles

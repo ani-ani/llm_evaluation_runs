@@ -1,0 +1,55 @@
+Design a sequential Verilog module named 'm_perfect_solver' that computes the minimum number of operations to make a pair of integers m-perfect using Q16.16 fixed-point arithmetic.
+
+Problem Definition:
+- Given integers x, y, and m represented in Q16.16 format.
+- Operation: replace one number with the sum of both (x+y).
+- Goal: find minimum operations such that max(x, y) >= m.
+- If impossible (both x, y <= 0 and m > 0), output -1.
+
+Fixed-Point Format (Q16.16):
+- 32-bit total: [15:0] fractional part, [31:16] integer part.
+- Range: -32768 to +32767.99998.
+- Resolution: ~1.5e-5.
+- Example: 5.0 = 0x00050000, 0.5 = 0x00008000.
+
+Inputs:
+input clk: Clock signal
+input rst_n: Active-low reset
+input start: Start computation pulse
+input [31:0] x_in: Input x in Q16.16 format
+input [31:0] y_in: Input y in Q16.16 format
+input [31:0] m_in: Target m in Q16.16 format
+
+Outputs:
+output reg [31:0] result: Result value (number of operations or -1)
+output reg done: High when computation is finished
+
+Latency: Variable (depends on result), typically 2-50 clock cycles.
+
+Implementation Details:
+- Use state machine with states: IDLE, CHECK_INIT, NEGATIVE_FIX, COMPUTE_LOOP, DONE.
+- IDLE: Wait for start signal.
+- CHECK_INIT: Check if m_perfect already (max(x,y) >= m). If yes, go to DONE (result=0). If no, check if impossible (x<=0, y<=0, m>0). If impossible, go to DONE (result=-1). Otherwise, proceed.
+- NEGATIVE_FIX: If one value is negative and other positive, calculate operations needed to make both positive using integer division (count = ceil(|negative| / positive)). Add to result counter and update value.
+- COMPUTE_LOOP: Perform the core algorithm. In each iteration:
+  1. Ensure x <= y (swap if needed).
+  2. Check if y >= m. If yes, go to DONE.
+  3. If y <= 0 (and m > 0), go to DONE with result -1 (impossible).
+  4. Update: x = y, y = x + y (temp variable needed).
+  5. Increment operation counter.
+  6. Repeat.
+- DONE: Latch result and set done high.
+
+Constraints:
+- Max iterations: 50 (sufficient for Q16.16 to reach max values).
+- Use 32-bit arithmetic for all calculations (intermediate sums can be 33 bits, but handle overflow carefully or limit range).
+- Division for negative fix: Use shift-add or pre-calculated logic for small values, or simple iterated subtraction if needed (though binary division is preferred for speed).
+- The module must handle the specific edge cases of the problem (e.g., negative inputs, zero).
+
+Test Cases to verify:
+1. x=1.0, y=2.0, m=5.0 -> Result: 2
+2. x=-1.0, y=4.0, m=15.0 -> Result: 4
+3. x=0, y=-1.0, m=5.0 -> Result: -1
+4. x=0, y=1.0, m=8.0 -> Result: 5
+5. x=-134, y=-345, m=-134 -> Result: 0 (max >= m)
+6. x=999999, y=-1000000, m=1000000 -> Result: 3 (scaled inputs)

@@ -1,0 +1,30 @@
+Module: graph_solver
+
+Description:
+Given an adjacency matrix of up to 8 vertices, determines if there exists a string of 'a','b','c' that generates the graph. Implements the algorithm: if graph is complete, output all 'a'; else find a non-edge (u,v), assign s[u]='a', s[v]='c', assign other vertices based on adjacency to u and v, then verify all edges match the assignment.
+
+Interface:
+  Inputs:
+    clk         : Clock, rising edge triggered
+    rst_n       : Active-low synchronous reset
+    start       : Start pulse (assert for 1 cycle to begin computation)
+    n           : Number of vertices (1 to 8), 3-bit unsigned
+    row0..row7  : 8-bit each, adjacency matrix rows. row_i[j] = 1 if edge between vertex i and j (0-indexed).
+  Outputs:
+    done        : Asserted high for 1 cycle when computation finishes
+    valid       : High if a valid string exists; low otherwise
+    result      : 16-bit packed string. Vertex i (0-index) uses bits [2*i+1:2*i]: 00=a, 01=b, 10=c.
+
+Behavior:
+  - On reset (rst_n=0), internal state clears, done=0, valid=0, result=0.
+  - When start=1, inputs are latched and computation starts.
+  - Computation finishes within ~100 cycles for n=8. When finished, done=1 for one cycle, and valid/result are valid.
+  - If graph is invalid, valid=0 and result is undefined.
+
+Implementation notes:
+  - Use a state machine with states: IDLE, CHECK_COMPLETE, FIND_NONEDGE, ASSIGN_LETTERS, VERIFY, DONE.
+  - Store adjacency matrix in 8x8 register array.
+  - Store assignment (8 vertices × 2 bits).
+  - Counters for loops (i,j,k).
+  - For n=1, graph is always valid.
+  - Maximum cycles bounded by O(n^2) ≈ 64 for n=8.

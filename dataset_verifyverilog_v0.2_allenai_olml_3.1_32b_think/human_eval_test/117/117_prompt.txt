@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'select_words' that processes a fixed-width string to find words containing exactly n consonants.
+
+**Problem Adaptation**: Process up to 16-character strings stored as byte array. Each word is max 8 characters. Output contains up to 4 matching words, each 8 chars. Consonants are defined as letters that are NOT 'a','e','i','o','u' (case-insensitive). Words are space-separated.
+
+**Interface**:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [7:0] char_in // Current character from string (one at a time)
+input [3:0] n // Target number of consonants (0-15)
+input [4:0] char_index // Index of current character (0-15)
+input valid // High when char_in is valid for char_index
+
+output reg done // High when computation complete
+output reg [2:0] word_count // Number of matching words found (0-4)
+output reg [7:0] words [0:3][0:7] // 4 words, each 8 characters (ASCII). Unused chars = 0x00.
+
+**Behavior**: 
+1. On start, reset internal state
+2. Process characters sequentially as they arrive with valid=1
+3. Track current word and consonant count
+4. When space or end-of-string detected, check if current word matches n consonants
+5. Store matching words in output array
+6. When done=1, all 16 characters processed
+
+**FSM States**: IDLE, RECEIVE, PARSE, CHECK, STORE, DONE
+
+**Constraints**:
+- String input is exactly 16 chars (pad with spaces if shorter)
+- Maximum 4 matching words can be stored
+- Each word max 8 characters
+- Consonant check: letter AND NOT in {a,e,i,o,u,A,E,I,O,U}
+- When valid=1, read char_in at char_index and advance state
+
+**Processing Flow**:
+- Iterate char_index 0-15
+- Build current word buffer (8 char max)
+- Count consonants in current word
+- On space (0x20) or index==16: finalize word
+- If consonant_count == n, store word
+
+**Initial Reset**: All outputs zero, state=IDLE
+
+**Latency**: 16 + 20 clock cycles after start (parsing + checking + storing)
+
+**Example**: For "Mary had a little lamb" with n=3:
+- "Mary" has 3 consonants (M,r,y) → store
+- "had" has 1 consonant → skip
+- "a" has 0 → skip
+- "little" has 4 consonants → skip
+- "lamb" has 3 consonants (l,m,b) → store
+- Output: words[0]="Mary", words[1]="lamb", word_count=2
+
+ASCII conversion: 'M'=0x4D, 'a'=0x61, etc. Space=0x20.

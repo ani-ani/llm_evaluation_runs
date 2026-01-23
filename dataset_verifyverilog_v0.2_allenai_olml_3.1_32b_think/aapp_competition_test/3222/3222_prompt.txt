@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'cycle_decomposition' that determines if a directed graph can be decomposed into disjoint cycles and outputs the cycle decomposition.
+
+The module handles graphs with up to N=16 nodes and M=64 edges. Each node must have exactly one outgoing edge in the solution (each node belongs to exactly one cycle).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [5:0] node_count // number of nodes N (1-16)
+input [5:0] edge_count // number of edges M
+input [4:0] edge_from [63:0] // source nodes for edges (max 64 edges)
+input [4:0] edge_to [63:0] // destination nodes for edges (max 64 edges)
+
+Outputs:
+output reg valid // high when solution found
+output reg [4:0] cycle_count // number of cycles found
+output reg [4:0] cycle_length [15:0] // length of each cycle (max 16 cycles)
+output reg [4:0] cycle_nodes [15:0][15:0] // node sequence for each cycle (16 cycles × 16 nodes)
+output reg [5:0] nodes_used // bit mask of nodes used
+
+The module should implement a cycle decomposition algorithm:
+1. Build adjacency information from edge list
+2. Check if each node has at least one outgoing edge
+3. Use a greedy approach: iterate through unused nodes, find cycles
+4. For each unused node, traverse following edges until returning to start or finding used nodes
+5. Mark all nodes in valid cycles as used
+6. Verify all nodes are used (i.e., decomposed completely)
+
+State Machine States:
+- IDLE: Wait for start signal
+- BUILD: Construct adjacency matrix (max 16×16)
+- CHECK: Verify each node has >=1 outgoing edge
+- FIND_CYCLES: Iterate through nodes, find cycles using DFS/iteration (max depth 16)
+- VALIDATE: Check if all nodes are in cycles
+- DONE: Output results
+
+Latency: Result valid ~256 clock cycles after start asserted (worst case for 16 nodes).
+
+Constraint: The module uses 16-bit width for node IDs (since N≤16).
+Adjacency matrix is stored as 16×16 bits (packed as 16 × 16-bit vectors).
+Cycle finding uses depth-limited traversal (max 16 steps per cycle).
+
+Note: The module should output cycles in the format where each cycle lists nodes in order of visit, starting from the first node of the cycle (e.g., 0→1→0 cycle outputs 0, 1).
+
+Implementation details:
+- Use a 16×16 adjacency matrix stored as 16 registers of 16 bits each
+- Track visited nodes with a 16-bit mask
+- For cycle detection, use a simple iterative traversal: start at a node, follow one outgoing edge (use priority encoding to pick first valid edge), return to start
+- Each cycle must have at least one edge (K≥2 for cycles, but loops K=1 also valid)
+- If a node has multiple outgoing edges, the module must pick exactly one for the decomposition. Use priority encoder to select first available edge.
+- Result valid only if all nodes are visited and form valid cycles.

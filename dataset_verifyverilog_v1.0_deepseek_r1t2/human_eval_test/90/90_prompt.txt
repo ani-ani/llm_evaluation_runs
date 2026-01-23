@@ -1,0 +1,63 @@
+Design a sequential Verilog module named 'next_smallest' that finds the second smallest distinct element in a fixed-size array.
+
+**Simplifications for Hardware:**
+- Array size: Fixed at 8 elements (maximum)
+- Input range: 32-bit signed integers
+- Missing value: Return sentinel 0x80000000 (minimum 32-bit value) to represent None
+- Algorithm: Iterative comparison using state machine (8 cycles for 8 elements)
+
+**Interface Specification:**
+Inputs:
+  input clk              // Clock signal
+  input rst_n            // Active-low reset
+  input start            // Start computation (pulse high for 1 cycle)
+  input [31:0] arr [0:7] // 8-element input array, each 32-bit signed integer
+  input [2:0] len        // Actual number of valid elements (0-8)
+
+Outputs:
+  output reg [31:0] result  // Second smallest distinct element, or 0x80000000 if none
+  output reg done           // High when result is valid (single cycle pulse)
+
+**Behavioral Description:**
+The module implements a state machine with states: IDLE, INIT, FIND_MIN, FIND_NEXT, DONE.
+
+1. IDLE: Wait for start signal
+2. INIT: Initialize min1 = 0x7FFFFFFF (max int), min2 = 0x7FFFFFFF, idx = 0
+3. FIND_MIN: Iterate through array elements 0 to len-1
+   - For each element, update min1 and min2:
+     * If element < min1 AND element != min1: min2 = min1, min1 = element
+     * Else if element < min2 AND element != min1 AND element != min2: min2 = element
+   - Use index counter to process one element per cycle
+4. FIND_NEXT: After processing all elements, check if min2 was updated
+   - If min2 == 0x7FFFFFFF: return 0x80000000 (None)
+   - Else: return min2
+5. DONE: Assert done for 1 cycle, then return to IDLE
+
+**Latency:** 10-12 clock cycles after start (depends on len)
+**Sampling:** Wait for done signal to go high, then sample result on same clock edge.
+
+**Key Implementation Details:**
+- Use non-blocking assignments for all sequential logic
+- Min/max values must be 32-bit: 0x7FFFFFFF = 2147483647, 0x80000000 = -2147483648
+- When len < 2, immediately return 0x80000000
+- Array elements accessed as arr[i] for i=0..7
+- Result is valid only when done == 1
+
+**State Machine Details:**
+- IDLE: state = 0
+- INIT: state = 1 (load len, check if len < 2)
+- FIND_MIN: state = 2 (iterate i from 0 to len-1)
+- FIND_NEXT: state = 3 (check if min2 valid)
+- DONE: state = 4 (assert done)
+
+**Example:**
+Input: arr = [1, 2, 3, 4, 5], len = 5
+Output: result = 2
+
+Input: arr = [1, 1], len = 2
+Output: result = 0x80000000 (None)
+
+Input: arr = [-35, 34, 12, -45], len = 4
+Output: result = -35
+
+The module must work with Icarus Verilog (Verilog-2001 compatible).

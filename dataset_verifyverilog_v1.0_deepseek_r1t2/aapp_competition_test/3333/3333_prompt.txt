@@ -1,0 +1,211 @@
+module fox_hiding_distance (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [31:0] roost_x,    // Q12.20 fixed-point
+    input wire [31:0] roost_y,
+    input wire [31:0] spot_x [0:7],
+    input wire [31:0] spot_y [0:7],
+    input wire [3:0] N,            // number of spots (1..8)
+    output reg done,
+    output reg [31:0] result       // Q12.20 fixed-point
+);
+
+parameter MAX_N = 8;
+parameter FRAC_BITS = 20;
+parameter SCALE = 1 << FRAC_BITS; // 1048576
+
+// State definitions
+localparam IDLE = 0;
+localparam COMPUTE_DIST_ROOST = 1;
+localparam COMPUTE_DIST_SPOT = 2;
+localparam DP_INIT = 3;
+localparam DP_OUTER = 4;
+localparam DP_INNER_I = 5;
+localparam DP_INNER_J = 6;
+localparam DP_UPDATE = 7;
+localparam DONE_STATE = 8;
+
+reg [3:0] state;
+reg [3:0] next_state;
+
+// Loop counters
+reg [3:0] i_cnt, j_cnt;          // indices for spots
+reg [7:0] mask;                  // current subset mask
+reg [7:0] prev_mask;             // mask without i/j
+reg [7:0] dp_addr;               // address for dp memory
+reg [31:0] dp_data;              // data for dp memory
+reg dp_wr_en;                    // write enable for dp memory
+
+// Distance storage
+dist_roost [0:7]: reg [31:0];    // distances from roost to each spot
+dist_spot [0:7][0:7]: reg [31:0]; // distances between spots
+
+// DP memory: 256 entries of 32-bit
+reg [31:0] dp [0:255];
+
+// Temporary registers for distance computation
+reg [31:0] x1, y1, x2, y2;
+real dx, dy, dist_real;
+
+// Task to compute Euclidean distance (simulation only)
+task compute_distance;
+    input [31:0] x1_in, y1_in, x2_in, y2_in;
+    output [31:0] dist_out;
+    real x1_real, y1_real, x2_real, y2_real;
+    begin
+        x1_real = $itor(x1_in) / SCALE;
+        y1_real = $itor(y1_in) / SCALE;
+        x2_real = $itor(x2_in) / SCALE;
+        y2_real = $itor(y2_in) / SCALE;
+        dx = x1_real - x2_real;
+        dy = y1_real - y2_real;
+        dist_real = $sqrt(dx*dx + dy*dy);
+        dist_out = $rtoi(dist_real * SCALE);
+    end
+endtask
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: if (start) next_state = COMPUTE_DIST_ROOST;
+        COMPUTE_DIST_ROOST: if (i_cnt >= N) next_state = COMPUTE_DIST_SPOT;
+        COMPUTE_DIST_SPOT: if (i_cnt >= N) next_state = DP_INIT;
+        DP_INIT: next_state = DP_OUTER;
+        DP_OUTER: if (mask > (1 << N) - 1) next_state = DONE_STATE;
+                  else next_state = DP_INNER_I;
+        DP_INNER_I: if (i_cnt >= N) next_state = DP_OUTER;
+                    else if (mask[i_cnt]) next_state = DP_INNER_J;
+                    else next_state = DP_INNER_I;
+        DP_INNER_J: if (j_cnt >= N) next_state = DP_INNER_I;
+                    else if (j_cnt > i_cnt && mask[j_cnt]) next_state = DP_UPDATE;
+                    else next_state = DP_INNER_J;
+        DP_UPDATE: next_state = DP_INNER_J;
+        DONE_STATE: if (!start) next_state = IDLE;
+    endcase
+end
+
+// Control signals and counters
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        i_cnt <= 0;
+        j_cnt <= 0;
+        mask <= 1;
+        dp_wr_en <= 0;
+        done <= 0;
+        result <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                i_cnt <= 0;
+                j_cnt <= 0;
+                mask <= 1;
+                done <= 0;
+            end
+            COMPUTE_DIST_ROOST: begin
+                // Compute distance from roost to spot i_cnt
+                x1 <= roost_x;
+                y1 <= roost_y;
+                x2 <= spot_x[i_cnt];
+                y2 <= spot_y[i_cnt];
+                compute_distance(x1, y1, x2, y2, dist_roost[i_cnt]);
+                i_cnt <= i_cnt + 1;
+            end
+            COMPUTE_DIST_SPOT: begin
+                // Compute distance between spot i_cnt and spot j_cnt
+                if (i_cnt < N && j_cnt < N && i_cnt != j_cnt) begin
+                    x1 <= spot_x[i_cnt];
+                    y1 <= spot_y[i_cnt];
+                    x2 <= spot_x[j_cnt];
+                    y2 <= spot_y[j_cnt];
+                    compute_distance(x1, y1, x2, y2, dist_spot[i_cnt][j_cnt]);
+                end
+                // Increment j_cnt, then i_cnt when j_cnt reaches N
+                if (j_cnt + 1 >= N) begin
+                    j_cnt <= 0;
+                    i_cnt <= i_cnt + 1;
+                end else begin
+                    j_cnt <= j_cnt + 1;
+                end
+            end
+            DP_INIT: begin
+                dp[0] <= 0;
+                mask <= 1;
+                i_cnt <= 0;
+                j_cnt <= 0;
+            end
+            DP_OUTER: begin
+                if (mask > (1 << N) - 1) begin
+                    // Done, result is dp[(1<<N)-1]
+                    result <= dp[(1 << N) - 1];
+                    done <= 1;
+                end else begin
+                    // Initialize dp[mask] to a large value (e.g., 32'h7FFFFFFF)
+                    dp[mask] <= 32'h7FFFFFFF;
+                    i_cnt <= 0;
+                    j_cnt <= 0;
+                end
+            end
+            DP_INNER_I: begin
+                if (i_cnt < N) begin
+                    if (mask[i_cnt]) begin
+                        // Consider trip with single spot i_cnt
+                        prev_mask <= mask & ~(1 << i_cnt);
+                        // Compute cost = 2 * dist_roost[i_cnt]
+                        // Addition is cheaper than multiplication by 2
+                        dp_data <= dp[prev_mask] + dist_roost[i_cnt] + dist_roost[i_cnt];
+                        dp_addr <= mask;
+                        dp_wr_en <= 1;
+                        // After update, move to next i
+                        i_cnt <= i_cnt + 1;
+                    end else begin
+                        i_cnt <= i_cnt + 1;
+                    end
+                end
+            end
+            DP_INNER_J: begin
+                dp_wr_en <= 0; // disable write from previous state
+                if (j_cnt < N) begin
+                    if (j_cnt > i_cnt && mask[j_cnt]) begin
+                        // Consider trip with two spots i_cnt and j_cnt
+                        prev_mask <= mask & ~(1 << i_cnt) & ~(1 << j_cnt);
+                        // Compute cost = dist_roost[i_cnt] + dist_spot[i_cnt][j_cnt] + dist_roost[j_cnt]
+                        dp_data <= dp[prev_mask] + dist_roost[i_cnt] + dist_spot[i_cnt][j_cnt] + dist_roost[j_cnt];
+                        dp_addr <= mask;
+                        dp_wr_en <= 1;
+                    end
+                    j_cnt <= j_cnt + 1;
+                end else begin
+                    // Done with j loop, move to next i
+                    j_cnt <= 0;
+                    i_cnt <= i_cnt + 1;
+                end
+            end
+            DP_UPDATE: begin
+                // Update dp[mask] with min(dp[mask], dp_data)
+                if (dp_wr_en) begin
+                    if (dp_data < dp[mask]) begin
+                        dp[mask] <= dp_data;
+                    end
+                    dp_wr_en <= 0;
+                end
+            end
+            DONE_STATE: begin
+                // Wait for start to go low
+                done <= 1;
+            end
+        endcase
+    end
+end
+
+endmodule

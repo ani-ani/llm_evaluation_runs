@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'find_closest_elements' that implements a simplified version of finding two closest elements in a list.
+
+The module handles floating-point numbers by using Q16.16 fixed-point format (16 integer bits, 16 fractional bits). Values are provided as integers representing the fixed-point representation.
+
+The module sorts the input array of 6 elements using a bubble sort network (6 clock cycles), then compares adjacent elements to find the minimum difference.
+
+Inputs:
+  input clk             // Clock signal
+  input rst_n           // Active-low reset
+  input start           // Start computation (pulse high for 1 cycle)
+  input [15:0] arr_0    // Element 0 (Q16.16 fixed-point)
+  input [15:0] arr_1    // Element 1 (Q16.16 fixed-point)
+  input [15:0] arr_2    // Element 2 (Q16.16 fixed-point)
+  input [15:0] arr_3    // Element 3 (Q16.16 fixed-point)
+  input [15:0] arr_4    // Element 4 (Q16.16 fixed-point)
+  input [15:0] arr_5    // Element 5 (Q16.16 fixed-point)
+
+Outputs:
+  output reg [15:0] min_val  // Smaller of the closest pair (Q16.16)
+  output reg [15:0] max_val  // Larger of the closest pair (Q16.16)
+  output reg done            // High for 1 cycle when result is valid
+
+Latency: Result valid 7 clock cycles after start is asserted (1 cycle to load, 6 cycles for bubble sort passes).
+
+Behavioral Description:
+1. When 'start' is asserted, load the 6 input values into internal registers on the next clock edge.
+2. Perform 6 passes of bubble sort to fully sort the array in ascending order. Each pass takes 1 clock cycle.
+   - Pass 1: Compare/swap indices (0,1), (1,2), (2,3), (3,4), (4,5)
+   - Pass 2: Compare/swap indices (0,1), (1,2), (2,3), (3,4)
+   - Pass 3: Compare/swap indices (0,1), (1,2), (2,3)
+   - Pass 4: Compare/swap indices (0,1), (1,2)
+   - Pass 5: Compare/swap indices (0,1)
+   - Pass 6: No swaps, used to stabilize (or perform final check)
+   Wait, to sort 6 elements fully, we need 5 passes (N-1 passes for N elements). Let's refine:
+   Pass 1: (0,1), (1,2), (2,3), (3,4), (4,5)
+   Pass 2: (0,1), (1,2), (2,3), (3,4)
+   Pass 3: (0,1), (1,2), (2,3)
+   Pass 4: (0,1), (1,2)
+   Pass 5: (0,1)
+   Total 5 cycles for sorting.
+3. After sorting is complete (after 6 cycles total including load), calculate differences between adjacent sorted elements: arr[1]-arr[0], arr[2]-arr[1], ..., arr[5]-arr[4].
+4. Find the minimum difference and the corresponding pair.
+5. Output the pair (smaller, larger) and set 'done' high for 1 cycle.
+
+State Machine:
+- IDLE: Wait for start
+- LOAD: Load inputs to shift registers (Cycle 1)
+- SORT_0 to SORT_4: Bubble sort passes (Cycles 2-6)
+- DIFF_CALC: Calculate differences and find minimum (Cycle 7)
+- DONE: Assert done signal (Cycle 8)
+
+Note: Since it is sequential, we unroll the loops. Use a state machine to control the stages.

@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'goldbach_checker' that validates if a contestant's output satisfies the 'Good as Goldbach' problem criteria.
+
+The module processes ASCII characters sequentially and checks:
+1. Input contains exactly three valid tokens (integers)
+2. First integer is a positive even number > 3 and ≤ 50,000 (scaled from 10^9)
+3. Second and third integers are positive primes
+4. Sum of second and third equals first
+5. No leading zeros (except integer 0 itself, though 0 is invalid per requirements)
+6. Integers are base-10, no signs
+
+Interface:
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input [7:0] char_in // ASCII character input
+input char_valid // High when char_in is valid
+input char_last // High when this is the last character
+
+Outputs:
+output reg result // 1 if valid, 0 if invalid
+output reg done // High when analysis is complete
+
+Behavior:
+- The module samples characters on rising clock edge when char_valid is high
+- Process characters until char_last is asserted
+- State machine must track: whitespace scanning, digit parsing, token counting, overflow detection
+- Must reject: non-digit characters in tokens, leading zeros (except single '0'), more than 3 tokens, fewer than 3 tokens, invalid primes, non-even sum
+- Latency: Result available up to 256 clock cycles after char_last (allowing time for primality verification)
+
+Algorithm:
+1. Parse three integers sequentially from input stream
+2. Validate format (digits only, no leading zeros)
+3. Check first number is even, > 3, and ≤ 50,000
+4. Verify second and third numbers are prime (using precomputed lookup or iterative check)
+5. Verify second + third = first
+6. Ensure no extra tokens exist
+
+Primality check: Implement for numbers up to 50,000. Use sequential checking: 2 to sqrt(n). Precompute primes up to 224 (sqrt(50000)) in lookup table.
+
+State Machine States:
+- IDLE: Waiting for first non-whitespace character
+- PARSING_TOKEN: Accumulating digits for current token
+- VERIFY_PRIME_1: Check if token 2 is prime
+- VERIFY_PRIME_2: Check if token 3 is prime
+- VERIFY_SUM: Check if p1 + p2 = token1
+- VALID: Final valid state
+- INVALID: Final invalid state
+
+Output format: result is 1 or 0, done is high when finished.

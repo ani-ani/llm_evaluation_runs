@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'check_dict_case' that determines if all string keys in a fixed-size dictionary are either all lowercase or all uppercase.
+
+Module Specification:
+- The dictionary is represented as 8 entries, each containing an 8-character key and 1-byte value
+- Keys are stored as 64-bit vectors (8 characters × 8 bits)
+- Keys use ASCII encoding
+- Lowercase letters: 0x61-0x7A ('a'-'z')
+- Uppercase letters: 0x41-0x5A ('A'-'Z')
+- The module should return True (1) if:
+  1. Dictionary is non-empty (has at least one valid entry)
+  2. ALL keys are exclusively lowercase OR exclusively uppercase
+- Return False (0) if:
+  1. Dictionary is empty (no valid entries)
+  2. Keys contain mixed case
+  3. Keys contain non-alphabetic characters
+  4. Any key is shorter than 8 characters (indicated by 0x00 padding)
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start validation
+input [7:0] valid_entries // bit mask indicating which of 8 entries are valid
+input [63:0] key_0, key_1, key_2, key_3, key_4, key_5, key_6, key_7 // 8-character keys
+
+Outputs:
+output reg result // 1 if all keys same case, 0 otherwise
+output reg done // high when validation complete
+
+Behavior:
+1. On start, begin processing
+2. Check if valid_entries is zero (empty dict) → result=0
+3. For each valid entry, check all 8 characters:
+   - Determine if lowercase, uppercase, or invalid
+   - Track first encountered case type (L/U)
+   - Ensure subsequent entries match that type
+4. If any key has mixed case, invalid chars, or mismatch → result=0
+5. If all valid keys match same case → result=1
+6. Assert done when finished
+
+Latency: Maximum 64 clock cycles (8 entries × 8 characters)
+
+Use state machine with states: IDLE, CHECK_EMPTY, PROCESS_KEYS, VALIDATE_CASE, DONE.
+
+Implementation notes:
+- Use a counter to iterate through entries and characters
+- Maintain state: current_case (0=unknown, 1=lower, 2=upper)
+- Use a flag for invalid detection
+- For empty dict (valid_entries==0), skip to DONE with result=0
+- Each character check takes 1 cycle
+- Final validation takes 1 cycle

@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'max_strictly_increasing_subsegment' that computes the longest subsegment that can be made strictly increasing by changing at most one element.
+
+The module solves this for a fixed array size of N=16 elements. Input values are treated as 32-bit integers (scaled from original problem to fit hardware constraints).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation (pulse high for one cycle)
+input [4:0] index_in // Index for array input (0 to 15)
+input [31:0] value_in // Value for array input
+
+Outputs:
+output reg [4:0] result // Maximum length of subsegment (0-16)
+output reg done // High when computation is complete
+
+Internal Behavior:
+1. Load Phase: When start is high, accept 16 values via index_in and value_in. Store in an internal array.
+2. DP Phase: Calculate two arrays 'left' and 'right'.
+   - left[i] = length of strictly increasing sequence ending at index i.
+   - right[i] = length of strictly increasing sequence starting at index i.
+3. Merge Phase: Calculate max length by checking:
+   - Single subsegment lengths (max(left) or max(right)).
+   - Merging two subsegments by changing the middle element or removing it:
+     - If changing element i: check if i-1 and i+1 can be connected with a valid value.
+     - If removing element i: check if subsegments ending at i-1 and starting at i+1 can merge.
+
+Latency: 32 clock cycles after start is asserted (16 for load, 16 for DP calculation).
+States: IDLE, LOAD, COMPUTE, DONE.
+
+Specification Details:
+- Use a state machine to manage the flow.
+- In LOAD state, store values into a register file.
+- In COMPUTE state, calculate left and right arrays.
+- The condition for merging subsegments ending at i-1 and starting at i+1 (skipping i) is strictly a check on the lengths and the surrounding values.
+- Since we can change one number, the constraint for connecting two increasing sequences (length A ending at i-1 and length B starting at i+1) is simply that the values at the ends must allow a valid integer in between (or simply that the sequences can be made continuous).
+- A simpler interpretation for hardware: Find the longest subsegment of strictly increasing values. If there is a 'dip' (non-increasing point), check if extending on either side is valid. 
+- Specifically, calculate 'left' and 'right' arrays where left[i] is the length of the strictly increasing subsegment ending at i, and right[i] is the length of the strictly increasing subsegment starting at i.
+- The answer is max of:
+    1. max(left) + 1 (if we change one element at the end)
+    2. max(right) + 1 (if we change one element at the start)
+    3. For any i from 1 to n-2: left[i-1] + 1 + right[i+1] if we can change element i to bridge the gap, OR max(left[i-1], right[i+1]) + 1 if we change element i to extend one side.
+- The bridging condition for changing element i is simply that a valid integer exists between a[i-1] and a[i+1]. Since we use integers, this is true if a[i+1] - a[i-1] > 1. Since we have to adapt to fixed point or integer, and the problem uses integers, we assume 32-bit integers. 
+- We will unroll the loops for N=16.
+- We will perform the DP in a sequential manner to keep the module size reasonable.

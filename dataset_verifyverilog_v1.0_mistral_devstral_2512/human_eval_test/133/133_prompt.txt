@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'sum_squares' that computes the sum of squares of ceiling-rounded numbers in a fixed-size array.
+
+**Adaptation Details:**
+- The input array size is fixed to 8 elements (N=8)
+- Input values are 8-bit integers representing the ceiling-rounded values from the original problem
+- Example: [1.4, 4.2, 0] becomes [2, 5, 0] (ceil of 1.4=2, ceil of 4.2=5, ceil of 0=0)
+- The output is the sum of squares: 2² + 5² + 0² = 4 + 25 + 0 = 29
+- All arithmetic uses unsigned integers
+- The result requires up to 32 bits: max value is 8 * (127²) = 8 * 16129 = 129,032 which fits in 32 bits
+
+**Interface Specification:**
+Inputs:
+  input clk                  // Clock signal
+  input rst_n                // Active-low reset
+  input start                // Start pulse (1 cycle high)
+  input [7:0] numbers [0:7]  // 8-element array of 8-bit integers
+
+Outputs:
+  output reg [31:0] result   // 32-bit sum of squares
+  output reg done            // Goes high for 1 cycle when result is valid
+
+**Behavioral Specification:**
+- Use a state machine with states: IDLE, COMPUTE, DONE
+- When start is asserted, transition from IDLE to COMPUTE
+- In COMPUTE state, process one element per clock cycle
+- For each element, compute its square (element * element) and accumulate
+- After processing all 8 elements, transition to DONE state
+- In DONE state, assert done signal for 1 cycle, then return to IDLE
+- The result should be valid when done is high
+- Latency: 9 clock cycles (1 for load, 8 for computation) + 1 cycle for done
+
+**Implementation Notes:**
+- Use a counter to track which array element is being processed
+- Use a 32-bit accumulator for the sum
+- For squaring 8-bit numbers, use 16-bit intermediate result, then add to 32-bit accumulator
+- The array 'numbers' should be accessed as: numbers[0], numbers[1], ..., numbers[7]
+- Design must work with Icarus Verilog (no advanced SV features)
+- Reset sequence: when rst_n is low, set result to 0, done to 0, return to IDLE state
+
+**State Machine:**
+- IDLE: Wait for start signal. When start=1, initialize counter=0, accumulator=0, transition to COMPUTE
+- COMPUTE: Process numbers[counter]. Compute square, add to accumulator. Increment counter. If counter < 8, stay in COMPUTE. If counter == 8, transition to DONE
+- DONE: Assert done=1 for 1 cycle. Set result = accumulator. Then transition back to IDLE
+
+**Output Sampling:**
+- The testbench will sample result when done signal is high
+- Done signal is high for exactly 1 cycle
+- After done goes low, result may be cleared or changed

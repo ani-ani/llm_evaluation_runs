@@ -1,0 +1,36 @@
+Design a sequential Verilog module named `typo_detector` that identifies typos in a small dictionary of words according to the rule: a word is a typo if deleting a single character results in another word in the dictionary.
+
+**Adaptations for Hardware:**
+- **String Width**: Words are fixed to 8 characters (`CHARS=8`). Characters are represented as 8-bit ASCII values.
+- **Dictionary Size**: Maximum of 16 words (`MAX_WORDS=16`).
+- **Logic**: The module loads words one by one via input interface. For each word, it generates all possible deletion variants (shifting characters left) and checks if any variant matches a word already stored in internal memory.
+
+**Module Interface:**
+
+Inputs:
+- `clk`: System clock.
+- `rst_n`: Active-low reset.
+- `in_valid`: High when `in_word` is valid.
+- `in_word [CHARS*8-1:0]`: Input word (8 bytes, packed). Unused characters in the word are nulls (0). Words shorter than 8 chars are padded with nulls.
+- `in_is_last`: High indicates this is the last word of the dictionary.
+
+Outputs:
+- `out_valid`: High when `out_word` is a typo.
+- `out_word [CHARS*8-1:0]`: The typo word.
+- `done`: High when processing is complete (after last word).
+
+**Internal Behavior (State Machine):**
+- **States**: IDLE, LOAD, CHECK, DELETE_GEN, VERIFY, OUTPUT, FINISH.
+- **Load Phase**: When `in_valid` is high, store `in_word` in a memory array. 
+- **Check Phase**: After loading a word, check if it is a typo against previously loaded words.
+  - Generate deletion variants: Create 8 potential candidates by shifting characters. Example: Deleting index 0 shifts chars 1-7 to positions 0-6. Deleting index 1 shifts 2-7 to 1-6, etc.
+  - Verify: Compare each generated candidate against the memory of stored words.
+  - If a match is found, assert `out_valid` and present the current word on `out_word`.
+- **Completion**: If `in_is_last` is high, proceed to FINISH state and assert `done`.
+
+**Parameters:**
+- `CHARS = 8` (max string length)
+- `MAX_WORDS = 16` (max dictionary size)
+- `WORD_BITS = CHARS * 8`
+
+**Latency**: 2-3 clock cycles per word for verification after loading. `done` goes high after all words processed.

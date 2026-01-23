@@ -1,0 +1,177 @@
+module maze_solver (
+    input clk, rst_n, start,
+    input [3:0] n, m,  // Grid dimensions (1-8)
+    input [5:0] k,     // Walls to add (0-63)
+    input [1:0] grid_in [0:7][0:7],  // 0=wall, 1=empty
+    output reg [1:0] grid_out [0:7][0:7],  // 0=wall, 1=empty, 2=X
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 0, INIT_SCAN = 1, SCAN = 2, BFS_INIT = 3;
+localparam BFS_LOOP = 4, BFS_DEQUEUE = 5, BFS_PROCESS = 6;
+localparam BFS_ENQUEUE = 7, MARK = 8, MARK_LOOP = 9, DONE = 10;
+
+// Internal registers
+reg [3:0] state;
+reg [2:0] row_idx, col_idx;
+reg [5:0] s, target, visited_count;
+reg found_start;
+reg [2:0] start_row, start_col;
+reg [2:0] cur_row, cur_col;
+reg [1:0] neighbor_count;
+
+// Arrays (8x8)
+reg [0:7] visited [0:7];
+reg [0:7] in_queue [0:7];
+reg [5:0] queue [0:63];  // {row[2:0], col[2:0]}
+reg [6:0] head, tail;    // 0-64
+
+// Next state logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) state <= INIT_SCAN;
+            end
+
+            INIT_SCAN: begin
+                row_idx <= 0;
+                col_idx <= 0;
+                s <= 0;
+                found_start <= 0;
+                state <= SCAN;
+            end
+
+            SCAN: begin
+                if (grid_in[row_idx][col_idx] == 1) begin
+                    s <= s + 1;
+                    if (!found_start) begin
+                        start_row <= row_idx;
+                        start_col <= col_idx;
+                        found_start <= 1;
+                    end
+                end
+                if (row_idx == n-1 && col_idx == m-1) state <= BFS_INIT;
+                else begin
+                    if (col_idx == m-1) begin
+                        col_idx <= 0;
+                        row_idx <= row_idx + 1;
+                    end else col_idx <= col_idx + 1;
+                    state <= SCAN;
+                end
+            end
+
+            BFS_INIT: begin
+                // Reset arrays
+                for (integer i=0; i<8; i=i+1) begin
+                    visited[i] <= 0;
+                    in_queue[i] <= 0;
+                end
+                head <= 0;
+                tail <= 0;
+                visited_count <= 0;
+                target <= (s > k) ? (s - k) : 0;
+                if (s > 0) begin
+                    queue[0] <= {start_row, start_col};
+                    tail <= 1;
+                    in_queue[start_row][start_col] <= 1;
+                end
+                state <= BFS_LOOP;
+            end
+
+            BFS_LOOP: begin
+                if (visited_count == target) state <= MARK;
+                else if (head == tail) state <= MARK; // Queue empty
+                else state <= BFS_DEQUEUE;
+            end
+
+            BFS_DEQUEUE: begin
+                cur_row <= queue[head][5:3];
+                cur_col <= queue[head][2:0];
+                head <= head + 1;
+                state <= BFS_PROCESS;
+            end
+
+            BFS_PROCESS: begin
+                if (visited[cur_row][cur_col] == 0) begin
+                    visited[cur_row][cur_col] <= 1;
+                    visited_count <= visited_count + 1;
+                    if (visited_count + 1 == target) state <= MARK;
+                    else begin
+                        state <= BFS_ENQUEUE;
+                        neighbor_count <= 0;
+                    end
+                end else state <= BFS_LOOP;
+            end
+
+            BFS_ENQUEUE: begin
+                case (neighbor_count)
+                    0: if (cur_row < n-1 && grid_in[cur_row+1][cur_col] == 1 && 
+                           !visited[cur_row+1][cur_col] && !in_queue[cur_row+1][cur_col]) begin
+                           queue[tail] <= {cur_row+1, cur_col};
+                           tail <= tail + 1;
+                           in_queue[cur_row+1][cur_col] <= 1;
+                       end
+                    1: if (cur_row > 0 && grid_in[cur_row-1][cur_col] == 1 && 
+                           !visited[cur_row-1][cur_col] && !in_queue[cur_row-1][cur_col]) begin
+                           queue[tail] <= {cur_row-1, cur_col};
+                           tail <= tail + 1;
+                           in_queue[cur_row-1][cur_col] <= 1;
+                       end
+                    2: if (cur_col < m-1 && grid_in[cur_row][cur_col+1] == 1 && 
+                           !visited[cur_row][cur_col+1] && !in_queue[cur_row][cur_col+1]) begin
+                           queue[tail] <= {cur_row, cur_col+1};
+                           tail <= tail + 1;
+                           in_queue[cur_row][cur_col+1] <= 1;
+                       end
+                    3: if (cur_col > 0 && grid_in[cur_row][cur_col-1] == 1 && 
+                           !visited[cur_row][cur_col-1] && !in_queue[cur_row][cur_col-1]) begin
+                           queue[tail] <= {cur_row, cur_col-1};
+                           tail <= tail + 1;
+                           in_queue[cur_row][cur_col-1] <= 1;
+                       end
+                endcase
+                if (neighbor_count == 3) state <= BFS_LOOP;
+                else begin
+                    neighbor_count <= neighbor_count + 1;
+                    state <= BFS_ENQUEUE;
+                end
+            end
+
+            MARK: begin
+                row_idx <= 0;
+                col_idx <= 0;
+                state <= MARK_LOOP;
+            end
+
+            MARK_LOOP: begin
+                if (grid_in[row_idx][col_idx] == 1 && visited[row_idx][col_idx] == 0)
+                    grid_out[row_idx][col_idx] <= 2;
+                else
+                    grid_out[row_idx][col_idx] <= grid_in[row_idx][col_idx];
+                if (row_idx == n-1 && col_idx == m-1) state <= DONE;
+                else begin
+                    if (col_idx == m-1) begin
+                        col_idx <= 0;
+                        row_idx <= row_idx + 1;
+                    end else col_idx <= col_idx + 1;
+                    state <= MARK_LOOP;
+                end
+            end
+
+            DONE: begin
+                done <= 1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

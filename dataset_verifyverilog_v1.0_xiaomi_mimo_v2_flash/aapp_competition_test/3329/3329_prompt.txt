@@ -1,0 +1,146 @@
+module pebble_counter #(
+    parameter N = 6,
+    parameter MAX_K = 2
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [N-1:0] target,
+    input wire [2:0] K,
+    output reg [N-1:0] result,
+    output reg done
+);
+
+// State definitions
+localparam STATE_IDLE = 3'b000;
+localparam STATE_SETUP = 3'b001;
+localparam STATE_TRANSFORM = 3'b010;
+localparam STATE_CHECK = 3'b011;
+localparam STATE_ROTATE = 3'b100;
+localparam STATE_NEXT = 3'b101;
+localparam STATE_DONE = 3'b110;
+
+// Registers
+reg [2:0] state;
+reg [N-1:0] candidate;      // Current candidate configuration
+reg [N-1:0] transformed;    // Result after K transformations
+reg [N-1:0] temp;           // Temporary for transformation
+reg [2:0] k_count;          // Counter for K transformations
+reg [N-1:0] rotation_ref;   // Reference for rotation comparison
+reg [2:0] rot_idx;          // Rotation index
+reg [5:0] config_counter;   // 0 to 63 for N=6
+reg [N-1:0] min_rot;        // Minimum rotation of candidate
+reg is_min;                 // Flag if candidate is minimal rotation
+reg [N-1:0] temp_rot;       // Temp rotation
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= STATE_IDLE;
+        result <= 0;
+        done <= 0;
+        config_counter <= 0;
+        candidate <= 0;
+        k_count <= 0;
+    end else begin
+        case (state)
+            STATE_IDLE: begin
+                done <= 0;
+                if (start) begin
+                    result <= 0;
+                    config_counter <= 0;
+                    state <= STATE_SETUP;
+                end
+            end
+            
+            STATE_SETUP: begin
+                // Load current candidate from counter
+                candidate <= config_counter;
+                transformed <= config_counter;
+                k_count <= 0;
+                state <= STATE_TRANSFORM;
+            end
+            
+            STATE_TRANSFORM: begin
+                if (k_count < K) begin
+                    // One transformation step: new[i] = old[i] XOR old[(i+1)%N]
+                    temp <= transformed;
+                    k_count <= k_count + 1;
+                    state <= STATE_TRANSFORM;
+                    // Perform XOR transformation in next cycle
+                end else begin
+                    state <= STATE_CHECK;
+                end
+            end
+            
+            STATE_CHECK: begin
+                // Check if transformed matches target
+                if (transformed == target) begin
+                    // Check if this candidate is minimal rotation
+                    min_rot <= candidate;
+                    rot_idx <= 1;
+                    state <= STATE_ROTATE;
+                end else begin
+                    state <= STATE_NEXT;
+                end
+            end
+            
+            STATE_ROTATE: begin
+                // Generate rotation
+                if (rot_idx < N) begin
+                    temp_rot <= {candidate[0], candidate[N-1:1]}; // Right rotate
+                    if (temp_rot < min_rot) min_rot <= temp_rot;
+                    rot_idx <= rot_idx + 1;
+                    candidate <= temp_rot;
+                end else begin
+                    // Check if original candidate equals min_rot
+                    if (candidate == min_rot) begin
+                        result <= result + 1;
+                    end
+                    state <= STATE_NEXT;
+                end
+            end
+            
+            STATE_NEXT: begin
+                if (config_counter < (1 << N) - 1) begin
+                    config_counter <= config_counter + 1;
+                    state <= STATE_SETUP;
+                end else begin
+                    state <= STATE_DONE;
+                end
+            end
+            
+            STATE_DONE: begin
+                done <= 1;
+                if (!start) state <= STATE_IDLE;
+            end
+            
+            default: state <= STATE_IDLE;
+        endcase
+    end
+end
+
+// Combinational logic for transformation step
+always @(*) begin
+    if (state == STATE_TRANSFORM && k_count < K) begin
+        // Perform XOR transformation
+        transformed = temp;
+        transformed[0] = temp[0] ^ temp[1];
+        transformed[N-1] = temp[N-1] ^ temp[0];
+        for (integer i = 1; i < N-1; i = i + 1) begin
+            transformed[i] = temp[i] ^ temp[i+1];
+        end
+    end
+end
+
+endmodule
+
+// Interface specification:
+// - Clock (clk) and active-low reset (rst_n)
+// - start: Assert high for 1 clock cycle to begin computation
+// - target: N-bit input representing the final configuration (B=0, W=1)
+// - K: Number of transformations (1 to MAX_K)
+// - result: N-bit output count of distinct starting circles
+// - done: Asserted high when computation complete
+// Timing: After start, done will go high within ~64*K cycles
+// Reset: Assert rst_n low for minimum 2 cycles to clear state

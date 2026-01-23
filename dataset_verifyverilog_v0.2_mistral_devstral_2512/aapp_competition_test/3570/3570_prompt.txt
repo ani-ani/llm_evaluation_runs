@@ -1,0 +1,64 @@
+Design a sequential Verilog module named 'trope_checker' that processes story events, dreams, and scenarios to determine plot consistency.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset (starts in IDLE state)
+input start // High for 1 cycle to start processing a command
+input [2:0] cmd_type // 0: Event, 1: Dream, 2: Scenario
+
+// For Event commands (cmd_type = 0):
+input [23:0] event_hash // Hash of the event string (first 23 chars)
+
+// For Dream commands (cmd_type = 1):
+input [2:0] dream_count // Number of events to roll back (1-4)
+
+// For Scenario commands (cmd_type = 2):
+input [2:0] scenario_count // Number of events in scenario (1-5)
+input [23:0] scenario_event_hash_0 // Hash of event 1
+input scenario_event_negate_0 // 0: happened, 1: ! (did not happen)
+input [23:0] scenario_event_hash_1 // Hash of event 2
+input scenario_event_negate_1 // 0: happened, 1: ! (did not happen)
+input [23:0] scenario_event_hash_2 // Hash of event 3
+input scenario_event_negate_2 // 0: happened, 1: ! (did not happen)
+input [23:0] scenario_event_hash_3 // Hash of event 4
+input scenario_event_negate_3 // 0: happened, 1: ! (did not happen)
+input [23:0] scenario_event_hash_4 // Hash of event 5
+input scenario_event_negate_4 // 0: happened, 1: ! (did not happen)
+
+Outputs:
+output reg result_valid // High when result is ready
+output reg [1:0] result_code // 0: Plot Error, 1: Yes, 2: Just A Dream
+output reg [2:0] dream_amount // Valid if result_code is 2 (holds the 'r' value)
+
+Behavior:
+The module maintains a history stack of up to 4 past events (represented by hashes) to support rollbacks.
+
+State Machine:
+- IDLE: Wait for start signal.
+- PROCESS_CMD: Decodes cmd_type.
+  - If Event: Push event_hash onto stack (max 4). If stack full, discard oldest.
+  - If Dream: Pop dream_count events from stack (max 4).
+  - If Scenario: Check consistency.
+    - Iterate through provided scenario events (up to 5) against the stack.
+    - A positive event (negate=0) must be found in stack. If not, it's a mismatch.
+    - A negative event (negate=1) must NOT be found in stack. If found, mismatch.
+    - If all events match:
+      - Result is "Yes", code 1.
+    - If mismatch:
+      - Calculate minimal rollback 'r' (1 to 4) to make it consistent. 
+        - Temporarily pop 'r' events and check if scenario matches.
+      - If found (r=1..4): Result is "Just A Dream", code 2, output 'r'.
+      - Else: Result is "Plot Error", code 0.
+
+Hashing:
+Events are strings up to 24 characters. The input provides a 24-bit hash. This hash is used for comparison. 
+Example: 'business_as_usual' -> approximate hash 'bus'. 
+Assume the testbench provides consistent hashes.
+
+Latency:
+Scenario checks require searching the stack and checking rollbacks. Result valid 10 clock cycles after start.
+
+Parameters:
+MAX_HISTORY = 4
+MAX_SCENARIO = 5
+EVENT_HASH_WIDTH = 24

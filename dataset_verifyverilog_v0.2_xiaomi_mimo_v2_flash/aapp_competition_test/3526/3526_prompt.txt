@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'true_false_hints' that counts the number of valid true/false sequences satisfying hints.
+
+Problem Adaptation:
+- n (problems) = 8 maximum
+- m (hints) = 20 maximum
+- Each hint is either 'same' (range values equal) or 'different' (range values not equal)
+- Output the count modulo 10^9+7
+
+Interface:
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] n // number of problems (1-8)
+input [7:0] m // number of hints (0-20)
+input [2:0] hint_l [0:19] // left bound for each hint (1-8)
+input [2:0] hint_r [0:19] // right bound for each hint (1-8)
+input hint_type [0:19] // 0 for 'same', 1 for 'different'
+
+Outputs:
+output reg [31:0] result // number of valid sequences modulo 10^9+7
+output reg done // high when computation complete
+output reg error // high if constraints are unsatisfiable
+
+Behavior:
+The module must solve a 2-SAT problem where:
+1. For each 'same' hint [l,r]: variables x_l..x_r must be equal
+2. For each 'different' hint [l,r]: variables x_l..x_r must not be all equal (implies existence of i,j in [l,r] with x_i != x_j)
+
+Implementation Strategy:
+- Use Union-Find or graph coloring for 'same' constraints
+- For 'different' constraints, ensure that not all variables in the range are forced equal
+- For small n=8, we can enumerate all 2^n assignments and verify against hints
+- Result is the count of valid assignments modulo 1000000007
+
+Latency: Maximum 1024 clock cycles (2^n iterations) plus validation cycles
+States: IDLE, INIT, GENERATE, VALIDATE, DONE
+
+Hint verification logic:
+For each hint i:
+  If same: check if all x_j (l<=j<=r) are equal
+  If different: check if exists j,k in [l,r] such that x_j != x_k
+
+For 'different' hints on single element (l=r): impossible, set error=1.
+
+The module should handle up to 20 hints and compute the answer in hardware-friendly fashion.

@@ -1,0 +1,43 @@
+Design a sequential Verilog module named 'vault_security' that counts insecure, secure, and super-secure vaults.
+
+PROBLEM DESCRIPTION:
+A vault at position (x, y) where x ∈ [1, L] and y ∈ [-A, B] is:
+- Insecure: Neither guard at (0, -A) or (0, B) can see it
+- Secure: Exactly one guard can see it  
+- Super-secure: Both guards can see it
+
+A guard at (0, Yg) can see vault at (x, y) if gcd(x, |y - Yg|) = 1 (no intermediate vaults on the line).
+
+MODULE INTERFACE:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [15:0] L // x-range (1 to 65535, scaled from 10^9)
+input [10:0] A // negative y-range lower bound (1 to 2000)
+input [10:0] B // positive y-range upper bound (1 to 2000)
+
+output reg [31:0] insecure_count // number of insecure vaults
+output reg [31:0] secure_count   // number of secure vaults
+output reg [31:0] super_secure_count // number of super-secure vaults
+output reg done // high when computation complete
+
+SPECIFICATIONS:
+- Latency: Maximum L * (A + B + 2) cycles (worst case ~2000*4000 = 8M cycles)
+- Use state machine: IDLE → CHECK_X → CHECK_Y → CALCULATE → DONE
+- For each x from 1 to L:
+  - For each y from -A to B:
+    - Compute g1 = gcd(x, y + A) for guard at (0, -A)
+    - Compute g2 = gcd(x, B - y) for guard at (0, B)
+    - Count visibility: vis = (g1==1) + (g2==1)
+    - Increment appropriate counter based on vis
+- GCD calculation: Use sequential Euclidean algorithm with state machine
+- The module should be fully pipelined to handle one (x,y) pair per iteration
+
+EDGE CASES:
+- When L, A, B are small (e.g., 1) - verify with testbench
+- gcd(x, 0) = x, so guard sees vault only if x=1 when y=Yg
+
+OUTPUT:
+After done=1, the three counters contain the final counts.
+
+NOTE: Since L is scaled to 16 bits, the problem remains solvable in reasonable time while preserving the geometric visibility principle.

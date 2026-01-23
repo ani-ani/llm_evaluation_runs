@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'species_intersection_area' that computes the intersection area between two convex polygons representing species territories.
+
+**ADAPTATIONS MADE:**
+- Limited to 4 trees per species (P, A ≤ 4)
+- Fixed-point Q16.16 format (16 integer, 16 fractional bits)
+- Convex hull computed via simple vertex ordering (assumes no collinear edges)
+- Intersection via Sutherland-Hodgman polygon clipping algorithm
+- Uses state machine for sequential processing
+
+**Inputs:**
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [3:0] pine_count // 0-4 pine trees
+input [3:0] aspen_count // 0-4 aspen trees
+input [7:0] pine_x [0:3], pine_y [0:3] // 8-bit Q8.0 coordinates (0-255)
+input [7:0] aspen_x [0:3], aspen_y [0:3] // 8-bit Q8.0 coordinates (0-255)
+
+**Outputs:**
+output reg [31:0] intersection_area // Q16.16 format
+output reg done // high when computation complete
+output reg error // high if invalid input
+
+**Specifications:**
+- Coordinate range: 0-1000 scaled to 0-255 (8-bit) for simplicity
+- Area output in Q16.16 format (multiply actual area by 65536)
+- State machine states: IDLE, CONVEX_HULL_PINE, CONVEX_HULL_ASPEN, CLIP, CALCULATE_AREA, DONE
+- Latency: Maximum 200 clock cycles after start
+- Clock gating allowed for power optimization
+
+**Algorithm Steps:**
+1. Construct convex hull for 4 pine points (use Graham scan simplified)
+2. Construct convex hull for 4 aspen points
+3. Clip pine hull against aspen hull edges using Sutherland-Hodgman
+4. Calculate area of resulting clipped polygon using shoelace formula
+5. Return area in Q16.16 format
+
+**Geometric Primitives Required:**
+- Cross product for orientation
+- Line intersection for clipping
+- Polygon area calculation
+
+**Edge Cases:**
+- If counts < 3: return 0 (no polygon possible)
+- If polygons don't intersect: return 0
+- Handle parallel edges during clipping
+
+The module should use combinational blocks where possible and sequential logic for iterative algorithms.

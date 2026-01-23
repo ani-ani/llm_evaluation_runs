@@ -1,0 +1,31 @@
+Module: equation_solver
+
+Description: Given a numeric string A (max 8 digits) and target S (max 200), finds split positions for addition operations to make the sum of the parts equal S. Outputs split positions as a bitmask.
+
+Interface:
+  Inputs:
+    - clk         : Clock signal (rising edge triggered)
+    - rst_n       : Active-low synchronous reset
+    - start       : Start pulse (assert for 1 cycle to begin computation)
+    - digits[0:7] : 8-element input array, each element 4 bits (0-9 BCD digit)
+    - length      : 4-bit value (1-8) indicating number of valid digits
+    - target      : 8-bit sum target (0-200)
+  Outputs:
+    - done        : Asserted high for 1 cycle when computation completes
+    - split       : 8-bit bitmask. For i from 0 to length-2: split[i]=1 means put '+' after digit i. Split[length-1] must be 0.
+    - valid       : Asserted high if a solution is found (always 1 due to problem guarantee)
+
+Behavior:
+  1. On reset: done=0, split=0, valid=0, internal state cleared
+  2. Assert start for 1 clock cycle to begin computation
+  3. Module enumerates all possible split patterns (2^(length-1) possibilities)
+  4. For each pattern, compute sum of numbers formed by splits
+  5. When pattern matching target is found, set split output and assert done for 1 cycle
+  6. Computation must complete within 2048 cycles (256 patterns * 8 digits max)
+  7. Guaranteed solution exists per problem statement
+
+Implementation notes:
+  - Numbers may have leading zeros (treated normally as integers)
+  - Use combinational logic for digit processing within state machine
+  - Output split pattern corresponds to the first valid solution found
+  - Unused split bits (i >= length-1) should be 0

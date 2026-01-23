@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'prime_fib' that finds the n-th Fibonacci number that is also prime.
+
+Inputs:
+  input clk        // clock signal
+  input rst_n      // active-low reset (active low)
+  input start      // start computation (pulse high for 1 cycle)
+  input [3:0] n    // which prime Fibonacci to find (range 1-10)
+
+Outputs:
+  output reg [31:0] result  // the n-th prime Fibonacci number
+  output reg done           // high when computation complete (stays high until reset)
+
+Specification:
+- The module generates Fibonacci numbers sequentially and tests each for primality
+- Start from Fibonacci sequence: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, ...
+- Prime Fibonaccis (from examples): 2, 3, 5, 13, 89, 233, 1597, 28657, 514229, 433494437
+- A number is prime if greater than 1 and has no divisors other than 1 and itself
+- Use iterative state machine with bounded loops (no recursion)
+- Use 32-bit unsigned arithmetic for all values
+- Implement primality checking: test divisors d from 2 to sqrt(current)
+- If sqrt(current) > 2048, cap the divisor test to 2048 for bounded execution
+
+State Machine:
+- IDLE: Wait for start signal
+- CALC_FIB: Generate next Fibonacci number
+- CHECK_PRIME: Test current number for primality (divisor loop)
+- FOUND: Increment prime counter, check if target reached
+- DONE: Set done=1, hold result
+
+Behavioral Description:
+1. On start, initialize Fibonacci variables (prev=1, curr=1), prime_count=0
+2. Loop: Generate next Fibonacci (next = curr + prev)
+3. Check if next is prime:
+   - If next <= 1, not prime
+   - If next == 2, prime
+   - If next is even, not prime
+   - Test odd divisors from 3 up to min(sqrt(next), 2048)
+4. If prime, increment prime_count
+5. If prime_count == n, output next as result and go to DONE
+6. Else update prev=curr, curr=next and continue
+
+Latency: Max ~5000 cycles (worst case primality check for large numbers)
+Use blocking assignments for state machine, non-blocking for outputs
+Interface must match exactly for testbench compatibility

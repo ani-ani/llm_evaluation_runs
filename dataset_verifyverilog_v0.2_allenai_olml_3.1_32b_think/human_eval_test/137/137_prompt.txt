@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'compare_one' that implements comparison of numbers in mixed formats (integers, fixed-point floats, or decimal strings).
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start comparison
+input [1:0] type_a // 00: integer, 01: float (Q16.16), 10: string
+input [1:0] type_b // 00: integer, 01: float (Q16.16), 10: string
+input [31:0] data_a // Integer or Q16.16 value or string ID
+input [31:0] data_b // Integer or Q16.16 value or string ID
+
+Outputs:
+output reg [1:0] result_type // Type of result (00, 01, 10) or 11 for equal/None
+output reg [31:0] result_data // Result value in original format
+output reg done // high when computation complete
+
+Specification:
+- The module takes two inputs, each represented by a type tag and 32-bit data.
+- For integer inputs (type 00), data is a signed 32-bit integer.
+- For float inputs (type 01), data is in Q16.16 fixed-point format.
+- For string inputs (type 10), data represents an ID for a string stored externally.
+  For simulation, we will pass string values directly as integers where '123' = 0x00000123 and '1.2' = 0x00000102 (representing 1.2 as 12).
+- The module must:
+  1. Convert all inputs to a common format (Q16.16) for comparison
+  2. Compare the numeric values
+  3. Return the larger value in its original format
+  4. Return type=11 (None) if values are exactly equal
+
+- Algorithm:
+  - Use state machine with states: IDLE, PARSE_A, PARSE_B, COMPARE, DONE
+  - String conversion: parse decimal string (e.g., "5,1" or "5.1") to Q16.16
+  - Integer to Q16.16: shift left by 16 bits
+  - Float is already in Q16.16 format
+  - Comparison: compare Q16.16 values
+  - Result formatting: convert back to original type format
+
+- Latency: Result valid 10 clock cycles after start asserted.
+- Use state machine with states: IDLE, PARSE_A, PARSE_B, COMPARE, DONE.
+- String parsing must handle decimal point or comma: "5,1" or "5.1" → 5.1
+- For string inputs in testbench: represent '1' as 0x00000031 (ASCII '1'), '2.3' as 0x0000322E33 (but we simplify to passing integer values 1, 23, etc.)

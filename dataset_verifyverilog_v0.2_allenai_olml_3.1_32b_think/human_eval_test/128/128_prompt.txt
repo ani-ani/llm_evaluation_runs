@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'prod_signs' that implements the product of signs and sum of magnitudes algorithm.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [2:0] arr_len // length of input array (0-8)
+input [7:0] arr_data_0 // array element 0
+input [7:0] arr_data_1 // array element 1
+input [7:0] arr_data_2 // array element 2
+input [7:0] arr_data_3 // array element 3
+input [7:0] arr_data_4 // array element 4
+input [7:0] arr_data_5 // array element 5
+input [7:0] arr_data_6 // array element 6
+input [7:0] arr_data_7 // array element 7
+
+Outputs:
+output reg [31:0] result // sum of magnitudes * product of signs
+output reg valid // high when computation complete
+
+The module should compute: sum(|arr[i]|) * (product of signs(arr[i]))
+where signs are: +1 for positive, -1 for negative, 0 for zero.
+If arr_len is 0 (empty array), return 0 via valid flag indication (result don't care).
+If any element is 0, the product of signs becomes 0, and result is 0.
+Magnitude is absolute value (remove negative sign).
+
+Implementation details:
+- Use a state machine with states: IDLE, CALCULATE, DONE
+- Process elements one by one over 8 clock cycles
+- Maintain running sum of magnitudes (32-bit)
+- Maintain running product of signs (-1, 0, or 1)
+- Product of signs can be stored as: 0=zero, 1=positive, 2=negative, 3=undefined (error)
+- Result = sum * (product_sign == 0 ? 0 : (product_sign == 2 ? -1 : 1))
+- Latency: 10 clock cycles after start (8 for processing + overhead)
+- Input values are 8-bit signed integers
+- Output can be negative (32-bit signed)
+
+State definitions:
+- IDLE: Wait for start signal, initialize registers
+- CALCULATE: Process each array element (iterates arr_len times)
+- DONE: Latch result and assert valid
+
+Edge cases:
+- Empty array (arr_len=0): go to DONE immediately, result=0
+- Any zero element: product becomes 0, sum can be computed or early terminate
+- All positive: result = sum of magnitudes
+- All negative: result = -sum of magnitudes
+- Mixed: depends on count of negative numbers (even/odd)

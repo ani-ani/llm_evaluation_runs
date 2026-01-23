@@ -1,0 +1,156 @@
+/*
+Problem: Sum of array elements within a range [m, n]
+Adaptation: Sequential module with 8-element array, 8-bit data, 16-bit result
+
+Interface Specification:
+  Inputs:
+    - clk        : Clock signal (rising edge triggered)
+    - rst_n      : Active-low synchronous reset
+    - start      : Start pulse (1 cycle to begin computation)
+    - arr[0:7]   : 8-element input array, each element 8 bits
+                    Access pattern: arr[0], arr[1], ... arr[7]
+    - m          : 4-bit start index (0-7)
+    - n          : 4-bit end index (0-7)
+  
+  Outputs:
+    - result     : 16-bit sum result
+    - done       : Asserted high for 1 cycle when result is valid
+  
+  Timing:
+    - Assert start for 1 clock cycle to begin
+    - Computation completes in (n-m+2) cycles maximum
+    - done pulses high for 1 cycle when complete
+    - Sample result on cycle when done is high
+  
+  Reset behavior:
+    - On rst_n=0: done=0, result=0, internal state cleared
+    - Minimum 2 clock cycles of reset recommended
+  
+  Constraints:
+    - m <= n (assume valid inputs)
+    - n < 8
+    - Result fits in 16 bits (max 8*255 = 2040)
+
+Module Name: sum_range_fsm
+*/
+
+module sum_range_fsm (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0,
+    input wire [7:0] arr_1,
+    input wire [7:0] arr_2,
+    input wire [7:0] arr_3,
+    input wire [7:0] arr_4,
+    input wire [7:0] arr_5,
+    input wire [7:0] arr_6,
+    input wire [7:0] arr_7,
+    input wire [3:0] m,
+    input wire [3:0] n,
+    output reg [15:0] result,
+    output reg done
+);
+
+    // Internal registers
+    reg [3:0] current_index;
+    reg [15:0] accumulator;
+    reg computing;
+    reg done_pulse;
+    
+    // State encoding
+    localparam IDLE = 2'b00;
+    localparam COMPUTING = 2'b01;
+    localparam DONE = 2'b10;
+    
+    reg [1:0] state, next_state;
+    
+    // Select input based on current_index
+    wire [7:0] current_value;
+    
+    assign current_value = (current_index == 4'd0) ? arr_0 :
+                           (current_index == 4'd1) ? arr_1 :
+                           (current_index == 4'd2) ? arr_2 :
+                           (current_index == 4'd3) ? arr_3 :
+                           (current_index == 4'd4) ? arr_4 :
+                           (current_index == 4'd5) ? arr_5 :
+                           (current_index == 4'd6) ? arr_6 :
+                           arr_7;
+    
+    // State register
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+        end else begin
+            state <= next_state;
+        end
+    end
+    
+    // Next state and output logic
+    always @(*) begin
+        next_state = state;
+        done_pulse = 1'b0;
+        
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    next_state = COMPUTING;
+                end
+            end
+            
+            COMPUTING: begin
+                if (current_index > n) begin
+                    next_state = DONE;
+                    done_pulse = 1'b1;
+                end
+            end
+            
+            DONE: begin
+                next_state = IDLE;
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+    
+    // Data path
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            current_index <= 4'd0;
+            accumulator <= 16'd0;
+            result <= 16'd0;
+            done <= 1'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        current_index <= m;
+                        accumulator <= 16'd0;
+                        done <= 1'b0;
+                    end
+                end
+                
+                COMPUTING: begin
+                    if (current_index <= n) begin
+                        accumulator <= accumulator + current_value;
+                        current_index <= current_index + 1'b1;
+                    end
+                    done <= 1'b0;
+                end
+                
+                DONE: begin
+                    result <= accumulator;
+                    done <= 1'b1;
+                end
+                
+                default: begin
+                    current_index <= 4'd0;
+                    accumulator <= 16'd0;
+                    result <= 16'd0;
+                    done <= 1'b0;
+                end
+            endcase
+        end
+    end
+
+endmodule

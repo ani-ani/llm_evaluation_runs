@@ -1,0 +1,72 @@
+Design a sequential Verilog module named 'pipe_bipartite_checker' that determines if a set of pipes can be cleaned without collisions. The problem is equivalent to checking if the intersection graph of the pipes is bipartite.
+
+The module processes 8 pipes sequentially. It receives each pipe's start well coordinates and end coordinates (scaled down by 1000 to fit in 8-bit signed integers). It computes intersections on the fly and uses a BFS-like traversal to assign colors.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High for one cycle to start processing
+input [4:0] pipe_idx // Current pipe index (0 to 7) when valid
+input valid_pipe // High when pipe_idx and coordinates are valid
+input signed [7:0] sx, sy, ex, ey // Scaled coordinates of current pipe (start x,y, end x,y)
+
+Outputs:
+output reg result // 0 for impossible, 1 for possible
+output reg done // High when computation is complete
+
+Internal Logic:
+- Stores coordinates of up to 8 pipes in BRAM or registers.
+- Computes intersection matrix (8x8 bits).
+- Performs BFS (or iterative coloring) on the graph.
+- If a conflict is found (adjacent nodes same color), set result=0.
+- If graph is bipartite, set result=1.
+
+Spec Details:
+- Max pipes N=8.
+- Coordinates: Signed 8-bit integers (representing range -10 to 10).
+- Intersection: Two line segments (p1, p2) intersect if (p1.start, p1.end) and (p2.start, p2.end) cross. Ignore intersection at endpoints if they share a well, but the problem statement implies shared endpoints are wells (nodes) and don't count as intersections for the conflict check. However, strictly speaking, we need to check proper crossing. We will use standard line segment intersection logic.
+- State Machine: IDLE -> RECEIVE_PIPES (wait for start) -> STORE_PIPES (latch inputs) -> BUILD_GRAPH (compute intersections) -> CHECK_BIPARTITE (BFS traversal) -> DONE.
+- Output: 'result' is valid when 'done' is high.
+
+Implementation Note:
+Since we need to verify via testbench, the module must be able to accept 8 pipe definitions sequentially. The internal logic will then compute the result. To keep the design manageable for a benchmark, we can unroll the intersection checks for 8 pipes (28 pairs) over several cycles or do it combinationally if the logic depth allows. The BFS will be iterative.
+
+Detailed Behavior:
+1. Wait for 'start'.
+2. 'start' goes high. Module enters state to receive pipes.
+3. 'valid_pipe' goes high for each pipe. Module stores (sx,sy,ex,ey) at index 'pipe_idx'.
+4. After 8 pipes are stored (or 'start' is deasserted signaling end of batch), enter processing state.
+5. In BUILD_GRAPH state: Iterate through all pairs (i, j) where i < j. Check if pipe i and pipe j intersect.
+   - Intersection check: Given two segments A-B and C-D. They intersect if (orientation(A,B,C) != orientation(A,B,D)) AND (orientation(C,D,A) != orientation(C,D,B)).
+   - Orientation: val = (B.y-A.y)*(D.x-C.x) - (B.x-A.x)*(D.y-C.y). Wait, that's for vectors. For segment orientation:
+     val = (B.x - A.x)*(C.y - A.y) - (B.y - A.y)*(C.x - A.x).
+     Cross product sign determines orientation.
+   - We need to handle colinearity and endpoint touches. The problem says "common point of two pipes may be the endpoint... Any two pipes share at most one common point." The regulation says "whenever two pipes intersect"... intersections pose a problem. Usually, in such problems, "intersect" means crossing in the interior or touching. If they touch at a well, it's a junction, not an intersection that needs cleaning? "Any point shared by more than two pipes will be a well." If exactly two pipes meet at a point, it is an intersection. If they meet at a well (which is shared by origin or end), and it's a well, it's not just those two pipes. But if a pipe ends at a well, that's one pipe. If another pipe starts there, that's two. If a pipe ends at a point which is not a well but is on another pipe, that is an intersection. 
+   - Simplified intersection logic for benchmark: 
+     Check if lines intersect. If they touch at an endpoint, it counts as an intersection (since it's exactly two pipes meeting, and it's not a well because if it were a well, other pipes might meet there, but the prompt says "Any point shared by more than two pipes will be a well."). So if exactly two pipes meet, it is an intersection.
+     However, to be safe and simple, we implement the standard "strict crossing" which excludes endpoints, OR include endpoints. 
+     Let's stick to the visual interpretation: if the pipes cross or touch, they form an intersection. 
+     We will use the cross-product method to check if the segments straddle each other.
+
+6. In CHECK_BIPARTITE state:
+   - Initialize colors for all 8 nodes to -1 (unvisited).
+   - For each node i from 0 to 7:
+     - If color[i] == -1:
+       - Set color[i] = 0.
+       - Start BFS queue with i (implemented as a simple loop over adjacency matrix).
+       - While queue not empty:
+         - Pop u.
+         - For each neighbor v of u (where intersect[u][v] is 1):
+           - If color[v] == -1: color[v] = 1 - color[u]; push v.
+           - Else if color[v] == color[u]: Conflict! Set result = 0, done = 1.
+   - If no conflicts after checking all reachable nodes, result = 1, done = 1.
+
+7. Latency: Approximately 8 (receive) + 100 (intersection compute) + 200 (bfs) cycles. Total ~300-400 cycles.
+
+Example Scaling:
+Original Sample: (0,0), (0,2), (2,0).
+Pipes: 1->(2,3), 2->(2,2), 3->(0,3).
+Scale: Divide by 1000. (2,3) -> (2,3). (2,2) -> (2,2). (0,3) -> (0,3).
+This is fine for 8-bit signed.
+
+Keep it purely behavioral RTL.

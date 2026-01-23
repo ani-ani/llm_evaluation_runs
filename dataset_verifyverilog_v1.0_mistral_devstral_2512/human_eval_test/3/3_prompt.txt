@@ -1,0 +1,48 @@
+Design a sequential Verilog module named 'below_zero' that tracks a bank account balance and detects if it ever falls below zero.
+
+The module processes a fixed array of 8 signed 8-bit operations (deposits are positive, withdrawals are negative). The account starts with zero balance.
+
+Interface Specification:
+  Inputs:
+    - clk: clock signal
+    - rst_n: active-low reset (sets balance to 0)
+    - start: start signal (single cycle high) to begin processing
+    - operations [7:0][7:0]: 8-element array of 8-bit signed operations (index 0 to 7)
+    - valid_ops [2:0]: number of valid operations in the array (1-8, encoded as 1-8 binary)
+  
+  Outputs:
+    - result: goes high (1'b1) if balance ever falls below zero during processing, otherwise low (1'b0)
+    - done: goes high for one cycle when processing is complete
+
+Behavior:
+  1. On reset (rst_n=0), balance register is cleared to 0
+  2. When start signal is asserted (goes high), begin processing
+  3. Process operations sequentially, one per clock cycle
+  4. For each operation, add it to the running balance
+  5. After each addition, check if balance < 0
+  6. If balance < 0 at any point, set result register high
+  7. Continue processing all valid_ops
+  8. After processing all operations, assert done for one cycle
+  9. Keep result stable after done is asserted until next reset or start
+
+Implementation details:
+  - Balance register: Use 12-bit signed register to prevent overflow (range -2048 to +2047)
+  - State machine states: IDLE, PROCESSING, DONE
+  - Counter to track current operation index (0 to valid_ops-1)
+  - Result is sticky: once set high, stays high even if balance recovers
+  - Sample result after done is asserted
+
+Edge cases:
+  - Empty operations (valid_ops = 0): done goes high immediately, result = 0
+  - Balance exactly zero is OK (not below zero)
+  - Balance going negative, then recovering: result should still be 1
+
+Latency: Done will be asserted valid_ops cycles after start is asserted.
+
+Example:
+  operations = [1, 2, -4, 5], valid_ops = 4
+  Cycle 1: balance = 1, check: 1 >= 0, result = 0
+  Cycle 2: balance = 1+2 = 3, check: 3 >= 0, result = 0  
+  Cycle 3: balance = 3-4 = -1, check: -1 < 0, result = 1
+  Cycle 4: balance = -1+5 = 4, check: 4 >= 0, result stays 1
+  done = 1, result = 1

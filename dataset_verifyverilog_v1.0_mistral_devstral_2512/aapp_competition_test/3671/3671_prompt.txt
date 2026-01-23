@@ -1,0 +1,93 @@
+module JobScheduler (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] N,
+    input wire [15:0] times [0:7],
+    output reg [5:0] result,
+    output reg done
+);
+
+localparam S_IDLE = 0, S_SET_I = 1, S_FIND_J = 2, S_NEXT_L = 3, S_UPDATE_DP = 4;
+
+reg [2:0] state;
+reg [2:0] i;
+reg [1:0] L_state;
+reg [2:0] j;
+reg [5:0] dp [0:7];
+reg [15:0] time_i;
+reg [16:0] add_val;
+reg [5:0] candidate_max;
+reg [5:0] candidate;
+reg [5:0] dp_next;
+
+integer k;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= S_IDLE;
+        done <= 0;
+        result <= 0;
+        for (k = 0; k < 8; k = k + 1) dp[k] <= 0;
+    end else begin
+        case (state)
+            S_IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= S_SET_I;
+                    i <= (N > 0) ? N - 1 : 0;
+                    dp_next <= 0;
+                end
+            end
+
+            S_SET_I: begin
+                time_i <= times[i];
+                candidate_max <= dp_next;
+                L_state <= 0;
+                state <= S_FIND_J;
+                j <= i + 1;
+            end
+
+            S_FIND_J: begin
+                add_val <= time_i + (2 + L_state);
+                if (j < N && {1'b0, times[j]} >= add_val) begin
+                    candidate <= (2 + L_state) + dp[j];
+                    state <= S_NEXT_L;
+                end else if (j < N) begin
+                    j <= j + 1;
+                end else begin
+                    candidate <= (2 + L_state);
+                    state <= S_NEXT_L;
+                end
+            end
+
+            S_NEXT_L: begin
+                if (candidate > candidate_max) candidate_max <= candidate;
+                if (L_state == 2) begin
+                    dp[i] <= candidate_max;
+                    dp_next <= candidate_max;
+                    state <= S_UPDATE_DP;
+                end else begin
+                    L_state <= L_state + 1;
+                    j <= i + 1;
+                    state <= S_FIND_J;
+                end
+            end
+
+            S_UPDATE_DP: begin
+                if (i == 0) begin
+                    result <= candidate_max;
+                    done <= 1;
+                    state <= S_IDLE;
+                end else begin
+                    i <= i - 1;
+                    state <= S_SET_I;
+                end
+            end
+
+            default: state <= S_IDLE;
+        endcase
+    end
+end
+
+endmodule

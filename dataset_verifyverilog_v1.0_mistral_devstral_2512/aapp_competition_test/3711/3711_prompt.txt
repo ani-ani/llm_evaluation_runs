@@ -1,0 +1,107 @@
+module chocolate_cutting (
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] n,
+    input [15:0] m,
+    input [15:0] k,
+    output reg [31:0] result,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 3'b000;
+    localparam CHECK_POSSIBLE = 3'b001;
+    localparam COMPUTE_ALPHA = 3'b010;
+    localparam COMPUTE_BETA = 3'b011;
+    localparam UPDATE_RESULT = 3'b100;
+    localparam FINISHED = 3'b101;
+    
+    reg [2:0] state;
+    reg [31:0] alpha, beta;
+    reg [31:0] temp_n, temp_m;
+    reg [15:0] cuts_remaining;
+    reg [31:0] division_result;
+    reg [31:0] multiplication_result;
+    
+    // Combinational division and multiplication logic
+    always @(*) begin
+        if (state == COMPUTE_ALPHA) begin
+            if (cuts_remaining >= temp_n) begin
+                // alpha = m // (cuts_remaining - temp_n + 2)
+                division_result = temp_m / (cuts_remaining - temp_n + 2);
+            end else begin
+                // alpha = m * (temp_n // (cuts_remaining + 1))
+                division_result = temp_m * (temp_n / (cuts_remaining + 1));
+            end
+        end else if (state == COMPUTE_BETA) begin
+            if (cuts_remaining >= temp_m) begin
+                // beta = n // (cuts_remaining - temp_m + 2)
+                division_result = temp_n / (cuts_remaining - temp_m + 2);
+            end else begin
+                // beta = n * (m // (cuts_remaining + 1))
+                division_result = temp_n * (temp_m / (cuts_remaining + 1));
+            end
+        end else begin
+            division_result = 0;
+        end
+    end
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+            alpha <= 0;
+            beta <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        state <= CHECK_POSSIBLE;
+                        temp_n <= n;
+                        temp_m <= m;
+                        cuts_remaining <= k;
+                    end
+                end
+                
+                CHECK_POSSIBLE: begin
+                    // Check if k > (n-1) + (m-1)
+                    if (k > (n - 1) + (m - 1)) begin
+                        result <= 32'hFFFFFFFF; // -1
+                        state <= FINISHED;
+                    end else begin
+                        state <= COMPUTE_ALPHA;
+                    end
+                end
+                
+                COMPUTE_ALPHA: begin
+                    alpha <= division_result;
+                    state <= COMPUTE_BETA;
+                end
+                
+                COMPUTE_BETA: begin
+                    beta <= division_result;
+                    state <= UPDATE_RESULT;
+                end
+                
+                UPDATE_RESULT: begin
+                    if (alpha > beta) begin
+                        result <= alpha;
+                    end else begin
+                        result <= beta;
+                    end
+                    state <= FINISHED;
+                end
+                
+                FINISHED: begin
+                    done <= 1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+endmodule

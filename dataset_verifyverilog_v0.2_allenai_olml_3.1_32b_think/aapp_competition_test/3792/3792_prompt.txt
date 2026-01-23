@@ -1,0 +1,36 @@
+Design a sequential Verilog module named 'fair_nut_strings' that calculates the maximum number of unique prefixes from k binary strings (a/b) within lexicographical range [s, t].
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] char_s // Current character of string s (0 for 'a', 1 for 'b')
+input [7:0] char_t // Current character of string t (0 for 'a', 1 for 'b')
+input [31:0] k // Number of strings (max 10^9, capped internally)
+
+Outputs:
+output reg [31:0] result // Accumulated prefix count
+output reg done // High when computation complete for all n characters
+output reg [7:0] char_idx // Current character index (0 to n-1)
+
+Specification:
+1. The module processes strings of length n (n=100 max) sequentially, one character per clock cycle.
+2. Input 'char_s' and 'char_t' provide one character of s and t per cycle.
+3. 'k' represents the maximum number of strings that can be written.
+4. The algorithm tracks the number of distinct prefixes possible at each position, which grows based on s and t differences.
+5. When s[i] and t[i] are equal, the number of possible prefixes is constrained.
+6. When s[i]='a' and t[i]='b', the range expands, doubling the number of possible strings plus boundary adjustments.
+7. If the count exceeds k, it saturates at k.
+8. The result is the sum of valid prefix counts at each position.
+9. Latency: Requires n+5 clock cycles to complete after start is asserted.
+10. Use state machine with states: IDLE, READ_CHAR, COMPUTE, ACCUMULATE, DONE.
+
+Internal Logic:
+- Maintain 'cur_count' (number of possible prefixes, capped at k) and 'total_sum' (accumulated result).
+- At each step i:
+  * If s[i] == t[i]: cur_count remains same (only 1 choice).
+  * Else (s[i] != t[i]): cur_count = cur_count * 2 + 1 (approximate branching).
+  * If cur_count > k, set cur_count = k.
+  * total_sum += cur_count.
+- Reset 'cur_count' to 1 at start.
+- After n cycles, output total_sum and assert done.

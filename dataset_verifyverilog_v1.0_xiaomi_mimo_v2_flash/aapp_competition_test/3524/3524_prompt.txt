@@ -1,0 +1,89 @@
+module interleaving_checker (
+    input clk,
+    input rst_n,
+    input start,
+    input [127:0] s1,
+    input [127:0] s2,
+    input [127:0] s,
+    input [4:0] len_s1,
+    input [4:0] len_s2,
+    output reg result,
+    output reg done
+);
+
+// Internal state: IDLE, COMPUTE, DONE
+reg [1:0] state;
+parameter IDLE = 2'b00, COMPUTE = 2'b01, DONE = 2'b10;
+
+// Iteration counters
+reg [4:0] i, j;
+
+// DP array: 17x17 bits (indexed by i, j)
+reg dp [0:16][0:16];
+
+// Helper function to get character
+function [7:0] get_char;
+    input [127:0] vec;
+    input [4:0] idx;
+    get_char = vec[idx*8 +: 8];
+endfunction
+
+// Combinational next DP value
+wire next_dp = ((i>0 && dp[i-1][j] && get_char(s1, i-1) == get_char(s, i+j-1)) ||
+                (j>0 && dp[i][j-1] && get_char(s2, j-1) == get_char(s, i+j-1)));
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        result <= 0;
+        done <= 0;
+        i <= 0;
+        j <= 0;
+        // Clear dp
+        for (integer ii=0; ii<=16; ii=ii+1)
+            for (integer jj=0; jj<=16; jj=jj+1)
+                dp[ii][jj] <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    dp[0][0] <= 1;
+                    i <= 0;
+                    j <= 0;
+                    state <= COMPUTE;
+                end
+            end
+            COMPUTE: begin
+                // Compute for current i, j if within bounds
+                if (i <= len_s1 && j <= len_s2) begin
+                    if (i == 0 && j == 0) begin
+                        // already set
+                    end else begin
+                        dp[i][j] <= next_dp;
+                    end
+                end
+                
+                // Move to next cell
+                if (j < len_s2) begin
+                    j <= j + 1;
+                end else begin
+                    j <= 0;
+                    if (i < len_s1) begin
+                        i <= i + 1;
+                    end else begin
+                        result <= dp[len_s1][len_s2];
+                        state <= DONE;
+                    end
+                end
+            end
+            DONE: begin
+                done <= 1;
+                state <= IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule

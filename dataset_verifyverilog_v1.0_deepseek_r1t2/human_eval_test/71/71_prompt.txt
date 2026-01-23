@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'triangle_area' that calculates the area of a triangle given three side lengths using Heron's formula, or returns -1 if the sides cannot form a valid triangle.
+
+**Interface Specification:**
+Inputs:
+  input clk        // clock signal
+  input rst_n      // active-low reset
+  input start      // start computation (pulse high for 1 cycle)
+  input [7:0] a    // side length a (0-255)
+  input [7:0] b    // side length b (0-255)
+  input [7:0] c    // side length c (0-255)
+
+Outputs:
+  output reg [31:0] result  // Q16.16 fixed-point result, or 0xFFFFFFFF for invalid
+  output reg done           // high when computation complete (1 cycle pulse)
+
+**Functional Requirements:**
+1. On start pulse, validate triangle: a+b > c, a+c > b, b+c > a
+2. If invalid, set result = 32'hFFFFFFFF and assert done
+3. If valid, compute area using Heron's formula: area = sqrt(s*(s-a)*(s-b)*(s-c)) where s = (a+b+c)/2
+4. All calculations in Q16.16 fixed-point format
+5. Use integer arithmetic: area = sqrt(s*(s-a)*(s-b)*(s-c)) scaled by 65536
+6. Implement square root using 32-bit integer inputs with ~10 iterations of Babylonian method
+7. Result is Q16.16 fixed-point number
+
+**State Machine:**
+- IDLE: Wait for start signal
+- VALIDATE: Check triangle inequality (3 comparisons)
+- COMPUTE_S: Calculate s = (a+b+c)/2 (Q16.16 format: multiply by 65536 then divide by 2)
+- COMPUTE_P: Calculate product = s*(s-a)*(s-b)*(s-c)
+- SQRT_START: Initialize sqrt calculation
+- SQRT_LOOP: Babylonian iteration (10 cycles)
+- DONE: Assert done signal
+
+**Timing:**
+- Latency: approximately 100-120 clock cycles after start
+- Clock frequency: assume 100 MHz for cycle counting
+
+**Fixed-Point Format:**
+- Q16.16 format: value = real_value * 65536
+- Example: 6.00 = 6 * 65536 = 393216 = 32'h00060000
+- Example: 1.73 ≈ 1.73 * 65536 = 113377 = 32'h0001BB71
+- -1 is represented as 32'hFFFFFFFF (all bits set)
+
+**Implementation Notes:**
+- The module must handle 32-bit multiplication and subtraction
+- For sqrt(operand), initialize guess = operand >> 1 (or 512 for small values)
+- Babylonian iteration: next_guess = (guess + operand/guess) / 2
+- Limit to 10 iterations for bounded latency
+- Use case statements for state transitions
+- Avoid divide-by-zero by checking if operand is 0
+
+**Reset Sequence:**
+On rst_n low: clear all state, set result=0, done=0
+Wait for rst_n high before accepting start

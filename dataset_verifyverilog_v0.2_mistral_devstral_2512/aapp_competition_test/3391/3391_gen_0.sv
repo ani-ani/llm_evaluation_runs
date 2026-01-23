@@ -1,0 +1,149 @@
+module find_min_square_with_ignore (
+    input clk,
+    input rst_n,
+    input start,
+    input [5:0] num_houses,
+    input signed [31:0] x0, y0,
+    input signed [31:0] x1, y1,
+    input signed [31:0] x2, y2,
+    input signed [31:0] x3, y3,
+    input signed [31:0] x4, y4,
+    input signed [31:0] x5, y5,
+    input signed [31:0] x6, y6,
+    input signed [31:0] x7, y7,
+    output reg [31:0] result,
+    output reg done
+);
+
+    localparam IDLE = 3'b000;
+    localparam COMPUTE_MIN_MAX = 3'b001;
+    localparam CHECK_ALL = 3'b010;
+    localparam CHECK_REMOVALS = 3'b011;
+    localparam FINISHED = 3'b100;
+
+    reg signed [31:0] min_x, max_x, min_y, max_y;
+    reg signed [31:0] temp_min_x, temp_max_x, temp_min_y, temp_max_y;
+    reg [3:0] house_idx;
+    reg [2:0] state, next_state;
+    reg [31:0] current_min_side;
+    reg [3:0] removal_idx;
+
+    wire signed [31:0] curr_x, curr_y;
+    assign curr_x = (house_idx == 0) ? x0 :
+                    (house_idx == 1) ? x1 :
+                    (house_idx == 2) ? x2 :
+                    (house_idx == 3) ? x3 :
+                    (house_idx == 4) ? x4 :
+                    (house_idx == 5) ? x5 :
+                    (house_idx == 6) ? x6 : x7;
+    assign curr_y = (house_idx == 0) ? y0 :
+                    (house_idx == 1) ? y1 :
+                    (house_idx == 2) ? y2 :
+                    (house_idx == 3) ? y3 :
+                    (house_idx == 4) ? y4 :
+                    (house_idx == 5) ? y5 :
+                    (house_idx == 6) ? y6 : y7;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+        end else begin
+            state <= next_state;
+        end
+    end
+
+    always @(posedge clk) begin
+        if (state == IDLE && start) begin
+            house_idx <= 0;
+            min_x <= 32'h7FFFFFFF;
+            max_x <= 32'h80000001;
+            min_y <= 32'h7FFFFFFF;
+            max_y <= 32'h80000001;
+            current_min_side <= 32'h7FFFFFFF;
+            removal_idx <= 0;
+        end else if (state == COMPUTE_MIN_MAX) begin
+            if (house_idx < num_houses) begin
+                if (curr_x < min_x) min_x <= curr_x;
+                if (curr_x > max_x) max_x <= curr_x;
+                if (curr_y < min_y) min_y <= curr_y;
+                if (curr_y > max_y) max_y <= curr_y;
+                house_idx <= house_idx + 1;
+            end
+        end else if (state == CHECK_ALL) begin
+            if (num_houses > 0) begin
+                current_min_side <= (max_x - min_x > max_y - min_y) ? (max_x - min_x) : (max_y - min_y);
+            end
+            house_idx <= 0;
+            removal_idx <= 0;
+        end else if (state == CHECK_REMOVALS) begin
+            if (removal_idx < num_houses) begin
+                if (house_idx == 0) begin
+                    temp_min_x <= 32'h7FFFFFFF;
+                    temp_max_x <= 32'h80000001;
+                    temp_min_y <= 32'h7FFFFFFF;
+                    temp_max_y <= 32'h80000001;
+                end
+                if (house_idx < num_houses) begin
+                    if (house_idx != removal_idx) begin
+                        if (curr_x < temp_min_x) temp_min_x <= curr_x;
+                        if (curr_x > temp_max_x) temp_max_x <= curr_x;
+                        if (curr_y < temp_min_y) temp_min_y <= curr_y;
+                        if (curr_y > temp_max_y) temp_max_y <= curr_y;
+                    end
+                    house_idx <= house_idx + 1;
+                end else begin
+                    begin
+                        reg [31:0] side_x, side_y, side;
+                        side_x = temp_max_x - temp_min_x;
+                        side_y = temp_max_y - temp_min_y;
+                        side = (side_x > side_y) ? side_x : side_y;
+                        if (side < current_min_side) current_min_side <= side;
+                    end
+                    removal_idx <= removal_idx + 1;
+                    house_idx <= 0;
+                end
+            end else begin
+                result <= current_min_side;
+            end
+        end
+    end
+
+    always @(*) begin
+        case (state)
+            IDLE: begin
+                if (start) next_state = COMPUTE_MIN_MAX;
+                else next_state = IDLE;
+            end
+            COMPUTE_MIN_MAX: begin
+                if (house_idx >= num_houses) next_state = CHECK_ALL;
+                else next_state = COMPUTE_MIN_MAX;
+            end
+            CHECK_ALL: begin
+                if (num_houses <= 1) next_state = FINISHED;
+                else next_state = CHECK_REMOVALS;
+            end
+            CHECK_REMOVALS: begin
+                if (removal_idx >= num_houses) next_state = FINISHED;
+                else next_state = CHECK_REMOVALS;
+            end
+            FINISHED: begin
+                next_state = FINISHED;
+            end
+            default: next_state = IDLE;
+        endcase
+    end
+
+    always @(posedge clk) begin
+        done <= (state == FINISHED);
+    end
+
+endmodule
+
+module sign_extend_8_to_32 (
+    input [7:0] in,
+    output [31:0] out
+);
+    assign out = {{24{in[7]}}, in};
+endmodule

@@ -1,0 +1,1 @@
+module even_position(input [7:0] nums [7:0], output result); assign result = ~((nums[0][0] ^ 0) | (nums[1][0] ^ 1) | (nums[2][0] ^ 0) | (nums[3][0] ^ 1) | (nums[4][0] ^ 0) | (nums[5][0] ^ 1) | (nums[6][0] ^ 0) | (nums[7][0] ^ 1)); endmodule

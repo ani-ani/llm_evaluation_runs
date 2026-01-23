@@ -1,0 +1,303 @@
+module photo_finder (
+    input clk,
+    input rst_n,
+    input start,
+    input [2:0] photo_index,
+    input [2:0] num_people,
+    input [15:0] heights [0:7],
+    output reg [2:0] valid_photo_index,
+    output reg valid,
+    output reg done
+);
+
+    // State definitions
+    localparam IDLE = 2'd0;
+    localparam PROCESS = 2'd1;
+    localparam FINISH = 2'd2;
+
+    reg [1:0] state;
+    reg [2:0] me_pos;
+    reg [2:0] i;
+    reg [2:0] j;
+    reg alice_found;
+    reg bob_found;
+    reg temp_valid;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            valid <= 0;
+            done <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= PROCESS;
+                        me_pos <= 0;
+                        i <= 0;
+                        j <= 0;
+                        alice_found <= 0;
+                        bob_found <= 0;
+                        temp_valid <= 0;
+                        done <= 0;
+                    end
+                end
+
+                PROCESS: begin
+                    // If we found the photo or checked all positions, move to finish
+                    if (temp_valid || me_pos >= num_people) begin
+                        state <= FINISH;
+                    end else if (i < num_people) begin
+                        // Inner loops to check conditions for current me_pos
+                        if (i < me_pos) begin
+                            // Check for Alice (taller than me)
+                            if (heights[i] > heights[me_pos] && !alice_found) begin
+                                alice_found <= 1;
+                            end
+                            i <= i + 1;
+                        end else if (i == me_pos) begin
+                            i <= i + 1; // Skip myself
+                        end else begin // i > me_pos
+                            // Check for Bob (taller than me and Alice)
+                            // Alice height is hardcoded to be > me, but we need to know Alice's height.
+                            // To avoid storing all heights, we must find Alice first.
+                            // Strategy: Scan left for Alice, then scan right for Bob.
+                            // Let's refine loop structure for hardware.
+                            // Simplified: Iterate k (person index). 
+                            // Check if 'me' is valid if there exists a taller person on left
+                            // AND a person taller than both me and the left person on right.
+                            
+                            // Revised Control Flow:
+                            // 1. Pick me_pos (0 to n-1)
+                            // 2. Scan Left (0 to me_pos-1) for Alice (taller than me)
+                            // 3. Scan Right (me_pos+1 to n-1) for Bob (taller than me AND Alice)
+                            
+                            // Let's restart logic for clarity in this small space:
+                            // Loop K (Candidate 'me')
+                            //   Loop L (Candidate Alice on left)
+                            //     If L is taller than K, search Right for Bob
+                            //       Loop R (Candidate Bob on right)
+                            //         If R taller than K and L, then VALID
+                            
+                            // To make this run in sequential logic without nested loops being too deep:
+                            // State 0: Pick 'me' (0..n-1). Reset L=0, R=0, found flags.
+                            // State 1: Pick 'Alice' (0..me-1). If taller than 'me', go State 2. Else increment Alice.
+                            // State 2: Pick 'Bob' (me+1..n-1). If taller than 'me' AND 'Alice', set VALID and done. Else increment Bob.
+                            // If Alice loop ends, go back State 0 (next 'me').
+                            // If Bob loop ends, go back State 1 (next 'Alice').
+                            
+                            // Let's implement this refined state machine logic.
+                            // We will use nested loops inside the PROCESS state using counters.
+                            
+                            // The previous 'PROCESS' block structure was linear. 
+                            // Let's switch to the refined nested logic described above.
+                            // Since we cannot easily write nested loops in 1 'always' block without helper states,
+                            // we will use 'me', 'alice', 'bob' registers as indices.
+                            // State PROCESS will manage: check [me][alice][bob].
+                            
+                            // Redefining PROCESS block logic:
+                            // 1. Check if me < num_people. If not, done (fail).
+                            // 2. Check if alice < me. 
+                            //    2a. If heights[alice] > heights[me]:
+                            //        Check if bob < num_people.
+                            //        2a1. If bob > me AND heights[bob] > heights[me] AND heights[bob] > heights[alice]:
+                            //             temp_valid <= 1. State <= FINISH.
+                            //        2a2. Else bob++. 
+                            //    2b. Else alice++. 
+                            // 3. If alice == me (exhausted left side):
+                            //    me++. Reset alice=0, bob=me+1.
+                            // 4. If bob == num_people (exhausted right side for current alice):
+                            //    alice++. Reset bob=me+1.
+                            
+                            // Let's implement this step-by-step.
+                            
+                            // Step 1: Increment Bob
+                            if (bob < num_people) begin
+                                if (bob > me_pos && heights[bob] > heights[me_pos] && heights[bob] > heights[alice]) begin
+                                    temp_valid <= 1; // Found Bob
+                                end
+                                bob <= bob + 1;
+                            end else begin
+                                // Step 2: Increment Alice (Bob loop finished)
+                                if (alice < me_pos - 1) begin // -1 because if alice == me_pos - 1, next is me_pos which stops loop
+                                    alice <= alice + 1;
+                                    bob <= me_pos + 1;
+                                end else begin
+                                    // Step 3: Increment Me (Alice loop finished)
+                                    me_pos <= me_pos + 1;
+                                    alice <= 0;
+                                    bob <= me_pos + 2; // me_pos increments next cycle, so logic handles +1 vs +2 carefully
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                // Simplified Implementation for robust synthesis:
+                // We will just iterate 'me' and inside check O(N^2) parallelism or sequential scan.
+                // Given the N=8 constraint, we can implement the check logic using a helper module or flattened logic.
+                // Let's use the flattened logic approach.
+                
+                // Actually, the problem is 3 nested loops. With N=8, max 8*8*8 = 512 cycles.
+                // Let's implement a cleaner state machine for the PROCESS state:
+                // Indices: me, i, j.
+                // Logic:
+                //   if (j < n) begin
+                //     if (i < me && heights[i] > heights[me]) begin
+                //       if (j > me && heights[j] > heights[me] && heights[j] > heights[i]) found=1;
+                //       j++;
+                //     end else if (i < me) begin
+                //       i++;
+                //     end else begin
+                //       i=0; j=0; me++;
+                //     end
+                //   end else begin
+                //     i++; j=me+1; // Reset for next i
+                //   end
+                
+                // Let's stick to a safe, decoupled logic:
+                // We will implement the core check:
+                // "Exists Alice on left (height > me) AND Exists Bob on right (height > me AND > Alice)"
+                
+                // This is hard to do in one block. Let's use a brute force combinational check inside sequential wrapper.
+                // Since N=8 is tiny, we can unroll the checks.
+                // But we must do it via Sequential Logic for the benchmark.
+                
+                // Let's implement the loop counter logic described in the thought trace:
+                // Regs: me, alice, bob. 
+                // Logic:
+                //  if (bob < n):
+                //     check bob. bob++.
+                //  else if (alice < me):
+                //     alice++. reset bob=me+1.
+                //  else:
+                //     me++. reset alice=0, bob=me+1.
+                //  Check: if (alice < me) and (bob > me) and (heights[alice] > heights[me]) and (heights[bob] > heights[alice]) -> Valid.
+                
+                // Rewriting PROCESS block with this logic:
+                if (state == PROCESS) begin
+                    if (temp_valid) begin
+                        // Keep high until FINISH
+                    end else if (me_pos < num_people) begin
+                        // Current check
+                        if (alice < me_pos && bob > me_pos && bob < num_people) begin
+                            if (heights[alice] > heights[me_pos] && heights[bob] > heights[alice]) begin
+                                temp_valid <= 1;
+                            end
+                        end
+                        
+                        // Increment counters
+                        if (bob < num_people - 1) begin
+                            bob <= bob + 1;
+                        end else if (alice < me_pos - 1) begin
+                            alice <= alice + 1;
+                            bob <= me_pos + 1;
+                        end else if (alice == me_pos - 1) begin
+                            // Alice loop finished
+                            if (me_pos < num_people - 1) begin
+                                me_pos <= me_pos + 1;
+                                alice <= 0;
+                                bob <= (me_pos + 1) + 1; // New me + 1
+                            end else begin
+                                // All me positions checked
+                                state <= FINISH;
+                            end
+                        end
+                    end else begin
+                        state <= FINISH;
+                    end
+                end
+
+                FINISH: begin
+                    if (temp_valid) begin
+                        valid <= 1;
+                        valid_photo_index <= photo_index;
+                    end else begin
+                        valid <= 0;
+                    end
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule
+
+module top (
+    input clk,
+    input rst_n,
+    input start,
+    input [2:0] k, // Number of photos (max 8)
+    input [2:0] n [0:7], // Number of people per photo
+    input [15:0] heights [0:7][0:7], // 8 photos, max 8 people each
+    output reg [2:0] num_valid,
+    output reg [2:0] valid_indices [0:7],
+    output reg done
+);
+
+    reg [2:0] photo_cnt;
+    reg pf_start;
+    wire pf_done;
+    wire pf_valid;
+    wire [2:0] pf_idx;
+    
+    reg [2:0] temp_idx_store [0:7];
+    reg [2:0] temp_valid_cnt;
+    
+    photo_finder pf (
+        .clk(clk),
+        .rst_n(rst_n),
+        .start(pf_start),
+        .photo_index(photo_cnt),
+        .num_people(n[photo_cnt]),
+        .heights(heights[photo_cnt]),
+        .valid_photo_index(pf_idx),
+        .valid(pf_valid),
+        .done(pf_done)
+    );
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            photo_cnt <= 0;
+            pf_start <= 0;
+            temp_valid_cnt <= 0;
+            num_valid <= 0;
+            done <= 0;
+        end else begin
+            if (start && !done) begin
+                photo_cnt <= 0;
+                pf_start <= 1;
+                temp_valid_cnt <= 0;
+                done <= 0;
+            end else if (photo_cnt < k) begin
+                if (pf_start) begin
+                    pf_start <= 0;
+                end else if (pf_done) begin
+                    if (pf_valid) begin
+                        temp_indices[temp_valid_cnt] <= pf_idx;
+                        temp_valid_cnt <= temp_valid_cnt + 1;
+                    end
+                    photo_cnt <= photo_cnt + 1;
+                    if (photo_cnt + 1 < k) begin
+                        pf_start <= 1;
+                    end
+                end
+            end else if (photo_cnt == k && !done) begin
+                num_valid <= temp_valid_cnt;
+                valid_indices <= temp_indices;
+                done <= 1;
+            end
+        end
+    end
+
+    // Helper to keep indices array in sync (Verilog array assignment quirk)
+    reg [2:0] temp_indices [0:7];
+    integer i_idx;
+    always @(posedge clk) begin
+        for (i_idx = 0; i_idx < 8; i_idx = i_idx + 1) begin
+            valid_indices[i_idx] <= temp_indices[i_idx];
+        end
+    end
+
+endmodule

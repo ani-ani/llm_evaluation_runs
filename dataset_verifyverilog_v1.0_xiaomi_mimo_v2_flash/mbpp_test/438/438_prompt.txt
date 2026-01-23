@@ -1,0 +1,95 @@
+module count_bidirectional #(
+    parameter MAX_PAIRS = 8,
+    parameter DATA_WIDTH = 8
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [DATA_WIDTH-1:0] arr_a [0:MAX_PAIRS-1],  // First element of each tuple
+    input wire [DATA_WIDTH-1:0] arr_b [0:MAX_PAIRS-1],  // Second element of each tuple
+    input wire [3:0] valid_pairs,                       // Number of valid pairs (1-8)
+    output reg [7:0] result,                            // Count of bidirectional pairs
+    output reg done                                     // Computation complete
+);
+
+    // Internal state machine
+    reg [2:0] state;
+    reg [3:0] i, j;           // Loop counters
+    reg [7:0] count;          // Accumulating count
+    reg match_found;          // Temporary match flag
+    
+    // State definitions
+    localparam IDLE = 3'b000;
+    localparam COMPARE = 3'b001;
+    localparam INCREMENT = 3'b010;
+    localparam COMPLETE = 3'b011;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            i <= 0;
+            j <= 0;
+            count <= 0;
+            result <= 0;
+            done <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start && valid_pairs > 1) begin
+                        state <= COMPARE;
+                        i <= 0;
+                        j <= 1;
+                        count <= 0;
+                    end else if (start) begin
+                        // Single pair or zero pairs, no bidirectional possible
+                        result <= 0;
+                        done <= 1;
+                        state <= IDLE;
+                    end
+                end
+                
+                COMPARE: begin
+                    // Check if arr[i] and arr[j] are bidirectional
+                    // bidirectional if: arr_a[i] == arr_b[j] AND arr_b[i] == arr_a[j]
+                    if (i < valid_pairs && j < valid_pairs && 
+                        arr_a[i] == arr_b[j] && arr_b[i] == arr_a[j]) begin
+                        count <= count + 1;
+                    end
+                    state <= INCREMENT;
+                end
+                
+                INCREMENT: begin
+                    // Increment j loop
+                    if (j < valid_pairs - 1) begin
+                        j <= j + 1;
+                        state <= COMPARE;
+                    end else begin
+                        // End of inner loop, increment i
+                        if (i < valid_pairs - 2) begin
+                            i <= i + 1;
+                            j <= i + 2;  // Start j at i+2 for next iteration
+                            state <= COMPARE;
+                        end else begin
+                            // All pairs processed
+                            result <= count;
+                            done <= 1;
+                            state <= COMPLETE;
+                        end
+                    end
+                end
+                
+                COMPLETE: begin
+                    // Wait for start to go low before accepting new request
+                    if (!start) begin
+                        state <= IDLE;
+                        done <= 0;
+                    end
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule

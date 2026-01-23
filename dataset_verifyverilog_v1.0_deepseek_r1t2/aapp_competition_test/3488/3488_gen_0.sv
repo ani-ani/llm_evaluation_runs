@@ -1,0 +1,201 @@
+module find_min_vertices #(
+    parameter N = 8,          // Maximum number of vertices (≤ 8)
+    parameter K = 8,          // Maximum number of points (≤ 8)
+    parameter DATA_WIDTH = 16 // Width of coordinate values
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    output reg done,
+    output reg [3:0] min_vertices,
+    // Vertex coordinates (assumed in counter‑clockwise order)
+    input wire [DATA_WIDTH-1:0] vertex_x [0:N-1],
+    input wire [DATA_WIDTH-1:0] vertex_y [0:N-1],
+    // Point coordinates (all strictly inside the original polygon)
+    input wire [DATA_WIDTH-1:0] point_x [0:K-1],
+    input wire [DATA_WIDTH-1:0] point_y [0:K-1]
+);
+
+    // State encoding
+    localparam [2:0] IDLE        = 3'b000;
+    localparam [2:0] INIT        = 3'b001;
+    localparam [2:0] START_PASS  = 3'b010;
+    localparam [2:0] CHECK_VERTEX = 3'b011;
+    localparam [2:0] VALIDATE    = 3'b100;
+    localparam [2:0] UPDATE_MASK = 3'b101;
+    localparam [2:0] NEXT_VERTEX = 3'b110;
+    localparam [2:0] FINISHED    = 3'b111;
+
+    reg [2:0]  state;
+    reg [N-1:0] mask;            // Current set of vertices 
+    reg [3:0]  scan_idx;         // Current vertex being tested 
+    reg [3:0]  best;             // Current best (minimum) vertices
+    reg        validation_pass;  // Result of validity test 
+
+    // Edge and point iteration
+    reg [3:0]  edge_i, edge_j;   // Current edge vertices
+    reg [3:0]  point_idx;        // Current point index
+    reg        edge_valid;       // Edge validity flag
+    reg [3:0]  first_sel;        // First selected vertex 
+    reg [3:0]  prev_sel;         // Previous processed vertex
+    reg        found_first;      // First vertex found flag
+    reg [3:0]  edge_count;       // Edges processed count
+
+    // Cross product computation
+    wire signed [2*DATA_WIDTH:0] dx = $signed(vertex_x[edge_j]) - $signed(vertex_x[edge_i]);
+    wire signed [2*DATA_WIDTH:0] dy = $signed(vertex_y[edge_j]) - $signed(vertex_y[edge_i]);
+    wire signed [2*DATA_WIDTH:0] px = $signed(point_x[point_idx]) - $signed(vertex_x[edge_i]);
+    wire signed [2*DATA_WIDTH:0] py = $signed(point_y[point_idx]) - $signed(vertex_y[edge_i]);
+    wire signed [2*DATA_WIDTH:0] cross = dx * py - dy * px;
+
+    // Population count function
+    function automatic [3:0] popcount;
+        input [N-1:0] val;
+        integer k;
+        begin
+            popcount = 4'd0;
+            for (k = 0; k < N; k = k + 1)
+                if (val[k]) popcount = popcount + 4'd1;
+        end
+    endfunction
+
+    // Next selected vertex function
+    function automatic [3:0] next_selected;
+        input [N-1:0] m;
+        input [3:0] cur;
+        integer k;
+        begin
+            next_selected = cur;
+            for (k = cur + 4'd1; k < N; k = k + 4'd1)
+                if (m[k]) begin next_selected = k; return; end
+            for (k = 4'd0; k <= cur; k = k + 4'd1)
+                if (m[k]) begin next_selected = k; return; end
+        end
+    endfunction
+
+    // First selected vertex function
+    function automatic [3:0] first_selected;
+        input [N-1:0] m;
+        integer k;
+        begin
+            first_selected = 4'd0;
+            for (k = 0; k < N; k = k + 4'd1)
+                if (m[k]) begin first_selected = k; return; end
+        end
+    endfunction
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state            <= IDLE;
+            done             <= 1'b0;
+            min_vertices     <= N;
+            best             <= N;
+            mask             <= {N{1'b1}};
+            scan_idx         <= 4'd0;
+            validation_pass  <= 1'b0;
+            edge_i           <= 4'd0;
+            edge_j           <= 4'd0;
+            point_idx        <= 4'd0;
+            edge_valid       <= 1'b0;
+            first_sel        <= 4'd0;
+            prev_sel         <= 4'd0;
+            found_first      <= 1'b0;
+            edge_count       <= 4'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) state <= INIT;
+                end
+
+                INIT: begin
+                    mask <= {N{1'b1}};
+                    best <= N;
+                    scan_idx <= 4'd0;
+                    state <= START_PASS;
+                end
+
+                START_PASS: begin
+                    if (scan_idx >= N) begin
+                        if (best == popcount(mask)) state <= FINISHED;
+                        else begin
+                            best <= popcount(mask);
+                            scan_idx <= 4'd0;
+                            state <= START_PASS;
+                        end
+                    end else begin
+                        if (mask[scan_idx]) state <= CHECK_VERTEX;
+                        else state <= NEXT_VERTEX;
+                    end
+                end
+
+                CHECK_VERTEX: begin
+                    state <= VALIDATE;
+                    found_first <= 1'b0;
+                    edge_valid <= 1'b1;
+                    edge_count <= 4'd0;
+                end
+
+                VALIDATE: begin
+                    if (!found_first) begin
+                        first_sel <= first_selected(mask & ~(1 << scan_idx));
+                        prev_sel <= first_sel;
+                        found_first <= 1'b1;
+                        edge_i <= first_sel;
+                        edge_j <= next_selected(mask & ~(1 << scan_idx), first_sel);
+                        point_idx <= 4'd0;
+                        edge_valid <= 1'b1;
+                    end else if (edge_count < popcount(mask & ~(1 << scan_idx))) begin
+                        if (point_idx < K) begin
+                            if (cross > 32'd0) begin
+                                point_idx <= point_idx + 4'd1;
+                            end else begin
+                                edge_valid <= 1'b0;
+                                validation_pass <= 1'b0;
+                                state <= UPDATE_MASK;
+                            end
+                        end else begin
+                            if (!edge_valid) begin
+                                validation_pass <= 1'b0;
+                                state <= UPDATE_MASK;
+                            end else begin
+                                edge_count <= edge_count + 4'd1;
+                                prev_sel <= edge_j;
+                                edge_i <= edge_j;
+                                edge_j <= next_selected(mask & ~(1 << scan_idx), edge_j);
+                                point_idx <= 4'd0;
+                            end
+                        end
+                    end else begin
+                        validation_pass <= 1'b1;
+                        state <= UPDATE_MASK;
+                    end
+                end
+
+                UPDATE_MASK: begin
+                    if (validation_pass) begin
+                        mask[scan_idx] <= 1'b0;
+                        best <= popcount(mask) - 4'd1;
+                        scan_idx <= 4'd0;
+                        state <= START_PASS;
+                    end else begin
+                        state <= NEXT_VERTEX;
+                    end
+                end
+
+                NEXT_VERTEX: begin
+                    scan_idx <= scan_idx + 4'd1;
+                    state <= START_PASS;
+                end
+
+                FINISHED: begin
+                    min_vertices <= popcount(mask);
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
+endmodule

@@ -1,0 +1,237 @@
+module bfs_validator #(
+    parameter N = 8,
+    parameter DATA_WIDTH = 8,
+    parameter MAX_CYCLES = 100
+)(
+    input clk,
+    input rst_n,
+    input start,
+    
+    // Adjacency: each input is an 8-bit bitmask of neighbors for that node
+    input [DATA_WIDTH-1:0] adj_0,
+    input [DATA_WIDTH-1:0] adj_1,
+    input [DATA_WIDTH-1:0] adj_2,
+    input [DATA_WIDTH-1:0] adj_3,
+    input [DATA_WIDTH-1:0] adj_4,
+    input [DATA_WIDTH-1:0] adj_5,
+    input [DATA_WIDTH-1:0] adj_6,
+    input [DATA_WIDTH-1:0] adj_7,
+    
+    // Sequence: 8 elements, each 8-bit (but only low 3 bits used for node ID)
+    input [DATA_WIDTH-1:0] seq_0,
+    input [DATA_WIDTH-1:0] seq_1,
+    input [DATA_WIDTH-1:0] seq_2,
+    input [DATA_WIDTH-1:0] seq_3,
+    input [DATA_WIDTH-1:0] seq_4,
+    input [DATA_WIDTH-1:0] seq_5,
+    input [DATA_WIDTH-1:0] seq_6,
+    input [DATA_WIDTH-1:0] seq_7,
+    
+    output reg valid,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam CHECK_START = 3'd1;
+localparam GET_NEIGHBORS = 3'd2;
+localparam VERIFY_CHILDREN = 3'd3;
+localparam UPDATE_QUEUE = 3'd4;
+localparam FINISHED = 3'd5;
+
+reg [2:0] state, next_state;
+reg [7:0] queue;           // One-hot encoding for queue
+reg [7:0] visited;         // Bitmask of visited nodes
+reg [2:0] head_ptr;        // Index in sequence for current node
+reg [2:0] child_ptr;       // Index in sequence for children
+reg [2:0] current_node;    // Node being processed
+reg [7:0] neighbor_mask;   // Unvisited neighbors
+reg [2:0] neighbor_count;  // Count of unvisited neighbors
+reg [2:0] verify_count;    // How many children verified
+reg [3:0] cycle_count;     // Timeout counter
+
+// Helper: Get adjacency for current node
+wire [7:0] current_adj;
+assign current_adj = (current_node == 3'd0) ? adj_0 :
+                     (current_node == 3'd1) ? adj_1 :
+                     (current_node == 3'd2) ? adj_2 :
+                     (current_node == 3'd3) ? adj_3 :
+                     (current_node == 3'd4) ? adj_4 :
+                     (current_node == 3'd5) ? adj_5 :
+                     (current_node == 3'd6) ? adj_6 : adj_7;
+
+// Helper: Get sequence element
+wire [7:0] get_seq;
+assign get_seq = (head_ptr == 3'd0) ? seq_0 :
+                 (head_ptr == 3'd1) ? seq_1 :
+                 (head_ptr == 3'd2) ? seq_2 :
+                 (head_ptr == 3'd3) ? seq_3 :
+                 (head_ptr == 3'd4) ? seq_4 :
+                 (head_ptr == 3'd5) ? seq_5 :
+                 (head_ptr == 3'd6) ? seq_6 : seq_7;
+
+// Helper: Get sequence element at child position
+wire [7:0] child_seq;
+assign child_seq = (child_ptr == 3'd0) ? seq_0 :
+                   (child_ptr == 3'd1) ? seq_1 :
+                   (child_ptr == 3'd2) ? seq_2 :
+                   (child_ptr == 3'd3) ? seq_3 :
+                   (child_ptr == 3'd4) ? seq_4 :
+                   (child_ptr == 3'd5) ? seq_5 :
+                   (child_ptr == 3'd6) ? seq_6 : seq_7;
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    next_state = state;
+    case (state)
+        IDLE: begin
+            if (start) next_state = CHECK_START;
+        end
+        CHECK_START: begin
+            // Check if first element is 1 (0-indexed)
+            if (get_seq != 8'd0) begin
+                next_state = FINISHED;
+            end else begin
+                next_state = GET_NEIGHBORS;
+            end
+        end
+        GET_NEIGHBORS: begin
+            if (queue == 8'd0) begin
+                next_state = FINISHED;
+            end else begin
+                next_state = VERIFY_CHILDREN;
+            end
+        end
+        VERIFY_CHILDREN: begin
+            if (verify_count >= neighbor_count) begin
+                next_state = UPDATE_QUEUE;
+            end else if (child_ptr >= N || cycle_count >= MAX_CYCLES) begin
+                next_state = FINISHED;
+            end else begin
+                next_state = VERIFY_CHILDREN;
+            end
+        end
+        UPDATE_QUEUE: begin
+            if (head_ptr >= N) begin
+                next_state = FINISHED;
+            end else begin
+                next_state = GET_NEIGHBORS;
+            end
+        end
+        FINISHED: next_state = FINISHED;
+        default: next_state = IDLE;
+    endcase
+end
+
+// Datapath logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        valid <= 1'b0;
+        done <= 1'b0;
+        queue <= 8'd0;
+        visited <= 8'd0;
+        head_ptr <= 3'd0;
+        child_ptr <= 3'd0;
+        current_node <= 3'd0;
+        neighbor_mask <= 8'd0;
+        neighbor_count <= 3'd0;
+        verify_count <= 3'd0;
+        cycle_count <= 4'd0;
+    end else begin
+        case (state)
+            IDLE: begin
+                valid <= 1'b0;
+                done <= 1'b0;
+                cycle_count <= 4'd0;
+            end
+            
+            CHECK_START: begin
+                if (get_seq == 8'd0) begin
+                    // Initialize BFS with node 0
+                    queue <= 8'b00000001;
+                    visited <= 8'b00000001;
+                    head_ptr <= 3'd1;
+                    current_node <= 3'd0;
+                    valid <= 1'b1; // Assume valid until proven otherwise
+                end else begin
+                    valid <= 1'b0;
+                    done <= 1'b1;
+                end
+            end
+            
+            GET_NEIGHBORS: begin
+                // Find next node in queue (lowest set bit)
+                for (integer i = 0; i < 8; i = i + 1) begin
+                    if (queue[i] && (current_node == 3'd0 || current_node > i)) begin
+                        current_node <= i;
+                    end
+                end
+                
+                // Get neighbors and remove visited
+                neighbor_mask <= current_adj & ~visited;
+                
+                // Count neighbors
+                neighbor_count <= 0;
+                for (integer i = 0; i < 8; i = i + 1) begin
+                    if (current_adj[i] && !visited[i]) begin
+                        neighbor_count <= neighbor_count + 1;
+                    end
+                end
+                
+                verify_count <= 0;
+                child_ptr <= head_ptr;
+                cycle_count <= cycle_count + 1;
+            end
+            
+            VERIFY_CHILDREN: begin
+                if (verify_count < neighbor_count && child_ptr < N) begin
+                    // Check if child_seq is in neighbor_mask
+                    if (child_seq < 8 && neighbor_mask[child_seq]) begin
+                        verify_count <= verify_count + 1;
+                        child_ptr <= child_ptr + 1;
+                    end else begin
+                        valid <= 1'b0;
+                    end
+                end
+                cycle_count <= cycle_count + 1;
+            end
+            
+            UPDATE_QUEUE: begin
+                // Enqueue all verified children
+                for (integer i = 0; i < 8; i = i + 1) begin
+                    if (neighbor_mask[i]) begin
+                        queue[i] <= 1'b1;
+                        visited[i] <= 1'b1;
+                    end
+                end
+                
+                // Remove current node from queue
+                queue[current_node] <= 1'b0;
+                
+                // Update head pointer
+                head_ptr <= head_ptr + neighbor_count;
+                
+                // Check if we're done
+                if (head_ptr + neighbor_count >= N) begin
+                    done <= 1'b1;
+                end
+            end
+            
+            FINISHED: begin
+                done <= 1'b1;
+                if (!valid) valid <= 1'b0;
+            end
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,71 @@
+Design a sequential Verilog module named 'total_match' that implements the adapted string list matching algorithm.
+
+**Problem Description:**
+Given two lists of strings, determine which list has the smaller total number of characters. The lists are adapted to have a maximum of 8 strings, each string has a maximum of 16 characters. Strings are represented as fixed-width byte arrays. The module should return the list with fewer total characters, or the first list if counts are equal.
+
+**Interface Specification:**
+
+Inputs:
+  input clk: System clock
+  input rst_n: Active-low reset
+  input start: Start signal, high for 1 cycle to initiate computation
+  input [2:0] len1: Number of valid strings in list 1 (0 to 8)
+  input [2:0] len2: Number of valid strings in list 2 (0 to 8)
+  input [255:0] list1_str0, list1_str1, ..., list1_str7: 8 strings for list 1, each 256 bits (32 bytes). Only first 'len1' strings are valid. Valid chars are packed in little-endian byte order (char 0 at bits 7:0).
+  input [255:0] list2_str0, list2_str1, ..., list2_str7: 8 strings for list 2, each 256 bits (32 bytes). Only first 'len2' strings are valid. Valid chars are packed in little-endian byte order.
+
+Outputs:
+  output reg [2:0] result_len: The length of the winning list (for verification)
+  output reg [7:0] result_sel: 0 = list 1 wins, 1 = list 2 wins, 2 = tie (list 1 wins by spec)
+  output reg done: High for 1 cycle when computation is complete
+
+**Behavioral Description:**
+The module operates as a state machine with states: IDLE, COUNT_STR1, COUNT_STR2, COMPARE, DONE.
+
+1. **IDLE**: Waits for `start` signal. On start, initialize counters and state.
+2. **COUNT_STR1**: Iterate through 'len1' strings. For each string, count valid characters (non-null). Since strings are fixed-width in input, we must parse until null terminator (0x00) or max length (32 chars). Accumulate total characters for list 1. Since 32 chars * 8 strings = 256 chars max, use a 16-bit accumulator.
+   *Optimization for hardware*: Since strings are packed, we can check 32 bytes in parallel or sequentially. Let's do sequential byte check for simplicity and area. Use a loop counter for string index and char index.
+3. **COUNT_STR2**: Same process for list 2.
+4. **COMPARE**: Compare the two 16-bit totals. If count1 <= count2, result_sel = 0 (or 2 if equal). If count2 < count1, result_sel = 1.
+5. **DONE**: Assert done signal.
+
+**Constraints:**
+- String format: Null-terminated. Valid characters are bytes 0x20-0x7E or similar. Null byte is 0x00.
+- The input strings are packed in a specific way for the testbench: `listX_strY` contains 32 bytes. The *least significant byte* (bits 7:0) is the first character of the string.
+- The module must iterate byte-by-byte to find the length of each string (detect 0x00).
+- Max total chars to count: 512 (8 strings * 64 chars), but inputs are max 32 bytes/string. Counters should be 16-bit.
+- Use state machine to handle the iteration.
+
+**Verilog Details:**
+- Clock edge: Positive edge.
+- Reset: Active low.
+- Done signal: High for 1 cycle.
+- Result selection: 0 for list 1, 1 for list 2. (If equal, pick list 1, which is naturally handled by `<=` comparison).
+- To handle the byte iteration inside the string packed value, use a shift register or index counter. Since we are limited to Icarus Verilog and simple logic, we will read the string input as a 256-bit vector and extract byte `[char_index*8 +: 8]`.
+- **Latency**: Approximately 300-400 cycles worst case (8 strings * 32 bytes * 2 lists + overhead). 
+
+**State Definitions:**
+- `STATE_IDLE`: 0
+- `STATE_COUNT1_START`: 1 (Setup string 1 index)
+- `STATE_COUNT1_LOOP`: 2 (Loop through chars of current string)
+- `STATE_COUNT1_NEXT_STR`: 3 (Advance to next string in list 1)
+- `STATE_COUNT2_START`: 4
+- `STATE_COUNT2_LOOP`: 5
+- `STATE_COUNT2_NEXT_STR`: 6
+- `STATE_COMPARE`: 7
+- `STATE_DONE`: 8
+
+**Testbench Expectation:**
+The testbench will populate the `listX_strY` signals by writing individual bytes into the packed vector. It will then trigger `start` and wait for `done`. It will verify `result_sel` and `result_len`.
+
+**Critical Implementation Detail:**
+To support the testbench which assigns values to `dut.list1_str0`, `dut.list1_str1`, etc., the module must explicitly declare these 8 input ports for each list.
+Interface:
+  input [255:0] list1_str0,
+  input [255:0] list1_str1,
+  ...
+  input [255:0] list1_str7,
+  input [255:0] list2_str0,
+  ...
+
+Since 8 inputs * 2 lists * 8 ports is verbose, or wait, the prompt says "list1_str0, list1_str1, ..., list1_str7". This implies 16 separate inputs. This is acceptable.

@@ -1,0 +1,189 @@
+module recycling_optimization (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [31:0] ax, ay,  // Adil initial position
+    input wire [31:0] bx, by,  // Bera initial position  
+    input wire [31:0] tx, ty,  // Bin position
+    input wire [2:0] num_bottles,  // 1-8 bottles
+    input wire [31:0] bottle_x [0:7],  // Bottles x coordinates
+    input wire [31:0] bottle_y [0:7],  // Bottles y coordinates
+    output reg [63:0] total_distance,  // Q16.16 format
+    output reg done
+);
+
+// Parameters
+parameter MAX_BOTTLES = 8;
+parameter MAX_ITER = 64;
+parameter DATA_WIDTH = 32;
+parameter FP_WIDTH = 64;  // Q16.16
+
+// State machine
+reg [2:0] state;
+reg [5:0] counter;
+reg [2:0] bottle_idx;
+
+// Internal storage for distances
+reg [63:0] dist_bin [0:7];    // Distance from bin to each bottle
+reg [63:0] dist_adil [0:7];   // Distance from Adil to each bottle  
+reg [63:0] dist_bera [0:7];   // Distance from Bera to each bottle
+reg [63:0] savings_adil [0:7]; // Savings if Adil picks bottle
+reg [63:0] savings_bera [0:7]; // Savings if Bera picks bottle
+reg [63:0] best_savings [0:1]; // Top 2 savings for each person
+reg [2:0] best_idx [0:1];      // Indices of top savings
+
+// Fixed-point multiplication function
+function automatic [63:0] fp_mult;
+    input [31:0] a, b;
+    reg [63:0] prod;
+    begin
+        prod = {{32{a[31]}}, a} * {{32{b[31]}}, b};
+        fp_mult = prod >>> 16;
+    end
+endfunction
+
+// Fixed-point square root approximation (using shift-add method)
+function automatic [31:0] fp_sqrt;
+    input [63:0] n;
+    reg [63:0] t, q, b, r;
+    integer i;
+    begin
+        t = 64'h8000000000000000;
+        q = 64'h0;
+        r = n;
+        for (i = 0; i < 32; i = i + 1) begin
+            b = q | t;
+            q = q >> 1;
+            if (r >= b) begin
+                r = r - b;
+                q = q | t;
+            end
+            t = t >> 2;
+        end
+        fp_sqrt = q[31:0];
+    end
+endfunction
+
+// Distance calculation: sqrt((x1-x2)^2 + (y1-y2)^2) -> Q16.16
+function automatic [63:0] calc_distance;
+    input [31:0] x1, y1, x2, y2;
+    reg [31:0] dx, dy;
+    reg [63:0] dx_sq, dy_sq, sum_sq;
+    begin
+        dx = (x1 > x2) ? (x1 - x2) : (x2 - x1);
+        dy = (y1 > y2) ? (y1 - y2) : (y2 - y1);
+        dx_sq = fp_mult(dx, dx);
+        dy_sq = fp_mult(dy, dy);
+        sum_sq = dx_sq + dy_sq;
+        calc_distance = fp_sqrt(sum_sq);
+    end
+endfunction
+
+// Combinational logic for savings calculation
+always @(*) begin
+    for (integer i = 0; i < MAX_BOTTLES; i = i + 1) begin
+        if (i < num_bottles) begin
+            // Base cost: 2 * distance from bin to bottle
+            // Savings if Adil picks: base_cost - (dist_adil_to_bottle + dist_bin_to_bottle)
+            // = dist_bin_to_bottle - dist_adil_to_bottle
+            savings_adil[i] = dist_bin[i] - dist_adil[i];
+            savings_bera[i] = dist_bin[i] - dist_bera[i];
+        end else begin
+            savings_adil[i] = 0;
+            savings_bera[i] = 0;
+        end
+    end
+end
+
+// Sequential logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= 0;
+        counter <= 0;
+        bottle_idx <= 0;
+        total_distance <= 0;
+        done <= 0;
+        // Reset arrays
+        for (integer i = 0; i < MAX_BOTTLES; i = i + 1) begin
+            dist_bin[i] <= 0;
+            dist_adil[i] <= 0;
+            dist_bera[i] <= 0;
+            best_idx[i] <= 0;
+            best_savings[i] <= 0;
+        end
+    end else begin
+        case (state)
+            0: begin  // Idle
+                done <= 0;
+                if (start) begin
+                    state <= 1;
+                    counter <= 0;
+                    bottle_idx <= 0;
+                end
+            end
+            
+            1: begin  // Calculate distances
+                if (counter < num_bottles) begin
+                    dist_bin[counter] <= calc_distance(tx, ty, bottle_x[counter], bottle_y[counter]);
+                    dist_adil[counter] <= calc_distance(ax, ay, bottle_x[counter], bottle_y[counter]);
+                    dist_bera[counter] <= calc_distance(bx, by, bottle_x[counter], bottle_y[counter]);
+                    counter <= counter + 1;
+                end else begin
+                    counter <= 0;
+                    state <= 2;
+                end
+            end
+            
+            2: begin  // Find top 2 savings for Adil
+                if (counter < num_bottles) begin
+                    if (counter == 0 || savings_adil[counter] > best_savings[0]) begin
+                        best_savings[1] <= best_savings[0];
+                        best_idx[1] <= best_idx[0];
+                        best_savings[0] <= savings_adil[counter];
+                        best_idx[0] <= counter;
+                    end else if (savings_adil[counter] > best_savings[1]) begin
+                        best_savings[1] <= savings_adil[counter];
+                        best_idx[1] <= counter;
+                    end
+                    counter <= counter + 1;
+                end else begin
+                    counter <= 0;
+                    state <= 3;
+                end
+            end
+            
+            3: begin  // Find top 2 savings for Bera
+                if (counter < num_bottles) begin
+                    if (counter == 0 || savings_bera[counter] > best_savings[0]) begin
+                        best_savings[1] <= best_savings[0];
+                        best_idx[1] <= best_idx[0];
+                        best_savings[0] <= savings_bera[counter];
+                        best_idx[0] <= counter;
+                    end else if (savings_bera[counter] > best_savings[1]) begin
+                        best_savings[1] <= savings_bera[counter];
+                        best_idx[1] <= counter;
+                    end
+                    counter <= counter + 1;
+                end else begin
+                    counter <= 0;
+                    state <= 4;
+                end
+            end
+            
+            4: begin  // Calculate result
+                // Base cost: 2 * sum of all bin distances
+                // Optimal savings: max of single best, or best pair (if different bottles)
+                // Total = Base cost - Best Savings
+                total_distance <= (2 * dist_bin[0] + 2 * dist_bin[1] + 2 * dist_bin[2] + 2 * dist_bin[3] + 
+                                 2 * dist_bin[4] + 2 * dist_bin[5] + 2 * dist_bin[6] + 2 * dist_bin[7]) - 
+                                (best_savings[0] + best_savings[1]);
+                done <= 1;
+                state <= 0;
+            end
+            
+            default: state <= 0;
+        endcase
+    end
+end
+
+endmodule

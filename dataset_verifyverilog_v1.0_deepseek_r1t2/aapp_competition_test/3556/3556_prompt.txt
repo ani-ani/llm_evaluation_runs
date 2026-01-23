@@ -1,0 +1,188 @@
+module tall_enterprises (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] num_employees,  // 1 to 4
+    
+    // Employee data (4 employees max)
+    input wire [19:0] id_0, id_1, id_2, id_3,
+    input wire [23:0] salary_0, salary_1, salary_2, salary_3,
+    input wire [23:0] height_0, height_1, height_2, height_3,
+    
+    input wire [19:0] query_id,
+    input wire query_valid,
+    
+    output reg [19:0] boss_id,
+    output reg [7:0] num_subordinates,
+    output reg done,
+    output reg valid,
+    output reg ready  // High when ready for queries
+);
+
+// State definitions
+localparam IDLE = 3'b000;
+localparam SORT = 3'b001;
+localparam FIND_BOSS = 3'b010;
+localparam COMPUTE_SUB = 3'b011;
+localparam COMPUTE_BOSS_ORIG = 3'b100;
+localparam WAIT_QUERY = 3'b101;
+localparam QUERY = 3'b110;
+
+reg [2:0] state;
+
+// Internal storage
+reg [19:0] id_reg [0:3];
+reg [23:0] salary_reg [0:3];
+reg [23:0] height_reg [0:3];
+
+// Working arrays for computation
+reg [1:0] sorted_idx [0:3];       // Indices in sorted order
+reg [1:0] boss_sorted [0:3];      // Boss index in sorted array (2'b11 = none)
+reg [7:0] sub_count [0:3];        // Subordinate count in sorted order
+reg [19:0] boss_original [0:3];   // Boss ID for original employee
+reg [7:0] sub_count_original [0:3]; // Subordinate count for original employee
+
+// Counters for loops
+reg [1:0] i, j, k, l;
+reg [1:0] original_index;
+reg found;
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        valid <= 0;
+        ready <= 0;
+        boss_id <= 0;
+        num_subordinates <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                valid <= 0;
+                ready <= 0;
+                if (start) begin
+                    // Load employee data
+                    id_reg[0] <= id_0; id_reg[1] <= id_1; id_reg[2] <= id_2; id_reg[3] <= id_3;
+                    salary_reg[0] <= salary_0; salary_reg[1] <= salary_1; salary_reg[2] <= salary_2; salary_reg[3] <= salary_3;
+                    height_reg[0] <= height_0; height_reg[1] <= height_1; height_reg[2] <= height_2; height_reg[3] <= height_3;
+                    
+                    // Initialize sorted indices
+                    sorted_idx[0] <= 0; sorted_idx[1] <= 1; sorted_idx[2] <= 2; sorted_idx[3] <= 3;
+                    
+                    // Reset counters
+                    i <= 0; j <= 0; k <= 0; l <= 0;
+                    
+                    state <= SORT;
+                end
+            end
+            
+            SORT: begin  // Bubble sort by salary (ascending)
+                if (j < num_employees - i - 1) begin
+                    if (salary_reg[sorted_idx[j]] > salary_reg[sorted_idx[j+1]]) begin
+                        // Swap
+                        sorted_idx[j] <= sorted_idx[j+1];
+                        sorted_idx[j+1] <= sorted_idx[j];
+                    end
+                    j <= j + 1;
+                end else begin
+                    j <= 0;
+                    i <= i + 1;
+                    if (i == num_employees - 1) begin
+                        // Sorting complete
+                        i <= 0;
+                        state <= FIND_BOSS;
+                    end
+                end
+            end
+            
+            FIND_BOSS: begin  // Find boss for each employee in sorted order
+                if (k < num_employees) begin
+                    if (l < num_employees) begin
+                        if (l > k && height_reg[sorted_idx[l]] >= height_reg[sorted_idx[k]]) begin
+                            boss_sorted[k] <= l;
+                            k <= k + 1;
+                            l <= k + 1;
+                        end else begin
+                            l <= l + 1;
+                        end
+                    end else begin
+                        // No boss found for employee k
+                        boss_sorted[k] <= 2'b11;
+                        k <= k + 1;
+                        l <= k + 1;
+                    end
+                end else begin
+                    k <= 0;
+                    state <= COMPUTE_SUB;
+                end
+            end
+            
+            COMPUTE_SUB: begin  // Compute subordinate counts
+                if (k < num_employees) begin
+                    if (boss_sorted[k] != 2'b11) begin
+                        // Update boss's subordinate count
+                        sub_count[boss_sorted[k]] <= sub_count[boss_sorted[k]] + 1 + sub_count[k];
+                    end
+                    k <= k + 1;
+                end else begin
+                    k <= 0;
+                    state <= COMPUTE_BOSS_ORIG;
+                end
+            end
+            
+            COMPUTE_BOSS_ORIG: begin  // Convert to original employee indices
+                if (k < num_employees) begin
+                    original_index <= sorted_idx[k];
+                    // Set boss ID (0 if no boss)
+                    if (boss_sorted[k] != 2'b11) begin
+                        boss_original[sorted_idx[k]] <= id_reg[sorted_idx[boss_sorted[k]]];
+                    end else begin
+                        boss_original[sorted_idx[k]] <= 20'd0;
+                    end
+                    sub_count_original[sorted_idx[k]] <= sub_count[k];
+                    k <= k + 1;
+                end else begin
+                    state <= WAIT_QUERY;
+                end
+            end
+            
+            WAIT_QUERY: begin
+                ready <= 1;
+                done <= 0;
+                valid <= 0;
+                if (query_valid) begin
+                    state <= QUERY;
+                    ready <= 0;
+                    found <= 0;
+                    k <= 0;  // Use k to iterate through employees
+                end
+            end
+            
+            QUERY: begin  // Look up employee by ID
+                if (k < num_employees) begin
+                    if (id_reg[k] == query_id) begin
+                        boss_id <= boss_original[k];
+                        num_subordinates <= sub_count_original[k];
+                        found <= 1;
+                    end
+                    k <= k + 1;
+                end else begin
+                    // If not found, output 0 for both (shouldn't happen with valid input)
+                    if (!found) begin
+                        boss_id <= 20'd0;
+                        num_subordinates <= 8'd0;
+                    end
+                    done <= 1;
+                    valid <= 1;
+                    state <= WAIT_QUERY;
+                end
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

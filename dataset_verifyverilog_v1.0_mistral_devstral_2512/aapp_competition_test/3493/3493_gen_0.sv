@@ -1,0 +1,193 @@
+module maximum_disjoint_matchings (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] adj_flat,
+    output reg [2:0] k,
+    output reg [47:0] assignments_packed,
+    output reg done
+);
+
+// State machine
+localparam [2:0] IDLE = 3'd0;
+localparam [2:0] RESET = 3'd1;
+localparam [2:0] FIND_MATCHING = 3'd2;
+localparam [2:0] FOUND = 3'd3;
+localparam [2:0] UPDATE = 3'd4;
+localparam [2:0] DONE = 3'd5;
+
+reg [2:0] state, next_state;
+
+// Internal registers
+reg [15:0] available_edges;
+reg [2:0] k_reg;
+reg [47:0] assignments_packed_reg;
+
+// Permutation ROM (24 permutations of 4 buttons)
+reg [11:0] permutations [0:23];
+
+// Permutation checking
+reg [4:0] perm_index;  // 0-23
+reg [1:0] check_index; // 0-3 for button checking
+reg valid_perm;
+reg [11:0] current_perm;
+
+// Initialize permutations (all possible perfect matchings for n=4)
+initial begin
+    // Identity and cyclic permutations
+    permutations[0] = 12'b000_001_010_011; // [0,1,2,3]
+    permutations[1] = 12'b000_001_011_010; // [0,1,3,2]
+    permutations[2] = 12'b000_010_001_011; // [0,2,1,3]
+    permutations[3] = 12'b000_010_011_001; // [0,2,3,1]
+    permutations[4] = 12'b000_011_001_010; // [0,3,1,2]
+    permutations[5] = 12'b000_011_010_001; // [0,3,2,1]
+    permutations[6] = 12'b001_000_010_011; // [1,0,2,3]
+    permutations[7] = 12'b001_000_011_010; // [1,0,3,2]
+    permutations[8] = 12'b001_010_000_011; // [1,2,0,3]
+    permutations[9] = 12'b001_010_011_000; // [1,2,3,0]
+    permutations[10] = 12'b001_011_000_010; // [1,3,0,2]
+    permutations[11] = 12'b001_011_010_000; // [1,3,2,0]
+    permutations[12] = 12'b010_000_001_011; // [2,0,1,3]
+    permutations[13] = 12'b010_000_011_001; // [2,0,3,1]
+    permutations[14] = 12'b010_001_000_011; // [2,1,0,3]
+    permutations[15] = 12'b010_001_011_000; // [2,1,3,0]
+    permutations[16] = 12'b010_011_000_001; // [2,3,0,1]
+    permutations[17] = 12'b010_011_001_000; // [2,3,1,0]
+    permutations[18] = 12'b011_000_001_010; // [3,0,1,2]
+    permutations[19] = 12'b011_000_010_001; // [3,0,2,1]
+    permutations[20] = 12'b011_001_000_010; // [3,1,0,2]
+    permutations[21] = 12'b011_001_010_000; // [3,1,2,0]
+    permutations[22] = 12'b011_010_000_001; // [3,2,0,1]
+    permutations[23] = 12'b011_010_001_000; // [3,2,1,0]
+end
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        state <= next_state;
+    end
+end
+
+// Next state logic
+always @(*) begin
+    case (state)
+        IDLE: begin
+            if (start) next_state = RESET;
+            else next_state = IDLE;
+        end
+        RESET: next_state = FIND_MATCHING;
+        FIND_MATCHING: begin
+            if (valid_perm) next_state = FOUND;
+            else if (perm_index == 23) next_state = DONE;
+            else next_state = FIND_MATCHING;
+        end
+        FOUND: next_state = UPDATE;
+        UPDATE: begin
+            if (available_edges == 16'b0) next_state = DONE;
+            else next_state = FIND_MATCHING;
+        end
+        DONE: next_state = DONE;
+        default: next_state = IDLE;
+    endcase
+end
+
+// Output logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        k <= 3'b0;
+        assignments_packed <= 48'b0;
+        done <= 1'b0;
+        available_edges <= 16'b0;
+        k_reg <= 3'b0;
+        assignments_packed_reg <= 48'b0;
+        perm_index <= 5'b0;
+        check_index <= 2'b0;
+        valid_perm <= 1'b0;
+    end else begin
+        case (state)
+            RESET: begin
+                available_edges <= adj_flat;
+                k_reg <= 3'b0;
+                assignments_packed_reg <= 48'b0;
+                perm_index <= 5'b0;
+                check_index <= 2'b0;
+                valid_perm <= 1'b0;
+                done <= 1'b0;
+            end
+            FIND_MATCHING: begin
+                if (perm_index < 24) begin
+                    current_perm <= permutations[perm_index];
+                    // Check if current permutation is valid
+                    if (check_index == 3) begin
+                        // All 4 buttons checked, if valid_perm still high, then valid
+                        if (valid_perm) begin
+                            valid_perm <= 1'b1;
+                        end else begin
+                            valid_perm <= 1'b0;
+                        end
+                        perm_index <= perm_index + 1;
+                        check_index <= 2'b0;
+                    end else begin
+                        // Check one button
+                        case (check_index)
+                            0: begin // button 0
+                                valid_perm <= (available_edges[(current_perm[2:0]*4 + 0)] && 
+                                             (current_perm[2:0] != current_perm[5:3]) && 
+                                             (current_perm[2:0] != current_perm[8:6]) && 
+                                             (current_perm[2:0] != current_perm[11:9]));
+                            end
+                            1: begin // button 1
+                                valid_perm <= valid_perm && (available_edges[(current_perm[5:3]*4 + 1)] && 
+                                             (current_perm[5:3] != current_perm[8:6]) && 
+                                             (current_perm[5:3] != current_perm[11:9]));
+                            end
+                            2: begin // button 2
+                                valid_perm <= valid_perm && (available_edges[(current_perm[8:6]*4 + 2)] && 
+                                             (current_perm[8:6] != current_perm[11:9]));
+                            end
+                            3: begin // button 3
+                                valid_perm <= valid_perm && (available_edges[(current_perm[11:9]*4 + 3)]);
+                            end
+                        endcase
+                        check_index <= check_index + 1;
+                    end
+                end
+            end
+            FOUND: begin
+                // Record the matching
+                if (k_reg < 4) begin
+                    // Pack the permutation into assignments_packed_reg
+                    // Each matching: 12 bits, 4 matchings -> 48 bits
+                    case (k_reg)
+                        0: assignments_packed_reg[11:0] <= current_perm;
+                        1: assignments_packed_reg[23:12] <= current_perm;
+                        2: assignments_packed_reg[35:24] <= current_perm;
+                        3: assignments_packed_reg[47:36] <= current_perm;
+                    endcase
+                    k_reg <= k_reg + 1;
+                end
+            end
+            UPDATE: begin
+                // Remove the edges used in the current matching
+                // For each button, clear the edge from the assigned person
+                available_edges[(current_perm[2:0]*4 + 0)] <= 1'b0;
+                available_edges[(current_perm[5:3]*4 + 1)] <= 1'b0;
+                available_edges[(current_perm[8:6]*4 + 2)] <= 1'b0;
+                available_edges[(current_perm[11:9]*4 + 3)] <= 1'b0;
+                // Reset for next search
+                perm_index <= 5'b0;
+                check_index <= 2'b0;
+                valid_perm <= 1'b0;
+            end
+            DONE: begin
+                k <= k_reg;
+                assignments_packed <= assignments_packed_reg;
+                done <= 1'b1;
+            end
+        endcase
+    end
+end
+
+endmodule

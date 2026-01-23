@@ -1,0 +1,44 @@
+Design a sequential Verilog module named 'shopping_path_solver' that determines if a unique path exists for a shopping list.
+
+Problem Adaptation:
+- Maximum 8 stores (numbered 0-7)
+- Maximum 8 items to purchase
+- Item names are fixed 8-character ASCII strings (padded with zeros if shorter)
+- Store inventory represented as adjacency matrix: 8x8 bit matrix where row 'i' has bit 'j' set if store 'i' sells item 'j'
+- Purchase order is a sequence of item indices
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [2:0] num_stores // number of stores (1-8)
+input [2:0] num_items // number of items to purchase (1-8)
+input [2:0] purchase_order [0:7] // array of item indices (0-7) in purchase order
+input [7:0] inventory_matrix [0:7] // 8 rows of 8-bit columns, row i represents store i's inventory (bit j=1 if item j available)
+
+Outputs:
+output reg [1:0] result // 0=impossible, 1=unique, 2=ambiguous
+output reg done // high when computation complete
+
+Behavior:
+The module uses a state machine to compute all possible valid paths and determines uniqueness.
+States: IDLE, CHECK_PATH, EVALUATE, DONE
+
+The algorithm:
+1. For each possible store sequence (s0, s1, ..., sm-1) where each si is in [0, num_stores-1]
+2. Check if store s_i has item purchase_order[i] for all i
+3. Count how many valid sequences exist
+4. Output: 0 if count=0, 1 if count=1, 2 if count>=2
+
+Latency: Maximum 256 clock cycles from start to done (to handle 8^8 possible paths, but optimized to stop early if count>=2)
+
+Implementation notes:
+- Use iterative depth-first search simulation with bounded depth
+- Use stack-like registers to track current path
+- Early termination: if count >= 2, set result=2 and done
+- 3-bit counters for store indices
+- 3-bit counters for item position in purchase list
+
+Example:
+If num_stores=3, num_items=3, purchase_order=[0,1,2], inventory_matrix=[0b001, 0b010, 0b100] (store0 has item0, store1 has item1, store2 has item2)
+Valid path: [0,1,2] -> result=1 (unique)

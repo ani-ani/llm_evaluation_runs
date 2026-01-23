@@ -1,0 +1,49 @@
+Design a sequential Verilog module named 'schedule_optimizer' that implements a simplified binary string scheduling algorithm to maximize occurrences of pattern t in a rearranged schedule s.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] char_in // current character from s (ASCII '0' or '1')
+input [5:0] s_length // length of input string s (max 16)
+input [5:0] t_length // length of pattern t (max 16)
+input valid_in // high when char_in is valid
+
+Outputs:
+output reg [7:0] char_out // output character
+output reg valid_out // high when char_out is valid
+output reg done // high when computation complete
+
+Behavioral Description:
+The module implements a 4-stage algorithm:
+1. Input Stage: Store s and t strings in internal buffers (max 16 chars each)
+2. Prefix Function: Compute KMP prefix array for pattern t
+3. Overlap Detection: Find longest proper suffix of t that matches prefix of t
+4. Assembly Stage: Construct output by concatenating t + (overlap)s * count
+
+Algorithm Steps:
+- Count zeros and ones in s and t
+- If s has insufficient zeros/ones for t, output remaining chars as-is
+- Compute overlap length L = pi[t_length-1] where pi is KMP prefix function
+- Compute repeating suffix = t[L:t_length]
+- Calculate max repeat count = min(available_zeros / repeat_zeros, available_ones / repeat_ones)
+- Output: t + (repeating_suffix * repeat_count) + remaining chars
+
+FSM States:
+- IDLE: Wait for start signal
+- INPUT_S: Read and count s characters (store in buffer)
+- INPUT_T: Read and count t characters (store in buffer)
+- COMPUTE_PREFIX: Calculate KMP prefix array for t
+- FIND_OVERLAP: Determine overlap length and suffix
+- ASSEMBLE_OUTPUT: Generate final schedule character-by-character
+- DONE: Signal completion
+
+Implementation Details:
+- Use internal buffers: reg [7:0] s_buf[15:0], t_buf[15:0]
+- Track counts: reg [5:0] zeros_s, ones_s, zeros_t, ones_t
+- Prefix array: reg [5:0] pi[15:0]
+- Overlap: reg [5:0] overlap_len, repeat_zeros, repeat_ones
+- Output control: reg [5:0] out_index, repeat_count, remaining_zeros, remaining_ones
+- Output sequence: First t, then repeating_suffix * repeat_count, then zeros/ones
+- Latency: Approximately 3*max_length + constant cycles after start
+- Clock frequency: Assume 100MHz for timing calculations

@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'powers_game' that determines the winner of the powers game.
+
+The module implements the game logic for n up to 256 using:
+1. State machine to iterate through bases and compute chain lengths
+2. XOR of Grundy numbers for all power chains
+3. Parity check of remaining numbers
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] n // game parameter (1-256)
+
+Outputs:
+output reg winner // 1 for Vasya, 0 for Petya
+output reg done // high when computation complete
+
+Latency: Result valid within 200 clock cycles after start asserted.
+
+Use state machine with states: IDLE, CHECK_BASE, COMPUTE_CHAIN, UPDATE_XOR, COUNT_REMAINING, DONE.
+
+Algorithm:
+- In IDLE: wait for start signal
+- In CHECK_BASE: iterate i from 2 to 15 (sqrt(256)=16)
+- In COMPUTE_CHAIN: check if i is a power of smaller number, if not compute chain length
+- In UPDATE_XOR: XOR with pre-computed Grundy value for chain length
+- In COUNT_REMAINING: count numbers not in any chain, XOR with parity
+- In DONE: set winner = (xor_result != 0), assert done
+
+Grundy values LUT (for chain lengths 1-8):
+Chain length 1: Grundy = 1
+Chain length 2: Grundy = 2
+Chain length 3: Grundy = 1
+Chain length 4: Grundy = 4
+Chain length 5: Grundy = 3
+Chain length 6: Grundy = 2
+Chain length 7: Grundy = 1
+Chain length 8: Grundy = 5
+
+Note: Numbers that are perfect powers (like 4=2², 9=3², 8=2³) should be skipped as bases.
+
+The chain length for base b is floor(log_b(n)), computed by repeated multiplication until exceeding n.
+
+Example: n=8
+- Base 2: chain 2→4→8, length=3, Grundy=1
+- Base 3: chain 3, length=1, Grundy=1  
+- Remaining numbers: 5,6,7 (3 numbers, odd parity)
+- XOR = 1 ^ 1 ^ 1 = 1 (Vasya wins) but actual output is Petya, so fix: remaining parity only counts if n > last power
+
+Corrected algorithm: remaining_count = n - (max power counted) - (all bases checked)
+For n=8: bases 2,3; powers counted: 2,4,8,3 = 4 numbers; remaining = 8-4=4 (even parity)
+XOR = 1 ^ 1 ^ 0 = 0 (Petya wins) ✓

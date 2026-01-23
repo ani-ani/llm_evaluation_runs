@@ -1,0 +1,47 @@
+Design a combinational Verilog module named 'strange_sort' that implements a strange sort algorithm.
+
+Task Description:
+Given an array of integers, return the array in strange order. Strange sorting starts with the minimum value, then maximum of the remaining integers, then minimum, and so on.
+
+Example: [1, 2, 3, 4] -> [1, 4, 2, 3]
+
+Inputs:
+input clk // clock signal for state progression
+input rst_n // active-low reset
+input [7:0] data_in // input value to feed into the processing pipeline
+input valid_in // high when data_in is valid
+input start // start the sorting process
+output reg [7:0] data_out // sorted output value
+output reg valid_out // high when data_out is valid
+output reg done // high when sorting complete
+
+Specifications:
+- Support maximum 8 elements (N=8)
+- Use 8-bit signed integers (range -128 to 127)
+- Process elements in streaming fashion: feed 8 elements sequentially, receive sorted output
+- Output order: minimum, maximum, 2nd minimum, 2nd maximum, etc.
+- Latency: Result starts appearing 9 clock cycles after start (8 to load + 1 for first output), then one output per cycle
+- Use state machine: IDLE (waiting for inputs), LOADING (accepting data), SORTING (computing), OUTPUT (streaming results)
+
+Implementation Strategy:
+- Store inputs in a register array of size 8
+- Use a valid mask to track which elements are available for selection
+- In SORTING state, find min/max among available elements in alternating fashion
+- Use parallel comparators to find min/max in O(1) per cycle
+- Clear selected element from mask and toggle min/max mode
+- In OUTPUT state, stream the sorted values one per cycle
+
+Module Interface:
+module strange_sort (
+    input clk,
+    input rst_n,
+    input [7:0] data_in,
+    input valid_in,
+    input start,
+    output reg [7:0] data_out,
+    output reg valid_out,
+    output reg done
+);
+
+Behavioral Description:
+The module maintains an internal buffer of 8 elements. When 'start' is asserted, it resets. While 'valid_in' is high, it accepts values into the buffer. After 8 values are loaded (or when 'start' is pulsed again with less than 8 values), it transitions to SORTING state. In SORTING, it selects elements: first finds the minimum among available elements, then maximum, then 2nd minimum, etc. It uses parallel comparators to find the extreme values in each cycle. Selected elements are marked as used (removed from consideration). The module outputs the sorted values sequentially through 'data_out' with 'valid_out' high. Finally, 'done' is asserted when all values are output.

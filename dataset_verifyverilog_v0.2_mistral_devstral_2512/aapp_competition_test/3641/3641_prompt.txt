@@ -1,0 +1,83 @@
+Design a sequential Verilog module named 'necklace_splitter' that determines if a circular necklace can be split into k segments of equal weight.
+
+Problem Adaptation:
+- Maximum 8 beads (n ≤ 8)
+- Maximum k = 4 friends
+- Bead weights: 8-bit unsigned integers (0-255)
+- Total weight must be divisible by k
+- Check all possible starting positions for k segments
+
+Inputs:
+input clk                    // Clock signal
+input rst_n                  // Active-low reset
+input start                  // Start computation
+input [2:0] k                // Number of friends (1-4)
+input [2:0] n                // Number of beads (1-8)
+input [7:0] beads [0:7]      // Bead weights array (only first n used)
+
+Outputs:
+output reg result            // 1 if YES, 0 if NO
+output reg done              // High when computation complete
+
+Behavioral Specification:
+The module uses a state machine with states: IDLE, CHECK_TOTAL, FIND_CUTS, VALIDATE, DONE.
+
+1. IDLE: Wait for start signal
+2. CHECK_TOTAL: Compute total weight and verify divisibility by k
+3. FIND_CUTS: Try each possible starting position (0 to n-1)
+   - For each start position, check if we can make k segments
+   - Each segment must sum to target = total/k
+4. VALIDATE: Verify the cut is valid (all segments equal target)
+5. DONE: Set result and done signals
+
+Algorithm:
+- Total weight = sum of all beads
+- If total % k != 0, result = 0
+- For each start position i from 0 to n-1:
+  - Try to create k segments starting at i
+  - Segment j runs from position (i + j*(n/k)) mod n to (i + (j+1)*(n/k)) mod n
+  - Each segment must sum to target = total/k
+  - If any segment fails, try next start position
+  - If all segments valid for this start, result = 1
+- If no valid start found, result = 0
+
+Latency: Maximum 200 clock cycles (8 beads × 4 friends × 6 states)
+
+Implementation details:
+- Use registers for: total_sum, target_sum, current_start, segment_count, segment_sum
+- Use combinational logic for segment sum calculation
+- Need to handle circular indexing: position = (start + offset) % n
+- For n=8, modulo can be done with bit masking when n is power of 2
+
+Example:
+Input: k=3, n=4, beads=[1,2,2,1]
+total = 6, target = 2
+Check start=0: segments [1,2], [2,1] fail
+Check start=1: segments [2,2], [1,1] - first segment sum=4 ≠ 2
+Check start=2: segments [2,1], [1,2] fail
+Check start=3: segments [1,1], [2,2] - first segment sum=2 ✓, second segment sum=4 ≠ 2
+But wait... let me recalculate:
+For k=3, n=4, target=2
+We need 3 segments, but n=4 beads. This means segments have different lengths.
+Segment 1: beads[0:1] = 1+2=3 ≠ 2
+Segment 2: beads[1:3] = 2+2=4 ≠ 2
+
+Actually for circular splitting:
+We need to find k-1 cut positions among n positions.
+Each segment must sum to target.
+Simplified approach for hardware:
+- Generate all possible k-1 cut combinations (limited by small n)
+- For each combination, verify all segments equal target
+- Since n≤8 and k≤4, we can enumerate all possibilities
+
+For small n, use brute-force:
+Try all ways to place k-1 cuts among n-1 possible cut points.
+For each configuration, calculate segment sums and check equal to target.
+If any configuration works, result=1.
+
+The module should:
+1. Compute total and target
+2. Enumerate cut configurations
+3. For each config, compute segment sums
+4. Check if all segments equal target
+5. Output result

@@ -1,0 +1,46 @@
+Module Name: LineIntersectionCounter
+
+Interface:
+- Inputs:
+  - clk: clock signal (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: pulse for 1 cycle to start computation
+  - x0_0, y0_0, x1_0, y1_0: signed 32-bit coordinates for line 0
+  - x0_1, y0_1, x1_1, y1_1: signed 32-bit coordinates for line 1
+  - x0_2, y0_2, x1_2, y1_2: signed 32-bit coordinates for line 2
+  - line_valid[2:0]: each bit indicates whether the corresponding line is valid (1) or should be ignored (0)
+- Outputs:
+  - done: asserted high for 1 cycle when computation completes
+  - count: signed 8-bit result. Value 0..3 indicates number of distinct intersection points; -1 (8'hFF) indicates infinite points (collinear overlapping segments)
+
+Behavior:
+The module must compute all pairwise intersections among the valid lines. For each pair (i,j) where both lines are valid:
+1. Compute direction vectors: dx_i = x1_i - x0_i, dy_i = y1_i - y0_i; dx_j, dy_j similarly.
+2. Compute denominator D = dx_i*dy_j - dx_j*dy_i.
+   - If D == 0:
+        a. Check collinearity: (x0_j - x0_i)*dy_i - (y0_j - y0_i)*dx_i == 0.
+        b. If collinear, check overlap: Compute v_dot_i = dx_i*dx_i + dy_i*dy_i; compute n2 = (x0_j - x0_i)*dx_i + (y0_j - y0_i)*dy_i; n3 = (x1_j - x0_i)*dx_i + (y1_j - y0_i)*dy_i; let min_n = min(n2,n3), max_n = max(n2,n3); if max(min_n,0) < min(max_n, v_dot_i) then infinite = 1 (output -1).
+        c. If not collinear or no overlap, no intersection.
+   - If D != 0:
+        a. Compute t1_num = (x0_j - x0_i)*dy_j - (y0_j - y0_i)*dx_j.
+        b. Compute t2_num = (x0_j - x0_i)*dy_i - (y0_j - y0_i)*dx_i.
+        c. Check 0 <= t1_num/D <= 1 and 0 <= t2_num/D <= 1 using integer comparisons: (t1_num == 0) or ((t1_num * D >= 0) and |t1_num| <= |D|). Same for t2_num.
+        d. If both valid, compute intersection point rational numbers: x_num = x0_i*D + t1_num*dx_i, y_num = y0_i*D + t1_num*dy_i, denominator D (common). Store (x_num, y_num, D).
+3. After processing all pairs, deduplicate stored intersection points. Two points (x1,y1,D1) and (x2,y2,D2) are equal if x1*D2 == x2*D1 and y1*D2 == y2*D1.
+4. Set count = number of distinct points (0..3). If infinite detected, set count = -1.
+
+Timing:
+- On start pulse, the module resets internal state and begins processing.
+- The computation must finish within a bounded number of clock cycles (<= 100 cycles).
+- done is asserted for 1 cycle when result is ready.
+- Output count is valid on the same cycle done is high.
+- After done, the module can remain in a finished state until reset.
+
+Implementation notes:
+- Use 64-bit intermediate arithmetic for products (e.g., D, numerators).
+- The state machine should have at least IDLE, COMPUTE, DEDUPLICATE, FINISH states.
+- The module must correctly handle the case where fewer than 3 lines are valid (line_valid bits).
+- Infinite case overrides any finite intersections.
+- The module must be synthesizable.
+
+Example test cases will be provided in the testbench; they use up to 3 lines with coordinates within 32-bit range.

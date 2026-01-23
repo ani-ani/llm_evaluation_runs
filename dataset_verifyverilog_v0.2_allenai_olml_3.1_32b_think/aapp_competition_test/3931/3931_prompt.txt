@@ -1,0 +1,53 @@
+Design a sequential Verilog module named 'travel_expense_calculator' that computes the minimum travel cost based on a sequence of trips and travel card rules.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation signal
+input [7:0] num_trips // Number of trips (max 16)
+input [7:0] max_cards // Maximum number of travel cards (max 16)
+input [7:0] reg_cost // Regular trip cost 'a' (max 255)
+input [7:0] trans_cost // Transshipment cost 'b' (max 255)
+input [7:0] card_cost // Travel card cost 'f' (max 255)
+input [7:0] trip_start_char // Start character of current trip (ASCII)
+input [7:0] trip_end_char // End character of current trip (ASCII)
+input trip_valid // High when new trip data is valid
+input trip_done // High when all trips have been fed
+
+Outputs:
+output reg [15:0] result // Minimum total cost (integer)
+output reg done // High when computation is complete
+output reg trip_ready // High when module is ready to accept next trip
+
+Behavioral Description:
+This module must process a stream of trips. It acts as a state machine that consumes trip data.
+
+1. **State Machine**:
+   - **IDLE**: Waits for `start`. On start, initialize internal variables (total_cost=0, last_stop=0, valid_route_count=0, route_costs array cleared).
+   - **RECEIVE_TRIPS**: Wait for `trip_valid` and `trip_ready`. When a valid trip arrives:
+     - Determine cost: If `trip_start_char == last_stop` AND not first trip, use `trans_cost`. Else use `reg_cost`.
+     - Update `total_cost` with the calculated trip cost.
+     - Identify the route. Sort the start/end chars (min, max) to create a route key (RouteID).
+     - Accumulate the trip cost into a specific route bucket in a BRAM-style array (e.g., `route_costs[RouteID]`).
+     - Update `last_stop` to `trip_end_char`.
+     - Decrement remaining trips counter.
+   - **WAIT_FOR_DONE**: Wait for `trip_done` signal.
+   - **CALCULATE_BENEFIT**: Once trips are loaded, calculate the savings if a card was bought for each route. 
+     - For each route in `route_costs`, if `route_cost > card_cost`, the benefit is `route_cost - card_cost`. 
+     - Store these benefits in a list.
+   - **APPLY_CARDS**: Sort benefits in descending order (using a simple comparator network or bubble sort logic for small N). 
+     - Iterate up to `max_cards` times. In each iteration, if there are benefits left and the top benefit > 0, subtract `card_cost` from `total_cost` and the benefit value from the route's accumulation (conceptually), or simply subtract the benefit from `total_cost`. 
+     - Effectively: `total_cost = total_cost - benefit` (where benefit is `route_cost - card_cost`).
+   - **FINISHED**: Set `done` high.
+
+2. **Fixed-Point/Scaling**: All costs and results are integers (8-bit inputs, 16-bit accumulator).
+
+3. **Routing Logic**: 
+   - `RouteID` can be generated as `{min(start_char, end_char), max(start_char, end_char)}`. Since max chars are 8-bit, we can map valid ASCII ranges to indices 0-15 for practical implementation if strict width is needed, or just use the sorted tuple as an index into a sparse array (Simulated with a 256-entry memory or explicit address logic).
+   - Given the constraints (n <= 16), we can use a small array of size 16 or 32 to store route costs. We need a mechanism to map the route tuple to an index. We can use a parallel search or a hash map (simple XOR or addition of chars).
+
+4. **Sorting**: Since the number of unique routes is at most 16 (due to trip count limit), sorting benefits can be done with a simple bubble sort loop or unrolled comparators in the `CALCULATE_BENEFIT` state.
+
+5. **Latency**: Result valid after `num_trips` clock cycles + sorting/applying cards logic (~20-30 cycles max). 
+
+Note: The inputs `trip_start_char` and `trip_end_char` represent ASCII characters. The module handles string-to-integer conversion internally by using the ASCII values directly as identifiers.

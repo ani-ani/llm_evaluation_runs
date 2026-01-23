@@ -1,0 +1,54 @@
+Design a sequential Verilog module named 'traffic_scheduler' that implements a simplified traffic scheduling algorithm to minimize irritated drivers.
+
+The module processes up to 8 cars arriving at a one-lane road segment. Cars arrive from West (W) or East (E) endpoints. The goal is to determine the minimum number of irritated drivers by scheduling when to let cars go.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing
+input [7:0] car_idx // Index of car to load (0-7)
+input car_dir // 0 for West, 1 for East
+input [15:0] car_arrival // Arrival time in seconds (0-65535)
+input [15:0] car_irritation // Irritation limit in seconds (0-65535)
+
+Outputs:
+output reg [3:0] result_min_irritated // Minimum number of irritated drivers (0-8)
+output reg done // High when computation is complete
+
+Parameters:
+t_pass = 8 seconds (fixed for this module)
+max_cars = 8
+
+Specification:
+The module should implement a simplified version of the scheduling logic. Since 250 cars is too many for hardware, we limit to 8 cars. The core algorithm processes the cars in order (they cannot overtake) and decides for each car whether to schedule it immediately or delay it to switch directions.
+
+Latency: Result valid ~500 clock cycles after start asserted (allows time for complex FSM traversal).
+
+Behavioral Description:
+1. On start, load 8 cars into internal registers (use car_idx 0-7).
+2. The FSM explores scheduling options:
+   - For each car, it checks if scheduling it immediately would irritate the driver (current_time - car_arrival > car_irritation).
+   - It also checks if switching direction is needed (direction change).
+   - If switching, it adds 't_pass' seconds to the current time.
+   - It adds 3 seconds between cars in the same direction.
+3. Use a state machine to track:
+   - IDLE: Waiting for start
+   - LOAD: Loading cars into internal memory
+   - PROCESSING: Running the scheduling decision logic
+   - CALCULATING: Computing minimum irritated count from all valid schedules
+   - DONE: Result ready
+4. The module should use a simplified approach: try all possible direction switches (up to 8 switches) and pick the minimum irritated count.
+5. Since 8 cars allows 2^7 = 128 possible direction schedules, the FSM should iterate through these possibilities.
+6. Internal variables:
+   - current_time: 16-bit
+   - current_direction: 1-bit
+   - irritated_count: 4-bit
+   - schedule_state: 3-bit (tracking which car we are processing)
+   - best_irritated: 4-bit
+
+Fixed constraints:
+- Max cars: 8
+- Timestamps: 16-bit (0-65535)
+- Result: 4-bit (0-8)
+- t_pass: 8 seconds
+- Min gap: 3 seconds

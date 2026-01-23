@@ -1,0 +1,52 @@
+Design a combinational Verilog module named 'strongest_extension' that finds the strongest extension from a list of strings.
+
+**Problem Specification:**
+For each extension string, calculate strength = (number of uppercase letters) - (number of lowercase letters). Find the extension with maximum strength. If tied, choose the one appearing first in the list. Return format: ClassName.ExtensionName.
+
+**Constraints (Adapted for Hardware):**
+- Class name: max 8 characters, ASCII lowercase/uppercase/digits/underscore
+- Extensions: 8 extensions max, each max 16 characters
+- Character set: ASCII printable (we focus on A-Z, a-z for classification)
+- Output: ClassName + '.' + ExtensionName (max 25 chars total)
+
+**Module Interface:**
+Inputs:
+  input [7:0] class_name [0:7],      // Class name: 8 chars, 8-bit ASCII each
+  input [7:0] extensions [0:7][0:15], // 8 extensions, each 16 chars
+  input [2:0] ext_count,               // Number of valid extensions (1-8)
+  input [3:0] class_len,               // Length of class name (1-8)
+  input [3:0] ext_lens [0:7],          // Length of each extension
+
+Outputs:
+  output [7:0] result [0:24],          // Result string, 25 chars max
+  output [4:0] result_len              // Length of result string
+
+**Implementation Strategy:**
+1. For each extension (0-7), parallelly compute strength:
+   - Iterate through 16 chars per extension
+   - For each char: uppercase (A-Z) adds +1, lowercase (a-z) subtracts -1
+   - Use combinational logic: case statement for ASCII ranges
+
+2. Find maximum strength with tie-breaking:
+   - Compare strengths pairwise
+   - Track index of best extension
+   - Prioritize lower index in ties
+
+3. Construct output string:
+   - Copy class name characters
+   - Append '.' (ASCII 0x2E)
+   - Copy selected extension characters
+
+**Bit Widths:**
+- Character width: 8 bits (ASCII)
+- Strength value: 6-bit signed (range -16 to +16 fits in 6 bits)
+- Index width: 3 bits (0-7)
+- Length width: 4 bits (max 16)
+- Result width: 8 bits per char × 25 chars
+
+**Design Notes:**
+- This is purely combinational (no clock/reset)
+- Use intermediate wires for strengths and best index
+- Output may take multiple propagation delays due to depth; testbench will wait
+- For char classification: check ASCII ranges 65-90 (A-Z) and 97-122 (a-z)
+- All loops bounded by fixed parameters

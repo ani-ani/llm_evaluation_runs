@@ -1,0 +1,156 @@
+module sweet_diet (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] m,      // Number of types (1-4)
+    input wire [3:0] k,      // Number already eaten (0-8)
+    input wire [7:0] a_0, a_1, a_2, a_3,  // Numerators (sum ≤ 128)
+    input wire [3:0] b_0, b_1, b_2, b_3, b_4, b_5, b_6, b_7,  // Eaten sequence
+    output reg [7:0] result, // Result: 0-100, or 255 for "forever"
+    output reg done,
+    output reg error
+);
+
+// Fixed-point arithmetic parameters
+parameter MAX_ITERATIONS = 50;  // Simulation bound for "forever" detection
+parameter SUM_A_WIDTH = 8;     // Sum of a_i fits in 8 bits
+
+// Internal state
+reg [7:0] s [0:3];            // Count per type (max 255)
+reg [7:0] n;                  // Total sweets eaten
+reg [7:0] sum_a;              // Sum of all a_i
+reg [7:0] iteration;          // Current iteration count
+reg [2:0] state;              // State machine state
+reg [7:0] temp_result;        // Temporary result
+
+// State definitions
+parameter IDLE = 3'b000;
+parameter INIT = 3'b001;
+parameter CHECK = 3'b010;
+parameter ADD_SWEET = 3'b011;
+parameter DONE = 3'b100;
+parameter FOREVER = 3'b101;
+
+integer i;
+reg [15:0] left_bound, right_bound, mid_value;  // 16-bit for products
+reg can_add;
+reg [2:0] type_to_add;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset all state
+        for (i = 0; i < 4; i = i + 1) begin
+            s[i] <= 8'b0;
+        end
+        n <= 8'b0;
+        sum_a <= 8'b0;
+        iteration <= 8'b0;
+        result <= 8'b0;
+        done <= 1'b0;
+        error <= 1'b0;
+        state <= IDLE;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                error <= 1'b0;
+                if (start) begin
+                    state <= INIT;
+                    iteration <= 8'b0;
+                    // Compute sum_a
+                    sum_a <= a_0 + a_1 + a_2 + a_3;
+                end
+            end
+
+            INIT: begin
+                // Initialize counts from b sequence
+                for (i = 0; i < 4; i = i + 1) begin
+                    s[i] <= 8'b0;
+                end
+                n <= k;
+                
+                // Count sweets in b sequence (only first k elements)
+                if (k > 0 && b_0 >= 1 && b_0 <= m) s[b_0-1] <= s[b_0-1] + 1;
+                if (k > 1 && b_1 >= 1 && b_1 <= m) s[b_1-1] <= s[b_1-1] + 1;
+                if (k > 2 && b_2 >= 1 && b_2 <= m) s[b_2-1] <= s[b_2-1] + 1;
+                if (k > 3 && b_3 >= 1 && b_3 <= m) s[b_3-1] <= s[b_3-1] + 1;
+                if (k > 4 && b_4 >= 1 && b_4 <= m) s[b_4-1] <= s[b_4-1] + 1;
+                if (k > 5 && b_5 >= 1 && b_5 <= m) s[b_5-1] <= s[b_5-1] + 1;
+                if (k > 6 && b_6 >= 1 && b_6 <= m) s[b_6-1] <= s[b_6-1] + 1;
+                if (k > 7 && b_7 >= 1 && b_7 <= m) s[b_7-1] <= s[b_7-1] + 1;
+                
+                state <= CHECK;
+            end
+
+            CHECK: begin
+                // Check if we can add any sweet type
+                can_add <= 1'b0;
+                type_to_add <= 3'b000;
+                
+                // Check each type (1 to m)
+                for (i = 0; i < 4; i = i + 1) begin
+                    if (i < m && !can_add) begin
+                        // Compute bounds: n*a_i - sum_a < s_i * sum_a < n*a_i + sum_a
+                        left_bound = (n * get_a(i)) - sum_a;
+                        right_bound = (n * get_a(i)) + sum_a;
+                        mid_value = s[i] * sum_a;
+                        
+                        // Check if we can add this type (temporary +1)
+                        mid_value = (s[i] + 1) * sum_a;
+                        if (mid_value > left_bound && mid_value < right_bound) begin
+                            can_add <= 1'b1;
+                            type_to_add <= i;
+                        end
+                    end
+                end
+                
+                if (can_add) begin
+                    state <= ADD_SWEET;
+                end else if (iteration >= MAX_ITERATIONS) begin
+                    result <= 8'd255;  // Special value for "forever"
+                    state <= FOREVER;
+                end else begin
+                    temp_result <= iteration;
+                    state <= DONE;
+                end
+            end
+
+            ADD_SWEET: begin
+                // Add the selected sweet type
+                s[type_to_add] <= s[type_to_add] + 1;
+                n <= n + 1;
+                iteration <= iteration + 1;
+                state <= CHECK;
+            end
+
+            DONE: begin
+                result <= temp_result;
+                done <= 1'b1;
+                state <= IDLE;
+            end
+
+            FOREVER: begin
+                done <= 1'b1;
+                state <= IDLE;
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+// Helper function to get a_i value (Verilog doesn't support arrays in functions well)
+function [7:0] get_a;
+    input [2:0] idx;
+    begin
+        case (idx)
+            3'd0: get_a = a_0;
+            3'd1: get_a = a_1;
+            3'd2: get_a = a_2;
+            3'd3: get_a = a_3;
+            default: get_a = 8'b0;
+        endcase
+    end
+endfunction
+
+endmodule

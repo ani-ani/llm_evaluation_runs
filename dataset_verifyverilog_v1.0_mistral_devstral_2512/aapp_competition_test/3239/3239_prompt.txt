@@ -1,0 +1,114 @@
+module pokemon_go_cost (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [31:0] N,
+    input wire [9:0] P_scaled, // P * 1000, integer from 0 to 1000
+    output reg [63:0] cost,
+    output reg done
+);
+
+    // Constants
+    localparam NUM_STATES = 101;
+    localparam STATE_BITS = 7;
+    localparam FIXED_BITS = 32;
+
+    // Internal variables (using real for simulation)
+    real prob [0:NUM_STATES-1];
+    real total_cost;
+    real q;
+    real q_power [0:NUM_STATES-1]; // q^i
+    real P_real;
+    real C [0:NUM_STATES-1];
+    real T [0:NUM_STATES-1][0:NUM_STATES-1];
+
+    integer i, j, k, step;
+    reg computing;
+
+    // Convert scaled P to real P and compute q
+    always @(P_scaled) begin
+        P_real = P_scaled / 1000.0;
+        q = 1.0 - P_real;
+        // Precompute q_power
+        q_power[0] = 1.0;
+        for (i = 1; i < NUM_STATES; i = i + 1) begin
+            q_power[i] = q_power[i-1] * q;
+        end
+        // Precompute C
+        for (i = 0; i < NUM_STATES; i = i + 1) begin
+            if (i == 0) begin
+                C[i] = 5.0;
+            end else begin
+                C[i] = 5.0 * q_power[i];
+            end
+        end
+        // Precompute T
+        for (i = 0; i < NUM_STATES; i = i + 1) begin
+            for (j = 0; j < NUM_STATES; j = j + 1) begin
+                T[i][j] = 0.0;
+            end
+            if (i == 0) begin
+                T[0][100] = 1.0;
+            end else begin
+                // transitions to states i-1 down to 1
+                for (k = 1; k < i; k = k + 1) begin
+                    T[i][i - k] = P_real * q_power[k-1];
+                end
+                // catch on last ball
+                T[i][0] = P_real * q_power[i-1];
+                // fail after i balls
+                T[i][100] = q_power[i];
+            end
+        end
+    end
+
+    // Main state machine
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            done <= 0;
+            cost <= 0;
+            computing <= 0;
+        end else if (start && !computing) begin
+            // Initialize distribution
+            for (i = 0; i < NUM_STATES; i = i + 1) begin
+                prob[i] = 0.0;
+            end
+            prob[100] = 1.0;
+            total_cost = 0.0;
+            step = 0;
+            computing <= 1;
+            done <= 0;
+        end else if (computing) begin
+            if (step < N) begin
+                // Compute immediate cost
+                real cost_step = 0.0;
+                for (i = 0; i < NUM_STATES; i = i + 1) begin
+                    cost_step = cost_step + prob[i] * C[i];
+                end
+                total_cost = total_cost + cost_step;
+
+                // Compute next distribution
+                real prob_next [0:NUM_STATES-1];
+                for (j = 0; j < NUM_STATES; j = j + 1) begin
+                    prob_next[j] = 0.0;
+                    for (i = 0; i < NUM_STATES; i = i + 1) begin
+                        prob_next[j] = prob_next[j] + prob[i] * T[i][j];
+                    end
+                end
+
+                // Update prob
+                for (i = 0; i < NUM_STATES; i = i + 1) begin
+                    prob[i] = prob_next[i];
+                end
+
+                step = step + 1;
+            end else begin
+                // Done
+                cost <= total_cost * (1 << FIXED_BITS);
+                done <= 1;
+                computing <= 0;
+            end
+        end
+    end
+
+endmodule

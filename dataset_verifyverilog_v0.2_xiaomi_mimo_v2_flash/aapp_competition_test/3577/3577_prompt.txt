@@ -1,0 +1,30 @@
+Design a combinational Verilog module named 'plant_flowers' that counts new flowers when a new plant grows.
+
+The problem is simplified:
+- Maximum 8 days (plants)
+- Coordinates L, R are 8-bit values (0-255)
+- Each plant i has height i (day number, starting from 1)
+- A new plant's vertical stems at L and R intersect any previous plant's horizontal segment if:
+  1. The previous plant's height is strictly less than the new plant's height
+  2. The previous plant's horizontal segment [L_prev, R_prev] contains the new stem's x-coordinate strictly (not just touching endpoints)
+- A flower grows at a stem only if it intersects a previous plant's horizontal segment that has not already been intersected by any previous plant's stems. For simplicity, we assume each previous plant can contribute at most 1 new flower (at either left or right stem of new plant), and we count unique intersections.
+
+Inputs:
+input [7:0] day          // Current day number (1-8)
+input [7:0] new_L        // Left stem x-coordinate of new plant
+input [7:0] new_R        // Right stem x-coordinate of new plant
+input [7:0] prev_L [0:7] // Array of left coordinates for previous 8 plants (use 0 if plant didn't exist)
+input [7:0] prev_R [0:7] // Array of right coordinates for previous 8 plants (use 0 if plant didn't exist)
+input [7:0] prev_H [0:7] // Array of heights for previous 8 plants (use 0 if plant didn't exist)
+
+Output:
+output [7:0] flowers     // Number of new flowers grown on this day (0-16 max)
+
+Behavior:
+The module should compute the number of new flowers purely combinationally. For day i (where i ranges from 1 to 8), we consider plants 1 through i-1. For each previous plant j (with height j), check if new plant i's left stem (at new_L) intersects plant j's horizontal segment: 
+  - Condition: prev_H[j] < i AND prev_L[j] < new_L < prev_R[j]
+If true, a flower can grow. Similarly check right stem (at new_R) with condition: prev_H[j] < i AND prev_L[j] < new_R < prev_R[j]
+
+However, to prevent double-counting the same previous plant j for both stems of new plant i, count at most 1 flower per previous plant j that intersects either stem. So for each j < i, if either condition is true for left or right stem, count 1 flower. Sum this over all j.
+
+The module should use combinational logic to check all 8 previous plants in parallel and sum the results.

@@ -1,0 +1,47 @@
+Module: chess_rook_attacker
+
+Description: This module computes the number of attacked fields after each move in a 4x4 chessboard with up to 4 rooks. The board size is fixed to 4. The module is combinational.
+
+Inputs:
+- rook_data [47:0]: Packed data for up to 4 rooks. Each rook uses 12 bits: [11:0] for rook0, [23:12] for rook1, [35:24] for rook2, [47:36] for rook3. Within each 12-bit field: bits [1:0] are row (0-3), bits [3:2] are col (0-3), bits [11:4] are power (8-bit).
+- move_data [31:0]: Packed data for up to 4 moves. Each move uses 8 bits: [7:0] for move0, [15:8] for move1, [23:16] for move2, [31:24] for move3. Within each 8-bit field: bits [1:0] are src_row, bits [3:2] are src_col, bits [5:4] are dst_row, bits [7:6] are dst_col.
+- k [1:0]: Number of valid rooks (0-3).
+- p [1:0]: Number of valid moves (0-3).
+
+Outputs:
+- result0 [15:0]: Attacked field count after move 0 (if p > 0).
+- result1 [15:0]: Attacked field count after move 1 (if p > 1).
+- result2 [15:0]: Attacked field count after move 2 (if p > 2).
+- result3 [15:0]: Attacked field count after move 3 (if p > 3). For i >= p, output 0.
+
+Algorithm:
+1. Initialize a 4x4 board array (reg [7:0] board[3:0][3:0]) to zero.
+2. Initialize row_xor[3:0] and col_xor[3:0] to zero.
+3. For i = 0 to k-1:
+   - Extract row, col, power from rook_data[i].
+   - Set board[row][col] = power.
+   - row_xor[row] = row_xor[row] ^ power.
+   - col_xor[col] = col_xor[col] ^ power.
+4. For i = 0 to p-1:
+   - Extract src_row, src_col, dst_row, dst_col from move_data[i].
+   - power = board[src_row][src_col].
+   - board[src_row][src_col] = 0.
+   - board[dst_row][dst_col] = power.
+   - row_xor[src_row] = row_xor[src_row] ^ power.
+   - col_xor[src_col] = col_xor[src_col] ^ power.
+   - row_xor[dst_row] = row_xor[dst_row] ^ power.
+   - col_xor[dst_col] = col_xor[dst_col] ^ power.
+   - count = 0;
+     for r = 0 to 3:
+        for c = 0 to 3:
+           if (row_xor[r] ^ col_xor[c]) != 0: count = count + 1;
+   - result_i = count;
+5. For i >= p, result_i = 0.
+
+Implementation notes:
+- Use combinational logic (always @(*) or assign statements).
+- The board and XOR values should be computed based on the input data without a clock.
+- Since the board size is small, nested loops can be unrolled.
+- The outputs should be updated whenever inputs change.
+
+Provide the Verilog code for this module.

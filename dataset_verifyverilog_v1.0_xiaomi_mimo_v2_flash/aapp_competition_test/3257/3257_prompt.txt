@@ -1,0 +1,40 @@
+Design a Verilog module that computes the area of an equilateral triangle given the distances from a point inside (or on the boundary) to the three vertices. The module should use fixed-point arithmetic with Q16.16 format for inputs and output. The module is sequential and uses a state machine.
+
+Interface:
+  Module name: area_calculator
+  Inputs:
+    clk: clock, rising edge
+    rst_n: active-low reset
+    start: start pulse, high for one clock cycle to initiate computation
+    a, b, c: 32-bit unsigned integers representing distances in Q16.16 format (value = input / 65536)
+  Outputs:
+    area: 32-bit unsigned integer in Q16.16 format. If the computed area is valid, output the area. If no valid triangle exists, output 32'hFFFFFFFF (which represents -1.0 in a special interpretation).
+    done: high for one clock cycle when computation is complete.
+
+Algorithm:
+  1. On start, compute squares of inputs in fixed-point:
+        a2 = (a * a) >> 16
+        b2 = (b * b) >> 16
+        c2 = (c * c) >> 16
+     (All multiplications use 64-bit intermediates, then shift right by 16 bits to get back to Q16.16)
+  2. Compute S = a2 + b2 + c2
+  3. Compute D = 3 * ( 2*(a2*b2 + a2*c2 + b2*c2) - (a2^2 + b2^2 + c2^2) )
+     where each product is computed as (x * y) >> 16, and a2^2 = (a2 * a2) >> 16, etc.
+  4. If D < 0, set area = 32'hFFFFFFFF and go to done.
+  5. Otherwise, compute sqrt_D = sqrt(D) (using a square root module or iterative algorithm). The result should be in Q16.16 format (i.e., sqrt_D = sqrt(D * 65536) / 256? Actually, we need to define carefully). Assume we have a module sqrt_fixed that takes a 64-bit value (D in Q32.32) and returns a 32-bit value in Q16.16. For simplicity, we can compute sqrt(D) by treating D as an integer and then shifting.
+  6. Compute t = (S + sqrt_D) >> 1   // t = (S + sqrt_D)/2
+  7. Check if t is valid:
+        lower_bound = max( |a2 - b2|, 2*c2 - a2 - b2, 2*b2 - a2 - c2, 2*a2 - b2 - c2 )
+        If t < lower_bound, set area = 32'hFFFFFFFF and go to done.
+  8. Otherwise, compute area = (sqrt(3)/4) * t. The constant sqrt(3)/4 ≈ 0.4330127019, which in Q16.16 is 28378 (since 0.4330127019 * 65536 ≈ 28378). So area = (28378 * t) >> 16.
+  9. Output area and set done high for one cycle.
+
+Timing: The computation should complete within 100 clock cycles.
+
+Additional notes:
+- Use 64-bit registers for intermediate products and sums.
+- For subtraction, ensure signed arithmetic for comparisons (like |a2 - b2|). Use signed 64-bit registers.
+- The square root operation can be implemented using a non-restoring algorithm or an existing IP core. For benchmark purposes, a simple iterative implementation is acceptable.
+- The module should be synthesizable.
+
+Please provide the complete Verilog code for the module.

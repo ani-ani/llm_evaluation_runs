@@ -1,0 +1,76 @@
+Design a sequential Verilog module named 'planetoid_collision' that simulates planetoid collisions in a simplified 2D grid.
+
+**Simplifications:**
+- 2D space instead of 3D: 8x8 grid (indices 0-7)
+- Maximum 4 planetoids
+- Mass and velocity: 8-bit signed integers
+- Position: 8-bit unsigned integers (Q8.0 fixed-point)
+- Simulation time: maximum 16 clock cycles per collision step
+- Maximum 10 collision steps total
+
+**Inputs:**
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start simulation
+input [2:0] num_planetoids // Number of active planetoids (1-4)
+input [7:0] mass_in [0:3] // Initial masses for 4 slots
+input [7:0] pos_x_in [0:3] // Initial x positions
+input [7:0] pos_y_in [0:3] // Initial y positions
+input signed [7:0] vel_x_in [0:3] // Initial x velocities
+input signed [7:0] vel_y_in [0:3] // Initial y velocities
+
+**Outputs:**
+output reg [2:0] result_count // Number of final planets
+output reg [7:0] result_mass [0:3] // Mass of each planet
+output reg [7:0] result_pos_x [0:3] // X position of each planet
+output reg [7:0] result_pos_y [0:3] // Y position of each planet
+output reg signed [7:0] result_vel_x [0:3] // X velocity of each planet
+output reg signed [7:0] result_vel_y [0:3] // Y velocity of each planet
+output reg done // High when simulation complete
+output reg [7:0] final_time // Final time step when collisions stopped
+
+**Behavior:**
+The module must simulate collisions iteratively:
+
+1. **Initialization State (IDLE):** Wait for start signal. Load initial planetoid data into internal registers. Set time = 0.
+
+2. **Collision Detection State (CHECK):** For each time step:
+   - Calculate future positions for all active planetoids using: pos = (pos + vel) % 8
+   - Check if any two planetoids occupy the same cell after this step
+   - If collision detected: transition to COLLIDE state
+   - If no collisions after checking all pairs: transition to DONE state
+
+3. **Collision Resolution State (COLLIDE):**
+   - Merge colliding planetoids: new_mass = sum of masses
+   - Calculate average velocity: new_vel = trunc(sum(vel) / count)
+   - Keep position of the colliding cell
+   - Remove old planetoids, add new merged one
+   - Increment time counter
+   - Return to CHECK state
+
+4. **Sort State (SORT):** After no more collisions:
+   - Sort final planets by mass (descending)
+   - Secondary sort by x, y position (lexicographic ascending)
+
+5. **Done State (DONE):** Assert done signal.
+
+**Timing:**
+- State machine should complete within ~1000 cycles max
+- Each collision check takes fixed number of cycles (use parallel comparators for small N)
+- Use 8-bit wrap-around arithmetic: new_pos = (pos + vel) & 8'h07
+
+**Example:**
+- Input: 2 planetoids, masses 12, 10 at positions (4,1) and (1,2) with velocities (5,3) and (8,-6)
+- After 1 step: positions (1,4) and (5,6) - no collision
+- After 2 steps: positions (6,7) and (3,4) - no collision
+- After 3 steps: positions (3,2) and (1,0) - no collision
+- ... continue until collision
+- When collision occurs: merge masses (22), average velocities (truncated: (5+8)/2=6, (3-6)/2=-1)
+- Result: mass 22, position collision cell, velocity (6,-1)
+
+**Key Requirements:**
+- Must handle wrap-around correctly using modulo 8 arithmetic
+- Velocity averaging must truncate toward zero
+- Sorting must prioritize mass descending, then position ascending
+- Output final time step
+- Test with 1-4 planetoids, velocities from -10 to 10, positions 0-7

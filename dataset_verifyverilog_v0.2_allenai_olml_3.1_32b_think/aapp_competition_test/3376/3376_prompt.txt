@@ -1,0 +1,57 @@
+Design a sequential Verilog module named 'nudgemon_optimal_xp' that calculates maximum XP from Nudgémon evolution strategy with Blessed Egg timing.
+
+The problem is adapted as follows:
+- Maximum 8 catches total (instead of 400,000)
+- Maximum 8 families (instead of 100,000)
+- Maximum 4 creatures per family chain
+- Simplified: All evolutions in a family cost the same (use first cost value)
+- Blessed Egg duration: 1800 seconds (fixed)
+- Evaluate 4 candidate windows based on catch times
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [5:0] num_catches // number of catches (0-8)
+input [5:0] num_families // number of families (0-8)
+input [31:0] catch_times [0:7] // timestamps for catches
+input [7:0] catch_family [0:7] // family ID for each catch
+input [3:0] family_evolution_cost [0:7] // cost per evolution per family
+input [3:0] family_chain_length [0:7] // number of creatures in chain
+
+Outputs:
+output reg [31:0] max_xp // maximum XP achievable
+output reg done // high when computation complete
+
+Specify latency: Result valid 100 clock cycles after start asserted.
+Use state machine with states: IDLE, PARSE_INPUT, EVALUATE_WINDOWS, COMPUTE_XP, DONE.
+
+Algorithm:
+1. Parse family configurations (chain length, cost)
+2. Generate 4 candidate windows from catch times (catch_times[0], catch_times[num_catches/4], catch_times[num_catches/2], catch_times[3*num_catches/4])
+3. For each candidate window [t, t+1800):
+   - Count catches in window (base XP: 100 each)
+   - XP from catches = 100 * count, doubled if in window = 200 * count
+   - Candies = 3 * count
+   - Maximum evolutions = floor(candies / family_evolution_cost)
+   - Evolutions must be within window (simplified: assume all possible)
+   - XP from evolutions = 500 * evolutions, doubled = 1000 * evolutions
+   - Total XP = XP from catches + XP from evolutions
+4. Select maximum total XP across all windows
+
+Fixed-point arithmetic: Use Q16.16 format for all calculations
+- 100 XP = 0x00640000 (100 * 65536)
+- 200 XP = 0x00C80000 (200 * 65536)
+- 500 XP = 0x01F40000 (500 * 65536)
+- 1000 XP = 0x03E80000 (1000 * 65536)
+- 1800 seconds = 0x07080000 (1800 * 65536)
+
+The module should:
+- Store family data in 8x4-bit ROM-style arrays
+- Store catch data in 8x40-bit registers (32-bit time + 8-bit family)
+- Use 4 registers for candidate window start times
+- Compute XP for each window in parallel when possible
+- Track maximum XP across all evaluated windows
+- Output final maximum XP in Q16.16 format
+
+Note: This is a simplified adaptation for HDL benchmarking. Real-world problem would require O(n) sliding window with candy management, but this captures the essence of timing optimization and XP maximization within hardware constraints.

@@ -1,0 +1,41 @@
+Design a sequential Verilog module named 'joke_party' that computes the number of valid invitation sets for a birthday party.
+
+Problem constraints:
+- Tree with N nodes (N ≤ 8)
+- Each node i has joke type V_i (1-16)
+- Valid set rules:
+  1. No duplicate joke types
+  2. If invited, parent must be invited  
+  3. For each invited node, all invited nodes in its subtree must have consecutive joke types
+
+Inputs:
+input clk // clock
+input rst_n // active-low reset  
+input start // start computation
+input [2:0] N // number of nodes (1-8)
+input [16*8-1:0] V_packed // packed array of N joke types, each 8 bits
+input [64*8-1:0] adj_packed // adjacency matrix, N x N bits packed
+
+Outputs:
+output reg [31:0] result // number of valid sets
+output reg done // computation complete
+
+Latency: 1000 clock cycles after start (for iterative DP)
+
+Implementation approach:
+1. Parse adjacency matrix from packed input
+2. Parse V array from packed input  
+3. For each possible subset of nodes, check validity:
+   - Verify parent constraint
+   - Verify no duplicates
+   - Verify consecutive constraint for each node's subtree
+4. Count valid subsets
+5. Use state machine: IDLE → PARSE → CHECK_SUBSETS → COUNT → DONE
+6. Limit loops: subsets 2^8=256, nodes 8, validation checks within bounds
+
+For each subset S (represented as 8-bit mask):
+- Check parent constraint: if node in S, parent must be in S
+- Check duplicates: all V_i in S must be unique
+- Check consecutive: for each node in S, the set of V_j for j in subtree(node) ∩ S must be consecutive
+
+Output in Q16.16 format is not needed; use standard binary (32-bit).

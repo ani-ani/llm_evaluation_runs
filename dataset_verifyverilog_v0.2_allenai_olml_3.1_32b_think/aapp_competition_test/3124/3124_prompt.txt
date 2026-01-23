@@ -1,0 +1,37 @@
+Design a sequential Verilog module named 'ivana_game_solver' that solves a simplified version of the game for N≤8 numbers.
+
+The module computes the count of valid first moves where Ivana can achieve a better outcome than Zvonko. Each number is reduced to 1-bit: 1=odd, 0=even.
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [7:0] num_bits // N odd/even bits (packed, 0=even, 1=odd)
+input [2:0] N // number of elements (1-8)
+
+Outputs:
+output reg [3:0] result // count of winning first moves
+output reg done // high when computation complete
+
+Specify latency: 256*8 = 2048 clock cycles maximum (processing all game states).
+
+Behavior:
+1. Generate all possible game states using 8-bit mask where mask[i] indicates if index i is taken.
+2. For each state, compute the outcome difference (Ivana's odd count - Zvonko's odd count) assuming optimal play from both sides.
+3. Evaluate each possible first move (0 to N-1):
+   - Start with that single index taken
+   - Compute resulting outcome using the precomputed state values
+4. Count how many first moves result in positive outcome difference (Ivana wins).
+5. The core algorithm uses memoization: for a given state mask and current player, determine optimal move.
+   - Available moves: any untaken index adjacent to taken area
+   - Recursive evaluation: current player maximizes/minimizes outcome
+
+Implementation details:
+- Use a state machine with states: IDLE, INIT, COMPUTE_STATES, EVALUATE_MOVES, DONE
+- Store state values in a 256×8-bit memory (256 states, 8-bit signed outcome)
+- Adjacency check: indices i-1 and i+1 (mod N) must be within taken set or be the move itself
+- A state is 'terminal' when all N bits are set
+- For evaluation, Ivana is maximizing player, Zvonko is minimizing
+- Return outcome difference: #odd_Ivana - #odd_Zvonko
+
+The module must synthesize and run within reasonable clock cycles for the scaled-down problem size.

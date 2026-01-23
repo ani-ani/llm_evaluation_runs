@@ -1,0 +1,47 @@
+Design a Verilog module that determines whether two trucks meet during their journeys.
+
+Simplified Problem:
+- Each truck travels between exactly two cities
+- Speed is 1 unit per minute
+- Route time: 0 to T = |end - start|
+- Position: pos(t) = start + sign * t, where sign = +1 if end > start else -1
+- Meeting occurs if: 0 < t < min(T1,T2) and positions equal
+
+Module: truck_meeting
+
+Inputs:
+  clk: clock (rising edge)
+  rst_n: active-low reset
+  a1, a2: 8-bit signed, truck1 start/end cities
+  b1, b2: 8-bit signed, truck2 start/end cities
+  start: 1-bit, pulse to begin computation
+
+Outputs:
+  meeting: 1-bit, high if trucks meet
+  done: 1-bit, high for one cycle when result ready
+
+Timing:
+- On reset: meeting=0, done=0
+- On clock edge when start=1: compute result and assert done=1 for one cycle
+- Combinational computation, registered output
+
+Computation:
+1. T1 = |a2-a1|, T2 = |b2-b1|
+2. s1 = (a2 > a1) ? 1 : -1
+3. s2 = (b2 > b1) ? 1 : -1
+4. If s1 == s2: meeting = 0
+5. Else:
+   numerator = b1 - a1
+   denominator = s1 - s2  // ±2
+   min_T = min(T1,T2)
+   if (denominator == 2):
+      meeting = (numerator > 0) && (numerator < 2*min_T)
+   else: // denominator == -2
+      meeting = (numerator < 0) && (numerator > -2*min_T)
+
+Bit widths:
+- Internal differences: 9 bits
+- min_T: 8 bits
+- 2*min_T: 9 bits
+
+Implement complete sequential module with proper signed arithmetic.

@@ -1,0 +1,45 @@
+Design a combinational Verilog module named 'even_pair_counter' that counts the number of pairs of integers in a list that XOR to an even number.
+
+Key insight: A XOR B is even if and only if both A and B have the same parity (both even or both odd). This is because the LSB of A XOR B is 0 when A[0] == B[0].
+
+Problem simplification: Since the problem requires counting pairs from a list, we implement this for a fixed-size list of 8 elements. The algorithm counts pairs where both numbers have the same LSB.
+
+Inputs:
+input [7:0] data_in      // 8-bit input values for each element
+input [2:0] index         // Index of current element being loaded (0-7)
+input load                // Load signal to store element at index
+input compute             // Compute signal to calculate final count
+
+Outputs:
+output reg [3:0] result   // Result: number of even XOR pairs (max 28 for 8 elements)
+output reg valid          // Valid signal indicates result is ready
+
+Internal behavior:
+- The module stores 8 elements in an array
+- When compute is asserted, it counts pairs with same parity
+- Result = (even_count * (even_count - 1) / 2) + (odd_count * (odd_count - 1) / 2)
+
+Behavioral description:
+The module uses a RAM-style array to store 8 input values. Each value is 8-bit. During load phase, values are stored at given index. During compute phase, the module:
+1. Counts how many numbers have even LSB (count_even)
+2. Counts how many numbers have odd LSB (count_odd = 8 - count_even)
+3. Calculates pairs: pairs_even = count_even * (count_even - 1) / 2
+4. Calculates pairs: pairs_odd = count_odd * (count_odd - 1) / 2
+5. Result = pairs_even + pairs_odd
+
+Since this is combinational logic for the compute operation, all calculations complete in zero cycles once compute is asserted. The module uses a state machine to coordinate loading and computing phases.
+
+Output constraints:
+- For 8 elements, maximum pairs = 28 (when all have same parity)
+- Result requires 5 bits (0-28), so [3:0] is insufficient. Use [4:0] instead
+- Correction: result should be [4:0] to hold values up to 28
+
+Final corrected interface:
+input [7:0] data_in      // 8-bit input values
+input [2:0] index         // Index (0-7)
+input load                // Active high load
+input compute             // Active high compute
+output reg [4:0] result   // Result: 0-28
+output reg valid          // Valid when result ready
+
+The module should be clocked (sequential) to handle the load and compute phases.

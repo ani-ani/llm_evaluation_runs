@@ -1,0 +1,59 @@
+Design a sequential Verilog module named 'antique_shopping' that finds minimum cost to buy one version of each antique by visiting at most k shops.
+
+Problem constraints (scaled):
+- n = 4 antiques (number of antiques to buy)
+- m = 8 shops (total shops available)
+- k = maximum shops you can visit (1-3)
+- Each antique has 2 purchase options:
+  - Original: available at shop 'a' with price 'p'
+  - Knock-off: available at shop 'b' with price 'q'
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset  
+input start // start computation
+input [2:0] k // maximum shops to visit (1-3)
+input [3:0] antique_orig_shop [3:0] // shop index for original (0-7)
+input [23:0] antique_orig_price [3:0] // price of original (0-2^24)
+input [3:0] antique_knock_shop [3:0] // shop index for knock-off (0-7)
+input [23:0] antique_knock_price [3:0] // price of knock-off (0-2^24)
+
+Outputs:
+output reg [23:0] min_cost // minimum total cost (0-2^24)
+output reg valid // high when result is valid
+output reg done // high when computation complete
+
+Specifications:
+- Use state machine with states: IDLE, CHECK_COMBINATION, VALIDATE, COMPUTE_COST, UPDATE_MIN, DONE
+- Iterate through all possible combinations of 1 to k shops from m=8 shops
+- For each combination (subset of shops), check if ALL antiques can be bought:
+  * For each antique i (0-3): at least one of (antique_orig_shop[i] OR antique_knock_shop[i]) must be in the subset
+- If combination is valid, compute total cost:
+  * For each antique i: choose MIN(available_price) among shops in subset
+- Track minimum cost across all valid combinations
+- If no valid combination exists, output -1 (0xFFFFFF)
+- Latency: Result valid 5000 clock cycles after start (combinational logic with loops)
+- Use parameters: N=4 (antiques), M=8 (shops), MAX_K=3
+
+Algorithm (pseudocode):
+min_cost = INF
+for subset_size from 1 to k:
+  for each combination of 'subset_size' shops from M shops:
+    valid = true
+    total_cost = 0
+    for each antique i:
+      available = false
+      best_price = INF
+      if antique_orig_shop[i] in subset:
+        available = true
+        best_price = min(best_price, antique_orig_price[i])
+      if antique_knock_shop[i] in subset:
+        available = true  
+        best_price = min(best_price, antique_knock_price[i])
+      if !available:
+        valid = false
+        break
+      total_cost += best_price
+    if valid:
+      min_cost = min(min_cost, total_cost)
+if min_cost == INF: return -1 else return min_cost

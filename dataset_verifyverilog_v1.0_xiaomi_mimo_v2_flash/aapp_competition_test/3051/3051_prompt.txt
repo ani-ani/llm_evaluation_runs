@@ -1,0 +1,150 @@
+module fog_catcher #(
+    parameter MAX_FOGS = 8,
+    parameter MAX_NETS = 8,
+    parameter COORD_WIDTH = 16,
+    parameter DAY_WIDTH = 16
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Fog data inputs - array of signals for each fog parameter
+    input wire [DAY_WIDTH-1:0] fog_day [0:MAX_FOGS-1],
+    input wire [COORD_WIDTH-1:0] fog_left [0:MAX_FOGS-1],
+    input wire [COORD_WIDTH-1:0] fog_right [0:MAX_FOGS-1],
+    input wire [COORD_WIDTH-1:0] fog_height [0:MAX_FOGS-1],
+    input wire [4:0] fog_valid_count,
+    
+    output reg [7:0] missed_count,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam LOAD_FOG = 3'd1;
+localparam CHECK_DAY = 3'd2;
+localparam CHECK_COVERAGE = 3'd3;
+localparam ADD_NET = 3'd4;
+localparam NEXT_FOG = 3'd5;
+localparam DONE = 3'd6;
+
+// Internal state
+reg [2:0] state;
+reg [4:0] fog_idx;
+reg [DAY_WIDTH-1:0] current_day;
+
+// Net storage - stored as rectangles from ground (y=0) to height
+reg [COORD_WIDTH-1:0] net_left [0:MAX_NETS-1];
+reg [COORD_WIDTH-1:0] net_right [0:MAX_NETS-1];
+reg [COORD_WIDTH-1:0] net_height [0:MAX_NETS-1];
+reg [4:0] net_count;
+
+// Current fog being processed
+reg [DAY_WIDTH-1:0] curr_fog_day;
+reg [COORD_WIDTH-1:0] curr_fog_left;
+reg [COORD_WIDTH-1:0] curr_fog_right;
+reg [COORD_WIDTH-1:0] curr_fog_height;
+
+// Function to check if a fog is covered by any existing net
+function automatic logic is_covered;
+    input [COORD_WIDTH-1:0] l, r, h;
+    integer i;
+    begin
+        is_covered = 1'b0;
+        for (i = 0; i < MAX_NETS; i = i + 1) begin
+            if (i < net_count) begin
+                // Net covers fog if fog is contained within net rectangle
+                if (net_left[i] <= l && net_right[i] >= r && net_height[i] >= h) begin
+                    is_covered = 1'b1;
+                    return; // Early exit
+                end
+            end
+        end
+    end
+endfunction
+
+// Main state machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        fog_idx <= 0;
+        missed_count <= 0;
+        net_count <= 0;
+        done <= 0;
+        current_day <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 0;
+                if (start) begin
+                    fog_idx <= 0;
+                    missed_count <= 0;
+                    net_count <= 0;
+                    current_day <= 0;
+                    state <= LOAD_FOG;
+                end
+            end
+            
+            LOAD_FOG: begin
+                if (fog_idx < fog_valid_count) begin
+                    // Load current fog data
+                    curr_fog_day <= fog_day[fog_idx];
+                    curr_fog_left <= fog_left[fog_idx];
+                    curr_fog_right <= fog_right[fog_idx];
+                    curr_fog_height <= fog_height[fog_idx];
+                    state <= CHECK_DAY;
+                end else begin
+                    state <= DONE;
+                end
+            end
+            
+            CHECK_DAY: begin
+                // For first fog, set current day
+                if (fog_idx == 0) begin
+                    current_day <= curr_fog_day;
+                    state <= CHECK_COVERAGE;
+                end else if (curr_fog_day != current_day) begin
+                    // Day changed - reset nets for new day
+                    current_day <= curr_fog_day;
+                    net_count <= 0;
+                    state <= CHECK_COVERAGE;
+                end else begin
+                    state <= CHECK_COVERAGE;
+                end
+            end
+            
+            CHECK_COVERAGE: begin
+                if (!is_covered(curr_fog_left, curr_fog_right, curr_fog_height)) begin
+                    missed_count <= missed_count + 1;
+                    state <= ADD_NET;
+                end else begin
+                    state <= NEXT_FOG;
+                end
+            end
+            
+            ADD_NET: begin
+                if (net_count < MAX_NETS) begin
+                    net_left[net_count] <= curr_fog_left;
+                    net_right[net_count] <= curr_fog_right;
+                    net_height[net_count] <= curr_fog_height;
+                    net_count <= net_count + 1;
+                end
+                state <= NEXT_FOG;
+            end
+            
+            NEXT_FOG: begin
+                fog_idx <= fog_idx + 1;
+                state <= LOAD_FOG;
+            end
+            
+            DONE: begin
+                done <= 1'b1;
+                if (!start) state <= IDLE;
+            end
+            
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

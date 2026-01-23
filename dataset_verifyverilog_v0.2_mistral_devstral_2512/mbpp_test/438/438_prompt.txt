@@ -1,0 +1,59 @@
+Design a Verilog module named 'bidirectional_counter' that counts the number of bidirectional tuple pairs in a fixed-size list.
+
+The input is a list of N tuples, where each tuple contains two 8-bit values (a, b).
+A pair of tuples (A, B) and (C, D) is bidirectional if A == D and B == C.
+
+Constraints:
+- N = 8 (maximum 8 tuples)
+- Each tuple value is 8 bits wide (range 0-255)
+- Input is provided as two separate 2D arrays: one for first elements, one for second elements
+- Output is the total count of such pairs
+- The count should be computed sequentially using a state machine to avoid massive combinational logic.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] tuple_first [0:7] // First elements of the 8 tuples
+input [7:0] tuple_second [0:7] // Second elements of the 8 tuples
+
+Outputs:
+output reg [3:0] result // Result count (max possible pairs for N=8 is 28, so 4 bits are enough)
+output reg done // High when computation is complete
+
+Behavioral Description:
+1. On reset, set result to 0 and state to IDLE.
+2. When start is asserted, transition to PROCESSING state.
+3. In PROCESSING state, iterate through all unique pairs of indices (i, j) where i < j (total 28 iterations).
+   - For each pair, check if tuple_first[i] == tuple_second[j] AND tuple_second[i] == tuple_first[j].
+   - If true, increment the result register.
+4. After checking all pairs, transition to DONE state and assert done.
+5. Wait for reset or new start signal.
+
+Latency: The module requires 28 clock cycles to process the data in PROCESSING state, plus 1 cycle for IDLE->PROCESSING transition. Result valid 29 cycles after start asserted.
+
+State Machine:
+- IDLE: Wait for start signal. Result = 0.
+- PROCESSING: Iterate through pairs (i, j). Maintain i_index and j_index counters. Check condition and increment result.
+- DONE: Assert done signal. Wait for reset.
+
+Implementation details:
+- Use a 3-bit counter for i (0-7) and 3-bit counter for j (0-7).
+- Use a state register: 2 bits (IDLE=0, PROCESSING=1, DONE=2).
+- Logic must ensure i < j.
+- The total number of comparisons is 28 (8 choose 2).
+
+// Internal Logic:
+// State machine transitions:
+// IDLE -> PROCESSING on start
+// PROCESSING -> DONE when i reaches 7 and j reaches 7 (all pairs checked)
+// DONE -> IDLE on reset or start (optional, depends on design)
+
+// Counter logic:
+// i starts at 0, j starts at 1.
+// On each clock cycle in PROCESSING:
+//   Check pair (i, j).
+//   If match, result <= result + 1.
+//   Increment j.
+//   If j == 8, set j = i + 1 and increment i.
+//   If i == 7 (meaning last i processed), transition to DONE.

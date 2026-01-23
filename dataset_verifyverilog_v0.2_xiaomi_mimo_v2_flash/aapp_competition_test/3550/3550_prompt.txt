@@ -1,0 +1,78 @@
+Design a sequential Verilog module named 'nenscript_evaluator' that implements a simplified interpreter for the NenScript language.
+
+**Module Specifications:**
+- Input clock `clk` and active-low reset `rst_n`
+- Input `start` (high to begin processing)
+- Input `cmd_type` (1 bit): 0 for variable declaration, 1 for print request
+- Input `line_buffer` (80 lines of 256 bits each): ASCII string of the command
+- Input `line_length` (8 bits): length of valid data in line_buffer
+- Output `result` (256 bits): ASCII string result
+- Output `result_length` (8 bits): length of valid result
+- Output `done` (high when computation complete)
+- Output `error` (high if invalid syntax)
+
+**Constraints & Simplifications:**
+1. **Variable Names**: max 10 characters (a-z, _)
+2. **Variable Values**: max 16 characters
+3. **Max Variables**: 8 variables total (addressed 0-7)
+4. **Template Literal Depth**: max 3 levels of nesting
+5. **Character Set**: ASCII characters (good characters + quotes, backticks, braces, dollar)
+
+**Algorithm:**
+- Use a main FSM with states: IDLE, PARSE_DECL, PARSE_PRINT, EVAL_EXPR, UPDATE_VAR, FINISHED
+- Parse the command line character by character
+- For variable declarations: parse name, parse value expression, evaluate it, store in memory
+- For print requests: parse expression, evaluate it, output result
+- Use a recursive evaluation approach for template literals with a stack of 3 levels
+- Each evaluation maintains: current position in string, depth level, partial result buffer
+
+**Expression Evaluation:**
+1. Detect expression type:
+   - If starts with `"` (0x22): String literal - extract characters until next `"`
+   - If starts with backtick `` ` `` (0x60): Template literal - parse segments
+   - If starts with lowercase/underscore: Variable reference - lookup in table
+2. For template literals (`...`):
+   - Scan for `${` sequence
+   - Extract literal text before `${`
+   - Recursively evaluate embedded expression
+   - Concatenate results
+   - Continue until closing `}` and backtick
+
+**Memory Structure:**
+- 8-entry variable table (parameterizable depth)
+- Each entry: 80 bits for name (10 chars max), 128 bits for value (16 chars max), 6 bits name_length, 8 bits value_length
+
+**State Machine Detail:**
+- IDLE: Wait for start signal
+- PARSE_DECL: Parse "var <name> = <expr>;" format
+  - Extract variable name (between "var" and "=")
+  - Extract expression (between "=" and ";")
+  - Call EVAL_EXPR
+  - Store result in next free variable slot
+- PARSE_PRINT: Parse "print <expr>;" format
+  - Extract expression (between "print" and ";")
+  - Call EVAL_EXPR
+  - Route result to output port
+- EVAL_EXPR: Recursive expression evaluator
+  - Identify expression type
+  - If template: push to stack, parse inner expressions
+  - If variable: lookup value
+  - If literal: extract string
+- UPDATE_VAR: Write to variable table
+- FINISHED: Assert done, return to IDLE
+
+**Output Format:**
+For print statements, output only the evaluated string value without quotes or extra spaces.
+
+**Test Cases:**
+1. Simple variable reference:
+   Input: `var a = "Gon"; var b = a; print b;`
+   Expected: `Gon`
+2. Template literal:
+   Input: `var a = "Gon"; print `My name is ${a}`;`
+   Expected: `My name is Gon`
+3. Nested templates:
+   Input: `var one = "1"; var two = "2"; print `1${`2${two}2`}1`;`
+   Expected: `1221`
+
+The module should handle these operations within 1000 clock cycles, using a 50 MHz clock.

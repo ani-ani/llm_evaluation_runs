@@ -1,0 +1,52 @@
+Design a sequential Verilog module named 'mad_calculator' that computes the Median of All Densities (MAD) for a simplified grid.
+
+**Problem Adaptation**:
+- Grid size: 4x4 fixed (height=4, width=4)
+- Allowed rectangle area: 1 to 8 units
+- Input values: 16-bit unsigned integers (0-10000)
+- Output: Q16.16 fixed-point density value
+
+**Inputs**:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] grid_data // Serial input of grid values (16 values)
+input grid_valid // Valid signal for grid_data
+
+**Outputs**:
+output reg [31:0] result // Q16.16 fixed-point MAD result
+output reg done // High when computation complete
+output reg [5:0] state_out // Debug: current state
+
+**Specification**:
+The module should:
+1. Accept 16 grid values (4x4 grid) sequentially via grid_data when grid_valid is high
+2. Calculate all rectangle densities where rectangle area is between 1 and 8 inclusive
+3. Density = (sum of values in rectangle) / (rectangle area)
+4. Compute median of all collected densities
+5. Output result in Q16.16 format (multiply by 65536)
+
+**Algorithm Details**:
+- Store grid in 4x4 register array
+- Iterate through all top-left (r1,c1) and bottom-right (r2,c2) coordinates
+- Calculate area = (r2-r1+1) * (c2-c1+1)
+- If area in [1,8], calculate sum of values in rectangle
+- Store densities in a buffer (max ~48 entries)
+- Sort densities using bubble sort (small fixed size)
+- Take median (middle value or average of two middle values)
+- Convert to Q16.16 and output
+
+**State Machine**:
+- IDLE: Wait for start
+- LOAD: Load 16 grid values
+- CALC_DENSITIES: Iterate through all rectangles
+- SORT: Sort density array
+- MEDIAN: Extract median value
+- DONE: Signal completion
+
+**Latency**: Result valid ~1000 clock cycles after start (depends on implementation)
+
+**Fixed-Point Handling**:
+- Division: Use integer division for density calculation
+- Multiply result by 65536 (2^16) for Q16.16 format
+- Example: density 5.25 = 5.25 * 65536 = 344064 (0x00054000)

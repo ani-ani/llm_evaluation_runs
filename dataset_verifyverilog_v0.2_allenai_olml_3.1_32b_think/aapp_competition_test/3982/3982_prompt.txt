@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'morse_decoder' that counts non-empty sequences of English letters represented by substrings of a growing binary string S.
+
+Problem Adaptation:
+- Max length m = 12 (vs original 3000)
+- Input: Stream of bits (0 or 1) appended to S
+- Valid Morse codes: 4-bit strings not in {0011, 0101, 1110, 1111}
+- Goal: After each bit, count all valid concatenations of valid codes that appear as substrings of S.
+- Since m is small, we can compute this using a state machine tracking possible substring endings.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High for one cycle to append the next bit
+input bit_in // The bit to append (0 or 1)
+
+Outputs:
+output reg [31:0] result // Total count of valid sequences modulo 10^9+7
+output reg done // High when result is valid after 'start'
+
+Specifications:
+- Use a shift register of width 4 to maintain the last 4 bits of S.
+- Maintain a history of appended bits to compute substring validity.
+- The module should implement an iterative process:
+  1. Wait in IDLE state until 'start' is high.
+  2. Append bit_in to the internal shift register.
+  3. Recalculate the number of valid sequences ending at the new position.
+     - This can be done by checking all substrings ending at the new bit with lengths 1 to 4.
+     - A substring is valid if it represents a valid Morse code.
+     - A sequence is valid if it's a concatenation of valid codes.
+     - Since m is small, we can use DP: let dp[i] be the number of valid sequences ending at index i.
+       dp[i] = sum(dp[j]) for all j < i where substring S[j+1...i] is a valid code.
+  4. Update 'result' with the sum of all dp[i] for the current S length.
+- Latency: 50 clock cycles after 'start' to allow for state transitions and calculations.
+- States: IDLE, CALCULATE, DONE.
+- Modulo: 10^9+7 (0x3B9ACA07).
+- Max iterations: 12.
+- Valid codes (4-bit): Any 4-bit string EXCEPT 0011, 0101, 1110, 1111.
+- Valid codes (3-bit): Any 3-bit string.
+- Valid codes (2-bit): Any 2-bit string.
+- Valid codes (1-bit): 0, 1.
+
+Internal Logic:
+- Maintain a buffer of appended bits (max 12 bits).
+- In CALCULATE state, iterate through the buffer to compute valid substrings and sequences.
+- Use a loop counter to process the string history.
+- Output the sum of valid sequences.

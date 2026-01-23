@@ -1,0 +1,1 @@
+module loss_amount(\n    input [15:0] actual_cost,\n    input [15:0] sale_amount,\n    output reg [15:0] loss\n);\n    always @(*) begin\n        if (sale_amount > actual_cost)\n            loss = sale_amount - actual_cost;\n        else\n            loss = 16'd0;\n    end\nendmodule

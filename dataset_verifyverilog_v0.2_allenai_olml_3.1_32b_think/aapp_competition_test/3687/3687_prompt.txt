@@ -1,0 +1,61 @@
+Design a sequential Verilog module named 'downlink_verifier' that verifies if all data can be transferred to Earth in a given time frame for a probe with FIFO queues.
+
+Problem Adaptation:
+- n: 4 downlink windows (max)
+- q: 4 FIFO queues (max)
+- s: 4 sensors (max)
+- Queue sizes: 256 MB max (Q16.16 fixed-point, 16 integer, 16 fractional bits)
+- Data amounts: 256 MB max, represented as Q16.16
+- Downlink capacity: 256 MB max, represented as Q16.16
+
+Algorithm:
+For each downlink window:
+1. Add sensor-generated data to corresponding queues (check for overflow)
+2. If overflow occurs at any point, mark as impossible
+3. Allocate downlink bandwidth to queues to minimize remaining data (use greedy approach)
+4. After all windows, check if all queues are empty
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [3:0] n_in // number of downlink windows (0-4)
+input [3:0] q_in // number of queues (0-4)
+input [3:0] s_in // number of sensors (0-4)
+input [3:0] sensor_queue_map [3:0] // maps each sensor to queue index
+input [255:0] queue_capacities [3:0] // Q16.16 fixed-point capacities
+input [255:0] window_downlink [3:0] // Q16.16 downlink capacity per window
+input [255:0] sensor_data [3:0][3:0] // sensor_data[window][sensor] in Q16.16
+
+Outputs:
+output reg result // 1=possible, 0=impossible
+output reg done // high when computation complete
+
+Specification:
+- Use Q16.16 fixed-point format for all data amounts
+- State machine states: IDLE, READ_PARAMS, PROCESS_WINDOW, CHECK_RESULT, DONE
+- Latency: 100 clock cycles maximum
+- Internal queue storage: 4 queues, each tracking current fill level
+- Greedy allocation: allocate downlink bandwidth to queues with data, priority to least capacity (or FIFO order)
+- Must detect overflow: when adding data to queue, verify fill_level + data <= capacity
+- After processing all windows, verify all queue levels are zero
+
+Behavioral Description:
+1. IDLE: Wait for start signal
+2. READ_PARAMS: Load n, q, s, sensor mappings, and capacities (1 cycle per parameter)
+3. PROCESS_WINDOW: For each window (0 to n-1):
+   - Add sensor data to queues (check overflow)
+   - Allocate downlink bandwidth to queues:
+     - Calculate total data in all queues
+     - If total_data <= downlink_capacity, clear all queues
+     - Otherwise, allocate downlink to queues with data until capacity exhausted
+   - Use greedy: subtract from queues in order 0 to q-1
+4. CHECK_RESULT: Check if all queues are empty
+5. DONE: Set result and done signals
+
+Edge Cases:
+- If overflow detected at any time, jump to DONE with result=0
+- If all queues empty after all windows, result=1
+- Downlink allocation should be optimal: try to clear as much as possible
+
+Use non-blocking assignments for sequential logic. Ensure all state transitions are explicit.

@@ -1,0 +1,196 @@
+Module: exploding_worms
+Description: Computes the number of cans that explode in a chain reaction when a specific can is shot. The module works for up to 8 cans with 8-bit positions and radii.
+
+Interface:
+Inputs:
+  clk: clock signal
+  rst_n: active-low reset
+  start: start pulse (assert for one cycle)
+  shoot_index: 3-bit index of the can that is shot
+  pos0, pos1, ..., pos7: 8-bit signed position of each can
+  rad0, rad1, ..., rad7: 8-bit unsigned blast radius of each can
+
+Outputs:
+  result: 4-bit number of cans that explode
+  done: asserted high when computation is complete
+
+Behavior:
+  On reset, all internal state is cleared.
+  When start is asserted, the module begins computation for the can at shoot_index.
+  The module uses an iterative expansion algorithm to simulate the chain reaction:
+    1. Start with a mask of exploded cans containing only the shot can.
+    2. Repeatedly expand the mask by including cans that are within the blast radius of any can already exploded.
+    3. Continue until the mask stops growing or 7 iterations are performed.
+  When finished, the module outputs the number of bits set in the mask (number of exploded cans) and asserts done.
+  The done signal remains high until start is deasserted.
+
+Implementation Details:
+  - Uses a state machine with states: IDLE, INIT, EXPAND_I, EXPAND_J, CHECK, COUNT, DONE.
+  - The expansion step iterates over all cans i (0-7) that are exploded, and for each i, iterates over all cans j (0-7) that are not exploded, checking if |pos_i - pos_j| <= rad_i.
+  - Absolute difference is computed in 9-bit signed arithmetic to handle subtraction correctly.
+  - The popcount is computed combinationally from the explosion mask.
+  - Maximum iteration count is 7 to prevent infinite loops.
+
+Important: The module only computes the result for one shoot_index per start pulse. To get answers for all cans, the testbench must call the module 8 times with different shoot_index values.
+
+Verilog Code:
+
+module exploding_worms (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [2:0] shoot_index,
+    input wire [7:0] pos0, pos1, pos2, pos3, pos4, pos5, pos6, pos7,
+    input wire [7:0] rad0, rad1, rad2, rad3, rad4, rad5, rad6, rad7,
+    output reg [3:0] result,
+    output reg done
+);
+
+// State definitions
+localparam IDLE = 3'd0;
+localparam INIT = 3'd1;
+localparam EXPAND_I = 3'd2;
+localparam EXPAND_J = 3'd3;
+localparam CHECK = 3'd4;
+localparam COUNT = 3'd5;
+localparam DONE = 3'd6;
+
+// Internal registers
+reg [2:0] state;
+reg [7:0] mask;
+reg [7:0] new_mask;
+reg [2:0] i;
+reg [2:0] j;
+reg [2:0] iteration_count;
+
+// Wire arrays for positions and radii
+wire [7:0] pos [0:7];
+wire [7:0] rad [0:7];
+
+assign pos[0] = pos0;
+assign pos[1] = pos1;
+assign pos[2] = pos2;
+assign pos[3] = pos3;
+assign pos[4] = pos4;
+assign pos[5] = pos5;
+assign pos[6] = pos6;
+assign pos[7] = pos7;
+
+assign rad[0] = rad0;
+assign rad[1] = rad1;
+assign rad[2] = rad2;
+assign rad[3] = rad3;
+assign rad[4] = rad4;
+assign rad[5] = rad5;
+assign rad[6] = rad6;
+assign rad[7] = rad7;
+
+// Combinational logic for absolute difference and condition
+wire signed [8:0] diff;
+wire [7:0] abs_diff;
+wire condition;
+
+assign diff = $signed({pos[i][7], pos[i]}) - $signed({pos[j][7], pos[j]});
+assign abs_diff = diff[8] ? ( (~diff[7:0]) + 1'b1 ) : diff[7:0];
+assign condition = (abs_diff <= rad[i]) && (state == EXPAND_J);
+
+// Popcount of mask
+wire [3:0] popcount;
+assign popcount = mask[0] + mask[1] + mask[2] + mask[3] + mask[4] + mask[5] + mask[6] + mask[7];
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        mask <= 8'h00;
+        new_mask <= 8'h00;
+        i <= 3'd0;
+        j <= 3'd0;
+        iteration_count <= 3'd0;
+        result <= 4'd0;
+        done <= 1'b0;
+    end else begin
+        case (state)
+            IDLE: begin
+                done <= 1'b0;
+                if (start) begin
+                    state <= INIT;
+                end
+            end
+
+            INIT: begin
+                mask <= 8'h00;
+                mask[shoot_index] <= 1'b1;
+                new_mask <= 8'h00;
+                new_mask[shoot_index] <= 1'b1;
+                iteration_count <= 3'd0;
+                i <= 3'd0;
+                state <= EXPAND_I;
+            end
+
+            EXPAND_I: begin
+                if (i >= 3'd8) begin
+                    state <= CHECK;
+                end else begin
+                    if (mask[i]) begin
+                        j <= 3'd0;
+                        state <= EXPAND_J;
+                    end else begin
+                        i <= i + 1;
+                        state <= EXPAND_I;
+                    end
+                end
+            end
+
+            EXPAND_J: begin
+                if (j >= 3'd8) begin
+                    i <= i + 1;
+                    state <= EXPAND_I;
+                end else begin
+                    if (mask[j]) begin
+                        j <= j + 1;
+                        state <= EXPAND_J;
+                    end else begin
+                        if (condition) begin
+                            new_mask[j] <= 1'b1;
+                        end
+                        j <= j + 1;
+                        state <= EXPAND_J;
+                    end
+                end
+            end
+
+            CHECK: begin
+                if (new_mask == mask) begin
+                    state <= COUNT;
+                end else begin
+                    mask <= new_mask;
+                    iteration_count <= iteration_count + 1;
+                    if (iteration_count >= 3'd7) begin
+                        state <= COUNT;
+                    end else begin
+                        i <= 3'd0;
+                        state <= EXPAND_I;
+                    end
+                end
+            end
+
+            COUNT: begin
+                result <= popcount;
+                state <= DONE;
+            end
+
+            DONE: begin
+                done <= 1'b1;
+                if (!start) begin
+                    state <= IDLE;
+                    done <= 1'b0;
+                end
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

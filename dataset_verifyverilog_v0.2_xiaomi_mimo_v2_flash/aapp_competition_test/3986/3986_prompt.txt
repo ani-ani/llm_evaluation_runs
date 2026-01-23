@@ -1,0 +1,46 @@
+Design a sequential Verilog module named 'string_generator' that implements the logic to generate a lexicographically smallest string of length n with exactly k distinct characters, where no two adjacent characters are the same.
+
+Conditions:
+- Inputs n and k are positive integers.
+- String consists of lowercase English letters (26 possible).
+- Adjacent characters must differ.
+- Result must be lexicographically smallest.
+- If impossible (k > 26, or k=1 and n>1), output -1.
+
+Constraints:
+- n <= 128 (scaled down from 10^6)
+- k <= 26
+- Output string stored in a fixed-width buffer.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [7:0] n // String length (0-128)
+input [4:0] k // Number of distinct letters (1-26)
+
+Outputs:
+output reg [1023:0] result // Packed string output (128 chars * 8 bits)
+output reg [7:0] length_out // Actual length of generated string
+output reg valid // High when result is valid
+output reg error // High when input is invalid/impossible
+
+Behavior:
+The module should use a state machine (IDLE, CHECK, GEN_LOOP, FINISH, ERROR).
+1. IDLE: Wait for start signal.
+2. CHECK: Validate inputs. If (k > 26) OR (k == 1 && n > 1) OR (n < k), go to ERROR. Else proceed.
+3. GEN_LOOP: Generate characters.
+   - If n == 1 and k == 1: Output "a".
+   - Else:
+     - Calculate prefix_len = n - (k - 2).
+     - Fill first prefix_len characters with alternating 'a' and 'b' (start with 'a').
+     - Fill remaining characters starting from 'c', incrementing each step.
+4. FINISH: Set valid high.
+5. ERROR: Set error high.
+
+Latency: Result valid N clock cycles after start asserted (where N depends on n, max ~150 cycles).
+
+Output Format:
+The `result` output should be a packed array where each 8-bit segment represents a character. For example, "abc" would be stored as `result[23:0] = 24'h616263`.
+
+Fixed-Point/Scaling: No floating point used here.

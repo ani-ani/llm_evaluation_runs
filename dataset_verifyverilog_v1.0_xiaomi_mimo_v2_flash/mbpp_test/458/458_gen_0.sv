@@ -1,0 +1,1 @@
+module rectangle_area (\n    input [7:0] length,\n    input [7:0] breadth,\n    output reg [15:0] area\n);\n\n    always @(*) begin\n        area = length * breadth;\n    end\n\nendmodule

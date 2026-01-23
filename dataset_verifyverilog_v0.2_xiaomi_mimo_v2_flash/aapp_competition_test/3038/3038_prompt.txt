@@ -1,0 +1,51 @@
+Design a sequential Verilog module named 'bolt_packer' that finds the smallest advertised pack size that guarantees at least B bolts.
+
+Module interface:
+- input clk: clock signal
+- input rst_n: active-low reset
+- input start: start computation
+- input [9:0] B: number of bolts needed (0-1023)
+- input [3:0] num_companies: number of companies (1-10)
+- input [3:0] company_index: current company being configured (0-9)
+- input [3:0] num_packs: number of pack types for this company (1-10)
+- input [9:0] pack_size [0:9]: pack sizes for current company
+- input config_valid: signal to load pack data for current company
+- output reg [9:0] min_advertised: smallest advertised pack size that gives >= B bolts
+- output reg found: high when a valid solution is found
+- output reg impossible: high when no solution exists
+- output reg done: high when computation complete
+
+Behavior:
+The module processes companies sequentially. For each company, it computes:
+1. Real amount for each advertised pack size
+2. For company 0 (manufacturer): real = advertised
+3. For company i (i>0): real = sum of real amounts from packs of company i-1 that minimally sum to >= advertised
+
+After processing all companies, find minimum advertised pack size where real amount >= B.
+
+Implementation details:
+- Use state machine: IDLE, CONFIG, PROCESS_COMPANIES, FIND_MIN, DONE
+- For each company, store pack sizes and computed real amounts
+- When config_valid=1, load pack_size into current company's buffer
+- During PROCESS_COMPANIES, compute real amounts using DP or combinatorial search
+- Since max 10 packs per company, can search all combinations or use simple greedy
+- For minimal combination: try all subsets or use knapsack-like approach
+- Use fixed-point representation: all values are integers (0-1000)
+- Result in min_advertised
+
+State machine transitions:
+- IDLE -> CONFIG when start=1
+- CONFIG -> CONFIG when config_valid=1 and more companies to load
+- CONFIG -> PROCESS_COMPANIES when all companies loaded
+- PROCESS_COMPANIES -> FIND_MIN when all companies processed
+- FIND_MIN -> DONE when min found
+- DONE -> IDLE when rst_n or new start
+
+Latency: Approximately 10*10*10 = 1000 cycles worst case (10 companies, 10 packs each, 10 iterations per pack computation)
+
+Parameters for hardware:
+- MAX_COMPANIES = 10
+- MAX_PACKS_PER_COMPANY = 10
+- MAX_BOLTS = 1000
+- Use arrays: pack_sizes [0:9][0:9], real_amounts [0:9][0:9]
+- Bit widths: pack size = 10 bits (0-1023), company index = 4 bits, pack index = 4 bits

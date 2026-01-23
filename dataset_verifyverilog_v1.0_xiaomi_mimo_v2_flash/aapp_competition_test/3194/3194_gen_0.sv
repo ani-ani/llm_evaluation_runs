@@ -1,0 +1,139 @@
+module photo_scheduler (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] n,
+    input [7:0] t,
+    input [127:0] arr,
+    output reg result,
+    output reg done
+);
+
+    // Unpack the array
+    wire [7:0] a_unpacked [0:7];
+    wire [7:0] b_unpacked [0:7];
+
+    generate
+        genvar i;
+        for (i = 0; i < 8; i = i + 1) begin : unpack_loop
+            assign {b_unpacked[i], a_unpacked[i]} = arr[i*16 +: 16];
+        end
+    endgenerate
+
+    // States
+    localparam [2:0] IDLE     = 3'd0;
+    localparam [2:0] SORT     = 3'd1;
+    localparam [2:0] SCHEDULE = 3'd2;
+    localparam [2:0] DONE     = 3'd3;
+
+    reg [2:0] state;
+    reg [3:0] i_reg, j_reg;
+    reg [3:0] k;
+    reg [15:0] current_time;
+    reg [15:0] temp_val;
+
+    // Task storage
+    reg [7:0] a_reg [0:7];
+    reg [7:0] b_reg [0:7];
+
+    integer idx;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 1'b0;
+            result <= 1'b0;
+            i_reg <= 4'd0;
+            j_reg <= 4'd0;
+            k <= 4'd0;
+            current_time <= 16'd0;
+            temp_val <= 16'd0;
+            for (idx = 0; idx < 8; idx = idx + 1) begin
+                a_reg[idx] <= 8'd0;
+                b_reg[idx] <= 8'd0;
+            end
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        // Load arrays
+                        for (idx = 0; idx < 8; idx = idx + 1) begin
+                            a_reg[idx] <= a_unpacked[idx];
+                            b_reg[idx] <= b_unpacked[idx];
+                        end
+                        i_reg <= 4'd0;
+                        j_reg <= 4'd0;
+                        k <= 4'd0;
+                        current_time <= 16'd0;
+                        temp_val <= 16'd0;
+                        if (n > 4'd1)
+                            state <= SORT;
+                        else
+                            state <= SCHEDULE;
+                    end
+                end
+                
+                SORT: begin
+                    if (j_reg < n - i_reg - 4'd1) begin
+                        if (b_reg[j_reg] > b_reg[j_reg + 4'd1]) begin
+                            // Swap
+                            a_reg[j_reg] <= a_reg[j_reg + 4'd1];
+                            a_reg[j_reg + 4'd1] <= a_reg[j_reg];
+                            b_reg[j_reg] <= b_reg[j_reg + 4'd1];
+                            b_reg[j_reg + 4'd1] <= b_reg[j_reg];
+                        end
+                        j_reg <= j_reg + 4'd1;
+                    end else begin
+                        i_reg <= i_reg + 4'd1;
+                        j_reg <= 4'd0;
+                    end
+                    
+                    if (i_reg >= n - 4'd1)
+                        state <= SCHEDULE;
+                    else
+                        state <= SORT;
+                end
+                
+                SCHEDULE: begin
+                    if (k < n) begin
+                        // Compute max(current_time, a_reg[k])
+                        if (current_time > {8'd0, a_reg[k]}) begin
+                            temp_val <= current_time;
+                        end else begin
+                            temp_val <= {8'd0, a_reg[k]};
+                        end
+                        
+                        // Check if schedule is possible
+                        if (temp_val + {8'd0, t} > {8'd0, b_reg[k]}) begin
+                            result <= 1'b0;
+                            state <= DONE;
+                        end else begin
+                            current_time <= temp_val + {8'd0, t};
+                            k <= k + 4'd1;
+                        end
+                    end else begin
+                        result <= 1'b1;
+                        state <= DONE;
+                    end
+                end
+                
+                DONE: begin
+                    done <= 1'b1;
+                    state <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+    always @(*) begin
+        if (state == DONE) begin
+            done = 1'b1;
+        end else begin
+            done = 1'b0;
+        end
+    end
+
+endmodule

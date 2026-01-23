@@ -1,0 +1,140 @@
+module dog_chain (
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] L,          // Required lawn area, up to 10000
+    input signed [15:0] x1, y1, x2, y2, // Wall coordinates
+    output reg done,
+    output reg [7:0] R       // Chain length in meters (1-200)
+);
+
+// Constants (fixed-point Q16.16)
+parameter PI_FIXED = 205887; // π * 2^16 ≈ 3.14159 * 65536 = 205887
+parameter MAX_R = 200;
+
+// LUTs for arccos(x) and sqrt(1-x^2) for x in [0,1] with 256 entries
+// These should be precomputed in an initial block or ROM
+reg [31:0] arccos_lut [0:255]; // arccos(x) * 2^16
+reg [31:0] sqrt_lut [0:255];   // sqrt(1-x^2) * 2^16
+
+// Internal registers
+reg [5:0] state;
+reg [15:0] L_reg;
+reg signed [15:0] x1_reg, y1_reg, x2_reg, y2_reg;
+reg [31:0] a, b, c, c_abs;   // Line parameters
+reg [31:0] S;                // a^2 + b^2
+reg [31:0] denom;            // sqrt(S)
+reg [31:0] d_val;            // Distance * 2^16 (Q16.16)
+reg [7:0] r_iter;            // Current R being tested
+reg [31:0] area_val;         // Area * 2^16 (Q16.16)
+reg [31:0] l_val;            // L * 2^16
+
+// State definitions
+localparam S_IDLE = 0;
+localparam S_COMPUTE_ABC = 1;
+localparam S_COMPUTE_SQRT = 2;
+localparam S_COMPUTE_D = 3;
+localparam S_ITER_LOOP = 4;
+localparam S_DONE = 5;
+
+// State machine and datapath
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= S_IDLE;
+        done <= 0;
+        R <= 0;
+        // Reset other registers as needed
+    end else begin
+        case (state)
+            S_IDLE: begin
+                done <= 0;
+                if (start) begin
+                    state <= S_COMPUTE_ABC;
+                    L_reg <= L;
+                    x1_reg <= x1;
+                    y1_reg <= y1;
+                    x2_reg <= x2;
+                    y2_reg <= y2;
+                    r_iter <= 1;
+                    l_val <= L << 16; // Convert L to Q16.16
+                end
+            end
+
+            S_COMPUTE_ABC: begin
+                // Compute line parameters: a = y2 - y1, b = x1 - x2, c = x2*y1 - x1*y2
+                a <= y2_reg - y1_reg;
+                b <= x1_reg - x2_reg;
+                c <= x2_reg * y1_reg - x1_reg * y2_reg;
+                state <= S_COMPUTE_SQRT;
+            end
+
+            S_COMPUTE_SQRT: begin
+                // Compute S = a^2 + b^2 (32-bit unsigned)
+                S <= a * a + b * b;
+                // Compute absolute value of c
+                c_abs <= (c[31]) ? -c : c;
+                state <= S_COMPUTE_D;
+            end
+
+            S_COMPUTE_D: begin
+                // Compute denominator = sqrt(S) using a sqrt module
+                // Here we assume a combinational or sequential sqrt unit
+                // For simplicity, we use a placeholder; in practice, use CORDIC or iterative method
+                // This state would wait for sqrt completion
+                // For now, we compute d_val = (c_abs << 16) / sqrt(S)
+                // Note: This requires division, which can be done in multiple cycles
+                // We'll assume a sqrt module outputs 'denom' in the next state
+                // Actual implementation would instantiate a sqrt block
+                state <= S_ITER_LOOP;
+            end
+
+            S_ITER_LOOP: begin
+                if (r_iter > MAX_R) begin
+                    R <= MAX_R; // Fallback if not found (should not happen)
+                    state <= S_DONE;
+                end else begin
+                    // Compute area for current R
+                    // Compare d_val with R (R * 2^16)
+                    if (d_val >= (r_iter << 16)) begin
+                        // d >= R: area = π * R^2
+                        area_val <= PI_FIXED * (r_iter * r_iter);
+                    end else begin
+                        // d < R: area = π*R^2 - R^2*arccos(d/R) + d*sqrt(R^2 - d^2)
+                        // Compute x = d_val / r_iter (Q16.16)
+                        // Look up arccos(x) and sqrt(1-x^2) from LUTs
+                        // Then compute area_val (implementation details omitted)
+                        // For brevity, we assume these computations are done in this state
+                    end
+                    // Check if area_val >= l_val
+                    if (area_val >= l_val) begin
+                        R <= r_iter;
+                        state <= S_DONE;
+                    end else begin
+                        r_iter <= r_iter + 1;
+                    end
+                end
+            end
+
+            S_DONE: begin
+                done <= 1;
+                if (!start) state <= S_IDLE; // Wait for start to go low
+            end
+
+            default: state <= S_IDLE;
+        endcase
+    end
+end
+
+// LUT initialization (simulation only)
+integer i;
+initial begin
+    // Precompute arccos(i/256) and sqrt(1-(i/256)^2) for i=0..255
+    // In practice, these values would be computed offline and stored in ROM
+    for (i = 0; i < 256; i = i + 1) begin
+        // Placeholder: assign based on actual computation
+        arccos_lut[i] = 0;
+        sqrt_lut[i] = 0;
+    end
+end
+
+endmodule

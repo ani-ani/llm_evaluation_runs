@@ -1,0 +1,187 @@
+Design a sequential Verilog module named 'circular_shift' that implements a circular shift of the digits of an integer.
+
+Problem Description:
+Given a 32-bit integer `x` and a shift amount `shift`, circularly shift the decimal digits of `x` to the right by `shift` positions. If `shift` is greater than or equal to the number of digits in `x`, the digits are reversed.
+
+Constraints (Hardware Adaptation):
+- Input `x` is a 32-bit unsigned integer (max 9 digits, as 9,999,999,999 > 2^32).
+- Input `shift` is an 8-bit unsigned integer.
+- Output is a 32-bit unsigned integer representing the shifted result.
+  - Note: The Python example `circular_shift(12, 1) -> "21"` maps to integer 21. However, the example `circular_shift(12, 2) -> "12"` maps to integer 12. To be consistent with the 'reversal' aspect in a hardware-friendly way, we will implement the logic to return the integer representation of the shifted digits.
+  - Specifically: We will extract digits, rotate them, and reconstruct the integer.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [31:0] x // The integer to shift
+input [7:0] shift // The number of positions to shift
+
+Outputs:
+output reg [31:0] result // The resulting integer
+output reg done // High when computation is complete
+
+Latency: 40 clock cycles (allowing time for digit extraction and rotation logic).
+
+Behavioral Description:
+The module operates in three stages controlled by a state machine:
+1. Digit Extraction (State EXTRACT):
+   - Convert the input integer `x` into an array of decimal digits (BCD format).
+   - Since `x` is 32-bit, it has at most 10 digits. Use a standard double-dabble algorithm or a simplified sequential divider to extract digits. Let's assume a simplified iterative process taking ~30 cycles.
+   - Store digits in an internal register `digits [0:9]`. Note: We need to know the actual number of digits `len` (e.g., 12 has length 2).
+
+2. Shift/Rotate Logic (State SHIFT):
+   - Determine `effective_shift = shift % len`.
+   - If `shift >= len`, the operation implies reversal. 
+     - Implementation: Reorder digits such that `result_digits[i] = original_digits[len - 1 - i]`.
+   - Else, perform circular shift.
+     - `result_digits[i] = original_digits[(i - effective_shift + len) % len]`.
+
+3. Reconstruction (State RECONSTRUCT):
+   - Convert the shifted digits array back to a 32-bit integer.
+   - `result = result_digits[0]*10^(len-1) + ... + result_digits[len-1]`.
+
+Verilog Implementation:
+```verilog
+module circular_shift (
+    input clk,
+    input rst_n,
+    input start,
+    input [31:0] x,
+    input [7:0] shift,
+    output reg [31:0] result,
+    output reg done
+);
+
+    // States
+    localparam IDLE = 2'b00;
+    localparam EXTRACT = 2'b01;
+    localparam SHIFT = 2'b10;
+    localparam RECONSTRUCT = 2'b11;
+
+    reg [1:0] state;
+    reg [3:0] digits [0:9]; // BCD digits
+    reg [3:0] res_digits [0:9];
+    reg [7:0] digit_count; // Total number of digits
+    reg [7:0] shift_idx;
+    reg [7:0] effective_shift;
+    reg [31:0] temp_x;
+    integer i;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            result <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    done <= 0;
+                    if (start) begin
+                        state <= EXTRACT;
+                        temp_x <= x;
+                        digit_count <= 0;
+                        for (i = 0; i < 10; i = i + 1) digits[i] <= 0;
+                    end
+                end
+
+                EXTRACT: begin
+                    // Simplified extraction: Sequentially divide by 10
+                    // Takes ~10 cycles for max digits + overhead
+                    if (temp_x == 0 && digit_count > 0) begin
+                        // Done extracting, move to shift
+                        state <= SHIFT;
+                        shift_idx <= 0;
+                        // Calculate effective shift
+                        if (shift >= digit_count) effective_shift <= digit_count; // Signal for reversal
+                        else effective_shift <= shift % digit_count;
+                    end else begin
+                        // Extract one digit
+                        // Note: This is a simplified logic block. 
+                        // In a real implementation we'd use a dedicated divider block.
+                        // Here we simulate the logic: 
+                        // digit = temp_x % 10; temp_x = temp_x / 10;
+                        // Since we can't do blocking assignments in FSM like this easily without delays,
+                        // we assume 'temp_x' is handled by a counter or we process bit by bit.
+                        // 
+                        // Let's use a 32-bit divider approximation logic or just unroll the loop:
+                        // For this spec, we assume we handle one digit per cycle.
+                        
+                        // Since we cannot use division operator easily in synthesis without IP, 
+                        // we will use a combinational block for extraction logic inside the FSM state 
+                        // or assume a generic 'Divider' module is available. 
+                        // To make this self-contained, we will use a temporary register and shift-subtract logic
+                        // which takes more cycles. 
+                        // 
+                        // Let's refine: We will extract ALL digits in this state using a loop variable 
+                        // inside the combinational logic block, but to respect the 'state machine' rule, 
+                        // we will advance state when done.
+                        
+                        // Actually, for a benchmark spec, we can write: 
+                        // "Perform digit extraction using standard BCD conversion."
+                        // But to be runnable, we need logic. Let's use the 'shift-subtract' method.
+                        
+                        // Current logic: We are in EXTRACT state. We process bits.
+                        // We will just use the % and / operators for simulation as they are synthesizable 
+                        // in modern synthesis tools for small values. 
+                        if (digit_count < 11) begin
+                            digits[digit_count] <= temp_x % 10;
+                            temp_x <= temp_x / 10;
+                            digit_count <= digit_count + 1;
+                        end else begin
+                            state <= SHIFT;
+                        end
+                    end
+                end
+
+                SHIFT: begin
+                    // Perform shift/reversal logic
+                    // If effective_shift == digit_count, it's a reversal (or shift % len == 0 implies same? 
+                    // Python spec: If shift > digits, return digits reversed.
+                    // So if shift >= digit_count, we reverse.
+                    
+                    // We use shift_idx to iterate through digits 0 to digit_count-1
+                    if (shift_idx < digit_count) begin
+                        if (shift >= digit_count) begin
+                            // Reversal: new_digit[i] = old_digit[digit_count - 1 - shift_idx]
+                            res_digits[shift_idx] <= digits[digit_count - 1 - shift_idx];
+                        end else begin
+                            // Rotation: new_digit[i] = old_digit[(i - effective_shift + digit_count) % digit_count]
+                            // Note: (i - shift) in positive logic or (i + shift) % len? 
+                            // "Shift right by shift". 
+                            // 12 shift 1 -> 21. 
+                            // Index 0: '1', Index 1: '2'. 
+                            // Result Index 0: '2' (was at 1). Result Index 1: '1' (was at 0).
+                            // Formula: New at i = Old at (i + shift) % len.
+                            // i=0: (0+1)%2 = 1 -> '2'. Correct.
+                            // i=1: (1+1)%2 = 0 -> '1'. Correct.
+                            
+                            // Let's implement: res_digits[i] = digits[(i + shift) % digit_count]
+                            res_digits[shift_idx] <= digits[(shift_idx + shift) % digit_count];
+                        end
+                        shift_idx <= shift_idx + 1;
+                    end else begin
+                        state <= RECONSTRUCT;
+                        shift_idx <= 0;
+                        result <= 0;
+                    end
+                end
+
+                RECONSTRUCT: begin
+                    // Convert digits back to integer
+                    // result = result * 10 + digit
+                    if (shift_idx < digit_count) begin
+                        result <= result * 10 + res_digits[shift_idx];
+                        shift_idx <= shift_idx + 1;
+                    end else begin
+                        state <= IDLE;
+                        done <= 1;
+                    end
+                end
+            endcase
+        end
+    end
+endmodule
+```
+
+Note on Constraints: The spec assumes standard integer division/modulo synthesizable logic. The total cycle count is approximately: 1 (Idle) + 11 (Extract) + 11 (Shift) + 11 (Reconstruct) = 34 cycles.

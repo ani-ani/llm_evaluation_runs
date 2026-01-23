@@ -1,0 +1,29 @@
+Design a Verilog module named ShippingOptimizer that computes the minimum total distance for the shipping problem. The module must have the following interface:
+
+Parameters:
+- MAX_N = 4 (maximum number of nodes)
+- MAX_S = 4 (maximum number of employees)
+- MAX_T = 4 (maximum number of deliveries)
+- MAX_M = 6 (maximum number of edges)
+- DATA_WIDTH = 32 (width of distance values)
+
+Ports:
+- input clk, rst_n, start
+- input [3:0] n, m, s, t
+- input [3:0] a, b
+- input [3:0] emp_loc_0, emp_loc_1, emp_loc_2, emp_loc_3
+- input [3:0] cli_loc_0, cli_loc_1, cli_loc_2, cli_loc_3
+- input [3:0] edge_u_0, edge_v_0, edge_u_1, edge_v_1, edge_u_2, edge_v_2, edge_u_3, edge_v_3, edge_u_4, edge_v_4, edge_u_5, edge_v_5
+- input [31:0] edge_d_0, edge_d_1, edge_d_2, edge_d_3, edge_d_4, edge_d_5
+- output reg [31:0] total_distance
+- output reg done
+
+Behavior:
+- On reset (rst_n=0), all internal state is cleared, done=0, total_distance=0.
+- When start is high for one clock cycle, computation begins.
+- Step 1: Compute all-pairs shortest paths for the graph defined by n nodes and m edges. Use Floyd-Warshall algorithm. Initialize dist[i][j] to infinity (a large number, e.g., 32'h7FFFFFFF), dist[i][i]=0, and for each edge (u,v,d) set dist[u-1][v-1] = d and dist[v-1][u-1] = d. Then run triple loops over k, i, j to update distances.
+- Step 2: For each employee i (0 to s-1) and client j (0 to t-1), compute cost[i][j] = min( dist[a-1][emp_loc_i-1] + dist[a-1][cli_loc_j-1], dist[b-1][emp_loc_i-1] + dist[b-1][cli_loc_j-1] ).
+- Step 3: Solve the assignment problem: assign t clients to t distinct employees to minimize total cost. Use DP over clients with bitmask of used employees. Initialize dp[0][0] = 0. For each client j (0 to t-1), for each mask (0 to 2^s-1), if dp[j][mask] is valid, for each employee i not in mask, update dp[j+1][mask|1<<i] = min(dp[j+1][mask|1<<i], dp[j][mask] + cost[i][j]). After processing all clients, answer = min_{mask with popcount(mask)=t} dp[t][mask].
+- Step 4: Output the answer on total_distance, and assert done for one cycle.
+- The computation should complete within 1000 clock cycles.
+- Note: Only the first n nodes, first m edges, first s employees, and first t clients are used; other inputs are ignored.

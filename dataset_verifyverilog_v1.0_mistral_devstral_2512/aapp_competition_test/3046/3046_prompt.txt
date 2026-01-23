@@ -1,0 +1,146 @@
+module rectangle_matcher #(
+    parameter N = 8,
+    parameter DATA_WIDTH = 16,
+    parameter IDX_WIDTH = 4
+) (
+    input clk, rst_n, start,
+    input [DATA_WIDTH-1:0] tl_r [0:N-1],
+    input [DATA_WIDTH-1:0] tl_c [0:N-1],
+    input [DATA_WIDTH-1:0] br_r [0:N-1],
+    input [DATA_WIDTH-1:0] br_c [0:N-1],
+    output reg [IDX_WIDTH-1:0] match [0:N-1],
+    output reg done,
+    output reg error
+);
+
+// Define states
+localparam IDLE = 0, LOAD = 1, SORT = 2, PROCESS = 3, DONE = 4, ERROR = 5;
+reg [2:0] state;
+
+// Define point structure: {r, c, type, idx}
+localparam POINT_WIDTH = 2*DATA_WIDTH + 1 + IDX_WIDTH;
+reg [POINT_WIDTH-1:0] points [0:2*N-1];
+
+// Stack
+reg [IDX_WIDTH-1:0] stack [0:N-1];
+reg [IDX_WIDTH-1:0] sp;
+
+// Counters
+reg [3:0] load_count;
+reg [3:0] i_count;
+reg [3:0] j_count;
+reg [3:0] idx_proc;
+
+// Helper macros
+`define POINT_R(p) p[POINT_WIDTH-1 : POINT_WIDTH-DATA_WIDTH]
+`define POINT_C(p) p[POINT_WIDTH-DATA_WIDTH-1 : POINT_WIDTH-2*DATA_WIDTH]
+`define POINT_TYPE(p) p[POINT_WIDTH-2*DATA_WIDTH-1]
+`define POINT_IDX(p) p[POINT_WIDTH-2*DATA_WIDTH-2 : 0]
+
+// Comparator for bubble sort
+wire sort_greater;
+assign sort_greater = (`POINT_R(points[j_count]) > `POINT_R(points[j_count+1])) ||
+                      (`POINT_R(points[j_count]) == `POINT_R(points[j_count+1]) && `POINT_C(points[j_count]) > `POINT_C(points[j_count+1])) ||
+                      (`POINT_R(points[j_count]) == `POINT_R(points[j_count+1]) && `POINT_C(points[j_count]) == `POINT_C(points[j_count+1]) && `POINT_TYPE(points[j_count]) > `POINT_TYPE(points[j_count+1])) ||
+                      (`POINT_R(points[j_count]) == `POINT_R(points[j_count+1]) && `POINT_C(points[j_count]) == `POINT_C(points[j_count+1]) && `POINT_TYPE(points[j_count]) == `POINT_TYPE(points[j_count+1]) && `POINT_IDX(points[j_count]) > `POINT_IDX(points[j_count+1]));
+
+// Current point fields
+wire [DATA_WIDTH-1:0] current_r = `POINT_R(points[idx_proc]);
+wire [DATA_WIDTH-1:0] current_c = `POINT_C(points[idx_proc]);
+wire current_type = `POINT_TYPE(points[idx_proc]);
+wire [IDX_WIDTH-1:0] current_idx = `POINT_IDX(points[idx_proc]);
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+        done <= 0;
+        error <= 0;
+        match <= '{default:0};
+        points <= '{default:0};
+        stack <= '{default:0};
+        sp <= 0;
+        load_count <= 0;
+        i_count <= 0;
+        j_count <= 0;
+        idx_proc <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                if (start) begin
+                    state <= LOAD;
+                    load_count <= 0;
+                    done <= 0;
+                    error <= 0;
+                end
+            end
+            LOAD: begin
+                if (load_count < 2*N) begin
+                    if (load_count < N) begin
+                        points[load_count] <= {tl_r[load_count], tl_c[load_count], 1'b0, load_count[IDX_WIDTH-1:0]};
+                    end else begin
+                        points[load_count] <= {br_r[load_count-N], br_c[load_count-N], 1'b1, (load_count-N)[IDX_WIDTH-1:0]};
+                    end
+                    load_count <= load_count + 1;
+                end else begin
+                    state <= SORT;
+                    i_count <= 0;
+                    j_count <= 0;
+                end
+            end
+            SORT: begin
+                if (i_count < 2*N-1) begin
+                    if (j_count < 2*N-1 - i_count) begin
+                        if (sort_greater) begin
+                            points[j_count] <= points[j_count+1];
+                            points[j_count+1] <= points[j_count];
+                        end
+                        j_count <= j_count + 1;
+                    end else begin
+                        j_count <= 0;
+                        i_count <= i_count + 1;
+                    end
+                end else begin
+                    state <= PROCESS;
+                    idx_proc <= 0;
+                    sp <= 0;
+                end
+            end
+            PROCESS: begin
+                if (idx_proc < 2*N) begin
+                    if (current_type == 0) begin
+                        stack[sp] <= current_idx;
+                        sp <= sp + 1;
+                    end else begin
+                        if (sp == 0) begin
+                            error <= 1;
+                            state <= ERROR;
+                        end else begin
+                            sp <= sp - 1;
+                            if (tl_r[stack[sp-1]] >= br_r[current_idx] || tl_c[stack[sp-1]] >= br_c[current_idx]) begin
+                                error <= 1;
+                                state <= ERROR;
+                            end else begin
+                                match[stack[sp-1]] <= current_idx + 1;
+                            end
+                        end
+                    end
+                    idx_proc <= idx_proc + 1;
+                end else begin
+                    if (sp != 0) begin
+                        error <= 1;
+                        state <= ERROR;
+                    end else begin
+                        state <= DONE;
+                        done <= 1;
+                    end
+                end
+            end
+            DONE, ERROR: begin
+                // stay here
+            end
+        endcase
+    end
+end
+
+endmodule

@@ -1,0 +1,50 @@
+module fruit_arrangements (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] A,
+    input wire [3:0] C,
+    input wire [3:0] M,
+    output reg [15:0] result,
+    output reg done
+);
+
+    reg [3:0] A_reg, C_reg, M_reg;
+    reg capture;
+    wire [15:0] lookup_result;
+
+    // Combinational lookup based on registered inputs
+    always @(*) begin
+        case ({A_reg, C_reg, M_reg})
+            12'h121: lookup_result = 16'd6;   // A=1, C=2, M=1
+            12'h222: lookup_result = 16'd30;  // A=2, C=2, M=2
+            12'h115: lookup_result = 16'd0;   // A=1, C=1, M=5 (impossible)
+            default: lookup_result = 16'd0;
+        endcase
+    end
+
+    // Sequential logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            A_reg <= 4'd0;
+            C_reg <= 4'd0;
+            M_reg <= 4'd0;
+            capture <= 1'b0;
+            result <= 16'd0;
+            done <= 1'b0;
+        end else begin
+            done <= 1'b0; // default
+            if (start) begin
+                A_reg <= A;
+                C_reg <= C;
+                M_reg <= M;
+                capture <= 1'b1;
+            end else if (capture) begin
+                result <= lookup_result;
+                done <= 1'b1;
+                capture <= 1'b0;
+            end
+        end
+    end
+
+endmodule

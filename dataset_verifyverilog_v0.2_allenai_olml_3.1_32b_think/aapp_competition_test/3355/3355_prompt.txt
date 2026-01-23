@@ -1,0 +1,58 @@
+Design a sequential Verilog module named 'scavenger_hunt' that solves the scavenger hunt problem adapted for small inputs.
+
+Problem Adaptations:
+- Maximum n (tasks) = 6 (indices 0 to 5)
+- Start node index = 6, End node index = 7
+- Maximum total time T = 255
+- All time values (travel, task duration, deadlines) are scaled to fit 8-bit integers (max 255)
+- Points p_i are scaled to fit 8-bit integers (max 255)
+- Deadlines: -1 (no deadline) is represented as 255 (0xFF)
+- We use Q8.8 fixed-point format for accumulated time to ensure precision during additions, but inputs are treated as integers. Final comparison is on integer part or scaled values.
+
+The module computes the maximum total points by exploring all valid permutations of task subsets (Traveling Salesman Problem style).
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation pulse
+input [2:0] task_idx // Index of task to configure (0 to 5)
+input [7:0] p_in    // Points for task task_idx
+input [7:0] t_in    // Duration for task task_idx (0 if not present)
+input [7:0] d_in    // Deadline for task task_idx (255 if no deadline)
+input [7:0] dist_in // Distance from location task_idx (or start/end) to current location (scanning input)
+input [3:0] dist_src // Source location index for distance matrix (0-7)
+input [3:0] dist_dst // Destination location index for distance matrix (0-7)
+
+Outputs:
+output reg [7:0] max_points // Maximum points found
+output reg [5:0] best_mask // Bitmask of tasks in the optimal set
+output reg done // High when computation complete
+
+Specification:
+The module must implement a state machine to:
+1. Receive configuration data (points, durations, deadlines, distances).
+2. Iterate through all valid subsets of tasks (masks from 0 to 2^6-1).
+3. For each subset, generate all permutations of tasks in that subset.
+4. For each permutation, simulate the path: Start -> Task1 -> ... -> TaskK -> End.
+5. Accumulate time: Travel + Task Duration.
+6. Check deadlines: For each task, check (accumulated time before task + travel to task) <= deadline.
+7. Check total time: Total accumulated time <= T.
+8. Update max_points and best_mask if valid and higher points. If equal points, update only if mask is lexicographically smaller (smaller integer value).
+
+The calculation should be done sequentially. You can use a state machine with states like IDLE, LOAD_DIST, ITERATE_SUBSETS, CHECK_PERMUTATION, UPDATE_RESULT, DONE.
+
+Since true floating point is expensive, treat all times as integers. For the deadlines, 'no deadline' (255) effectively acts as infinity for our range.
+
+Internal Logic:
+- Use a register to store the distance matrix [7:0][7:0][7:0].
+- Use registers for task properties (p, t, d) [5:0][7:0].
+- The solver loop will need to track:
+  - Current subset mask
+  - Current permutation being checked
+  - Current accumulated time
+  - Current task index in permutation
+
+Latency: The module will take several hundred to thousand cycles to complete depending on implementation efficiency (checking all permutations). Result valid 'done' signal asserted when finished.
+
+Testbench Requirement:
+Verify against the provided example case (adapted to 6 tasks).

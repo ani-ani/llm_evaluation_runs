@@ -1,0 +1,42 @@
+Module: goldbach_checker
+
+Description:
+This module validates a contestant's output for the "Good as Goldbach" problem.
+The input is a string of ASCII characters (up to 64) delivered as an array.
+The module parses three integer tokens separated by whitespace, checks that:
+  - First token is an even integer >3 and <=255
+  - Second and third tokens are primes <=255
+  - The sum of the two primes equals the first token
+Any other output (invalid characters, wrong number of tokens, etc.) results in 0.
+
+Interface:
+  Inputs:
+    clk       : Clock (rising edge)
+    rst_n     : Active-low synchronous reset
+    start     : Start signal (assert for 1 cycle to begin parsing)
+    len       : [5:0] Number of valid characters in arr (0..64)
+    arr       : [7:0] array [0:63]  Array of ASCII characters (including spaces, tabs, newlines)
+
+  Outputs:
+    result    : 1-bit, valid result (1 if input is correct, 0 otherwise)
+    done      : 1-bit, asserted for 1 cycle when result is ready
+
+Behavior:
+  - On reset: all internal state cleared, done=0, result=0
+  - On start: module begins parsing arr[0:len-1]
+  - Parsing is done in one cycle per character
+  - After processing all characters, result is computed and done asserted
+  - The module expects exactly three tokens; any deviation results in result=0
+
+Timing:
+  - Start must be asserted for at least 1 clock cycle
+  - Done will be asserted 1..MAX_CYCLES after start (MAX_CYCLES = len + a few)
+  - Result is valid when done is high
+
+Implementation details:
+  - Uses a finite state machine (IDLE, SKIP_WS, IN_TOKEN, CHECK_TOKEN, DONE, ERROR)
+  - Token building: accumulate digits, check for overflow, leading zeros, length <=3
+  - Primality check: case‑based lookup for numbers 0..255
+  - Sum check: num1 == num2 + num3
+
+Note: The module is designed for 8‑bit numbers; larger numbers will overflow and be rejected.

@@ -1,0 +1,31 @@
+Design a sequential Verilog module named 'decomposition_counter' that computes the number of distinct ordered factorizations of a number m (product of n inputs) into n ordered positive integers.
+
+The algorithm scales down inputs to fit hardware constraints:
+- n (number of factors) is limited to 4 (scaled from 500)
+- Input numbers are processed in 16-bit chunks (scaled from 10^9)
+- Primes are limited to the range [2, 255]
+- The total number of prime factors (k) is summed across all inputs and primes, limited to 16 bits
+
+The module calculates the result by iterating through prime factors and accumulating the product of binomial coefficients C(k+p-1, p-1) modulo 1000000007, where k is the exponent of a prime and p is n.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start computation
+input [15:0] data_in // Input number (16-bit chunk)
+input [1:0] n_in // Number of factors (2 bits, values 1-4)
+input valid_in // High when data_in is valid
+input last_in // High with last data_in
+
+Outputs:
+output reg [31:0] result // Final count modulo 10^9+7
+output reg done // High when computation complete
+output reg ready // High when ready to accept new data_in
+
+The module operates as a state machine with states: IDLE, FACTORIZE, COMPUTE, DONE.
+1. IDLE: Wait for start signal.
+2. FACTORIZE: Accept n_in values via data_in. Perform prime factorization for each value (checking primes 2 to 255). Maintain an exponent array (indexed by prime) with 9-bit entries (max exponent 500 fits in 9 bits).
+3. COMPUTE: Iterate through the exponent array. For each non-zero exponent k, calculate C(k + n - 1, n - 1) using a small combinational lookup table or iterative multiplier. Accumulate the product modulo 1000000007.
+4. DONE: Latch result and assert done.
+
+Use a parameter MOD = 1000000007.

@@ -1,0 +1,1 @@
+module semicircle_triangle_area(input [15:0] radius, input valid, output reg [31:0] area, output reg area_valid); assign area_valid = valid; assign area = valid ? (radius * radius << 16) : 16'd0; endmodule

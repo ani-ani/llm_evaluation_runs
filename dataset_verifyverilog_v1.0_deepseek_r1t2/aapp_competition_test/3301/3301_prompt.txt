@@ -1,0 +1,97 @@
+module SWERC_solver (
+    input clk, rst_n, start,
+    input [3:0] N, P, X, Y,  // Scaled: N≤8, P≤16
+    input [3:0] swerc_count,    // Number of SWERC banks
+    input [31:0] swerc_list,    // Packed SWERC bank IDs (8 x 4-bit)
+    input [31:0] edge_data,     // Packed edge info: 4 x (3-bit a, 3-bit b, 26-bit fee)
+    output reg [31:0] result,   // Result: T value or special codes
+    output reg done, error
+);
+    // Fixed-point arithmetic: Q16.16 for fees, Q8.8 for T values
+    parameter FEE_WIDTH = 32;
+    parameter T_WIDTH = 16;
+    parameter MAX_NODES = 8;
+    parameter MAX_EDGES = 16;
+    
+    // State machine states
+    parameter IDLE = 0, PARSE_INPUT = 1, COMPUTE_BASE = 2, BINARY_SEARCH = 3, OUTPUT = 4;
+    reg [2:0] state;
+    
+    // Internal storage for graph
+    reg [7:0] adj_matrix [0:7][0:7]; // 8x8 adjacency matrix with packed fees
+    reg [7:0] swerc_mask; // Bitmask of SWERC nodes
+    
+    // Computation registers
+    reg [15:0] base_cost_swerc, base_cost_all;
+    reg [7:0] edge_count_swerc, edge_count_all;
+    reg [15:0] T_low, T_high, T_mid;
+    reg [7:0] search_iterations;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            done <= 0;
+            error <= 0;
+            result <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= PARSE_INPUT;
+                        done <= 0;
+                        error <= 0;
+                    end
+                end
+                
+                PARSE_INPUT: begin
+                    // Unpack SWERC list into bitmask
+                    swerc_mask <= 0;
+                    // Unpack edges into adjacency matrix
+                    // Simplified: Assume edges are provided as packed data
+                    state <= COMPUTE_BASE;
+                end
+                
+                COMPUTE_BASE: begin
+                    // Compute shortest paths using Dijkstra-like state machine
+                    // Returns: base_cost_swerc, edge_count_swerc
+                    //          base_cost_all, edge_count_all
+                    // This would be implemented as a separate FSM
+                    state <= BINARY_SEARCH;
+                    T_low <= 1;  // Minimum T=1
+                    T_high <= 1000; // Maximum scaled T
+                    search_iterations <= 0;
+                end
+                
+                BINARY_SEARCH: begin
+                    if (T_low <= T_high && search_iterations < 20) begin
+                        T_mid <= (T_low + T_high) >> 1;
+                        // Check if SWERC path is cheaper with T_mid
+                        // Compare: (base_cost_swerc + edge_count_swerc * T_mid)
+                        //       vs (base_cost_all + edge_count_all * T_mid)
+                        // This check would be done in next cycle
+                        search_iterations <= search_iterations + 1;
+                        // Update bounds based on comparison
+                        // Simplified: Assume we compute condition in same cycle
+                        state <= BINARY_SEARCH;
+                    end else begin
+                        state <= OUTPUT;
+                    end
+                end
+                
+                OUTPUT: begin
+                    // Special cases: Impossible (result=0), Infinity (result=1), T value
+                    if (base_cost_swerc == 16'hFFFF) begin
+                        result <= 0; // Impossible
+                        error <= 1;
+                    end else if (base_cost_all == 16'hFFFF) begin
+                        result <= 1; // Infinity
+                    end else begin
+                        result <= T_low; // Maximum valid T
+                    end
+                    done <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule

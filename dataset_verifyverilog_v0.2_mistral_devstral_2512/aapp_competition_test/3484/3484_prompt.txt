@@ -1,0 +1,50 @@
+Design a sequential Verilog module named 'superdoku_solver' that solves a simplified 4x4 Superdoku puzzle.
+
+Problem Adaptation:
+- Grid size: 4x4 (instead of n x n up to 100)
+- Values: 2-bit integers (1-4) instead of 1-n
+- First k rows are given (k=0-4)
+- Need to complete remaining rows to form a Latin Square (each row/col contains 1-4 exactly once)
+- Use row-shifting algorithm: if row i is given, shift it cyclically by i positions to generate subsequent rows
+
+Inputs:
+input clk // clock signal
+input rst_n // active-low reset
+input start // start computation
+input [1:0] k // number of pre-filled rows (0-4)
+input [1:0] row_idx // current row index for data input
+input [1:0] cell_idx // current cell index for data input
+input [1:0] data_in // value for current cell (1-4, 2-bit)
+
+Outputs:
+output reg [1:0] grid_out [0:3][0:3] // completed 4x4 grid
+output reg valid // high when solution found and ready
+output reg solvable // high if puzzle is solvable
+output reg done // high when computation complete
+
+Behavioral Specification:
+1. On reset: clear grid, valid=0, solvable=0, done=0
+2. On start: Load the first k rows into grid[0][k-1]
+3. Check if input rows are valid (no duplicates in any row)
+4. Generate remaining rows using cyclic shift:
+   - Row 0: as given (or default 1,2,3,4 if k=0)
+   - Row 1: shift row 0 right by 1: {val[3], val[0], val[1], val[2]}
+   - Row 2: shift row 0 right by 2: {val[2], val[3], val[0], val[1]}
+   - Row 3: shift row 0 right by 3: {val[1], val[2], val[3], val[0]}
+5. Check if generated grid satisfies column constraints
+6. If valid, set valid=1, solvable=1, done=1
+7. If invalid, set valid=0, solvable=0, done=1
+
+State Machine:
+- IDLE: Wait for start signal
+- LOAD: Load input rows (k cycles)
+- CHECK_INPUT: Validate input rows have no duplicates
+- GENERATE: Create remaining rows using shift algorithm
+- VERIFY: Check column constraints (each column has 1,2,3,4)
+- DONE: Set outputs and wait for reset
+
+Timing: 12 clock cycles from start to done (LOAD=4, CHECK=3, GENERATE=3, VERIFY=2)
+
+Latency: Result valid 12 clock cycles after start asserted.
+
+Note: Use 2-bit representation for values 1-4 (binary 01,10,11,00 is avoided, use 01,10,11,01? No: use 00-11 mapping or 01-100). Actually use 2-bit: 00=1, 01=2, 10=3, 11=4 for simplicity.

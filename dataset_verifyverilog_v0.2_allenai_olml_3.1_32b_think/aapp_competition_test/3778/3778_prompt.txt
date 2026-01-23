@@ -1,0 +1,34 @@
+Design a sequential Verilog module named 'boomerang_solver' that implements a simplified version of the boomerang target construction problem.
+
+The module processes requirements for a small grid (4 columns) one by one, from right to left. It maintains a set of 'pending rows' that are waiting to be matched with future columns, similar to a stack.
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // High to start processing a new sequence of requirements
+input [1:0] a_in // Current column's requirement (0, 1, 2, or 3)
+
+Outputs:
+output reg [4:0] target_r // Row index of the output target (1 to 4)
+output reg [2:0] target_c // Column index of the output target (1 to 4)
+output reg valid // High when a target is output in the current cycle
+output reg done // High when processing of all 4 columns is complete
+output reg error // High if the configuration is impossible
+
+Behavior:
+1. The module should operate over 4 clock cycles after 'start' is asserted. In each cycle, it consumes 'a_in' and produces 0, 1, or 2 targets.
+2. It uses an internal stack to keep track of 'pending' rows for matching.
+   - For a=1: Adds current row to stack. Outputs target (current_row, current_col).
+   - For a=2: Requires an item from stack. Outputs target (stack_item, current_col). Adds current_row to a 'two_stack'.
+   - For a=3: Requires item from stack (priority: two_stack > pending_stack). Outputs targets (current_row, current_col) and (current_row, matched_col). Adds current_row to two_stack.
+3. All indices are 1-based.
+4. Rows are assigned sequentially from 1 to 4.
+
+Implementation Details:
+- Use a state machine with states: IDLE, PROCESS.
+- Use a counter to track current column (0 to 3).
+- Internal stacks can be implemented as registers (e.g., 4 registers for pending, 4 for two_stack).
+- Since the output can be 0, 1, or 2 targets per cycle, the 'valid' signal should pulse for each target produced.
+- The module must process 4 columns total.
+
+Latency: 4 cycles for processing, plus 1 cycle setup in IDLE. Output targets appear sequentially.

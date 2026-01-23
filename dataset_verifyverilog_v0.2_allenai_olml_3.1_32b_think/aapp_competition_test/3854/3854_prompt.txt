@@ -1,0 +1,40 @@
+Design a sequential Verilog module named 'subset_coins_dp' that finds all values x such that x is a subset sum of some subset that sums to k.
+
+Problem Scaling:
+- Max number of coins (n): 12 (scaled from original 500)
+- Max target sum (k): 128 (scaled from original 500)
+- Coin values: 1 to 128
+
+Module Description:
+The module implements the DP state transition: dp[s][mask] |= dp[s - c][mask] | dp[s - c][mask - c].
+It maintains a table in BRAM where index [s] stores a bitmask of length (k+1).
+The state machine iterates through each input coin and updates the table.
+
+Inputs:
+input clk // System clock
+input rst_n // Active-low reset
+input start // Start computation (loads coins and processes)
+input [7:0] coin_in // Current coin value (valid when load_coin is high)
+input load_coin // Signal to load coin into internal buffer
+
+Outputs:
+output reg [7:0] result_index // Index x of the output value (0 to k)
+output reg result_valid // High if this index x is a valid output
+output reg done // High when all processing complete
+
+Latency: Approx 100k cycles for 128x128 states (scalable based on K and N). 
+
+Internal Logic:
+1. State Machine: IDLE -> LOAD_COINS -> PROCESS_COINS -> OUTPUT.
+2. Data Storage: BRAM array of 129 x 129 bits (approx 2k bytes).
+3. Algorithm:
+   - In IDLE, accept up to 12 coins into a buffer.
+   - In PROCESS_COINS, iterate through the buffer. For each coin, iterate sums s from K down to c.
+     Read dp[s-c], compute new mask (dp[s-c] | dp[s-c] << c), update dp[s].
+   - In OUTPUT, read dp[k] and stream out valid bit indices.
+
+Constraints:
+- k <= 128 (hardcoded parameter, e.g., parameter K = 128).
+- n <= 12.
+- Coin values <= 128.
+- Use a 2D array logic or BRAM implementation where the outer dimension is the sum (0-K) and the inner dimension is the bitmask (K+1 bits).

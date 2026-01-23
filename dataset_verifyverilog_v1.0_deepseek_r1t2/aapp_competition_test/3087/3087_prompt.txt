@@ -1,0 +1,36 @@
+module dance_arrows #(
+    parameter N = 8,                // Number of dancers (max 8)
+    parameter K_WIDTH = 8           // Width of K input
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [K_WIDTH-1:0] K,
+    input wire [7:0] a [0:N-1],     // Input permutation (1-indexed values)
+    output reg [7:0] f [0:N-1],     // Output permutation
+    output reg valid,
+    output reg error
+);
+
+// Implementation notes:
+// - Use a finite state machine (FSM) with states: IDLE, DECOMPOSE, CHECK, CONSTRUCT, DONE, ERROR.
+// - During DECOMPOSE, traverse the permutation a to find cycles.
+//   Use arrays: visited [0:N-1], next [0:N-1] (stores a[i]-1), cycle_id [0:N-1], pos_in_cycle [0:N-1].
+//   Also store cycle_start [0:MAX_CYCLES-1] and cycle_len [0:MAX_CYCLES-1] (MAX_CYCLES <= N).
+// - During CHECK, for each distinct cycle length L, count cycles c_L.
+//   For each L, iterate over possible divisors d of K (from 1 to K) that satisfy:
+//       d divides c_L, d>1 if L==1, and gcd(L, K/d) == 1.
+//   If no such d found, go to ERROR.
+// - During CONSTRUCT, for each length L, group cycles into groups of size d.
+//   For each group, create an array of elements in interleaved order:
+//       For offset = 0 to L-1:
+//           For idx = 0 to d-1:
+//               element = cycle_elements[cycle_id][offset]
+//   Then assign f for each element in this group: f[element] = next element in the array (circular).
+// - After processing all groups, go to DONE and set valid=1.
+//
+// Timing constraints:
+// - The computation should finish within a bounded number of cycles (e.g., 1000 cycles for N<=8).
+// - The design must be fully synchronous with the provided clock.
+
+endmodule

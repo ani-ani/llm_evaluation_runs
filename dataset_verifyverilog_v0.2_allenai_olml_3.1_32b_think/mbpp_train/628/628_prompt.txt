@@ -1,0 +1,85 @@
+Design a sequential Verilog module named 'replace_spaces' that replaces all space characters (' ') with the three-character sequence '%20' in an input string.
+
+## Problem Adaptation
+- Input string limited to 8 characters maximum
+- Output can be up to 32 characters (8 spaces worst case: 8*3 + 8 = 32)
+- Characters are represented as 8-bit ASCII values
+- Space character = 0x20, '%' = 0x25, '0' = 0x30
+- Process character-by-character using FSM
+- Output is streamed as a sequence of bytes
+
+## Module Interface
+
+Inputs:
+input clk // Clock signal
+input rst_n // Active-low reset
+input start // Start processing (pulse once)
+input [7:0] char_in // Current input character (ASCII)
+input char_valid // High when char_in is valid
+output reg char_read // Pulsed high to request next character
+
+Outputs:
+output reg [7:0] char_out // Current output character
+output reg char_valid_out // High when char_out is valid
+output reg done // High when entire string processed
+
+## Behavior Description
+
+The module implements a Moore FSM with these states:
+- IDLE: Wait for start signal
+- READ_CHAR: Read current character from input
+- CHECK_SPACE: Check if character is space (0x20)
+- OUTPUT_CHAR: Output the character or '%20' sequence
+- WAIT_FOR_NEXT: Wait for next valid input
+- FINISHED: All processing complete
+
+## Implementation Details
+
+1. Use a 3-bit state register for the FSM
+2. Maintain an 8-bit register to store the current character
+3. Use a 2-bit counter for '%20' output sequence:
+   - 00: output '%' (0x25)
+   - 01: output '0' (0x30)
+   - 10: output '0' (0x30) 
+4. Track position with a 4-bit counter (max 16 chars)
+5. Use a 'space_mode' flag to indicate if '%20' output is needed
+6. Output valid characters when char_valid_out is high
+7. Assert done when: end-of-string detected (null terminator 0x00) OR max length reached
+8. Input termination: Assume 0x00 (null) terminator
+
+## Timing
+- 2-8 clock cycles per input character (1 if normal char, 3 if space)
+- Latency: Variable, depends on input length
+- Done signal goes high after all output is complete
+
+## State Machine Details:
+- IDLE → READ_CHAR on start
+- READ_CHAR → CHECK_SPACE after reading char
+- CHECK_SPACE → OUTPUT_CHAR (always)
+- OUTPUT_CHAR:
+  - If space: output '%', '0', '0' over 3 cycles
+  - If not space: output char directly
+  - Then → WAIT_FOR_NEXT
+- WAIT_FOR_NEXT:
+  - If next char valid (not 0x00) → READ_CHAR
+  - Else → FINISHED
+- FINISHED → IDLE (when reset or new start)
+
+## Special Cases:
+- Null byte (0x00): Stop processing, assert done
+- Max position (15): Stop processing, assert done
+- Concurrent char_valid handling: Must wait if input not ready
+
+
+## Expected Output Sequence for "Hi" (72, 105, 0):
+1. Read 'H' (0x48) → output 'H'
+2. Read 'i' (0x69) → output 'i'
+3. Read 0x00 → done
+
+## Expected Output Sequence for "A B" (65, 32, 66, 0):
+1. Read 'A' (0x41) → output 'A'
+2. Read ' ' (0x20) → output '%' (0x25)
+3. Output '0' (0x30)
+4. Output '0' (0x30)
+5. Read 'B' (0x42) → output 'B'
+6. Read 0x00 → done

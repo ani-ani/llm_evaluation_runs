@@ -1,0 +1,56 @@
+module empty_dict_check (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] dict_flags [0:7],  // Each byte: 0=empty, 1=non-empty
+    input wire [3:0] num_dicts,         // Number of dictionaries (1-8)
+    output reg result,
+    output reg done
+);
+
+// Parameters
+parameter MAX_DICTS = 8;
+
+// Internal state
+reg [3:0] current_index;
+reg checking;
+reg all_empty;
+
+// State machine
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset state
+        result <= 1'b0;
+        done <= 1'b0;
+        current_index <= 4'd0;
+        checking <= 1'b0;
+        all_empty <= 1'b1;
+    end else begin
+        if (start && !checking) begin
+            // Start new computation
+            current_index <= 4'd0;
+            checking <= 1'b1;
+            all_empty <= 1'b1;
+            done <= 1'b0;
+        end else if (checking) begin
+            // Process current dictionary
+            if (current_index < num_dicts) begin
+                // Check if current dictionary is empty
+                if (dict_flags[current_index] != 8'h00) begin
+                    all_empty <= 1'b0;
+                end
+                current_index <= current_index + 4'd1;
+            end else begin
+                // All dictionaries processed
+                result <= all_empty;
+                done <= 1'b1;
+                checking <= 1'b0;
+            end
+        end else begin
+            // Idle state - clear done
+            done <= 1'b0;
+        end
+    end
+end
+
+endmodule

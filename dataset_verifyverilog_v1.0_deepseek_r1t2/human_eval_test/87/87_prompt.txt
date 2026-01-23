@@ -1,0 +1,47 @@
+Design a sequential Verilog module named `find_coordinates` that searches for a target value in a jagged 2D array stored in ROM.
+
+**Problem Adaptation:**
+- Maximum 8 rows, maximum 8 columns per row.
+- Jagged structure defined by `row_valid_mask` (8 bits) and `row_lengths` (8 values, 4 bits each).
+- Data stored in `data_lut` (8x8 matrix of 4-bit values).
+- Output buffer: 16 entries, each 8 bits (packed `{row[3:0], col[3:0]}`).
+- **Sorting Logic**: Rows processed 0 to 7 (ascending). Columns processed 7 down to 0 (descending) to satisfy the secondary sort requirement.
+
+**Interface Specification:**
+
+Inputs:
+  input clk;              // Clock
+  input rst_n;            // Active-low reset
+  input start;            // Start pulse (high for 1 cycle)
+  input [7:0] target;     // 4-bit integer target to find (upper 4 bits ignored)
+  input [7:0] row_valid_mask; // Bitmask: Row `i` exists if mask[i] is 1. Row 0 is LSB.
+  input [31:0] row_lengths;   // Packed 8 nibbles: {len7, len6, ..., len0}. Each len is 4 bits.
+  input [255:0] data_lut;     // Flattened 8x8 matrix. 
+                              // Format: data_lut[row*32 + col*4 +: 4] gives value at (row, col).
+                              // Initialized to 0 for unused cells.
+
+Outputs:
+  output reg [4:0] match_count; // Number of matches found (0 to 16)
+  output reg [7:0] matches [0:15]; // Array of 16 bytes. matches[i] = {row[3:0], col[3:0]}
+  output reg done;               // High for 1 cycle when computation finishes
+
+**Behavioral Description:**
+The module uses a finite state machine (FSM) with states IDLE, SCAN, and DONE.
+
+1. **IDLE State**: Waits for `start` signal. When received, resets `match_count` and internal row/column counters, clears the output buffer.
+
+2. **SCAN State**: Iterates through all cells of the 8x8 matrix.
+   - Row index (`row_idx`) goes from 0 to 7.
+   - Column index (`col_idx`) goes from 7 down to 0.
+   - **Cycle-by-cycle execution**: Each clock cycle processes one (row, col) pair.
+   - **Validity Check**: 
+     - Check `row_valid_mask[row_idx]` to see if the row exists.
+     - If valid, check if `col_idx < row_lengths[row_idx*4 +: 4]` to see if the column is within the row's bounds.
+   - **Match Check**: If the cell is valid and `data_lut` value matches the `target`, and `match_count < 16`, write the packed `{row_idx, col_idx}` to `matches[match_count]` and increment `match_count`.
+   - **Index Update**:
+     - Decrement `col_idx`. If `col_idx` reaches 0, reset to 7 and increment `row_idx`.
+     - If `row_idx` reaches 8 (after finishing row 7), transition to DONE state.
+
+3. **DONE State**: Assert `done` signal high for one cycle, then return to IDLE.
+
+**Timing**: The scan takes at most 64 cycles (8 rows * 8 columns). The module is purely sequential, processing one cell per cycle.

@@ -1,0 +1,172 @@
+module pack_consecutive_duplicates (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr [0:15],  // 16-element input array, 8-bit elements
+    input wire [4:0] input_len,    // Number of valid elements (1-16)
+    output reg [7:0] out_arr [0:15],  // Flattened output array
+    output reg [4:0] out_len,      // Number of output groups
+    output reg done,
+    output reg error               // Error: run too long or too many groups
+);
+
+    // Internal state machine
+    typedef enum logic [2:0] {
+        IDLE,
+        READ_INPUT,
+        PROCESS_RUN,
+        WRITE_OUTPUT,
+        FINISH
+    } state_t;
+    
+    state_t current_state, next_state;
+    
+    // Run tracking registers
+    reg [7:0] current_value;
+    reg [3:0] run_length;      // Max run length = 8
+    reg [4:0] input_index;     // Current input position
+    reg [4:0] output_index;    // Current output position (group count)
+    reg [3:0] group_index;     // Index within current group
+    
+    // Output buffer for current group being formed
+    reg [7:0] group_buffer [0:7];
+    
+    // State transition and output logic
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            current_state <= IDLE;
+            done <= 0;
+            error <= 0;
+            input_index <= 0;
+            output_index <= 0;
+            run_length <= 0;
+            out_len <= 0;
+        end else begin
+            case (current_state)
+                IDLE: begin
+                    done <= 0;
+                    error <= 0;
+                    input_index <= 0;
+                    output_index <= 0;
+                    run_length <= 0;
+                    out_len <= 0;
+                    if (start && input_len > 0 && input_len <= 16) begin
+                        current_state <= READ_INPUT;
+                    end else if (start) begin
+                        // Invalid input length
+                        current_state <= FINISH;
+                        error <= 1;
+                    end
+                end
+                
+                READ_INPUT: begin
+                    if (input_index == 0) begin
+                        // First element
+                        current_value <= arr[0];
+                        run_length <= 1;
+                        group_buffer[0] <= arr[0];
+                        input_index <= 1;
+                    end else if (input_index < input_len) begin
+                        // Compare with previous
+                        if (arr[input_index] == current_value && run_length < 8) begin
+                            // Continue current run
+                            run_length <= run_length + 1;
+                            group_buffer[run_length] <= arr[input_index];
+                            input_index <= input_index + 1;
+                        end else if (arr[input_index] != current_value) begin
+                            // New run detected, process current one
+                            current_state <= WRITE_OUTPUT;
+                        end else begin
+                            // Run too long
+                            current_state <= FINISH;
+                            error <= 1;
+                        end
+                    end else begin
+                        // End of input, process last run
+                        current_state <= WRITE_OUTPUT;
+                    end
+                end
+                
+                WRITE_OUTPUT: begin
+                    // Write current group to output array
+                    if (output_index < 16 && output_index < input_len) begin
+                        // Store group length first, then elements
+                        // Actually, we need to flatten: store all elements sequentially
+                        // and keep track of group boundaries
+                        // Let's use a different approach: output_index points to next free slot
+                        // We write run_length, then elements
+                        
+                        // Check if we have space for this group
+                        if (output_index + run_length + 1 > 16) begin
+                            error <= 1;
+                            current_state <= FINISH;
+                        end else begin
+                            // We need to store: [run_length, values...]
+                            // But the problem asks for list of lists in Python
+                            // For hardware, let's output concatenated: out_arr contains all elements
+                            // and out_len contains number of groups
+                            // We also need to track where each group starts...
+                            // Simplified: output flattened with delimiter
+                            
+                            // Better approach: Let's output as: [len1, data1..., len2, data2..., ...]
+                            // No, let's stick to the original intent: just output the runs
+                            // in sequence, and the testbench will repackage them
+                            
+                            // Actually, the cleanest hardware approach:
+                            // Store the result as: group 0's elements, then group 1's, etc.
+                            // And output_index = total elements written
+                            // out_len = number of groups
+                            // We need another array for group start positions (too complex)
+                            
+                            // COMPROMISE: Output format will be:
+                            // out_arr[0..7] = group 0
+                            // out_arr[8..15] = group 1, etc. (fixed width groups)
+                            // No, variable width. Let's use a single output array
+                            // and testbench handles the grouping based on run lengths
+                            
+                            // FINAL DECISION: Store sequentially, with run length prefix
+                            // Each group: [length, elements...]
+                            // This makes it easy for testbench to reconstruct
+                            
+                            out_arr[output_index] <= run_length;
+                            output_index <= output_index + 1;
+                            
+                            for (integer i = 0; i < 8; i++) begin
+                                if (i < run_length) begin
+                                    out_arr[output_index + 1 + i] <= group_buffer[i];
+                                end
+                            end
+                            
+                            output_index <= output_index + 1 + run_length;
+                            out_len <= out_len + 1;  // Increment group count
+                            
+                            // Move to next state
+                            if (input_index < input_len) begin
+                                current_state <= READ_INPUT;
+                                // Setup for next run
+                                current_value <= arr[input_index];
+                                run_length <= 1;
+                                group_buffer[0] <= arr[input_index];
+                                input_index <= input_index + 1;
+                            end else begin
+                                current_state <= FINISH;
+                            end
+                        end
+                    end else begin
+                        error <= 1;
+                        current_state <= FINISH;
+                    end
+                end
+                
+                FINISH: begin
+                    done <= 1;
+                    if (start) begin
+                        current_state <= IDLE;
+                    end
+                end
+                
+                default: current_state <= IDLE;
+            endcase
+        end
+    end
+endmodule
