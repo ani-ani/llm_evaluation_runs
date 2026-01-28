@@ -1,0 +1,62 @@
+Design a Verilog module that predicts tomorrow's temperature based on Vasya's arithmetic progression method.
+
+**Problem Specification:**
+- Input: n days (2..100) with integer temperatures (-1000..1000)
+- Determine if temperatures form an arithmetic progression (constant difference between consecutive days)
+- If arithmetic progression: predict next term as last_temp + difference
+- If not arithmetic progression: predict same as last day's temperature
+
+**Interface Requirements:**
+- Inputs:
+  - clk: system clock (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start processing
+  - temp_data: 12-bit signed temperature value (valid only when temp_valid=1)
+  - temp_valid: 1-cycle pulse indicating temp_data is valid
+  - n_in: 7-bit unsigned (1..100, though spec says 2..100)
+- Outputs:
+  - result: 16-bit signed predicted temperature
+  - done: 1-cycle pulse when prediction is valid
+  - ready: high when module can accept new temp_data
+
+**Implementation Requirements:**
+1. **Algorithm:**
+   - Store first two temperatures on start
+   - Compute difference d = t[1] - t[0] (12-bit signed, range -2000..2000)
+   - For each subsequent temperature (t[2] to t[n-1]):
+     - Check if t[i] - t[i-1] == d
+     - If any mismatch, flag is not arithmetic progression
+   - If all match: result = t[n-1] + d
+   - If any mismatch: result = t[n-1]
+
+2. **State Machine:**
+   - IDLE: wait for start
+   - READ_FIRST: capture t0
+   - READ_SECOND: capture t1 and compute d
+   - VERIFY_LOOP: iterate through remaining temps (n-2 iterations)
+   - CALCULATE: compute result based on flag
+   - DONE: assert done pulse
+
+3. **Data Widths:**
+   - Temperature values: 12-bit signed (range -2048..2047 covers -2000..2000)
+   - Difference: 13-bit signed (range -4096..4095 covers -2000..2000)
+   - Counter: 7-bit (0..100)
+   - Result: 16-bit signed (range -32768..32767 covers predicted values)
+   - n_in: 7-bit (0..127, but only 2..100 used)
+
+4. **Timing:**
+   - Start to done: at most n + 5 cycles (worst case: 105 cycles)
+   - Reset: 2 cycles minimum
+   - Result valid only when done=1
+
+5. **Constraints:**
+   - Module must reset cleanly (done=0, ready=1, result=0)
+   - If start is asserted while busy, it may be ignored
+   - temp_data must be presented exactly (n-1) times after start
+   - Use internal registers, no external memory
+
+**Deliverables:**
+- Complete Verilog module with all required signals
+- No external RAM/ROM
+- Pure combinatorial logic for arithmetic
+- Sequential logic for state control

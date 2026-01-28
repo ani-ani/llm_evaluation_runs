@@ -1,0 +1,42 @@
+Create a Verilog module to calculate the area of the largest triangle inscribed in a semicircle with given radius.
+
+**ADAPTATION:**
+- Input radius: 8-bit unsigned integer (0-255)
+- Output area: 16-bit fixed-point Q8.8 format (8 integer bits, 8 fractional bits)
+- Formula: Area = (radius * radius) / 2  (scaled by 2^8 for fractional precision)
+- The theoretical maximum triangle in a semicircle with radius r has area = r²/2
+- Only handle valid inputs: r ≥ 0 (treated as 0-255 range)
+- No negative radius handling (use unsigned)
+
+**INTERFACE SPEC:**
+Inputs:
+  clk: clock signal, rising edge triggered
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to initiate calculation
+  radius: 8-bit unsigned input (0-255)
+
+Outputs:
+  area_out: 16-bit output in Q8.8 format (area × 256)
+  done: 1-cycle pulse indicating valid output
+
+**IMPLEMENTATION DETAILS:**
+1. Use sequential logic with FSM (2 states: IDLE, COMPUTE)
+2. IDLE: Wait for start signal
+3. COMPUTE: Perform area calculation in single clock cycle
+4. Area calculation: (radius * radius) >> 1  (divide by 2)
+   - Multiply 8-bit × 8-bit = 16-bit intermediate
+   - Right shift by 1 for division by 2
+   - Result stays in 16-bit output register
+5. Timing: start → done in 1-2 clock cycles
+6. Reset: Set done=0, area_out=0, return to IDLE
+
+**EXAMPLE:**
+- radius = 4 → area = 4²/2 = 8 → area_out = 8 × 256 = 2048 (0x0800)
+- radius = 2 → area = 2²/2 = 2 → area_out = 2 × 256 = 512 (0x0200)
+- radius = 0 → area_out = 0
+
+**HARDWARE CONSIDERATIONS:**
+- Use single multiplier for 8×8 multiplication
+- Shift operation for division by 2 (no divider needed)
+- Minimal state machine
+- No division by zero handling (radius=0 is valid)

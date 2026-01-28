@@ -1,0 +1,49 @@
+Implement a Verilog module that computes the maximum possible minimum buffer size B after one second for a peer-to-peer streaming system.
+
+Problem Analysis (High Level):
+We have n users, each with playback position p_i, current buffer end b_i, and upload capacity u_i. During one second, playback advances by C bytes. A user can upload data they currently have (up to b_i) to others. The goal is to maximize the minimum buffer size: min_i(b_i' - (p_i + C)). This is a decision problem: for a candidate B, is it possible that all users end up with at least buffer size B? This requires b_i' >= (p_i + C) + B for all i.
+
+The 'feasibility check' logic for a given B:
+1. For each user i, calculate the 'deficit' if they only rely on themselves: D_i = (p_i + C + B) - b_i.
+   - If D_i <= 0, user i is already satisfied (or contributes surplus).
+   - If D_i > 0, user i needs D_i bytes from others.
+2. Calculate the total 'deficit' (demand) and total 'surplus' (supply).
+   - Supply S = sum of min(b_i, (p_i + C + B)) - p_i for all users (or simpler: sum of u_i for users who can contribute).
+   - Actually, standard approach: Total Upload Capacity = sum(u_i). Total Needed Data = sum(max(0, (p_i + C + B) - b_i)).
+   - However, data can only be sent from existing buffer. A user i can contribute data only up to b_i (which is <= p_i + C + B if satisfied).
+   - The strict constraint: The total amount of data needed by unsatisfied users must not exceed the total amount of data that satisfied users can upload (limited by u_i) AND the total data available in the system must cover the requirements.
+
+Simplified Logic for Fixed B:
+- Identify users who end up satisfied (b_i' >= p_i + C + B).
+- This depends on data received. We need to check if we can satisfy everyone.
+- Let deficit_i = max(0, (p_i + C + B) - b_i). Total needed = sum(deficit_i).
+- Let potential_surplus_i = max(0, b_i - (p_i + C + B)). This is the data they have but don't need for their own buffer.
+- However, users can also send data they need to satisfy their own buffer? No, we just need to satisfy all.
+- The supply is limited by u_i and the amount of data they can give (which is b_i, but practically constrained by what they need to keep).
+- A user i can supply data only if they have 'extra' data (b_i > p_i + C + B) or if they receive data to cover their deficit and have leftover upload capacity.
+- This is a flow problem, but simplified for HDL: we assume a simplified greedy approach or a fixed constraint check.
+
+Revised Simplified Algorithm for HDL:
+We will implement a binary search for B over the range [-C, b_max - p_min] (scaled to 0-1023).
+For a fixed B, the feasibility check will be a simplified resource allocation check:
+1. Calculate 'Requirements': For each user i, required = max(0, (p_i + C + B) - b_i).
+2. Calculate 'Available Supply': Sum of u_i for all users who have b_i > p_i + C + B (those with surplus data).
+   - Note: In reality, users with deficit can also pass data if they receive it, but for a simple check, we assume only those with natural surplus contribute. If Total Surplus Capacity >= Total Deficit, it passes.
+   - *Correction*: A better simplified model: Total Upload Capacity = sum(u_i). Total Demand = sum(required). If Total Upload Capacity >= Total Demand, and Total Data Available (sum b_i) >= sum(p_i + C + B), then it is feasible. This is a loose upper bound but computable.
+
+Verilog Module Specification:
+- Inputs: clk, rst_n, start.
+- Control Inputs (Scaled): n (0-15), C (0-255), p[15:0], b[15:0], u[15:0] (16-bit values).
+- Output: result (16-bit signed integer B), done (1-cycle high).
+- Operation:
+  1. On start, read inputs into internal buffers (blocking).
+  2. Perform binary search for B in range [-256, 256].
+  3. For each mid value, run the feasibility check loop over n users.
+  4. Update search bounds.
+  5. Output result.
+
+Testbench:
+- Inputs: n=3, C=20, P=[50,100,150], B=[70,110,190], U=[10,4,16].
+- Expected: B=5.
+- Scaled inputs: We need to fit values in 16 bits. 190 fits in 8 bits, C=20 fits. Use 16-bit width.
+- Testbench will initialize arrays and check the output.

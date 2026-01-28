@@ -1,0 +1,20 @@
+Design a Verilog module 'ham_distributor' that selects a Ham amount `H` (fixed-point Q16.16) such that `Total[k] = A[k] + (B[k] * H)` results in a strictly decreasing sequence `Total[0] > Total[1] > ... > Total[N-1]`. Input `A` and `B` arrays are fixed-point values (16 bits integer, 16 bits fractional). Constraints: N=8 (hardcoded), max 256 clock cycles, output `found` is 1 if valid H exists, else 0.
+
+Inputs:
+  clk, rst_n (active-low)
+  start: 1-cycle pulse to start search
+  A[7:0], B[7:0]: Arrays of 8x 32-bit inputs (Q16.16)
+Outputs:
+  H_out: 32-bit Q16.16 (valid when found=1)
+  found: 1-bit (1 if solution found, 0 otherwise)
+  done: 1-cycle pulse when finished
+
+Internal Logic:
+  1. Reset: Found=0, H=0, State=Idle.
+  2. When start=1, enter Search state.
+  3. Iterate `i` from 0 to 255 (8 bits). Treat `i` as H scaled by a factor (e.g., 1/256).
+  4. For each candidate H (fixed-point), compute `Total = A + (B * H)` using 64-bit intermediate to prevent overflow.
+  5. Check if `Total[0] > Total[1] > ... > Total[7]`.
+  6. If true, set H_out = H, found=1, done=1.
+  7. If no candidate found in 256 cycles, done=1, found=0.
+  8. Hint: Use a comparator tree in a single cycle or pipelined comparators to verify the ordering constraint within the cycle budget.

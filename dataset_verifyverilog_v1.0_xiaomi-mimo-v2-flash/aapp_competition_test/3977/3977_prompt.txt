@@ -1,0 +1,33 @@
+Design a Verilog module that solves the Hongcow's world problem for small graphs. Given n nodes (n ≤ 16), m existing edges, and k government nodes, find the maximum number of additional edges that can be added while keeping the graph 'stable' (no path between government nodes).
+
+**Algorithm Adaptation (Hardware-Friendly):**
+1. Use a Union-Find (Disjoint Set) structure with a 16-element table for component tracking.
+2. Process all m existing edges to merge nodes into components.
+3. Identify the size of each component containing a government node (component size = number of nodes in that component).
+4. Find the largest government component size.
+5. Calculate potential edges for each component: For a component of size S, the maximum possible edges is S*(S-1)/2.
+6. Sum edges possible for all components, then add edges connecting the largest government component to all other non-government nodes (to maximize connectivity without connecting governments).
+7. Subtract existing edges m to get the result.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard clock and active-low reset.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `n[3:0]`: Number of nodes (max 16).
+  - `m[6:0]`: Number of existing edges (max 64).
+  - `k[3:0]`: Number of government nodes.
+  - `gov_nodes[0:15]`: Array of 16 government node indices (0-15). Unused indices should be set to 0.
+  - `edges_u[0:15]`, `edges_v[0:15]`: Arrays storing the edge pairs. Since m ≤ 64 but array size is 16, process edges in bursts or assume the testbench will sequence them. For this implementation, assume inputs provide a valid list of edges (u_i, v_i) for i=0 to m-1, processed sequentially.
+- **Outputs:**
+  - `result[15:0]`: Maximum additional edges (16-bit result).
+  - `done`: 1-cycle signal indicating computation is complete.
+- **Constraints:**
+  - Node indices are 0-based (0 to 15).
+  - Operations must complete within a bounded cycle count (e.g., 256 cycles).
+  - Use internal RAM for Union-Find parent and component size arrays (16 entries each).
+  - Avoid combinational loops; use a Finite State Machine (FSM) for the iterative Union-Find and component analysis.
+
+**Implementation Hints:**
+- Use a `param` for max nodes (16) and edge width (4 bits for nodes, 16 bits for result).
+- Implement `find` and `union` logic using iterative loops with bounded counters (max 16 iterations per path).
+- The main FSM should: Reset -> WaitStart -> ReadInputs/Init -> ProcessEdges (Loop over m) -> IdentifyGovComponents -> CalcMaxAdd -> Done.

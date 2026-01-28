@@ -1,0 +1,27 @@
+Implement a Verilog module that counts permutations of N elements (1≤N≤16) with order exactly K (1≤K≤2^31-1), modulo P=2^31-1. Simplification: Use cycle decomposition where permutation order equals LCM of cycle lengths. Since N≤16, cycle lengths ≤16, and K's prime factorization is limited (primes ≤16: 2,3,5,7,11,13). Compute number of permutations with given cycle structure via multinomial coefficients scaled to 16-bit fixed-point Q16.16 (integer part 8 bits, fractional 8 bits). Interface:
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset
+  start: 1-cycle pulse
+  N[5:0]: unsigned (1-16)
+  K[31:0]: unsigned (order constraint)
+Outputs:
+  result[30:0]: unsigned modulo P=2^31-1
+  done: 1-cycle pulse when result valid
+
+Timing: start→done within 200 cycles. Reset: done=0, result=0, min 2 cycles.
+
+Algorithm:
+1. Enumerate all partitions of N (cycle length combinations) that satisfy LCM = K (mod P). For N≤16, max 233 partitions.
+2. For each partition (list of cycle lengths), compute number of permutations:
+   - Count cycles of each length: c1,c2,...,c16
+   - Multinomial coefficient: N! / ( (1^c1 * c1! ) * (2^c2 * c2! ) * ... * (16^c16 * c16! ) )
+   - Use integer arithmetic: precompute factorials 1!..16! as 32-bit constants
+   - Multiply denominators, take modular inverse via extended Euclid (precomputed LUT for primes 2,3,5,7,11,13)
+3. Sum results for all valid partitions modulo P.
+4. LCM computation: prime powers up to 16 (2^4, 3^2, 5,7,11,13). Check K's factorization matches max cycle lengths.
+
+Implementation: Use lookup tables for factorials, inverses, and partitions. Pipeline LCM check with combinatorial blocks. Use 32-bit adders/multipliers with modulo P reduction (parallel reduction tree).
+
+Do not provide module code, just the spec.

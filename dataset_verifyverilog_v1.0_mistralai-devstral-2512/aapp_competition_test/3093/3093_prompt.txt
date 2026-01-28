@@ -1,0 +1,33 @@
+Design a Verilog module that calculates the number of ways to color N images (1 to N) given K colors and constraints. Input constraints: N <= 16, K <= 32. Constraints are given as an array f[0:N-1] where f[i] (1-indexed in problem) maps image i+1 to constraint image f[i].
+
+Rule: Image i must have a different color than image f[i]. If f[i] == i+1, no constraint (can be any color).
+
+Solution Strategy:
+1. Treat images as nodes 0 to N-1. Construct graph where edge (i, f[i]-1) exists if f[i] != i+1.
+2. The graph is functional (each node has exactly one outgoing constraint edge, or none if self-loop). It consists of components with cycles and trees feeding into them.
+3. For each component:
+   - Find the cycle (root nodes). Let the cycle length be L.
+   - The number of ways to color the cycle with K colors such that adjacent nodes (in the cycle) are different is: K * (K-1)^(L-1).
+   - For tree nodes feeding into the cycle (or other tree nodes), multiply by K for each node (since they only constrain their parent, and no constraints from children).
+4. Total ways = Product of ways for all components modulo 1000000007.
+
+Inputs:
+  clk: clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  N: 4-bit input (1 to 16)
+  K: 6-bit input (1 to 32)
+  f_arr[0:15]: 16x4-bit array (values 1 to 16). Only first N entries valid.
+
+Outputs:
+  result: 32-bit output (result modulo 1000000007)
+  done: 1-cycle pulse indicating result is valid
+
+Internal Requirements:
+- Use block RAM or registers to store f_arr and visited status.
+- Implement iterative DFS/BFS to identify components and cycles (no recursion due to hardware limitations).
+- Implement modular multiplication and exponentiation (for (K-1)^L).
+- Timing: Should complete within 5000 cycles for max N=16.
+- Reset behavior: result=0, done=0.
+
+Note: If K=1 and any cycle length > 1 exists, result is 0. If K=1 and all components are self-loops (f[i] == i+1), result is 1.

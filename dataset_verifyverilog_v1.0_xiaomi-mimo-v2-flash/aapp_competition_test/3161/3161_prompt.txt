@@ -1,0 +1,53 @@
+Design a Verilog module to generate an N x N pixel image (N=8) following Josip's recursive painting rules, minimizing difference to a target image. The target image is an 8x8 binary matrix input as 64 individual 1-bit signals (target_0_0 through target_7_7).
+
+### Interface Specification:
+**Inputs:**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start computation.
+- `target[N][N]`: 64 signals of width 1 representing the desired image (0=white, 1=black). N=8.
+
+**Outputs:**
+- `result[N][N]`: 64 signals of width 1 representing the generated image.
+- `diff`: 9-bit integer (max 64) representing the total pixel difference.
+- `done`: 1-cycle pulse indicating valid outputs on `result` and `diff`.
+
+### Functional Requirements:
+1. **Algorithm:** Implement Josip's recursive process:
+   - Base Case: 1x1 block, paint as intended (set pixel to target value).
+   - Recursive Step (4x4, 2x2, 8x8 etc):
+     1. Divide current square into 4 quadrants (TL, TR, BL, BR).
+     2. Select one quadrant to paint White (0).
+     3. Select one remaining quadrant to paint Black (1).
+     4. Recurse on the remaining two quadrants.
+   - **Constraint:** The process must generate an image where every 2x2 sub-block is either: (a) Uniform color, or (b) Split into two colors in a way that adheres to the recursive selection (White, Black, Recurse, Recurse). 
+   - **Simplification for HW:** The recursion depth is limited to 3 (for 8x8 grid). The decision space is finite. 
+
+2. **Hardware Implementation Strategy:**
+   - **State Machine:** Use a Moore FSM with states `IDLE`, `COMPUTE`, `OUTPUT`.
+   - **Memory:** Use a 64-bit register for the generated image `img_gen` and a 64-bit register for the target image `img_tgt`.
+   - **DP Table:** Since N=8, the number of possible configurations for a sub-square is limited. A hardware-accelerated approach should pre-calculate or compute on-the-fly the minimum difference for a specific sub-square size and content.
+   - **Iteration:** Instead of literal recursion, use an iterative loop that processes blocks from size 1x1 up to 8x8. 
+     - For size 1x1: Direct copy from target.
+     - For size 2x2 (and larger): The module must try all valid combinations of assigning White, Black, and Recursing to the 4 quadrants. 
+     - **Optimization:** For the 8x8 case, there are limited valid patterns. The logic should output the pattern that minimizes Hamming distance to the input target block.
+
+3. **Bit Widths:**
+   - Pixel data: 1 bit (0/1).
+   - Coordinates: 3 bits (0-7).
+   - Difference counter: 9 bits (0-64).
+   - State: 3 bits.
+
+4. **Timing:**
+   - Start to Done: Within 100 clock cycles.
+   - Reset: Initialize `diff` to 0, `result` to 0, `done` to 0.
+
+5. **Constraints:**
+   - N is fixed at 8 for this implementation.
+   - Do not use external memory; keep all logic and state internal.
+   - Pipelining is allowed to improve timing.
+
+**Testbench Expectation:**
+- The testbench will provide the target image as 64 separate inputs.
+- It will assert `start` and wait for `done`.
+- It will then read `result` (64 bits) and `diff` to verify correctness.

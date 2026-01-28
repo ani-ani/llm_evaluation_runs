@@ -1,0 +1,25 @@
+Implement a Verilog module to compute the number of distinct hopscotch paths from (0,0) to (N,N) with minimum hop increments X and Y. 
+
+Adaptation: Scale N, X, Y to 8-bit values (0-255) to fit hardware constraints. The problem is equivalent to counting sequences of hops (dx_i, dy_i) such that sum(dx_i)=N, sum(dy_i)=N, each dx_i>=X, dy_i>=Y. Let k be the number of hops. Since each hop increases both coordinates, the path length k must satisfy k*X <= N and k*Y <= N. The number of ways to distribute N into k hops of size >=X is C(N - k*X + k - 1, k - 1) for x-coordinates (stars and bars). Similarly for y-coordinates: C(N - k*Y + k - 1, k - 1). Total paths for fixed k is the product of these combinations. Sum over all valid k.
+
+Compute binomial coefficients modulo 1,000,000,007 using a precomputed lookup table for small N (<=255) or iterative computation. Implement modular multiplication and addition.
+
+Interface:
+- Inputs: clk, rst_n (active-low sync reset), start (1-cycle pulse).
+- Parameters: N (8-bit), X (8-bit), Y (8-bit).
+- Outputs: result (32-bit, modulo 1e9+7), done (1-cycle pulse, high when result is valid).
+
+Timing: start to done within 500 cycles. Reset initializes all counters and state to zero.
+
+State machine: 
+1. Reset: idle.
+2. On start, initialize k from 1 to max_k (N/min(X,Y)).
+3. For each k, check if k*X <= N and k*Y <= N.
+4. If valid, compute comb_x = C(N - k*X + k - 1, k - 1) and comb_y = C(N - k*Y + k - 1, k - 1) mod MOD.
+5. Multiply comb_x and comb_y mod MOD.
+6. Accumulate into result.
+7. After last k, set done high.
+
+Helper modules: Modular multiply-add unit, binomial coefficient calculator (using iterative formula: C(n,k) = C(n,k-1)*(n-k+1)/k mod p). Division by k modulo MOD requires modular inverse (precomputed or iterative Fermat's little theorem for small k). Use 32-bit width for MOD operations.
+
+Note: For small N (<=255), precompute all binomial coefficients C[n][k] in a 256x256 BRAM or compute on-the-fly. If on-the-fly, use a loop to compute C(n,k) for each k, reusing state.

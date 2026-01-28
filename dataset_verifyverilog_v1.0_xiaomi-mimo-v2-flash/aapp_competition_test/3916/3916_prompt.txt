@@ -1,0 +1,34 @@
+Implement a Verilog module that computes the minimal total path length to connect factorial nodes in a graph. The graph nodes are factorials k! where k_i ≤ 5000. The distance between two nodes is the sum of absolute differences in prime factorization exponents. The solution must find the weighted median prime exponent vector to minimize total distance.
+
+**Interface Requirements:**
+- **Inputs:**
+  - `clk`: Clock signal (rising edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `k_i`: Array of 16-bit integers (5000 max), length n (n ≤ 200 for hardware)
+  - `n`: 4-bit integer indicating number of fragments (1-200)
+- **Outputs:**
+  - `result`: 32-bit output containing minimal total path length
+  - `done`: 1-cycle pulse indicating valid result
+
+**Implementation Details:**
+1. **Prime Factorization:** Precompute primes up to 5000 (≈669 primes). For each input k_i, compute prime exponents in k_i! using cumulative exponent formulas.
+2. **Distance Calculation:** Distance between nodes is L1 distance in prime exponent space.
+3. **Median Finding:** Iteratively merge prime dimensions. For each prime p, compute weighted frequency of exponents. If majority (> n/2) share same exponent, move to next prime; otherwise, the optimal point is between groups.
+4. **Optimization:** Use finite state machine with states: IDLE, PREPROCESS, PRIME_LOOP, MERGE, DONE. Limit iterations to 16-256 cycles.
+5. **Data Widths:** Prime exponents ≤ 13 (since 2^13=8192>5000). Use 5-bit for exponents. Total distance fits in 32 bits (max 200×5000×13 ≈ 13M).
+6. **Memory:** Store cumulative exponent vectors for up to 16 primes (sufficient for k≤5000). Use register arrays.
+
+**Hardware Constraints:**
+- Max array size: 16 elements (scale n from 5000 to 16)
+- Max k_i: 5000 (keep as-is, fits 16-bit)
+- Prime count: 669 (use top 16 most frequent primes for approximation)
+- Cycles: 100-256 cycles for completion
+- Use shift registers for prime factor accumulation
+- Implement iterative weighted median with loop bound of 16 iterations
+
+**Example Test Cases:**
+- Input: k = [2, 1, 4] → Output: 5
+- Input: k = [3, 1, 4, 4] → Output: 6
+
+**Note:** The Verilog implementation should approximate the full algorithm by considering only the first 16 primes (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53) for exponent calculation, as this captures the essential geometric median behavior for k ≤ 5000.

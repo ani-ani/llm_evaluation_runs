@@ -1,0 +1,48 @@
+Design a synchronous Verilog module to compute the nth Bell number (N≤8). The Bell number B(n) is defined by the recurrence: B(0)=1, B(n+1) = sum_{k=0}^{n} C(n,k)*B(k). The provided Python algorithm uses a 2D DP table bell[i][j] where bell[i][0] = bell[i-1][i-1] and bell[i][j] = bell[i-1][j-1] + bell[i][j-1] for j>0. The final result is bell[n][0].
+
+**Constraints:**
+- Input n: 4-bit unsigned (0 to 8)
+- All values (intermediate and final): 16-bit unsigned (max value B(8)=41402 fits in 16 bits)
+- The DP table can be implemented as a 9×9 memory. Use registers for the table or compute iteratively.
+- Maximum allowed cycles: 256
+
+**Inputs:**
+- `clk`: Main clock
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate computation
+- `n`: 4-bit input, the index of the Bell number to compute
+
+**Outputs:**
+- `result`: 16-bit output, valid when `done` is high
+- `done`: 1-cycle pulse indicating computation is complete and `result` is valid
+
+**Functionality:**
+1. On reset: `done`=0, `result`=0, internal state machine idle.
+2. When `start` is asserted: Begin computation for input `n`.
+3. Compute the Bell numbers up to B(n) using the 2D DP table method. The state machine should iterate through rows i=0..n, and for each row, compute columns j=0..i.
+4. The final result B(n) is stored at `bell[n][0]`.
+5. When computation is complete, assert `done` for one cycle and place B(n) on `result`.
+6. The design should reset to idle after completion, ready for a new computation.
+
+**Implementation Notes:**
+- You may use a 2D array `reg [15:0] bell [0:8][0:8]` (81 registers, 16-bit each). Alternatively, optimize memory by using a 1D array and overwriting values if possible, but the 2D structure is simpler and matches the algorithm.
+- Use a state machine with states: IDLE, COMPUTE_ROW, COMPUTE_COL, DONE.
+- For i=0, bell[0][0] = 1.
+- For each i from 1 to n: bell[i][0] = bell[i-1][i-1]; then for j from 1 to i: bell[i][j] = bell[i-1][j-1] + bell[i][j-1].
+- The sum requires 16-bit addition (no carry out expected as max sum is B(8)=41402).
+- Ensure no overflow for n>8 (the module should handle n up to 8 correctly; for n>8, behavior is undefined).
+- The start signal is only sampled when the state machine is IDLE. If start is asserted during computation, it should be ignored.
+
+**Timing:**
+- Start to done: ≤256 cycles.
+- Reset clears all registers and sets state to IDLE.
+
+**Test Bench Requirements (for cocotb):**
+- Test with n=2,3,4 (B(2)=2, B(3)=5, B(4)=15).
+- Also test n=0 (B(0)=1) and n=1 (B(1)=1).
+- Verify the `done` signal is a single cycle pulse.
+- Verify the result is correct on the cycle `done` is high.
+- Include a test for n=8 (B(8)=41402) to check 16-bit capacity.
+- Check for reset functionality.
+- Use a clock period of 10ns.
+- Provide helper functions for array initialization and result checking.

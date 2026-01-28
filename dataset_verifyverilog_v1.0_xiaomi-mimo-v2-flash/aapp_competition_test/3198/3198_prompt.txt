@@ -1,0 +1,70 @@
+## Verilog HDL Specification: Typo Detector
+
+### Problem Adaptation
+Given a dictionary of words (≤16 words, max 16 characters each, lowercase letters only), identify words that become another dictionary word after deleting exactly one character.
+
+### Interface Definition
+
+**Inputs:**
+- `clk`: System clock (rising edge trigger)
+- `rst_n`: Active-low asynchronous reset
+- `start`: 1-cycle pulse to initiate processing
+- `word_count`: 4-bit input (number of words in dictionary, 1-16)
+- `word_len[0:15]`: 16x4-bit array (length of each word)
+- `word_data[0:15]`: 16x128-bit array (each 128-bit contains 16x8-bit ASCII chars packed, padded with zeros)
+
+**Outputs:**
+- `result_index`: 4-bit index of current word being checked (0 to word_count-1)
+- `is_typo`: 1-bit flag (1 if current word is a typo)
+- `done`: 1-cycle pulse when processing completes
+- `busy`: 1-bit flag indicating processing is active
+
+### Functional Requirements
+
+1. **Word Storage:** Store dictionary words in internal registers. Each word is fixed 16 chars max (8-bit ASCII). Unused positions padded with nulls (0x00).
+
+2. **Processing Order:** Process words in input order (index 0 to word_count-1).
+
+3. **Typo Detection Logic:**
+   - For each word W at index i:
+     - Iterate through each character position j (0 to len(W)-1)
+     - Generate candidate C by removing character at position j
+     - Check if C exists in dictionary at any index k ≠ i
+     - If found: W is a typo (is_typo = 1)
+     - If no deletion results in a dictionary word: is_typo = 0
+
+4. **State Machine:**
+   - IDLE: Wait for start
+   - SETUP: Load current word being checked
+   - CHECK_DELETIONS: Try all possible deletions (max 16 iterations)
+   - VERIFY_EXISTENCE: Compare against all other words (max 16x16 checks)
+   - OUTPUT: Set result_index and is_typo, pulse done
+   - NEXT_WORD: Move to next word
+
+5. **Timing Constraints:**
+   - Max processing time: 1000 cycles for all words
+   - Start-to-done latency: ≤100 cycles per word
+   - Reset clears all registers, done=0
+
+6. **Memory Architecture:**
+   - Store words as packed 128-bit vectors
+   - Use shift-and-compare for deletion check
+   - Fixed loop bounds (16 chars, 16 words)
+
+### Implementation Hints
+
+- Use a 16x16-bit mask to mark which characters to delete
+- For deletion: shift remaining characters left
+- For comparison: implement bit-wise equality check for variable length strings
+- The `done` signal should pulse once after final word is processed
+- `busy` is high from start until `done` pulses
+- Ensure all loops have compile-time constants for synthesis
+
+### Example Walkthrough
+Dictionary: ["hose"(4), "hoose"(5), "oose"(4), "moose"(5)]
+- Check "hose": Delete any char → "ose", "hse", "hoe", "hos" (none in dict) → Not typo
+- Check "hoose": Delete char 1 → "hose" (in dict) → Typo
+- Check "oose": Delete any char → "ose", "ose", "ose", "ose" (none) → Not typo
+- Check "moose": Delete char 0 → "oose" (in dict) → Typo
+
+Result pulses: is_typo=0,1,0,1 in order

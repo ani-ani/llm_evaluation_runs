@@ -1,0 +1,39 @@
+Design a Verilog module that extracts text between quotation marks from a fixed-width input string. The module uses a state machine to scan through characters, detecting quote pairs ('"'), and extracts the bounded text into an output buffer.
+
+**Interface Specifications:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate scanning (goes high when `str` is valid)
+  - `str`: 64-bit vector, ASCII bytes packed as 8 chars × 8-bit (chars indexed 7:0, 15:8, ..., 63:56). 'A' = 8'h41, 'a' = 8'h61, space = 8'h20, double-quote = 8'h22
+  - `str_len`: 6-bit input (max 64, actual chars used)
+
+- **Outputs:**
+  - `result`: 256-bit vector, packed ASCII bytes for extracted tokens. Format: [Token0:8 bytes] + [Token1:8 bytes] + [Token2:8 bytes] + [Token3:8 bytes]. Unused bytes are zeros. Each token is right-aligned in its 8-byte slot (char0 in msb of slot).
+  - `result_len`: 4-bit output (number of extracted tokens, 0-15)
+  - `done`: 1-cycle pulse when extraction completes (after start)
+  - `error`: High if input violates constraints (e.g., str_len > 64 or unbalanced quotes)
+
+**Implementation Details:**
+- **State Machine:** FSM with states: IDLE, SCAN, CAPTURE, ERROR. 
+  - IDLE: Waits for start. On start, initialize index=0, in_quote=0, token_count=0, result=0.
+  - SCAN: Iterate index from 0 to str_len-1. For each char:
+    - If char == quote (8'h22), toggle in_quote. If in_quote was 0, start new token (save start_index). If in_quote becomes 0, finalize token if length>0 (copy to result slot), increment token_count. If token_count reaches 15, go ERROR.
+    - Else if in_quote=1, copy char to current token buffer (max 8 chars per token; if >8 chars, go ERROR).
+  - CAPTURE: After scan, set done=1 if token_count>0, result_len = token_count. If token_count=0, done=1 with result_len=0.
+  - ERROR: Set error=1 and remain here until reset.
+
+- **Clock Cycles:** Complete within 100 cycles for max 64 chars (scan takes 64 cycles + overhead).
+- **Constraints:**
+  - Max tokens: 4 (256-bit result allows 4×8-byte slots)
+  - Max token length: 8 chars
+  - No nested quotes; sequential scan only.
+  - If quotes are unbalanced (e.g., odd count), go ERROR.
+- **Reset:** On reset, done=0, result=0, result_len=0, error=0.
+
+**Test Cases (for verilog):**
+- Input 1: str = "Cortex A53 Based multi tasking Processor" (packed: 'C','o','r','t','e','x',' ','A'...). Extract tokens: 'A53', 'multi', 'Processor'
+- Input 2: Cast your favorite entertainment apps (no quotes) -> result_len=0, done=1
+- Input 3: Watch content 4k Ultra HD resolution with HDR 10 Support (with quotes) -> '4k Ultra HD', 'HDR 10'
+
+Note: Implement with combinational logic for character comparison and sequential FSM for control. Use fixed registers for token accumulation.

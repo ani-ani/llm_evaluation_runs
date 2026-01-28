@@ -1,0 +1,20 @@
+Design a Verilog module that calculates the minimal number of book lifts needed to rearrange books on shelves. Given N shelves (1-16) each with M slots (1-16), each slot holds a book ID (1-255) or is empty (0). The initial configuration and target configuration are provided as fixed-size arrays. The module should compute the number of books that are in wrong positions (i.e., books that need to be lifted and moved). Assume we can swap books between any slots in one lift each (worst case). The minimal lifts equals the count of misplaced books. If no solution exists (shouldn't happen in valid inputs), output -1. But since we scale to small N,M, we can assume solvable.
+
+Interface:
+- Inputs: N (4-bit), M (4-bit)
+- For each shelf i (0 to 15), initial state slots init_arr_i (8-bit each, 16 slots per shelf), target state slots target_arr_i (8-bit each, 16 slots per shelf)
+- Output: lifts (8-bit) or error (1-bit)
+
+Implementation details:
+- Process each slot: compare init vs target. If they differ and init slot is not empty, that book needs to be moved (count increments). Also, handle empty slots: if target has a book but init has empty, that book must come from elsewhere (already counted when its source was mismatched).
+- To handle duplicates or missing books: Since book IDs are unique, we can track which books are in correct positions. The count of misplaced books = total books - books already in correct positions.
+- Total books = count of non-zero entries in init.
+- Correct books = count of slots where init == target and both non-zero.
+- Lifts = total_books - correct_books.
+- If any book appears in init but not in target (or vice versa), it's impossible -> output -1 (error flag set).
+- Use combinational logic: for each of 16 shelves, for each of 16 slots, compare and aggregate.
+- Since N,M <= 16, we can unroll loops. Use generate blocks to create comparators.
+- Clock edge: if sequential, use a state machine to iterate over shelves and slots; else, pure combinational.
+- Output lifts on done signal.
+
+Note: We scale to max 16 shelves, 16 slots per shelf, book IDs 1-255 (8 bits). Empty = 0.

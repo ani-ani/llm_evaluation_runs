@@ -1,0 +1,46 @@
+## Verilog Module Specification: String Start/End Character Check
+
+### Functionality
+Check if a fixed-width ASCII string starts and ends with the same character. Returns "Valid" (1) if first == last character, "Invalid" (0) otherwise. Empty strings are invalid.
+
+### Scaling & Constraints
+- Input string: 8 ASCII characters (byte array)
+- ASCII range: 0x20-0x7E (printable), support all 8-bit values
+- Characters: Compare byte values directly
+- Edge cases: Single character (same start/end), empty string (invalid)
+
+### Interface
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate check
+- `string_data[7:0][7:0]`: 8x8-bit array of ASCII characters (index 0 = first char)
+- `string_len`: 3-bit input (0-7, actual length, 0 means empty)
+
+**Outputs:**
+- `result`: 1-bit output (1=Valid, 0=Invalid)
+- `done`: 1-cycle pulse when check completes
+
+### Timing
+- Start pulse initiates check
+- Check completes within 20 clock cycles
+- Result is valid when `done` is high
+- On reset: `result=0`, `done=0`
+
+### Implementation Guidance
+1. State machine: IDLE -> FETCH_FIRST -> COMPARE_LAST -> DONE
+2. Store first character when start=1 (if string_len > 0)
+3. Compare with last character: `string_data[string_len-1]`
+4. Edge cases: If string_len == 0 or 1, treat as invalid/valid appropriately
+5. Single character: first == last, return Valid
+6. Empty string: length 0, return Invalid
+
+### Example Test Cases
+- "abba" (len=4): 'a' == 'a' -> Valid
+- "a" (len=1): 'a' == 'a' -> Valid  
+- "abcd" (len=4): 'a' != 'd' -> Invalid
+- "" (len=0): Invalid
+
+### Reset Behavior
+- On reset: clear state machine, result=0, done=0

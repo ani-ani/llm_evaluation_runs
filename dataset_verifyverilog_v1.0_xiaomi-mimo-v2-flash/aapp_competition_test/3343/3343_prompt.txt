@@ -1,0 +1,55 @@
+## Task
+You are modeling a wire bending simulation. The wire is initially straight, fixed at the origin. You apply a sequence of 90-degree bends at specified distances from the start (measured along the wire's current length). After each bend, check if the wire intersects itself. If any collision occurs, output 'GHOST', otherwise 'SAFE'.
+
+## Specifications
+
+### Interface
+- **Clock**: `clk` (rising edge)
+- **Reset**: `rst_n` (active low, async)
+- **Inputs**:
+  - `start`: 1-cycle pulse to begin simulation
+  - `bend_dist[15:0]`: 16-bit unsigned distance for current bend
+  - `bend_dir`: 1-bit (0=CW, 1=CCW)
+  - `bend_valid`: 1-bit, indicates valid bend data available
+  - `bend_last`: 1-bit, last bend in sequence
+- **Outputs**:
+  - `done`: 1-cycle pulse when simulation complete
+  - `result`: 2-bit (0=SAFE, 1=GHOST, 2=ONGOING)
+  - `busy`: 1-bit, simulation in progress
+
+### Core Logic
+1. **Initial State**: Wire is a straight line along +X axis, length `L` (8-bit, max 255). Points at integer coordinates from (0,0) to (L,0).
+2. **Bend Operation**:
+   - Distance `d` is measured from start along current wire.
+   - Find the segment containing point at distance `d`.
+   - Rotate the sub-wire (from point at `d` to end) 90 degrees around the bend point.
+   - Direction: CW rotates points (x,y) to (x+y, y-x) around origin; CCW to (x-y, y+x). Adjust for local coordinate system.
+3. **Collision Detection**: After each bend, check if any wire segment intersects any other segment. Intersection occurs if:
+   - Adjacent segments share endpoints (allowed)
+   - Non-adjacent segments cross (grid coordinates)
+   - A point lands on an existing segment
+4. **Scaling**: 
+   - L <= 16 (8-bit)
+   - Coordinates: 6-bit signed (-32 to 31)
+   - Segments: max 16 bends = 17 segments
+   - Grid: 64x64
+5. **Bounded Loops**: Max 16 bends, each bend checks <= 16 segments, each intersection check uses fixed comparators.
+
+### Timing
+- Start to Done: within 256 cycles
+- Each bend operation: 16 cycles (update + collision check)
+- Reset: 2 cycles, sets result=0, busy=0
+
+### Implementation Notes
+- Use iterative coordinate updates (no recursion)
+- Store segments as (x1,y1,x2,y2) in 6-bit signed registers
+- Collision check: nested loops over all segment pairs
+- Fixed-point or integer math for rotation
+- If collision detected, latch result=GHOST, end simulation
+
+### Constraint: Bounded Resource Usage
+- Max 16 bends (n=16)
+- Max wire length 16
+- All arithmetic fits in 8-16 bits
+- No dynamic memory
+- All loops have fixed bounds

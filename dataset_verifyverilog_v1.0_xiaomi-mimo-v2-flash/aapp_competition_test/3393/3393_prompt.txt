@@ -1,0 +1,52 @@
+Implement a Verilog module that finds the minimum sum of difficulties for selecting k courses from n courses with prerequisite constraints.
+
+**Input Constraints (Scaled for Hardware):**
+- Max 16 courses (n <= 16)
+- Max 8 selection target (k <= 8)
+- Difficulty: 8-bit unsigned (0-255)
+- Course ID: 4-bit (0-15)
+- Course Type: 2-bit (0: NoLevel, 1: LevelI, 2: LevelII)
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `n`: 4-bit input for number of courses (0-16)
+  - `k`: 4-bit input for target courses (0-8)
+  - `diff[i]`: 8-bit array for course i difficulty (i=0..15)
+  - `type[i]`: 2-bit array for course i type (0:NoLevel, 1:LevelI, 2:LevelII)
+  - `parent[i]`: 4-bit array for LevelII course's LevelI parent ID (0-15, unused for others)
+
+- Outputs:
+  - `result`: 16-bit output (minimum difficulty sum)
+  - `done`: 1-cycle pulse when computation complete
+  - `valid`: 1-bit signal (1 if solution exists for given n,k)
+
+**Algorithm Specification:**
+1. Parse course relationships into a dependency graph
+2. Use Dynamic Programming with bitmask states:
+   - State: `dp[i][mask]` = min cost after considering first i courses, with selection mask
+   - For LevelII courses, valid only if parent is selected
+   - Iterate through all valid subsets of size k
+3. Optimization: Sort courses by difficulty to prune search space
+4. Output minimum cost among valid combinations
+
+**Timing:**
+- `start` pulse initiates computation
+- `done` rises after 100-200 cycles
+- `result` and `valid` are valid when `done`=1
+- Reset: Clear all DP states, `result`=0, `valid`=0, `done`=0
+
+**Hardware Implementation Notes:**
+- Use case statements for type decoding
+- Implement priority logic for prerequisite checks
+- Use combinational logic for cost calculation
+- Ensure no combinational loops
+- Pipeline stages if needed for timing
+
+**Test Specification:**
+- Provide test cases with 10-16 courses
+- Include 2-3 prerequisite pairs
+- Verify result matches Python solution
+- Check edge cases: k=1, all standalone courses, all prerequisite pairs

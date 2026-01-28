@@ -1,0 +1,300 @@
+You are to design a Verilog module that sorts sublists of strings by their first character. The adaptation uses fixed-width ASCII byte arrays and bubble sort for hardware implementation.
+
+### ADAPTATION:
+- Each string is represented as its first ASCII character (8-bit)
+- Maximum 16 sublists in the main list
+- Each sublist has 2-4 elements (fixed size for simplicity)
+- Use bubble sort for each sublist
+- Input: stream of characters with sublist boundaries
+- Output: sorted characters with same boundary structure
+
+### INTERFACE SPEC:
+
+**Inputs:**
+- `clk`: Rising edge clock
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `data_in`: 8-bit ASCII character
+- `valid_in`: 1 when data_in is valid
+- `sublist_end`: 1 marks end of current sublist
+- `list_end`: 1 marks end of entire list
+
+**Outputs:**
+- `data_out`: 8-bit ASCII character of sorted sublists
+- `valid_out`: 1 when data_out is valid
+- `out_sublist_end`: 1 marks end of output sublist
+- `out_list_end`: 1 marks end of output list
+- `busy`: 1 while processing
+- `done`: 1-cycle pulse when sorting complete
+
+### SCALING:
+- Total sublists: ≤ 16
+- Sublist size: 2-4 elements (configurable)
+- ASCII range: 97-122 (a-z) for simplicity
+- Processing cycles: ≤ 256 cycles (bubble sort: max 3 passes × 3 comparisons × 16 sublists)
+- Memory: 64-byte buffer (16 sublists × 4 chars)
+
+### IMPLEMENTATION GUIDANCE:
+
+**Memory Structure**:
+- Input buffer: `reg [7:0] data [0:63]` (64 chars)
+- Sublist indices: `reg [5:0] sublist_start [0:15]` (start index per sublist)
+- Sublist sizes: `reg [3:0] sublist_size [0:15]` (size per sublist)
+
+**Bubble Sort FSM** (simplified):
+- **IDLE**: Wait for start
+- **STORE**: Capture input stream, record boundaries
+- **SORT_INIT**: Initialize sublist counter
+- **SORT_LOOP**: Bubble sort current sublist
+  - Compare adjacent pairs (0-1, 1-2, 2-3)
+  - Swap if needed
+  - Repeat for N-1 passes
+- **SORT_DONE**: Move to next sublist
+- **OUTPUT**: Stream sorted data
+- **COMPLETE**: Signal done
+
+**Bubble Sort for N=4**:
+- Pass 1: Compare (0,1), (1,2), (2,3)
+- Pass 2: Compare (0,1), (1,2)
+- Pass 3: Compare (0,1)
+- Total: 6 comparisons per sublist
+
+### VERILOG MODULE SPECIFICATION:
+
+```verilog
+module string_sublist_sorter (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] data_in,
+    input wire valid_in,
+    input wire sublist_end,
+    input wire list_end,
+    output reg [7:0] data_out,
+    output reg valid_out,
+    output reg out_sublist_end,
+    output reg out_list_end,
+    output reg busy,
+    output reg done
+);
+
+// Parameters
+parameter MAX_SUBLISTS = 16;
+parameter MAX_SUBLIST_SIZE = 4;
+parameter MAX_TOTAL_CHARS = 64;
+
+// Internal memory
+reg [7:0] char_data [0:MAX_TOTAL_CHARS-1];
+reg [5:0] sublist_start [0:MAX_SUBLISTS-1];
+reg [3:0] sublist_size [0:MAX_SUBLISTS-1];
+
+// Counters
+reg [5:0] input_idx;
+reg [3:0] sublist_count;
+reg [3:0] current_sublist;
+reg [3:0] current_size;
+reg [5:0] current_start;
+
+// Bubble sort state
+reg [2:0] pass;      // 0-3
+reg [2:0] compare;   // 0-3
+reg [7:0] temp_a, temp_b;
+
+// Output state
+reg [5:0] output_idx;
+reg [3:0] output_sublist;
+reg [3:0] output_pos;
+
+// FSM states
+reg [3:0] state;
+localparam IDLE     = 0;
+localparam STORE    = 1;
+localparam SORT_INIT= 2;
+localparam SORT_LOOP= 3;
+localparam SORT_CMP = 4;
+localparam SORT_SWAP= 5;
+localparam SORT_DONE= 6;
+localparam OUTPUT   = 7;
+localparam COMPLETE = 8;
+
+// State transition
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        state <= IDLE;
+    end else begin
+        case (state)
+            IDLE: state <= start ? STORE : IDLE;
+            STORE: begin
+                if (list_end && !valid_in) state <= SORT_INIT;
+                else state <= STORE;
+            end
+            SORT_INIT: state <= SORT_LOOP;
+            SORT_LOOP: begin
+                if (current_sublist >= sublist_count) state <= OUTPUT;
+                else if (pass >= current_size - 1) state <= SORT_DONE;
+                else if (compare < current_size - pass - 1) state <= SORT_CMP;
+                else state <= SORT_LOOP;
+            end
+            SORT_CMP: state <= SORT_SWAP;
+            SORT_SWAP: state <= SORT_LOOP;
+            SORT_DONE: state <= SORT_INIT;
+            OUTPUT: begin
+                if (output_sublist >= sublist_count) state <= COMPLETE;
+                else state <= OUTPUT;
+            end
+            COMPLETE: state <= IDLE;
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+// Control signals and counters
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        input_idx <= 0;
+        sublist_count <= 0;
+        current_sublist <= 0;
+        current_size <= 0;
+        current_start <= 0;
+        pass <= 0;
+        compare <= 0;
+        output_idx <= 0;
+        output_sublist <= 0;
+        output_pos <= 0;
+        // Clear memory
+        for (int i = 0; i < MAX_TOTAL_CHARS; i++) char_data[i] <= 0;
+        for (int i = 0; i < MAX_SUBLISTS; i++) begin
+            sublist_start[i] <= 0;
+            sublist_size[i] <= 0;
+        end
+    end else begin
+        case (state)
+            STORE: begin
+                if (valid_in) begin
+                    char_data[input_idx] <= data_in;
+                    input_idx <= input_idx + 1;
+                end
+                if (sublist_end && valid_in) begin
+                    sublist_size[sublist_count] <= input_idx - sublist_start[sublist_count] + 1;
+                    sublist_count <= sublist_count + 1;
+                    if (sublist_count + 1 < MAX_SUBLISTS) begin
+                        sublist_start[sublist_count + 1] <= input_idx + 1;
+                    end
+                end
+                if (list_end && valid_in) begin
+                    sublist_size[sublist_count] <= input_idx - sublist_start[sublist_count] + 1;
+                    sublist_count <= sublist_count + 1;
+                end
+            end
+            SORT_INIT: begin
+                if (current_sublist < sublist_count) begin
+                    current_size <= sublist_size[current_sublist];
+                    current_start <= sublist_start[current_sublist];
+                    pass <= 0;
+                    compare <= 0;
+                end
+            end
+            SORT_LOOP: begin
+                if (current_sublist < sublist_count) begin
+                    if (pass < current_size - 1) begin
+                        if (compare < current_size - pass - 1) begin
+                            // Ready for comparison
+                        end else begin
+                            compare <= 0;
+                            pass <= pass + 1;
+                        end
+                    end
+                end
+            end
+            SORT_CMP: begin
+                temp_a <= char_data[current_start + compare];
+                temp_b <= char_data[current_start + compare + 1];
+            end
+            SORT_SWAP: begin
+                if (temp_a > temp_b) begin
+                    char_data[current_start + compare] <= temp_b;
+                    char_data[current_start + compare + 1] <= temp_a;
+                end
+                compare <= compare + 1;
+            end
+            SORT_DONE: begin
+                current_sublist <= current_sublist + 1;
+            end
+            OUTPUT: begin
+                if (output_sublist < sublist_count) begin
+                    output_idx <= current_start + output_pos;
+                    output_pos <= output_pos + 1;
+                    if (output_pos + 1 >= current_size) begin
+                        output_pos <= 0;
+                        output_sublist <= output_sublist + 1;
+                        if (output_sublist + 1 < sublist_count) begin
+                            current_start <= sublist_start[output_sublist + 1];
+                            current_size <= sublist_size[output_sublist + 1];
+                        end
+                    end
+                end
+            end
+            COMPLETE: begin
+                input_idx <= 0;
+                sublist_count <= 0;
+                current_sublist <= 0;
+                output_idx <= 0;
+                output_sublist <= 0;
+                output_pos <= 0;
+            end
+        endcase
+    end
+end
+
+// Output logic
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        data_out <= 0;
+        valid_out <= 0;
+        out_sublist_end <= 0;
+        out_list_end <= 0;
+        busy <= 0;
+        done <= 0;
+    end else begin
+        case (state)
+            IDLE: begin
+                busy <= 0;
+                done <= 0;
+                valid_out <= 0;
+                out_sublist_end <= 0;
+                out_list_end <= 0;
+            end
+            STORE, SORT_INIT, SORT_LOOP, SORT_CMP, SORT_SWAP, SORT_DONE: begin
+                busy <= 1;
+                done <= 0;
+                valid_out <= 0;
+                out_sublist_end <= 0;
+                out_list_end <= 0;
+            end
+            OUTPUT: begin
+                busy <= 1;
+                done <= 0;
+                valid_out <= 1;
+                data_out <= char_data[output_idx];
+                out_sublist_end <= (output_pos == current_size - 1);
+                out_list_end <= (output_sublist == sublist_count - 1) && 
+                               (output_pos == current_size - 1);
+            end
+            COMPLETE: begin
+                busy <= 0;
+                done <= 1;
+                valid_out <= 0;
+                out_sublist_end <= 0;
+                out_list_end <= 0;
+            end
+            default: begin
+                busy <= 0;
+                done <= 0;
+                valid_out <= 0;
+            end
+        endcase
+    end
+end
+
+endmodule
+```

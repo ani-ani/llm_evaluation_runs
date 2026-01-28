@@ -1,0 +1,24 @@
+Implement a Verilog module to count occurrences of unique sublists (tuples of 8-bit values) from an input list. The input is a fixed-size array of 16 sublists, each sublist has 4 elements (4-bit values each). The output is a dictionary-like structure where each unique tuple maps to its occurrence count (up to 255). Use a deterministic algorithm: hash each sublist to a 6-bit index, use a 64-entry array (6-bit indices) to store counts (4-bit counters). Output the 10 most frequent tuples with their counts (or fewer if unique sublists < 10). 
+
+Interface:
+- Inputs:
+  clk: clock (rising edge)
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  input_sublists[15:0][3:0][7:0]: 16 sublists, each with 4 elements (8-bit values)
+  valid_mask[15:0]: 1-bit per sublist indicating valid input (some may be unused)
+- Outputs:
+  output_tuples[9:0][3:0][7:0]: up to 10 tuples (4 elements each, 8-bit values). Unused entries are zeroed.
+  output_counts[9:0][7:0]: counts for each tuple (8-bit, max 255).
+  output_len[3:0]: number of valid tuples output (0-10).
+  done: 1-cycle pulse when processing complete.
+- Timing: Start pulse initiates processing; done asserted within 512 cycles (16 sublists * 32 cycles each). Sample outputs when done=1.
+- Reset: Initialize all internal counters and outputs to zero; requires 2 cycles.
+- Algorithm: Iterate over 16 sublists. For each valid sublist, compute a hash index (e.g., sum of elements mod 64). Use the index to lookup or update a 4-bit counter array (64 entries). After all input, sort the counter array by count descending (use a bubble sort network for 64 entries, but only top 10). For top 10, reconstruct tuples using a hash-to-tuple mapping (assume fixed mapping: hash idx 0..63 maps to pre-defined tuples; for this task, map hash idx to the first matching tuple from a predefined list of 10 unique tuples: [0]=(1,3), [1]=(5,7), [2]=(13,15,17), [3]=(9,11), [4]=(1,2), [5]=(3,4), [6]=(4,5), [7]=(6,7), [8]=(2,2,2,2), [9]=(3,3,3,3), others zero). Predefine these tuples as constants.
+- Constraints: Max 64 unique tuples, counts saturate at 15 (4-bit). Use 16-bit accumulator for sum per sublist. Implement as FSM: Idle -> Load -> Hash -> Count -> Sort -> Output -> Done.
+- Output Format: Packed or individual? Recommend: individual signals for readability: tuple_0_elem0...elem3, count_0, etc. Or packed arrays: output_tuples[10*4*8] and output_counts[10*8].
+- Hash Function: Simple XOR sum of 4 elements modulo 64 (6-bit). If duplicate hash (collision), increment the same counter (accept collision for simplicity).
+- Sorting: Only top 10 needed. Use comparator tree or bubble sort over 64 counters, extract top 10 indices with highest counts.
+- Assumptions: All inputs are valid for 0-16 sublists; output counts are 8-bit (capped at 255); ties in sorting: break by hash index ascending.
+- Module Name: sublist_counter
+- Area: Aim for < 5k gates; keep combinatorial paths < 50MHz.

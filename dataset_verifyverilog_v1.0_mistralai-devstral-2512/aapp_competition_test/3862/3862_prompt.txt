@@ -1,0 +1,24 @@
+Implement a Verilog module for computing the minimal natural number of liters needed to mix Cokes with specific concentrations.
+
+**Core Algorithm**: Convert problem to graph shortest path. Define state as `current_concentration - target`. Transitions are adding a Coke type: `new_state = old_state + (a_i - n)`. BFS from state 0 (initial) until we reach state 0 again (minimal cycle).
+
+**Scaling**: Concentrations `a_i` are 0-1000, target `n` is 0-1000. Difference `a_i - n` is -1000 to 1000. We use 11-bit signed integers for these differences. The BFS state ranges from -1000 to 1000 (offset by 1000 to 0-2000 range). Since the sample outputs show values up to 1000, the volume counter needs 10-12 bits (max 1024 cycles). The number of Coke types `k` is large in input, but we only store unique concentration differences. Use a lookup table for `a_i - n` values (size 2048 bits) to represent availability. 
+
+**Interface**: 
+Inputs: `clk`, `rst_n`, `start`. Inputs include `target_n` (11-bit), and a set of available concentration differences (store as a bit vector `diff_avail` of 2048 bits where index `diff + 1000` is set). Also input `num_diffs` (4-bit) to limit iterations if needed, or we can process the whole table in a fixed number of cycles.
+Outputs: `result` (12-bit volume), `done` (1-bit), `valid` (1-bit, 1 if solution exists).
+
+**Timing**: Start BFS on `start` pulse. Use `done` signal to indicate completion. Validity is indicated by `valid` signal.
+
+**Logic**: 
+1. Use a `visited` array (2048 bits) to mark states.
+2. Use a `queue` (FIFO) for BFS, storing `state` and `distance`. Since max depth is ~1000, queue size 1024 is sufficient.
+3. Use a `current_state` and `current_dist` register.
+4. In each cycle, if `done` is low and queue not empty, pop head. If head state is 0 (and not the start), set `result`, assert `valid` and `done`. 
+5. Otherwise, iterate through `diff_avail`. If a diff is available, calculate `next_state = current_state + diff`. If within [-1000, 1000] and not visited, mark visited, push to queue with `current_dist + 1`.
+6. If queue empties without finding 0, assert `done` and `valid=0`.
+
+**Constraints**: 
+- Fixed iterations: BFS limited to ~2000 states.
+- Memory: 2048-bit visited array, 2048-bit diff array, 256-deep queue (12-bit state + 10-bit dist each).
+- Data widths: 11-bit for states, 10-bit for distance, 12-bit for result.

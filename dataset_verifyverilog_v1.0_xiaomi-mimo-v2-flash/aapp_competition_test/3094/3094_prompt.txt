@@ -1,0 +1,48 @@
+Implement a Verilog module that computes the number of valid 's' permutations given the final permutation 't' after two hops.
+
+**Problem Analysis:**
+- The problem reduces to counting the number of involutions (permutations where s(s(x)) = t(x)) given the target permutation t.
+- In group theory terms, we are counting the number of square roots of permutation t.
+- For a permutation decomposed into disjoint cycles:
+  - Odd length cycles must be paired with themselves (1 way per cycle).
+  - Even length cycles can either be paired with themselves (1 way) or paired with another disjoint cycle of the same length (2 ways per pair).
+  - The total number of ways is 2^(number of even-length cycles).
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `len`: 4-bit integer (n), number of performers/chairs (1 to 16)
+  - `t_idx`: 4-bit index (0 to 15)
+  - `t_val`: 5-bit value (1 to 16, representing chair t[i])
+  - `t_valid`: High when t_idx and t_val are valid
+- Outputs:
+  - `result`: 32-bit integer result modulo 10^9+7
+  - `done`: 1-cycle pulse when computation is complete
+  - `ready`: High when module is ready to accept new input
+
+**Implementation Details:**
+1. **Storage:** Use a 16x5-bit RAM or registers to store the permutation t (1-indexed, 0-15).
+2. **Cycle Detection:**
+   - Use a visited array (16 bits) to track processed indices.
+   - Iterate i from 0 to n-1. If not visited, start traversing the cycle starting at i.
+   - Count the length of the cycle.
+   - If cycle length is even, increment an `even_cycle_count`.
+3. **Result Calculation:**
+   - Compute `2^even_cycle_count mod (10^9+7)`.
+   - Use a simple power module or iterative shift-and-multiply algorithm (since exponent is small, <=16).
+4. **FSM States:**
+   - IDLE: Wait for start signal.
+   - LOAD: Accept t values when t_valid is high.
+   - PROCESS: Cycle detection logic.
+   - COMPUTE: Calculate the power of 2.
+   - DONE: Assert done signal.
+5. **Constraints:**
+   - n <= 16.
+   - t values are distinct (1 to n).
+   - Output result modulo 10^9+7.
+
+**Timing:**
+- Start-to-done latency should be roughly 16 (load) + 16*16 (worst-case cycle traversal) + 16 (power calc) < 300 cycles.
+- Module asserts `ready` when in IDLE state.

@@ -1,0 +1,38 @@
+You are to implement a module in Verilog HDL that solves the following problem:
+
+**Problem:** Given a list of positive integers, find the greatest integer that is greater than zero and has a frequency greater than or equal to the value of the integer itself. If no such integer exists, return -1.
+
+**Constraints for Hardware Implementation:**
+1. Input values are 8-bit unsigned integers (0-255).
+2. The input array length is strictly limited to 16 elements (index 0 to 15).
+3. The frequency of any value will not exceed 255.
+4. The logic should process the entire array to count frequencies, then scan the counts to find the valid maximum.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge active).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate processing.
+  - `arr[0:15]`: An array of 16 8-bit input values. Unused entries (if input length < 16) must be 0.
+  - `len`: A 4-bit input indicating the valid length of the array (1 to 16).
+- Outputs:
+  - `result`: 9-bit signed output (allowing for -1). Range -1 to 255.
+  - `done`: 1-cycle pulse indicating valid result is ready.
+
+**Implementation Details:**
+1. **State Machine:** Use a state machine to control the operation:
+   - `IDLE`: Wait for `start` pulse.
+   - `COUNT`: Iterate through the input array `arr`. Maintain a frequency counter for each possible value (0-255). Given the large memory requirement, optimize by creating a small register file or logic to track counts for values present in the input. *Simplified Approach:* Since max size is 16, we can simply count frequencies for each unique number in the input without a full 256-entry RAM. Use a comparator tree to find the max valid number.
+   - `EVAL`: Iterate through the possible values (or the input set) and check if `frequency[value] >= value`. Keep track of the maximum such value.
+   - `DONE`: Set `result` and assert `done`.
+2. **Frequency Storage:** Since the list size is small (16), we do not need a full 256-entry RAM. We can process the input list to count frequencies using a small set of registers (e.g., 16 entries of 8-bit value + 8-bit count). Or, use a sort-and-count logic.
+   *Recommended Simplification:* Implement a sorting network (bubble sort logic) to sort the 16 elements. Then, iterate through the sorted list to count consecutive occurrences of the same value.
+3. **Validation Logic:** For each distinct value `v` with count `c`, check if `c >= v`. If true, compare `v` with the current maximum candidate. 
+4. **Result:** The final result is the maximum valid `v`. If none found, output -1 (represented as 2'b111111111 or similar 9-bit all-ones). 
+
+**Timing:**
+- Start to Done: Within 1024 clock cycles (enough for sorting and counting 16 elements).
+- Reset: Clears registers, sets `done` to 0, `result` to 0.
+
+**Verilog Specification:**
+Write a module `find_max_frequency_match` that implements this logic using a finite state machine. Ensure all signals are properly defined widths (e.g., `result` is 9 bits wide to hold -1).

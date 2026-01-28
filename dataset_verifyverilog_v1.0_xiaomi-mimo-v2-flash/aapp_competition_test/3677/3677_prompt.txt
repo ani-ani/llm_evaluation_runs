@@ -1,0 +1,51 @@
+Verilog Module Specification: Graph Maximum Clique/Independent Set Approximation
+
+Problem: Given a graph with N nodes (N≤16 for HW), find the maximum clique (or equivalently, maximum independent set in complement graph) where every pair disagrees. Given constraint K≤10, we implement a bounded search.
+
+Adaptation: Scale N to max 16 nodes. Use adjacency matrix representation (16x16 bits). Implement a simple backtracking search with pruning to find maximum size clique. The algorithm maintains a candidate set and grows recursively.
+
+Interface:
+Inputs:
+  clk: system clock, rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  adj_matrix[15:0][15:0]: 16x16-bit adjacency matrix (packed as 256-bit vector, but split into 16 16-bit rows for access)
+  n_nodes: 4-bit (1-16)
+  max_k: 4-bit (K value, 1-10)
+
+Outputs:
+  result: 4-bit (max clique size, 0-16)
+  done: 1-cycle pulse when computation complete
+  valid: combinatorial signal indicating current result is valid
+
+Timing:
+  start pulse initiates computation
+  done pulses for 1 cycle when search completes
+  Within 1000 cycles for N≤16
+  result held stable when done=1
+
+Reset:
+  rst_n=0: done=0, result=0, state machine idle
+
+Implementation Details:
+- Use depth-first search with pruning
+- Maintain current clique set as 16-bit mask
+- Prune when remaining candidates cannot exceed current best
+- Use iterative state machine due to recursion depth
+- Maximum recursion depth = N (16)
+- State machine states: IDLE, CHECK_CANDIDATE, ADD_NODE, BACKTRACK, COMPLETE
+
+Verilog Module Port Definition:
+module max_clique_approx(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] adj_matrix [15:0], // 16 rows, each 16 bits
+    input wire [3:0] n_nodes,
+    input wire [3:0] max_k,
+    output reg [3:0] result,
+    output reg done,
+    output wire valid
+);
+
+Task: Write complete Verilog module with above interface. Include state machine, candidate tracking, and clique size calculation. Assume adjacency matrix is symmetric and has no self-loops.

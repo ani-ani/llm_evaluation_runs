@@ -1,0 +1,44 @@
+Implement a Verilog module that extracts quoted substrings from an ASCII string. The module processes a fixed-length 128-bit input (16 ASCII chars max) and outputs up to 4 extracted strings (each 8 chars max) as packed arrays.
+
+**Interface Requirements:**
+- Inputs:
+  - clk, rst_n: Standard synchronous clock and active-low reset
+  - start: 1-cycle pulse to initiate processing
+  - input_str[127:0]: 128-bit input representing 16 ASCII characters (8 bits per char)
+- Outputs:
+  - result_0[63:0], result_1[63:0], result_2[63:0], result_3[63:0]: 4 packed 64-bit outputs (8 chars × 8 bits) for extracted substrings
+  - result_count[1:0]: 2-bit count of extracted substrings (0-4)
+  - done: 1-cycle pulse when extraction completes
+
+**Implementation Guidelines:**
+1. Process input byte-by-byte over 16 cycles
+2. Use a finite state machine with states: IDLE, SEARCH_START, CAPTURE, SEARCH_END, COMPLETE
+3. Track quote state: inside_quotes = 0/1
+4. Track output index (0-3) and char position within current substring (0-7)
+5. Extract only characters between matching quotes, not the quotes themselves
+6. Support consecutive quotes (e.g., '"",""') - produce empty strings
+7. Ignore malformed input: skip unmatched quotes, stop at 4 strings max
+8. All outputs must be zero-padded to full width
+
+**Timing Constraints:**
+- Processing completes within 32 cycles from start (2 cycles per input byte)
+- When done=1, result_* and result_count are valid
+- On reset: all outputs to 0, done=0, result_count=0
+
+**Edge Cases:**
+- Empty string → result_count=0
+- No quotes → result_count=0
+- More than 4 quoted sections → only first 4 extracted
+- Quotes span beyond 16 chars → stop at max length
+- Multiple consecutive quotes → treat as empty strings
+
+**Test Specification:**
+1. Test with 3 quotes: input="\"Python\", \"PHP\", \"Java\"" → result_0="Python", result_1="PHP", result_2="Java"
+2. Test with 3 quotes (compact): input="\"python\",\"program\",\"language\"" → result_0="python", result_1="program", result_2="language"
+3. Test with 4 quotes: input="\"red\",\"blue\",\"green\",\"yellow\"" → result_0="red", result_1="blue", result_2="green", result_3="yellow"
+
+**Signal Widths:**
+- All ASCII chars: 8-bit
+- All result arrays: 64-bit (8 chars × 8 bits)
+- result_count: 2-bit (0-4)
+- max cycles: 32

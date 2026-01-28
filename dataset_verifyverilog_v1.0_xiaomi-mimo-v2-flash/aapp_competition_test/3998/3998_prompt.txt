@@ -1,0 +1,50 @@
+Implement a Verilog module that solves the rating equalization problem. Given up to 10 friends with initial ratings (0-100), the goal is to make all ratings equal and maximal by repeatedly selecting 2-5 players to decrement (lowering their rating by 1, min 0) in matches. The solution must find the final equal rating R and a sequence of matches (binary strings) to achieve it.
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset (active low)
+  start: 1-cycle pulse to begin processing
+  rating[0:9]: 10x8-bit array, initial ratings of 10 friends (use only first n valid entries)
+  n: 4-bit integer (2-10), number of friends
+
+Outputs:
+  result: 8-bit final rating R
+  match_count: 16-bit integer, number of matches t (max 1000)
+  match_out: 10-bit binary string for current match (active when match_valid=1)
+  match_valid: 1-cycle pulse for each match output
+  done: 1-cycle pulse when all processing is complete
+
+Internal Constraints:
+  - Max 10 friends, ratings fit in 8 bits (0-100)
+  - Max matches: 1000 cycles
+  - Party size: 2 to 5 players per match
+  - Rating cannot go below 0
+  - Final rating should be maximized (stop when all ratings equal)
+
+Algorithm to implement:
+  1. Wait for start pulse.
+  2. While not all valid ratings (first n entries) are equal:
+     a. Identify the highest rating among valid entries (max_val) and the second highest.
+     b. If exactly 3 players have max_val: decrement all 3 (party of 3).
+     c. Else: decrement the top 2 highest-rated players (party of 2).
+     d. Ensure decremented ratings don't go below 0.
+     e. Output the match pattern (1s for participants, 0s for others) on match_out.
+     f. Pulse match_valid for 1 cycle.
+     g. Increment match count.
+  3. When all equal, set result to that value and pulse done.
+
+Behavioral Notes:
+  - The module should process iteratively over cycles.
+  - Internal state should track current ratings of all n friends.
+  - Use 8-bit registers for each friend's rating.
+  - Use a finite state machine (FSM) to control the reduction loop.
+  - Finding max values can be done sequentially over 10 entries (max 10 cycles per match).
+  - The output match_out should be valid for 1 clock cycle when match_valid is high.
+  - Reset should clear all internal ratings and counters.
+
+Testbench Expectations:
+  - Reset initializes all ratings to 0, counters to 0.
+  - After start, ratings are loaded.
+  - FSM iterates until equality is reached.
+  - match_valid pulses occur periodically.
+  - done pulses once at the end.

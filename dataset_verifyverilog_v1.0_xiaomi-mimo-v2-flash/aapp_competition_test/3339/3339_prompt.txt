@@ -1,0 +1,35 @@
+Design a Verilog module that counts the number of ways to delete edges from a graph so that every vertex has an even degree (parity constraint). For hardware feasibility, scale the problem down to maximum N=16 nodes and M=32 edges. The core algorithm solves a linear system over GF(2) where each edge is a variable, and each vertex provides an equation: the XOR sum of incident edges must equal the current odd-degree state. The number of solutions is 2^(M - rank(A)), where A is the incidence matrix. Implement this as follows:
+
+Inputs:
+- clk: clock, rising edge
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to begin computation
+- node_count: 4-bit input (1-16)
+- edge_count: 6-bit input (1-32)
+- For each edge i (0 to 31):
+  - edge_a[i]: 4-bit node A
+  - edge_b[i]: 4-bit node B
+
+Outputs:
+- result: 32-bit unsigned result (2^(M-rank) mod 1000000009)
+- done: 1-cycle pulse when computation complete
+- valid: indicates output is valid
+
+Internal Requirements:
+1. Build a 16x32 incidence matrix over GF(2) (transposed for efficiency)
+2. Implement Gaussian elimination over GF(2) with row reduction
+3. Determine rank of the matrix using bit-vector operations
+4. Compute pow2[32] lookup table for 2^n mod 1000000009
+5. Output = pow2[edge_count - rank] (or 0 if edge_count < rank)
+
+Timing:
+- Start to done: ≤256 clock cycles
+- Reset: clear all state, done=0, valid=0
+- Reset duration: minimum 2 cycles
+
+Implementation Notes:
+- Use 32-bit vectors for matrix columns
+- Gauss-Jordan elimination with parallel bit operations
+- Rank counting via row pivot detection
+- MOD = 1000000009 (0x3B9ACA69)
+- Use combinational logic for matrix construction, sequential for elimination

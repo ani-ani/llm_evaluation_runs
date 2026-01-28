@@ -1,0 +1,43 @@
+Design a Verilog module that finds the minimum number of spots to add to achieve symmetry for 8 input points.
+
+**Symmetry Types**:
+1. Point Symmetry: Central point (dx, dy) found by averaging coordinates (scaled by 8).
+2. Vertical Line: x = c (constant).
+3. Horizontal Line: y = c (constant).
+4. Diagonal Lines: x = y + c or x = -y + c.
+
+**Interface**:
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous clock and active-low reset.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `pt_x[i]`, `pt_y[i]` (for i=0..7): 13-bit signed integers (range -4000 to 4000, scaled down from 20000 to fit). If fewer than 8 points exist, input `len` indicates valid count.
+  - `len`: 4-bit integer (1-8) indicating the number of valid input points.
+- Outputs:
+  - `result`: 5-bit integer (max addition = 8 points) representing the minimum spots to add.
+  - `done`: 1-cycle pulse indicating result is valid.
+
+**Implementation Strategy**:
+1. **Input Scaling**: The input range is -20000 to 20000. Divide coordinates by 256 (approx 78 units per step) to fit into 13-bit signed range (-4000 to 4000) or handle scaling logic internally.
+2. **FSM Control**:
+   - `IDLE`: Wait for start.
+   - `CALC_CENTROID`: Accumulate X/Y sums (28-bit width) and divide by `len` (fixed point division) to find point symmetry center.
+   - `EVAL_POINT`: Check symmetry against centroid. For each point, check if its symmetric partner exists. Count unmatched points. Result = unmatched_count / 2.
+   - `EVAL_VERT`: Sort points by X (Bubble Sort, 8 points). Check vertical line candidates. Min additions = (max_idx - min_idx) - (count of points in line) + unmatched points logic.
+   - `EVAL_HORIZ`: Same for Y.
+   - `EVAL_DIAG_1`: Sort by (x - y). Check diagonal x = y + c.
+   - `EVAL_DIAG_2`: Sort by (x + y). Check diagonal x = -y + c.
+   - `DONE`: Register minimum result and assert `done`.
+3. **Logic Constraints**:
+   - Use fixed-point arithmetic (Q12.4) for centroid calculation.
+   - Use dedicated comparators for symmetry checks.
+   - Min additions calculation logic: For a given line/point symmetry, iterate through points and identify unpaired ones. Count required additions.
+4. **Resource Usage**: Limited to 8 points. All loops unrolled or bounded by small constants (e.g., 8 or 16 iterations). Sorting networks for 8 elements.
+
+**Output**: 
+- Single 5-bit integer `result`.
+- Single cycle `done` pulse.
+
+**Timing**: 
+- Reset: 2 cycles (min).
+- Calculation: <= 1000 cycles for 8 points.
+- Result valid when `done` is high.

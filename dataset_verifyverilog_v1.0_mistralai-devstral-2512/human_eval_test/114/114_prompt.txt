@@ -1,0 +1,45 @@
+Implement a minimum subarray sum calculator using Kadane's algorithm with signed 16-bit fixed-point arithmetic.
+
+MODULE INTERFACE:
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low asynchronous reset
+  start: 1-cycle pulse to start computation
+  data_in: 16-bit signed integer input (Q16.0, twos complement)
+  data_valid: 1-bit input, indicates data_in is valid
+  data_end: 1-bit input, indicates end of input sequence
+
+Outputs:
+  result: 16-bit signed integer output (minimum subarray sum)
+  result_valid: 1-cycle pulse when result is valid
+  done: 1-cycle pulse when computation complete
+
+FUNCTIONAL REQUIREMENTS:
+1. Accepts a stream of 16-bit signed integers (max 16 elements)
+2. Uses Kadane's algorithm variant: track current subarray sum and minimum sum seen
+3. Reset all registers to 0 on rst_n=0
+4. On start pulse, initialize current_sum = 0, min_sum = 0x7FFF (max positive)
+5. For each data_valid=1, compute:
+   - current_sum = current_sum + data_in
+   - if current_sum > min_sum: update min_sum = current_sum
+   - if current_sum > 0: reset current_sum = 0 (restart subarray)
+6. After data_end=1, assert result_valid and done pulses simultaneously
+7. result = min_sum
+8. Must complete within 100 cycles after start
+
+TIMING CONSTRAINTS:
+- Minimum 1 clock cycle per input
+- done and result_valid pulse for exactly 1 cycle
+- On rst_n=0: result=0, done=0, result_valid=0
+
+IMPLEMENTATION HINTS:
+- Use finite state machine: IDLE → PROCESSING → DONE
+- current_sum and min_sum are 16-bit signed registers
+- Handle overflow carefully: clamp to 16-bit range
+- For single element case, algorithm returns the element itself
+
+EXAMPLE SEQUENCE:
+Input: [2, 3, 4, 1, 2, 4]
+Expected output: 1 (minimum subarray sum is [1])
+
+CLOCK DOMAIN: synchronous with rst_n

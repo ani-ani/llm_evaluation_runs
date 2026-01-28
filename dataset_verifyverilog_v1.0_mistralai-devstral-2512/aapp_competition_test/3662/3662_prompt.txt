@@ -1,0 +1,346 @@
+Implement a Verilog module that solves the tree pairing problem for a road of length L (meters) and width W (meters). The input consists of N tree positions (0 ≤ p ≤ L) on the left side of the road, where N is an even integer between 4 and 32 (scaled from original 2000). N trees must be paired such that each pair consists of one tree on the left and one on the right side of the road, directly opposite each other. The pairs are spaced evenly along the road, starting at 0 and ending at L. The task is to compute the minimum total Euclidean distance moved to place trees into these positions.
+
+Inputs:
+  clk: Clock (rising edge)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to initiate calculation
+  N: 5-bit integer (4-32, even)
+  L: 13-bit integer (0-10000, scaled to 1/256m precision)
+  W: 5-bit integer (1-20)
+  pos[0:31]: Array of 32 13-bit integers (positions 0-L, scaled to 1/256m)
+
+Outputs:
+  result: 32-bit integer representing total distance in 1/256 meters (scaled Q8.8 derived)
+  done: 1-cycle pulse indicating valid result
+
+Constraints:
+  - Use fixed-point arithmetic with 8 fractional bits for intermediate calculations.
+  - Euclidean distance between left (x1, 0) and right (x1, W) is sqrt((x1-x1)^2 + (0-W)^2) = |W|.
+  - However, moving a tree from position p to target position x involves distance |p - x| on the left side, and an additional W meters for crossing to the right side for the tree assigned there.
+  - Optimal pairing: Sort input positions. Pair tree i (0-indexed) with tree N-1-i for N/2 pairs. The first pair goes to (0, W/2) [or (0,0) and (0,W)? Re-read: 'aligned tree pairs, one on each side'. Target positions are fixed: left positions are x_k = k * (L/(N/2 - 1)), right positions are x_k. Wait, the problem says 'exactly the same spacing between the pairs'.
+  - Correction: The avenue has N/2 pairs. The pairs are spaced along the road. Let M = N/2. The k-th pair (k=0 to M-1) has a position along the road X_k. The trees are at (X_k, 0) and (X_k, W).
+  - X_k = k * (L / (M - 1)). (Start at 0, end at L).
+  - We need to assign N input trees to these N target positions (M on left, M on right).
+  - Euclidean distance from (p_i, 0) to (X_j, 0) is |p_i - X_j|. To (X_j, W) is sqrt((p_i - X_j)^2 + W^2).
+  - Optimization: This is a bipartite matching problem. However, due to geometry (1D projection), the optimal assignment usually preserves order (sort input positions, sort target positions).
+  - Let sorted input positions be P_0 ... P_{N-1}.
+  - Target positions: Left targets: X_0 ... X_{M-1}, Right targets: X_0 ... X_{M-1}.
+  - Total 2M target positions. We need to assign P_i to T_j to minimize sum of distances.
+  - Since left and right targets share X coordinates, but have different Y offsets (0 vs W), the cost function is non-linear with respect to pairing indices. However, for the specific case where targets are on two parallel lines (y=0 and y=W) and inputs are on y=0, the optimal assignment is to assign the closest inputs to the closest targets in 1D, but we must decide which inputs go to left vs right.
+  - Actually, the problem implies moving trees from their current positions (all on left) to final positions (some on left, some on right). 
+  - Simplification for Verilog: Brute force permutation is impossible. We assume the classic solution: Sort inputs. The optimal assignment maps the sorted inputs to the sorted target coordinates (x values), but we must decide which of the two trees for a specific x goes to left (y=0) and which to right (y=W). Actually, the trees are distinct. 
+  - Refined Algorithm: Sort inputs P. Let M = N/2. Target x-coords T_x[k] = k * (L / (M-1)).
+  - We need to assign P[0..N-1] to pairs of positions {(T_x[0],0), (T_x[0],W)}, ..., {(T_x[M-1],0), (T_x[M-1],W)}.
+  - This is equivalent to finding an assignment that minimizes cost. A known result for this problem (placing points on two lines) is that the optimal assignment is 'monotonic': if P_i < P_j, then P_i is assigned to a target x <= P_j's target x.
+  - We can use Dynamic Programming. State: dp[i][j] = min cost to place first i inputs into first j pairs (using 2j targets).
+  - Transition: Input P[i] can go to the left or right tree of pair j.
+  - Cost to left: |P[i] - T_x[j]|. Cost to right: sqrt((P[i] - T_x[j])^2 + W^2).
+  - Since N is small (max 32), we can implement this DP.
+  - Integer arithmetic: Scale positions by 256 (Q8.8). L max 10000 -> 2,560,000 (fits 22 bits). W max 20 -> 5120 (13 bits). Distances squared will be large, use 32-bit or 64-bit accumulators. Verilog int is 32-bit signed. Sum of 32 terms: max distance ~10000. Sum ~320,000. Fits 32-bit.
+  - Wait, sqrt. We need integer square root. Use approximation or LUT for W (small).
+  - Actually, the problem asks for total distance. We can keep distance squared? No, Euclidean distance is sqrt. 
+  - To keep it simple and accurate: Calculate sqrt for each step using a small iterative method or precompute for W.
+  - Target X positions: X[k] = k * (L / (M-1)). Integer division logic needed. Scale X by 256.
+  - Module Interface Update:
+    - Inputs: N (5 bits), L (22 bits scaled), W (13 bits scaled), pos[32] (22 bits each).
+    - Output: Result (32 bits).
+  - Optimization: Precompute X[k] on the fly or store in LUT (max 16 pairs).
+  - DP Logic: Sequential state machine.
+    - State 0: Reset, wait for start.
+    - State 1: Sort pos array (Bubble sort or Insertion sort, N=32 is fine).
+    - State 2: Compute target X coordinates.
+    - State 3: DP calculation.
+    - State 4: Output result.
+  - DP Array: dp[17][17] (since N=32, M=16). Values are 32-bit integers.
+  - Iteration order: i from 0 to N-1, j from 0 to M-1.
+  - Corner cases: M-1 = 0 (N=2)? Input N>=4 so M>=2. Division by zero safe.
+  - Edge: If L=0, all X=0.
+  - Float to Fixed: L, W, positions are given as integers in input. We scale them by 256 internally.
+  - Output scaling: Result is in 1/256 meters. Divide by 256 for float output, but Verilog output is integer scaled.
+  - Wait, the Python code outputs float. Verilog output should be integer representing scaled value, and testbench converts back.
+  - Sqrt implementation: For integer A, sqrt(A) approx. We can use a shift/add sqrt for 32-bit numbers (approx 30 cycles).
+  - However, N is small (32), total cycles 32 * 16 * sqrt_cycles (30) = 15,000 cycles. Acceptable.
+  - Alternative: The problem might allow fixed-point sqrt. 
+  - Let's refine the prompt to be specific about the DP.
+
+  **Prompt Refinement**: 
+  Design a Verilog module that computes the minimum total distance to move trees. 
+  Inputs: clk, rst_n, start, N[4:0], L[21:0], W[12:0], pos[31:0][21:0].
+  Output: result[31:0] (scaled by 256), done.
+  Algorithm:
+  1. Sort `pos` array (ascending).
+  2. Compute target x-positions `Tx[k]` for k=0 to M-1 (M=N/2). `Tx[k] = (k * L * 256) / (M-1)`. (Use shift for division by power of 2? No, M varies). Use integer division.
+  3. DP: `dp[i][j]` = min cost for first `i` trees and `j` pairs. `i` from 0 to N, `j` from 0 to M.
+     - Base: `dp[0][0] = 0`, others infinity.
+     - Transitions:
+       - Tree `i-1` assigned to Left of pair `j-1`: Cost = `|pos[i-1] - Tx[j-1]|`. 
+         New State: `dp[i][j] = min(dp[i][j], dp[i-1][j-1] + Cost)`.
+       - Tree `i-1` assigned to Right of pair `j-1`: Cost = `sqrt((pos[i-1] - Tx[j-1])^2 + W^2)`. 
+         New State: `dp[i][j] = min(dp[i][j], dp[i-1][j-1] + Cost)`.
+       - Note: We must fill exactly 2 trees per pair. So we can't just assign 1 tree to a pair and leave it? No, we must fill all. 
+       - Actually, standard formulation: We have 2M targets. We assign N inputs. We can't skip a target.
+       - Since we must fill all targets, and inputs are sorted, we map P[k] to T[k] essentially. 
+       - Wait, the problem is simpler: We have N inputs. We have N target positions: (Tx[0],0), (Tx[0],W), (Tx[1],0), (Tx[1],W)...
+       - Sort targets by x-coordinate (and y as tie-breaker? No, pairs are at same x).
+       - Actually, we just need to decide which input goes to which x-index and which side.
+       - Let's use the DP approach but simpler: 
+         State `dp[i][j]` = min cost to assign first `i` inputs to `j` full pairs (2*j positions). 
+         We have `i` inputs. We can fill `j` pairs if `i >= 2*j`. 
+         But we must fill all pairs. 
+         Let's use `dp[i][j]` where `i` is index of input, `j` is index of pair.
+         We must assign inputs to pairs. Each pair consumes 2 inputs.
+         So `dp[k][m]` = min cost using first `k` inputs for first `m` pairs.
+         Transition: To form pair `m`, we use inputs `k-2` and `k-1` (sorted).
+         Assign `P[k-2]` to left, `P[k-1]` to right: Cost = `|P[k-2] - Tx[m]| + sqrt((P[k-1] - Tx[m])^2 + W^2)`.
+         Assign `P[k-2]` to right, `P[k-1]` to left: Cost = `sqrt((P[k-2] - Tx[m])^2 + W^2) + |P[k-1] - Tx[m]|`.
+         Take minimum of these two.
+         `dp[k][m] = min(dp[k-2][m-1] + Cost1, dp[k-2][m-1] + Cost2)`.
+         This requires N to be even, which it is.
+         This reduces complexity significantly. O(N/2 * N/2) = O(N^2) states, but transitions are constant (2 options). 
+         For N=32, M=16, states 16x16 = 256. Very fast.
+         This assumes sorted inputs and sorted targets (monotonicity), which holds for this specific geometry (1D projection). 
+         (Proof: If not monotonic, swapping two assignments reduces distance due to convexity).
+  4. Integer Math: 
+     - `Tx` calculation: `k * L * 256 / (M-1)`. Division `(M-1)` can be done by `div4` logic or iteratively. `M-1` is 1-15. 
+     - `diff = pos - Tx`. Squaring: `diff * diff`. Max `diff` ~ 10000. Square ~ 100M (27 bits). `W^2` ~ 400 (9 bits). Sum ~ 27 bits.
+     - Sqrt: Need to compute `sqrt(val)` where `val` is 32-bit. Use an iterative integer sqrt (e.g., Newton's method or binary search). 
+  5. Output: Result is sum of distances. Distances are sqrt results. We sum them. Result fits 32-bit (max 32 * 15000 = 480,000).
+  6. State Machine States:
+     IDLE, SORT, COMPUTE_TX, DP_INIT, DP_LOOP (outer M), DP_CALC (inner step), SQRT, ADD, DONE.
+  7. Sorting: Bubble sort or Insertion sort. N=32 is small.
+  8. SQRT module: A separate combinational or sequential block. Sequential sqrt takes ~16-32 cycles. 
+     Since we need to do sqrt for every transition (2 per pair), that's 32 sqrts total. 
+     32 * 30 cycles = 960 cycles. Plus overhead. Total < 2000 cycles. 
+  9. Fixed Point: All coordinates scaled by 256. Tx is scaled by 256. 
+     Diff `pos - Tx` is in 1/256 m. 
+     Squaring `diff^2` is in (1/256)^2 m^2. 
+     W is scaled by 256. W^2 is in (1/256)^2 m^2. 
+     Sum `diff^2 + W^2` is in (1/256)^2 m^2. 
+     Sqrt of sum gives distance in 1/256 m (since sqrt( (1/256)^2 ) = 1/256). 
+     Wait. If `w` is scaled by 256, `w = W*256`. `w^2 = W^2 * 256^2`. 
+     `dx = |pos - Tx|` (scaled 256). `dx^2 = dx*dx` (scaled 256^2). 
+     `dist_sq = dx^2 + w^2`. 
+     `dist = sqrt(dist_sq)`. 
+     Result `dist` will be in units of 1/256 m? 
+     Yes, because `sqrt(k^2 * 256^2) = k * 256`. 
+     So the result is naturally scaled by 256. 
+     However, `w^2` has factor `256^2`. `dx^2` has factor `256^2`. 
+     So `dist_sq` has factor `256^2`. 
+     Sqrt yields `256 * sqrt(W^2 + (dx/256)^2)`. 
+     Wait, `dx` is already scaled. `dx = (pos - Tx)`. 
+     So `dx` is in 1/256 m. 
+     `dx^2` is in (1/256)^2 m^2. 
+     `w` is in 1/256 m. `w^2` is in (1/256)^2 m^2. 
+     Sum is in (1/256)^2 m^2. 
+     Sqrt gives 1/256 m. 
+     Correct. 
+     But `w^2` calculation: `W * 256`. Max `W=20`. `w=5120`. `w^2=26,214,400` (fits 25 bits). 
+     `dx` max ~ `10000 * 256 = 2,560,000` (22 bits). `dx^2` max ~ `6.5e12` (43 bits). 
+     **Overflow Risk!** `dx` is large. 
+     We need to scale down to fit 32-bit or use 64-bit arithmetic. 
+     Verilog `int` is 32-bit signed. 
+     We can't store `dx^2` in 32-bit if `dx` is 2.5M. 
+     **Scale Strategy:** 
+     Input `pos` and `L` are integers (0-10000). Let's keep them as integers (no scale 256) until calculation. 
+     Target `Tx` = `k * L / (M-1)`. Integer. 
+     `dx = |pos - Tx|`. Max 10000. 
+     `dx^2` max 100M (27 bits). 
+     `W` is integer 1-20. `W^2` max 400 (9 bits). 
+     `dist_sq = dx^2 + W^2` max ~100M (27 bits). 
+     `sqrt(100M)` = 10000. 
+     Sum of distances max 32 * 10000 = 320,000. Fits 32-bit. 
+     **BUT** Euclidean distance has decimals. 
+     Example: `dx=1`, `W=1`. `dist = sqrt(1+1) = 1.414...`. 
+     If we use integer arithmetic, we lose precision. 
+     We need fixed point. 
+     Let's scale by 256. 
+     `pos` input is integer. `pos_scaled = pos << 8`. 
+     `Tx_scaled = (k * L * 256) / (M-1)`. 
+     `dx = |pos_scaled - Tx_scaled|`. Max 2.5M (22 bits). 
+     `dx^2` -> 44 bits. Too big for 32-bit. 
+     **Solution:** Use 64-bit arithmetic for intermediate calculations. 
+     Verilog `longint` is 64-bit (SystemVerilog). Or implement 64-bit logic in standard Verilog (verbose). 
+     Given this is a benchmark for LLM, I should specify a standard Verilog approach or assume SV. 
+     Let's assume standard Verilog and manage 32-bit carefully. 
+     Wait, `dx` is distance along the road. `W` is distance across. 
+     We want Euclidean distance. 
+     If we scale coordinates by `S`, `dx` scales by `S`, `dx^2` scales by `S^2`. 
+     If `S` is large (256), `dx^2` overflows. 
+     If `S` is small (1), `sqrt` gives integer (0). 
+     We need a scaling factor such that `S^2 * (max_dist)^2` fits in 32-bit. 
+     `max_dist` ~ 10000. `max_dist^2` ~ 100M. 
+     32-bit max ~ 4e9. 
+     So `S^2 * 100M < 4e9` -> `S^2 < 40` -> `S <= 6`. 
+     Let's use `S = 1` or `S = 2` or `S = 4`. 
+     Let's use `S = 4` (scale factor 4). 
+     Then `dx_max_scaled = 40000`. `dx^2` max = 1.6e9. Fits in 32-bit signed. 
+     `W` is 1-20. `W_scaled = W * 4` (max 80). `W^2` max 6400. 
+     `dist_sq = dx^2 + W^2` max ~ 1.6e9. 
+     `sqrt(1.6e9)` ~ 40000. 
+     Sum of distances (scaled) max ~ 32 * 40000 = 1.28e6. Fits 32-bit. 
+     Precision: We want 1e-6. `S=4` gives resolution 0.25. Good enough? 
+     Original example: 2.414... -> 2.41. 
+     If we use `S=10` (scale 10), `dx_max_scaled = 100000`. `dx^2` max = 1e10. Overflows 32-bit. 
+     We must stick to `S=4` or use 64-bit. 
+     Using 64-bit is safer and cleaner. 
+     Let's specify `input` coordinates are integers (0-10000). 
+     Internal calculations use 64-bit arithmetic for `dist_sq`. 
+     However, many competitive programming HDL constraints stick to 32-bit. 
+     Let's try to optimize for 32-bit. 
+     We can scale `dx^2` and `W^2` separately or use `S=1` and `dist_sq = dx*dx + W*W` (integers). 
+     `dx*dx + W*W` fits in 32-bit (max 100M + 400). 
+     Sqrt gives integer part of distance. We need fractional part. 
+     `sqrt(dx^2 + W^2)` is rarely integer. 
+     We need `sqrt` of a 27-bit number to 8-bit fractional precision. 
+     `val = dx^2 + W^2`. `val` is integer. 
+     We want `sqrt(val)`. 
+     If we want result `R` where `R = sqrt(val) * 256`. 
+     Then `R^2 = val * 256^2`. 
+     `R` is large. `R^2` huge. 
+     Let's compute `dist_sq = dx^2 + W^2`. 
+     Then `dist = sqrt(dist_sq)`. 
+     To get fractional part, we can compute `sqrt(dist_sq * 256^2)`. 
+     `dist_sq * 256^2` max `1e8 * 65536` = `6.5e12`. 43 bits. 
+     Still fits in 64-bit. 
+     Given the complexity of 64-bit Verilog, and the fact that LLMs generate 32-bit code often, I will specify the use of 32-bit arithmetic with a smaller scale factor, or rely on the fact that testbench is Python (arbitrary precision). 
+     **Verilog Constraint:** The module must be synthesizable. Standard Verilog `reg [31:0]` is 32-bit. 
+     Let's limit the range. The problem says N<=2000, but we scale down to N<=32. 
+     If N is small, the coordinates can be small too? No, L is fixed 10000. 
+     Let's use `S=1` for calculation but output scaled result. 
+     Wait, the Python code outputs float with high precision. 
+     To match this in hardware, we need fixed point. 
+     Let's try `S=16`. `dx_max_scaled = 160000`. `dx^2` = `2.56e10`. Overflows 32-bit. 
+     **Decision:** Use 64-bit arithmetic for intermediate `dist_sq` calculation. 
+     Verilog-2005 doesn't have `longint`. We can use `wire [63:0]`. 
+     Or, we can split the logic. 
+     Actually, if we use `S=4`, `dx` fits in 16 bits (max 40000). `dx^2` fits in 32 bits (max 1.6e9). 
+     `W_scaled = W*4`. `W^2` fits in 16 bits. 
+     `dist_sq` fits in 32 bits. 
+     `sqrt(dist_sq)` gives integer distance. We need fractional. 
+     If we want fractional part 2 bits (0.25 resolution), we can compute `sqrt(dist_sq * 16)`. 
+     `dist_sq * 16` max `1.6e9 * 16` = `2.56e10` -> 35 bits. Still too big for 32-bit. 
+     **Let's stick to 32-bit calculation and accept lower precision or specify SV.** 
+     I will specify the module using standard Verilog but with `input` data width constraints that fit 32-bit. 
+     Actually, `dx^2 + W^2` fits 32-bit. `sqrt` fits 16-bit integer part. 
+     To get precision, we can compute `sqrt( (dx^2 + W^2) * SCALE^2 )`. 
+     If `SCALE = 1`, integer. 
+     If `SCALE = 2`, `val * 4`. `val` max 1e8 -> 4e8 (29 bits). Fits. `sqrt` gives `2*dist`. 
+     If `SCALE = 4`, `val * 16`. `val` max 1e8 -> 1.6e9 (31 bits). Fits. `sqrt` gives `4*dist`. 
+     If `SCALE = 8`, `val * 64`. `val` max 1e8 -> 6.4e9 (33 bits). **Overflow.** 
+     **Best choice: SCALE = 4.** Resolution 0.25. 
+     But wait, `W^2` calculation: `W` is 1-20. `W*4` is 4-80. `W^2_scaled` is 16-6400. 
+     `dx = |pos - Tx|`. `pos, Tx` are integers. `dx` max 10000. `dx*4` = 40000. `dx^2_scaled` = 1.6e9. 
+     `dist_sq = dx^2_scaled + W^2_scaled`. Max ~ 1.6e9. 
+     `sqrt(dist_sq * 16)` (to get precision of 1/4 -> scale 4 -> wait). 
+     If we want result `R = dist * 4`, we need `sqrt( (dx^2 + W^2) * 16 )`.
+     `val = dx^2 + W^2`. `val` max 1.6e9 (if we use `dx` scaled 4? No. `dx` unscaled 10000. `dx^2` 100M). 
+     Let's be precise. 
+     Inputs: `pos` (0-10000), `L` (0-10000), `W` (1-20). 
+     Target `Tx`: `k * L / (M-1)`. Integer. 
+     `dx = |pos - Tx|`. Integer 0-10000. 
+     `val = dx*dx + W*W`. Integer. Max 100M + 400 = 100,000,400. 
+     We want `dist_scaled = dist * 100` (for 2 decimal places). 
+     `dist_scaled^2 = dist^2 * 10000 = val * 10000`. 
+     `val * 10000` max 1e12 (40 bits). Too big for 32-bit. 
+     **Limit Scale:** Let's aim for `scale = 4`. 
+     `dist_scaled = dist * 4`. `dist_scaled^2 = val * 16`. 
+     `val` max 100M. `100M * 16` = 1.6e9 (31 bits). Fits in 32-bit signed. 
+     `sqrt(1.6e9)` ≈ 40,000. Fits in 16-bit. 
+     So we can compute `sqrt( (dx^2 + W^2) * 16 )`. 
+     This gives distance scaled by 4 (resolution 0.25). 
+     The example output 2.414... -> 9.656 scaled by 4. 
+     This is acceptable. 
+
+  **Final Prompt Structure:** 
+  - Interface: 32-bit inputs for L, pos array. 5-bit N, 5-bit W. 
+  - Internal: Scale `W` by 4. `W_sq = (W<<2)*(W<<2)`? No, `W_sq = W*W*16`. 
+  - DP State Machine: 
+    - Sort `pos` (use Bubble Sort). 
+    - Compute `Tx` for each pair. `Tx[k] = (k * L) / (M-1)`. 
+    - Loop `k` from 0 to M-1: 
+      - `i = 2*k` (index of first tree for this pair in sorted array). 
+      - `p1 = pos[i]`, `p2 = pos[i+1]`. 
+      - `diff1 = p1 - Tx[k]`, `diff2 = p2 - Tx[k]`. (Use absolute value). 
+      - `dist1 = sqrt( (diff1^2 + W^2) * 16 )`. 
+      - `dist2 = sqrt( (diff2^2 + W^2) * 16 )`. 
+      - `straight1 = diff1 * 4`. (Since |p1 - Tx[k]| is distance on left side, scaled by 4). 
+      - `straight2 = diff2 * 4`. 
+      - Option A: `p1` to left (cost `straight1`), `p2` to right (cost `dist2`). Sum `C1`. 
+      - Option B: `p1` to right (cost `dist1`), `p2` to left (cost `straight2`). Sum `C2`. 
+      - Add `min(C1, C2)` to total cost. 
+  - Result: Total cost (scaled by 4). 
+  - Sqrt Module: Implement iterative integer sqrt. Input 32-bit, output 16-bit. 
+    - Start with `root = 0`, `rem = 0`. 
+    - Loop 16 times (for 16-bit result). 
+    - Shift `rem` left by 2, add next 2 bits of `val`. 
+    - If `2*root + 1 <= rem`, subtract and increment root. 
+    - This computes `sqrt(val)` where `val` is integer. 
+    - Since we want `sqrt(val * 16)`, we can just multiply `val` by 16 before sqrt. 
+    - `val` is 27 bits. `val * 16` is 31 bits. Fits 32-bit. 
+    - Sqrt gives 16-bit integer. 
+  - Timing: 
+    - Reset. 
+    - Sort: ~32*32 cycles = 1000 cycles. 
+    - Compute Tx: ~16 cycles. 
+    - Loop: 16 iterations. 
+      - Inside: 2x Sqrt (~30 cycles each), 2x Mult (diff*4), Add, Compare. ~100 cycles per iteration. 
+    - Total cycles ~ 2600. < 10000. Good. 
+
+  **Verilog Interface Spec:** 
+  Inputs: 
+    clk, rst_n, start 
+    N[4:0] (4 to 32, even) 
+    L[13:0] (0 to 10000) 
+    W[4:0] (1 to 20) 
+    pos[31:0][13:0] (Array of 32 positions) 
+  Outputs: 
+    result[15:0] (Total distance, scaled by 4) 
+    done 
+  Internal Logic: 
+    - Array storage: `reg [13:0] p_arr [0:31]` 
+    - State register: `reg [3:0] state` 
+    - Loop counters: `reg [4:0] i, j` 
+    - Accumulator: `reg [31:0] total_cost` 
+    - Sqrt signals: `reg [31:0] sqrt_in` 
+    - Sqrt Module: Instantiate or inline. 
+
+  **Refinement on `diff` and `straight` costs:** 
+  Moving tree from `p` to `Tx` on the same side costs `|p - Tx|`. 
+  Moving tree from `p` to `Tx` on opposite side costs `sqrt( (p-Tx)^2 + W^2 )`. 
+  We want to minimize sum. 
+  Input trees are on the left. Target positions are Left and Right. 
+  We assign exactly one tree to Left and one to Right for each pair `k`. 
+  We have sorted inputs `P[0]...P[N-1]`. 
+  For pair `k` (at `Tx[k]`), we use `P[2k]` and `P[2k+1]`. 
+  Option 1: `P[2k]` -> Left, `P[2k+1]` -> Right. 
+  Option 2: `P[2k]` -> Right, `P[2k+1]` -> Left. 
+  (Order of inputs matters because we sorted them). 
+  This pairing strategy (using consecutive sorted inputs for each pair) is known to be optimal for this type of matching problem on a line with two parallel lines of targets. 
+
+  **Sqrt Implementation Details:** 
+  Input `in_val` (32-bit). 
+  Output `out_val` (16-bit). 
+  Algorithm: Non-restoring square root. 
+  Or simply binary search (16 iterations for 16-bit result). 
+  Binary search is easier to write in Verilog. 
+  Range [0, 65535]. 
+  Mid = (Low + High) >> 1. 
+  Check `mid*mid <= in_val`. 
+  16 iterations = 16 cycles. 
+
+  **State Machine States:** 
+  0: IDLE 
+  1: SORT (Bubble sort inner loop) 
+  2: SORT_SWAP (if needed) 
+  3: COMPUTE_TX 
+  4: CALC_LOOP (outer) 
+  5: CALC_STRAIGHT_1 
+  6: CALC_STRAIGHT_2 
+  7: CALC_DIST_1 (set sqrt input for option 1 right) 
+  8: WAIT_SQRT_1 
+  9: CALC_DIST_2 (set sqrt input for option 2 right) 
+  10: WAIT_SQRT_2 
+  11: COMPARE_AND_ADD 
+  12: DONE 
+
+  This seems complete.

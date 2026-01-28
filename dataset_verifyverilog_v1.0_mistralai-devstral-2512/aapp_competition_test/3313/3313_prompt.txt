@@ -1,0 +1,52 @@
+Implement a Verilog module to solve the racing game gem collection problem, scaled for hardware execution.
+
+**Problem Scales (Adapted for Hardware):**
+- Maximum gems: 16 (Scaled from 10^5)
+- Coordinate range: 0 to 255 (8-bit)
+- Velocity ratio `r`: 1 to 10 (4-bit)
+- Maximum cycles: 256
+
+**Algorithm:**
+1. Sort gems by vertical position `y`. Since hardware sorting is complex, assume input is pre-sorted by `y` or sort a small number of elements (<=16) using a bubble sort network.
+2. Maintain a DP table `dp[i]` representing the maximum gems collected ending at gem `i`.
+3. Transition: For each gem `i` (sorted by `y`), look at all previous gems `j` (with `y[j] < y[i]`). Check if reachable:
+   - Horizontal distance: `abs(x[i] - x[j])`
+   - Vertical distance: `y[i] - y[j]`
+   - Reachability condition: `abs(x[i] - x[j]) <= (vertical_distance * v_max)`. Since `v_max = v / r` and vertical velocity is fixed at `v`, the time taken is `dt = vertical_distance / v`. In this time, we can move horizontally by `dt * v_max = (vertical_distance / v) * (v / r) = vertical_distance / r`.
+   - Condition simplifies to: `abs(x[i] - x[j]) * r <= (y[i] - y[j])`.
+   - Also check bounds (0 <= x <= w).
+4. `dp[i] = max(dp[j] + 1) for all reachable j`, or 1 if starting directly.
+5. Output `max(dp)`.
+
+**Verilog Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous logic signals.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `gem_x_in` [7:0], `gem_y_in` [7:0]: Input coordinates for the current gem.
+  - `gem_idx_in` [3:0]: Index of the current gem (0 to 15).
+  - `num_gems` [3:0]: Total number of gems (N).
+  - `r_in` [3:0]: Ratio `r`.
+  - `w_in` [7:0]: Width `w`.
+- **Outputs:**
+  - `result` [7:0]: Maximum gems collected.
+  - `done`: 1-cycle pulse when calculation complete.
+
+**Internal Logic (FSM):**
+- **State IDLE:** Wait for `start`.
+- **State LOAD:** Accept gem coordinates into internal RAMs (x_ram, y_ram) over N cycles.
+- **State SORT:** If required, sort the gems by `y`. (Simplified: Assume sorted or use simple comparator logic).
+- **State CALCULATE:**
+  - Outer loop: `i` from 0 to N-1.
+  - Inner loop: `j` from 0 to `i-1`.
+  - Compute `dy = y_ram[i] - y_ram[j]` (if `y_ram[i] >= y_ram[j]`).
+  - Compute `dx = abs(x_ram[i] - x_ram[j])`.
+  - Check reachability: `dx * r <= dy`.
+  - If reachable and `dp[j] + 1 > dp[i]`, update `dp[i]`.
+  - Update global `max_gems`.
+- **State DONE:** Latch `result` and assert `done`.
+
+**Constraints:**
+- Use 8-bit for coordinates (scaled down from 10^9).
+- Use 4-bit for indices and `r`.
+- Use 16-bit for intermediate calculations (e.g., `dx * r`).
+- `dp` array size: 16 x 4-bit.

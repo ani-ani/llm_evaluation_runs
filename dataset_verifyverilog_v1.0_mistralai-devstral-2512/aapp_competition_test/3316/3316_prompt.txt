@@ -1,0 +1,39 @@
+Implement a Verilog module that computes the probability that a group of size p can get tickets when n winners are drawn from m people, each winner can buy up to t tickets. Simplified model: Since p≤1000, n≤1000, t≤100, use fixed-point Q16.16 arithmetic and combinatorial probability calculation.
+
+**Algorithm**: The probability requires calculating combinations where at least k group members win, where k = ceil(p/t). Let required_wins = ceil(p/t). Compute probability = 1 - sum_{i=0}^{required_wins-1} [C(p,i) * C(m-p, n-i) / C(m,n)].
+
+**Constraints**: m≤1000, n≤1000, t≤100, p≤1000. Use Q16.16 fixed-point for probabilities. Compute combinations using Pascal's triangle with 12-bit coefficients (C(1000,500)≈2.7e299, but we only need relative ratios in fixed-point). We'll compute logarithms or use scaling to avoid overflow. For hardware, implement iterative computation: precompute binomial coefficients using DP with 32-bit values scaled by 2^16.
+
+**Interface**:
+- Inputs: clk, rst_n, start (1-cycle pulse), m[9:0] (10-bit for 0-1023), n[9:0], t[6:0] (0-127), p[9:0]
+- Outputs: result[31:0] (Q16.16 fixed-point probability), done (1-cycle pulse when valid)
+- Timing: Start to done within 2000 cycles maximum
+- Reset: All outputs zero, done=0
+
+**Implementation Details**:
+1. Validate inputs: if n > m or p > m, set result=0 and done immediately
+2. Calculate required_wins = ceil(p/t) using integer division: req = (p + t - 1) / t
+3. If req == 0: result = 32'h00010000 (1.0 in Q16.16)
+4. If req > n: result = 0
+5. Otherwise, compute: 
+   - Precompute binomials using iterative multiplication and division in fixed-point
+   - For each i from 0 to req-1:
+     - Compute term = C(p,i) * C(m-p, n-i) / C(m,n)
+     - Use scaling factor to maintain precision
+   - Sum these terms, result = 1.0 - sum
+6. Use state machine with states: IDLE, CALC_REQ, COMPUTE_BINOMIALS, SUM_TERMS, FINALIZE
+7. Store intermediate results in registers (32-bit Q16.16)
+8. Use loop counters with bounds (max 1000 iterations)
+9. Division: implement as iterative bit-shift approximation or lookup for common cases
+
+**Key Calculations**:
+- C(n,k) computation: use multiplicative formula with Q16.16 scaling
+- Division: compute as fraction in Q16.16 by converting numerator/denominator to fixed-point and using multiplication by inverse
+- For C(m,n) where m,n up to 1000, intermediate values can reach ~2^3000, but ratios stay within Q16.16 range when computed carefully
+
+**Example**:
+m=100, n=10, t=2, p=1:
+required_wins = ceil(1/2) = 1
+Probability = 1 - C(1,0)*C(99,10)/C(100,10) = 1 - (C(99,10)/C(100,10)) = 1 - (10/100) = 0.9
+
+Output should be Q16.16 representation of 0.1 (0x0019999A)

@@ -1,0 +1,43 @@
+Verilog Module Specification: find_element
+
+Description:
+Implements an iterative algorithm to find the element at a given index after applying a series of sub-array rotations. The algorithm processes rotation ranges in reverse order (from last to first). For each range covering the current index, the index is updated: if it is at the left boundary, it moves to the right; otherwise, it decrements by 1. Finally, the array element at the resulting index is returned.
+
+Inputs:
+  - clk: Clock signal, rising edge triggered.
+  - rst_n: Active-low asynchronous reset.
+  - start: 1-cycle pulse to initiate the operation.
+  - arr[0:15]: 16-element input array. Each element is 8-bit wide (values 0-255).
+  - ranges[0:3]: Array of 4 rotation ranges. Each range is a pair {left, right}.
+    - range_left[0:3]: 4-bit indices (0-15) for left boundaries.
+    - range_right[0:3]: 4-bit indices (0-15) for right boundaries.
+  - num_ranges: 2-bit input (0-3) indicating the number of valid ranges (max 4).
+  - rotations: 2-bit input (0-3) indicating number of rotations (must match num_ranges).
+  - target_index: 4-bit input (0-15) specifying the index to query.
+
+Outputs:
+  - result: 8-bit output holding the array value at the final index. Valid when done=1.
+  - done: 1-cycle high pulse indicating operation completion.
+
+Internal Logic/State Machine:
+  1. Wait for start signal.
+  2. Initialize: current_index = target_index.
+  3. Iterate i from (num_ranges - 1) down to 0.
+     - Fetch left boundary (L) and right boundary (R) for range i.
+     - If (current_index >= L) and (current_index <= R):
+       - If current_index == L: current_index = R
+       - Else: current_index = current_index - 1
+  4. Read arr[current_index] into result.
+  5. Assert done high for 1 cycle.
+  6. Return to idle.
+
+Timing Constraints:
+  - Start asserted for 1 clock cycle.
+  - Operation completes within 64 clock cycles (worst case 4 ranges * 16 cycles).
+  - Result is valid only when done is high.
+  - Reset (rst_n=0) sets done=0, result=0, and idle state.
+
+Notes:
+  - Use registers to store current_index and intermediate range values.
+  - All indices and array addresses are 4-bit (0-15).
+  - Array values are 8-bit.

@@ -1,0 +1,56 @@
+Implement a Verilog module to calculate the minimum cost for a jazz band tour given ticket options.
+
+**Problem Adaptation:**
+- Cities: 4 (hardcoded)
+- Tour Segments: 8 (hardcoded)
+- Ticket Types: Fixed set of 8 possible tickets (hardcoded coefficients or inputs).
+
+**Algorithm:**
+1. Precompute the minimum cost for a One-way flight between any pair of cities using a subset of the ticket list (specifically, cheapest direct flights).
+2. Precompute the minimum cost for a Round trip flight between any pair of cities (which is essentially 2 * one-way cost, or cheaper if round trip specific tickets exist).
+3. Since the number of tour segments is small (8), use Dynamic Programming. `dp[i][j]` = minimum cost to reach city `j` after `i` concert segments. However, to account for round trips, we must track inventory. Given the constraint `n <= 4` and segments `<= 8`, we can flatten the DP.
+4. Alternatively, since the number of cities is small (4), we can model this as finding the shortest path in a state graph where states are (current_city, ticket_bits). Given the small scale, a simple DP iterating through the tour path is sufficient.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock.
+  - `rst_n`: Active-low reset.
+  - `start`: Start computation pulse.
+  - `tour_seg [0:7]`: Array of 8 2-bit integers representing the sequence of cities (1-4 encoded as 0-3).
+  - `ticket_s [0:7]`: Array of 8 2-bit integers (source cities).
+  - `ticket_d [0:7]`: Array of 8 2-bit integers (dest cities).
+  - `ticket_t [0:7]`: Array of 8 1-bit integers (0=One-way, 1=Round trip).
+  - `ticket_p [0:7]`: Array of 8 16-bit integers (prices).
+
+- **Outputs:**
+  - `result`: 32-bit minimum cost.
+  - `done`: Pulse high when calculation is complete.
+
+- **Timing:** Start pulse initializes the state. Calculation takes approximately 500-1000 cycles. Output result when `done` is high.
+
+**Implementation Logic:**
+1. **Init Phase:** Create cost matrices `cost_one_way[4][4]` and `cost_round[4][4]` initialized to infinity. Fill them from the `ticket_` inputs. For each ticket input, update the respective matrix cell to the minimum price found.
+2. **DP Phase:** Initialize `dp[0..8][0..3]` to infinity. `dp[0][start_city] = 0`. 
+3. For each segment `i` from 0 to 7:
+   - For each current city `c`:
+     - Let `next_city = tour_seg[i]`.
+     - Option A: Buy One-way ticket. Cost `dp[i][c] + cost_one_way[c][next_city]`. Update `dp[i+1][next_city]`.
+     - Option B: Buy Round trip ticket. Cost `dp[i][c] + cost_round[c][next_city]`. Update `dp[i+1][next_city]`. (Implicitly adds capability to fly back, but we are only calculating cost to reach the next city in the schedule). 
+     - *Note:* Since we only care about the scheduled path, and inventory of return tickets can be reused later, but for this simplified scale (8 segments, 4 cities), we assume direct purchase of required tickets or pre-computed round trip discounts. A simpler valid model is just finding the cheapest sequence of direct flights (one-way or round-trip legs) that matches the tour schedule. We treat the round trip ticket as a cheaper alternative to two one-way tickets if the flight plan happens to use the return leg, but here the path is fixed. We just need to fly `A->B`, then `B->C`, etc. We sum the min cost for each required leg.
+4. **Optimization:** The problem simplifies to summing the minimum cost for each required flight leg `(tour[i], tour[i+1])`. However, bulk purchasing of round trips might save money if the tour revisits a city pair. For `d<=8`, we can use a bitmask DP over the tour segments to decide which tickets to buy, but a simpler interpretation for the benchmark is just summing the cheapest available ticket for each leg.
+   - *Refined Algorithm:* Compute `min_cost[a][b]` for all pairs. If `min_cost[a][b]` is provided by a Round Trip ticket, it's valid. If provided by One-way, valid. Just sum `min_cost[tour[i]][tour[i+1]]` for all `i`. The "Round Trip" constraint implies that if we buy a round trip, we *might* fly back, but since the path is fixed and we must buy enough tickets to fly every leg, the minimal cost is simply the sum of cheapest flights for each leg. 
+   - *Self-Correction:* To make it interesting, we must consider that a Round Trip ticket for `A->B` covers the leg `A->B` and potentially `B->A` later. If the tour has `A->B` and later `B->A`, buying one Round Trip ticket is cheaper than two One-way tickets. 
+   - *Implementation:* We will implement a DP `dp[mask]` representing the minimum cost to cover a subset of the tour segments. Since `d<=8`, `mask` is 256 states. We iterate through all available tickets. For each ticket, we try to apply it to cover one or two segments in the tour (if it's a round trip). This is a variation of the Set Cover / Subset DP problem.
+
+**Verilog Logic Outline:**
+- `localparam MAX_SEG = 8;`
+- `reg [31:0] dp [0:255];` // 256 states for bitmask
+- `reg [1:0] tour [0:7];`
+- Iterate through masks. For each mask, find the first unset bit (segment index). Try to cover that segment with a One-way ticket. Try to cover that segment and a matching reverse segment with a Round trip ticket.
+- Since `n=4`, we can brute force the matching reverse segment.
+
+**State Machine:**
+1. `IDLE`: Wait for `start`. Load inputs into internal arrays.
+2. `PREP`: Initialize `dp` array to INF (except `dp[0]=0`).
+3. `DP_LOOP`: Outer loop over masks 0 to (1<<d)-1. Inner loop logic to update next states.
+4. `DONE`: Set `result` to `dp[(1<<d)-1]`, assert `done`.

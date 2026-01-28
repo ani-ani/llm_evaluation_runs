@@ -1,0 +1,47 @@
+Implement a Verilog module that calculates the minimum number of passengers to persuade for student compartment optimization.
+
+**Problem Analysis**:
+- Each compartment has 0-4 students.
+- Valid final states: 0, 3, or 4 students per compartment.
+- Input: `n` compartments (n ≤ 10^6, but in HW we process sequentially).
+- We need to count how many compartments have 1, 2, 3, or 4 students.
+- The algorithm is a fixed transformation on these counts.
+
+**Module Interface**:
+- **Inputs**:
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start processing.
+  - `data_in`: 4-bit input (student count 0-4) for one compartment.
+  - `valid_in`: 1-bit input indicating `data_in` is valid.
+  - `last_in`: 1-bit input indicating the last compartment of the sequence.
+- **Outputs**:
+  - `result`: 16-bit output (minimum swaps).
+  - `done`: 1-cycle pulse when calculation is complete.
+  - `idle`: 1-bit output, high when ready for new input sequence.
+
+**Algorithm Logic (State Machine)**:
+1. **Reset State**: `idle=1`, counters for 1,2,3,4 students are zeroed.
+2. **Input Phase**: When `start` is received, enter processing state. While `valid_in` is high, increment appropriate counter based on `data_in`. Wait for `last_in` to transition to calculation phase.
+3. **Calculation Phase**: Perform logic similar to Python solution (scaled for 16-bit numbers).
+   - Let `c1`, `c2`, `c3`, `c4` be counters for compartments with 1, 2, 3, 4 students.
+   - Total students `S = c1 + 2*c2 + 3*c3 + 4*c4`.
+   - Check feasibility: If `S < 3` or `S == 5`, output `-1` (or a flag).
+   - **Optimization Logic**:
+     - Pair 1s and 2s: `cnt = min(c1, c2)`. Result += `cnt`. Update `c1`, `c2`. Add to `c3`.
+     - Form groups of 3 from 1s: `cnt = c1 / 3`. Result += `2 * cnt`. Update `c1`, `c3`.
+     - Handle remainder 1s: Logic depends on `c3`, `c4` availability.
+     - Form groups of 3 from 2s: `cnt = c2 / 3`. Result += `2 * cnt`. Update `c2`, `c3`.
+     - Handle remainder 2s: Logic depends on `c4` availability.
+   - All operations must use `reg` variables and conditional logic, fitting within 16-22 bit arithmetic to prevent overflow (max n=10^6, but total swaps ≤ 2*n).
+4. **Output Phase**: Latch result, pulse `done`, return to `idle`.
+
+**Timing**:
+- Input phase: `n` cycles (sequentially fed).
+- Calculation phase: Fixed cycle count (~10-20 cycles) depending on logic depth.
+- Total latency: ~n + 20 cycles.
+
+**Constraints**:
+- Use 16-bit unsigned arithmetic for counters.
+- State machine must be synthesized.
+- No external memory (assume input stream).

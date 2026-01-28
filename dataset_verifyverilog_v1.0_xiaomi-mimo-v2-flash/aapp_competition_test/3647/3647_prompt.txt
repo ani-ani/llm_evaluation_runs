@@ -1,0 +1,62 @@
+Implement a Verilog module that computes the minimum number of moves to reach a goal in a sliding ice maze. The maze is 8x8, grid layout defined as:
+- '.' = gravel (stop here)
+- '#' = obstacle (cannot enter)
+- '_' = ice (slide in same direction until gravel/obstacle)
+- 'M' = goal (gravel, stop here)
+
+Module must perform BFS from goal to all cells, treating the maze as a graph where edges represent possible slides. From any cell, you can slide in 4 directions (N/S/E/W) until hitting gravel/obstacle - the landing cell is the neighbor.
+
+Interface:
+Inputs:
+  clk: system clock
+  rst_n: active-low reset
+  start: 1-cycle start pulse
+  grid[7:0][7:0]: 8x8 char array (8-bit ASCII each). Set as individual elements arr[i].
+    - 0x2E (.) = gravel
+    - 0x23 (#) = obstacle  
+    - 0x5F (_) = ice
+    - 0x4D (M) = goal
+Outputs:
+  result[7:0][7:0]: 8x8 16-bit distance array. Each element is 16-bit signed.
+  done: 1-cycle pulse when valid
+
+Timing:
+- Start is single-cycle pulse (high for 1 clock)
+- Done is 1-cycle pulse when result is ready
+- Maximum computation: 1000 cycles
+- Reset: all outputs 0, done=0
+
+Behavior:
+1. On reset: result = 0, done = 0
+2. On start: begin BFS from goal cell
+3. Process sliding moves: from ice/gravel, slide in direction until obstacle/gravel
+4. Update distances incrementally
+5. When all reachable cells processed: assert done=1 for 1 cycle
+6. result[i][j] = distance (0 for goal, -1 if unreachable)
+
+Edge cases:
+- Obstacles remain -1
+- No path to goal -> -1
+- Gravel stops immediately, ice slides
+- Wrap-around NOT allowed (edges are obstacles)
+
+Constraints:
+- Max grid 8x8 = 64 cells
+- Max moves per cell: 4 directions
+- BFS uses internal queue (size 64)
+- Distance width: 16 bits (max 63 steps)
+
+Implementation hint:
+- Use combinational logic for slide computation
+- Sequential state machine for BFS traversal
+- Each step: process queue head, explore 4 slides, update neighbors
+- Terminate when queue empty
+
+Testbench will verify:
+1. Goal distance = 0
+2. Adjacent gravel = 1 (if reachable)
+3. Sliding paths correctly computed
+4. Obstacles = -1
+5. Unreachable cells = -1
+
+The module should be synthesizable and use minimal resources.

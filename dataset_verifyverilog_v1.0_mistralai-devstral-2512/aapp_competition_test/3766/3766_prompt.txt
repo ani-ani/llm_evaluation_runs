@@ -1,0 +1,43 @@
+Verilog module for Borya's Hanabi hints minimization.
+
+Problem: Given up to 100 cards with 5 colors (R,G,B,Y,W) and 5 values (1-5), Borya knows card types but not positions. A hint reveals all cards of a specific color or value. Find minimum hints so each card is uniquely distinguishable.
+
+Key Insight: Two card types must be distinguishable by at least one hint. For cards (c1,v1) and (c2,v2), they are distinguishable if:
+- Hints include color c1 OR value v1 (for first card) AND hints include color c2 OR value v2 (for second card), AND the hint sets are different for the two cards.
+- Equivalent to: (hint_mask & card1) != (hint_mask & card2) where card = (1<<color_index) | (1<<(5+value_index))
+
+Simplification: There are only 25 possible card types. Given input cards, we need to find minimum subset of hints (from 10 total: 5 colors + 5 values) such that all distinct card types in input yield different hint-response signatures.
+
+Hardware Implementation: Use brute-force over 2^10 = 1024 hint combinations.
+- Input: List of card types (up to 100 cards, but only 25 possible types)
+- Output: Minimum number of hints (0-10)
+
+Exact Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  card_type [0:24]: 25x8-bit array, where each entry is:
+    bit[4:0]: color bitmask (bit 0=R, 1=G, 2=B, 3=Y, 4=W)
+    bit[7:5]: value bitmask (bit 0=1, 1=2, 2=3, 3=4, 4=5)
+  valid_types [0:24]: 25x1-bit, indicates which card types are present
+  num_cards: 7-bit count of total cards (but distinct types are what matters)
+Outputs:
+  result: 4-bit (0-10)
+  done: 1-cycle pulse when result valid
+  valid: 1-bit (indicates valid result)
+
+Implementation Details:
+1. Store input card types in 25 registers (8-bit each)
+2. For each hint_mask in 0..1023:
+   a. Compute signature for each valid card type: sig = (hint_mask & card_type)
+   b. Check if all valid cards have unique signatures
+   c. If yes, count bits set in hint_mask, track minimum
+3. Use FSM with 11 states (0: idle, 1-1024: hint iteration, 1025: compute answer)
+4. Counter-based loop for hint_mask (0 to 1023)
+5. Output minimum hint count
+
+Timing: Within 2000 cycles for 1024 iterations + per-iteration computation
+Reset: done=0, result=0, valid=0
+
+Testbench will provide input cards encoded as bitmasks, verify result matches Python solution.

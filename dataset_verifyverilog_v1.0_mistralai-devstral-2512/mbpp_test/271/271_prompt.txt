@@ -1,0 +1,20 @@
+Design a Verilog module that computes the sum of the first n even natural numbers raised to the fifth power. The input n is an 8-bit unsigned integer representing the count (1 to 256). The module should use a sequential loop: for each i from 1 to n, compute j = 2*i, then compute j^5 (j*j*j*j*j) and accumulate the sum. Use pipelined multiplication to stay within timing. The result is a 32-bit unsigned integer. The module has a start signal (1-cycle pulse) and asserts done (1-cycle) when the sum is computed. Clock is 100MHz. Reset is active-low synchronous. Assume n is non-zero for this implementation.
+
+Module Interface:
+- Inputs: clk, rst_n, start, n[7:0]
+- Outputs: result[31:0], done
+
+Behavior:
+1. On rising edge when start=1 and idle, set counter i = 1, accumulator sum = 0, and begin computation.
+2. In each cycle (pipeline depth can be embedded), compute j = 2*i (1 cycle), then compute j^5 via iterative multiplication (e.g., (j*j)*j)*j*j using 2-3 cycle stages), add to sum, increment i.
+3. Loop until i > n, then assert done for 1 cycle and hold result stable.
+4. On reset (rst_n=0), clear state, done=0, result=0. Min 2 cycles reset duration.
+5. During operation, ignore new start pulses.
+
+Constraints:
+- Use parameter DATA_WIDTH=32 for sum, ITER_WIDTH=8 for n.
+- For multiplication, use sequential multipliers (e.g., (j*j) computed in 1-2 cycles, then multiply remaining).
+- Total cycles from start to done should be bounded by (n * 10) for n<=256, i.e., max 2560 cycles for safety, but target <=100 cycles for typical n.
+- Input n is treated as count (0 to 255, but test with n>=1).
+- No external memory; use internal registers for i, sum, and temporary product registers.
+- Assume all intermediate values fit in 32-bit for n<=256 (max j=512, j^5=512^5 ~ 35e12 < 2^46, but use 64-bit intermediate if needed; but simplify to 32-bit clamp for this spec).

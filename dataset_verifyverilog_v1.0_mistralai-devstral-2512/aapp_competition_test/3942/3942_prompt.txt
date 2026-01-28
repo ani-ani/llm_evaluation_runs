@@ -1,0 +1,37 @@
+Implement a Verilog module to solve the 'Treasure Map' problem. The module processes a string containing '(', ')', and '#' characters, replacing each '#' with one or more ')' characters to form a balanced string.
+
+**Inputs:**
+- `clk`: System clock, rising edge
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle start pulse
+- `char_in`: 8-bit ASCII character input ('(', ')', '#')
+- `valid_in`: 1-bit input valid signal (high when `char_in` is valid)
+
+**Outputs:**
+- `result`: 16-bit output (number of ')' for current '#' or -1 for failure)
+- `result_valid`: 1-cycle pulse when `result` is valid
+- `done`: 1-cycle pulse when all '#' processed (or failure detected)
+- `failure`: 1-bit flag (high on invalid state)
+
+**Module Behavior:**
+1. **Initialization:** On `rst_n` low, reset all counters and state to 0. On `start` high, begin processing.
+2. **Processing:** Read characters sequentially via `char_in` and `valid_in`. Maintain:
+   - `balance`: 32-bit signed counter tracking ( '(' count - ')' count - '#' count )
+   - `hash_count`: 4-bit counter (max 16 '#' allowed)
+   - `last_hash_pos`: 4-bit register storing index of last '#' encountered
+   - `hash_outputs`: Array of 16 registers, 4-bit each (values 1-15)
+   - `current_hash_idx`: 4-bit index of current '#' being processed
+3. **Logic:**
+   - For '(': `balance <= balance + 1`
+   - For ')': `balance <= balance - 1`
+   - For '#': Increment `hash_count`, store current index as `last_hash_pos`, set `hash_outputs[current_hash_idx] <= 1`, `balance <= balance - 1`
+   - If at any point `balance < 0`, set `failure` high and assert `done` immediately (output -1 on next cycle).
+4. **Final Assignment:** After processing all characters, if `failure` is low:
+   - Calculate `remaining = balance + 1` (final balance must be 0, each '#' contributes at least 1, so last # needs `balance + 1`)
+   - Set `hash_outputs[last_hash_pos] <= remaining`
+   - Verify `remaining > 0` (else failure)
+5. **Output:** For each '#' in order (0 to `hash_count-1`), output `hash_outputs[i]` on `result` with `result_valid` high for one cycle. Finally, assert `done`.
+6. **Timing:** Start-to-done within 256 cycles for strings up to 128 characters. Reset takes 2 cycles.
+7. **Constraints:** Handle up to 16 '#' characters. Balance can range from -2^31 to 2^31-1. All inputs are ASCII codes.
+
+**Important:** Do not implement the module. Provide only the detailed specification as above.

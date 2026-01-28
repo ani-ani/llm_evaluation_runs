@@ -1,0 +1,32 @@
+Implement a Verilog module that finds the largest non-perfect-square number in an array of integers. The core challenge is determining if a number is a perfect square without floating-point math or built-in sqrt functions.
+
+**Scaling & Constraints:**
+- Input array size: Fixed at 16 elements (max in hardware).
+- Input numbers: 16-bit signed integers (range -32768 to 32767). Python's range (-10^6 to 10^6) is truncated; however, perfect squares in the 16-bit range are limited (0 to 181^2 = 32761). We will handle values outside this range as non-perfect-squares (or clamp inputs if necessary, but the algorithm should handle 16-bit inputs logically).
+- Algorithm: Iterate through the array. For each number `x`:
+  1. If `x < 0`, it cannot be a perfect square (since squares are non-negative). Mark it as a candidate.
+  2. If `x >= 0`, check if it is a perfect square. Since we are limited to 16 bits, we can use a binary search method to find the integer square root `y` such that `y*y <= x < (y+1)*(y+1)`. If `y*y == x`, it is a perfect square; otherwise, it is not.
+- Output: The largest non-perfect-square value found.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start processing.
+  - `arr[15:0]`: 16-element array of 16-bit signed integers. Since Verilog arrays can be tricky, use individual inputs `arr_0`, `arr_1`, ..., `arr_15`, each 16 bits wide.
+- **Outputs:**
+  - `result`: 16-bit signed integer. Valid when `done` is high.
+  - `done`: 1-cycle pulse indicating completion.
+
+**Implementation Details:**
+- Use a Finite State Machine (FSM) to control the iteration over the 16 array elements.
+- For the perfect square check: Implement a binary search state machine that runs for each element `x`. Search range for root: 0 to 256 (covers up to 65536). Since 256 iterations is too many for a single clock cycle, this binary search must be iterative within the FSM, requiring multiple clock cycles per array element.
+  - Optimization: Since the max 16-bit value is 32767, the square root is at most 181. We can set the binary search bounds to 0 and 182.
+- Register the current best candidate. Update it only if the current element is not a perfect square AND the current element > current best.
+
+**Verilog Spec:**
+- Module name: `max_non_square`
+- Clocking: Standard synchronous logic.
+- Reset: Clears all states and result.
+- Timing: Processing 16 elements with binary search (approx 8 cycles per search) will take ~128 cycles + overhead. Ensure the design completes within 256 cycles.
+- No external libraries; strictly standard Verilog (IEEE 1364-2001).

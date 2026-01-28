@@ -1,0 +1,51 @@
+Design a Verilog module that finds distinct results for arithmetic operations on pairs of numbers. Given up to 16 pairs of 32-bit signed numbers, assign one of three operations (+, -, *) per pair such that all results are distinct.
+
+Interface:
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  n: 4-bit input (1-16) - number of pairs
+  a[15:0][31:0]: 16x32-bit signed array of first operands
+  b[15:0][31:0]: 16x32-bit signed array of second operands
+Outputs:
+  op[15:0][1:0]: 2-bit operation code per pair (0=+, 1=-, 2=*)
+  result[15:0][31:0]: 32-bit result per pair
+  valid: 1-cycle pulse when assignment complete
+  impossible: asserted if no valid assignment exists
+
+Algorithm:
+1. Compute all possible results for each pair (3 operations)
+2. Use greedy approach: for each pair in order, try operations that produce unused results
+3. Backtracking depth ≤ n (≤16), track used results in bit vector
+4. If any pair has no available operation, assert impossible
+5. Once valid assignment found, set op[] and result[] arrays
+
+Timing:
+- start high for 1 cycle
+- valid high within 256 cycles (2^8 * n worst case)
+- Results must fit in 32-bit signed (range -2^31 to 2^31-1)
+- Multiplication: truncate to 32-bit (ignore overflow)
+- All operations must produce distinct 32-bit values
+
+Implementation constraints:
+- Use iterative approach with bounded loops
+- Track used results with 16-bit valid vector (one per pair index)
+- For each pair, test ops in fixed order: +, -, *
+- If collision, try next op; if all ops collide, backtrack
+- At n≤16, worst-case 3^16≈43M states is too large, so use greedy with local backtracking
+- After greedy assignment, if unique results < n, assert impossible
+
+Reset behavior:
+- When rst_n=0: all outputs 0, valid=0, impossible=0
+- After reset: ready for new start
+
+Edge cases:
+- Division by zero not applicable (only +,-,*)
+- Same operand pairs (a=b) must still produce distinct results
+- Negative numbers: follow signed arithmetic
+- Result overflow: truncate to 32-bit signed
+
+Output format (for testbench verification):
+- When valid=1: op[0] through op[n-1] defined with valid results
+- When impossible=1: no valid assignment exists

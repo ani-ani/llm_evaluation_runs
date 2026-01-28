@@ -1,0 +1,40 @@
+You are to design a Verilog module that computes the Minimum Spanning Tree (MST) cost for a small graph of planets (nodes) with specific 3D coordinate distances.
+
+**Problem Adaptation:**
+1. **Scale:** The input graph is limited to $N \le 8$ nodes (planets).
+2. **Coordinates:** Each coordinate is a 16-bit signed integer ($x, y, z$).
+3. **Cost Function:** The cost between two planets $A$ and $B$ is defined as $\min(|x_A - x_B|, |y_A - y_B|, |z_A - z_B|)$.
+4. **Algorithm:** Use Kruskal's algorithm with a Union-Find (Disjoint Set Union) data structure.
+5. **Edges:** Since $N$ is small ($N \le 8$), the maximum number of edges is $N(N-1)/2 \le 28$. You should calculate all possible edge weights internally.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock (rising edge).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle high pulse to initiate calculation.
+  - `n`: 4-bit input indicating the number of nodes (valid range 2-8).
+  - `coord_x[i]`, `coord_y[i]`, `coord_z[i]` for $i=0..7$: 8 arrays of 16-bit signed integers containing the coordinates. Unused indices (for $N < 8$) are ignored.
+- **Outputs:**
+  - `result`: 32-bit unsigned integer representing the total MST cost.
+  - `done`: 1-cycle high pulse indicating result is valid.
+
+**Implementation Details:**
+1. **Edge Generation:** Iterate through all pairs $(i, j)$ where $0 \le i < j < N$. Calculate the cost $c_{ij} = \min(|x_i - x_j|, |y_i - y_j|, |z_i - z_j|)$. Pack the edge into a format containing `source`, `dest`, and `weight`.
+2. **Sorting:** Implement a sorting network or sequential bubble/insertion sort to sort the 28 potential edges by weight (ascending).
+3. **Kruskal Logic:**
+   - Iterate through sorted edges.
+   - For each edge, check if nodes $i$ and $j$ are in different sets using a Union-Find structure (implemented as 8 registers for parents).
+   - If they are disjoint, union them and add the edge weight to the total cost.
+   - Stop when $N-1$ edges have been added.
+4. **State Machine:**
+   - `IDLE`: Wait for `start`.
+   - `CALC_EDGES`: Compute all edge weights and store in a local register array.
+   - `SORT`: Sort the edge list.
+   - `KRUN`: Run Kruskal's algorithm (Find/Union operations).
+   - `DONE`: Set `done` pulse and output `result`.
+
+**Timing:**
+- Reset clears all state, result=0, done=0.
+- Start triggers the sequence.
+- Expected cycles: ~200-500 cycles for small $N$.
+- Result is valid when `done` is high.

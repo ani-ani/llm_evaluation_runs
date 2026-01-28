@@ -1,0 +1,68 @@
+Design a Verilog module that solves the wet climbing peg problem. The problem involves a dependency graph where nodes 1..N (N ≤ 16) have prerequisites. A dry plan is a sequence of add/remove operations. A wet plan must satisfy: when removing peg at node X, all original dependencies of X (from graph) must have pegs present. The wet plan must reuse pegs efficiently but can place extra pegs if needed.
+
+Simplified Hardware Approach:
+1. Store dependency graph as adjacency matrix (16x16 bits)
+2. Store dry plan as sequence of 16-bit values (5 bits for node ID, 1 bit for add/remove)
+3. Use state machine to simulate:
+   - Track current pegs (16-bit register)
+   - Track originally placed pegs (16-bit register)
+   - For each step in dry plan:
+     * If ADD: ensure dependencies met, set peg, track as original
+     * If REMOVE: check if wet-safe (dependencies present), if not, insert extra ADDs first
+4. Output wet plan sequence
+
+Interface:
+Inputs:
+  clk: clock
+  rst_n: active-low reset
+  start: 1-cycle pulse to start processing
+  graph_valid: 1 when graph data is ready
+  graph_row[15:0]: 16-bit row of dependency matrix for current node
+  graph_node: 4-bit index (0-15)
+  dry_plan_valid: 1 when dry plan step is ready
+  dry_step: 6-bit {5:node, 1:add_not_remove} (1=add, 0=remove)
+
+Outputs:
+  wet_step: 6-bit output sequence (same format)
+  wet_valid: 1 when wet_step is valid
+  wet_done: 1 when complete
+  pegs_needed: 5-bit max pegs used during execution
+
+Timing:
+- Reset: clear all states, set done=0
+- Load graph: write rows sequentially using graph_node index
+- Load dry plan: stream steps sequentially
+- Process: state machine runs, generates wet plan steps
+- Done: asserted when wet plan generation complete
+
+Constraints:
+- N ≤ 16 nodes
+- Dry plan steps ≤ 1000
+- Wet plan steps ≤ 1000000 (but hardware limits to 1024 for practicality)
+- Max pegs used ≤ 10 * original_pegs
+- Use 16-bit registers for pegs state
+- Use 16x16 bit RAM for graph
+- Use 1024x6 bit FIFO for dry plan input
+- Use 1024x6 bit RAM for wet plan output
+
+Implementation Notes:
+- The core algorithm is: simulate dry plan, but before any unsafe remove, insert extra pegs
+- A remove of node X is unsafe if any dependency of X is NOT in current pegs
+- To fix unsafe remove: insert ADD operations for missing dependencies (if not already present)
+- Track max pegs count during simulation
+- If max_pegs > 10 * original_max_pegs, output -1 (in special error flag)
+
+State Machine States:
+IDLE: wait for start
+LOAD_GRAPH: capture 16 rows
+LOAD_DRY: capture dry plan steps
+PROCESS: iterate through dry plan, generate wet plan
+DONE: assert done
+
+Key Logic Module Needed:
+- Dependency checker: given node X and current pegs, returns mask of missing dependencies
+- Safe remove checker: returns true if all dependencies of X are in current pegs
+- Peg count tracker: updates max_pegs counter
+- Sequence generator: outputs wet plan steps (adds + original steps) to buffer
+
+Note: For hardware, this is extremely complex. A realistic spec would be a simplified version: Given pre-loaded graph and dry plan (in registers), generate the minimal wet plan for demonstration purposes. The exact optimal algorithm requires SAT solving or extensive DP - we implement a greedy approach that ensures safety.

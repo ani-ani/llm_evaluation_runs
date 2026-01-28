@@ -1,0 +1,52 @@
+Implement a Verilog module for topological sorting of a directed graph representing package dependencies.
+
+**Constraints & Scaling:**
+- Original problem: up to 1000 nodes
+- Scaled for HDL: Maximum 10 packages (nodes)
+- Package names: mapped to indices 0-9
+- Dependencies: directed edges from dependency to package
+- Each package has max 20 dependencies
+- Output: sorted list or detect cycles
+
+**Algorithm:**
+1. Build adjacency matrix `adj[10][10]` (1 if dependency exists)
+2. Compute in-degree for each node
+3. Use Kahn's algorithm:
+   - Find all nodes with in-degree 0
+   - Select the node with smallest index (lexicographically smallest name mapping)
+   - Remove edges and update in-degrees
+   - Repeat
+4. If count < N, cycle detected
+
+**Verilog Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Clock and active-low reset
+  - `start`: 1-cycle pulse to start sorting
+  - `num_nodes`: 4-bit input (1-10)
+  - `edge_valid`: 10-bit vector indicating which edges are present
+  - `edge_from`: 4-bit index of source node
+  - `edge_to`: 4-bit index of destination node
+  - `edge_wr`: 1-cycle pulse to write edge
+- Outputs:
+  - `result_idx`: 4-bit index of current output node
+  - `result_valid`: 1 when result_idx is valid
+  - `done`: 1-cycle pulse when sorting complete
+  - `cycle_detected`: 1 if cycle exists
+  - `result_empty`: 1 if no valid ordering (cycle or empty)
+
+**Timing:**
+- Edge loading: sequential write via edge_wr
+- Sorting: start->done within 100 cycles
+- Reset: clears all structures, done=0
+
+**State Machine:**
+- IDLE: waiting for start
+- LOAD_EDGES: accept edge inputs
+- SORT: perform topological sort
+- DONE: output results
+
+**Memory:**
+- `adj[10][10]`: 100-bit matrix
+- `in_degree[10]`: 4-bit counters
+- `queue[10]`: priority queue storage
+- `result[10]`: 4-bit array for output order

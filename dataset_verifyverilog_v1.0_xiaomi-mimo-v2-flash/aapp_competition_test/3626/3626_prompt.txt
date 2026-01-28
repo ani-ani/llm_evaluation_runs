@@ -1,0 +1,87 @@
+You are tasked with creating a Verilog HDL module to detect axis-aligned rectangle intersections.
+
+### Problem Analysis
+The problem asks whether any pair of rectangles intersect, where intersection means boundaries share points (touching counts as intersection).
+
+### Hardware Adaptation
+Given hardware constraints:
+- n (number of rectangles) is limited to 8 for array handling
+- Coordinates are scaled to 32-bit signed integers (-1000 to 1000)
+- Fixed array size: 8 rectangles maximum
+- O(n²) pairwise comparison is acceptable (64 comparisons)
+
+### Algorithm
+For each rectangle i (0 to n-1) and each rectangle j (i+1 to n-1):
+- Two rectangles intersect if and only if:
+  - NOT (x1_i >= x2_j OR x2_i <= x1_j OR y1_i >= y2_j OR y2_i <= y1_j)
+- In Verilog, check the inverse (non-intersection) conditions:
+  - Rectangle i is completely to the left of j: x2_i <= x1_j
+  - Rectangle i is completely to the right of j: x1_i >= x2_j
+  - Rectangle i is completely below j: y2_i <= y1_j
+  - Rectangle i is completely above j: y1_i >= y2_j
+- If any of these four conditions is true, rectangles don't intersect
+- If all four conditions are false, rectangles intersect
+
+### Verilog Interface
+**Module Name:** `rectangle_intersection`
+
+**Inputs (18 total):**
+- `clk`: Clock, rising edge triggered
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate detection
+- `n`: Number of rectangles (4-bit, 1-8)
+- `rect_x1[0:7]`: Array of 8 x1 coordinates (32-bit signed each)
+- `rect_y1[0:7]`: Array of 8 y1 coordinates (32-bit signed each)
+- `rect_x2[0:7]`: Array of 8 x2 coordinates (32-bit signed each)
+- `rect_y2[0:7]`: Array of 8 y2 coordinates (32-bit signed each)
+
+**Outputs (2 total):**
+- `result`: 1-bit, 1 if any pair intersects, 0 otherwise
+- `done`: 1-bit, 1-cycle pulse when computation completes
+
+**Behavior:**
+1. Upon start pulse, begin pairwise comparison
+2. Use 2D indexing: i (outer loop, 0 to n-1), j (inner loop, i+1 to n-1)
+3. For each pair, compare coordinates using 32-bit arithmetic
+4. Set result=1 immediately when intersection found
+5. Continue checking all pairs if no intersection found yet
+6. When all pairs checked, assert done=1 for one cycle
+7. Result remains valid until next start or reset
+
+**Timing:**
+- Reset: done=0, result=0, takes 2 cycles minimum
+- Start to done: Within 64 cycles (8×8/2 pairs × 1 cycle each)
+- Result sampled when done=1
+
+**Reset Behavior:**
+- Synchronous active-low reset
+- All state machines reset
+- Output signals reset to 0
+
+**Implementation Details:**
+- Use 4-bit counters for i and j indices (max 8)
+- Use internal valid flag to track computation state
+- Use immediate termination when intersection found
+- Each pair comparison takes 1 cycle (combinational logic)
+- Clock domain: single clock, synchronous design
+
+**State Machine States:**
+- IDLE: waiting for start
+- CHECKING: iterating through pairs
+- DONE: computation complete
+
+**Key Verilog Constructs:**
+- Use `for` loops for array indexing (synthesizable)
+- Use `always @(posedge clk)` for state transitions
+- Use combinational logic for comparison: 
+  `intersect = ~((x2_i <= x1_j) | (x1_i >= x2_j) | (y2_i <= y1_j) | (y1_i >= y2_j))`
+- Use `reg` for counters and state
+- Use `wire` for comparison results
+
+**Constraints:**
+- Input coordinates: 32-bit signed, represent values -1000 to 1000
+- n: 4-bit, valid range 1-8
+- Array size: fixed 8 elements
+- No external memory access
+- No dynamic allocation
+- All computation in registers

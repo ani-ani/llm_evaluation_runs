@@ -1,0 +1,81 @@
+Design a Verilog module that solves the maximum independent set on a tree with distance constraint D. The problem is constrained to N=16 nodes and D=4 for Verilog feasibility.
+
+**Interface Specification:**
+Inputs:
+  clk: clock signal, rising edge
+  rst_n: asynchronous reset, active low
+  start: 1-cycle pulse to start computation
+  parent_idx[4:0]: 5-bit index for parent relationships (N=16 requires 4 bits, use 5 for safety)
+  parent_val[3:0]: 4-bit parent value for current edge
+  load_mode: 1-bit control: 0=compute, 1=load parent array
+  D_in[2:0]: distance constraint (D ≤ 4)
+
+Outputs:
+  result[4:0]: 5-bit maximum nodes that can be marked (max 16)
+  done: 1-cycle pulse when computation complete
+  busy: indicates module is processing
+
+**Implementation Requirements:**
+1. **Tree Representation:** Store parent array of size 16 (index 0 to 15). Node 0 is root (parent -1).
+2. **Distance Calculation:** Use BFS/DFS to compute distances between all node pairs (16x16 distance matrix, stored as 16x16x4-bit RAM or distributed RAM).
+3. **DP Algorithm:** Use iterative DP with state per node:
+   - State size: 2^16 (65536) possible marking subsets is too large
+   - **Simplified:** Use greedy approximation with BFS layering
+   - Sort nodes by depth, process bottom-up
+   - For each node, consider marking it if no marked node within distance D
+4. **State Machine:**
+   - STATE_IDLE: Wait for start
+   - STATE_LOAD: Load parent array when load_mode=1
+   - STATE_BUILD: Compute distance matrix using Floyd-Warshall (16^3 = 4096 operations max)
+   - STATE_COMPUTE: Run DP (iterative bitmask or layering)
+   - STATE_DONE: Output result
+5. **Optimization:**
+   - Use 16-bit bitmask to represent marked nodes
+   - For each bit position, check distance to all other set bits
+   - Maximum iterations: 2^16 * 16 = 1,048,576 (fits within 1000 cycles if pipelined)
+   - Alternatively: Greedy algorithm - sort nodes by depth, mark if no conflict
+
+**Timing:**
+- start->done: ≤1000 cycles
+- Reset: async, done=0, result=0
+- Data width: result ≤ 16 (5 bits)
+
+**Memory:**
+- parent[0:15]: 16 x 4-bit
+- dist_matrix[16][16]: 256 x 4-bit (for N=16, D≤4)
+- marked_mask: 16-bit register
+
+**Module Declaration:**
+module tree_distance_mark (
+  input wire clk,
+  input wire rst_n,
+  input wire start,
+  input wire [4:0] parent_idx,
+  input wire [3:0] parent_val,
+  input wire load_mode,
+  input wire [2:0] D_in,
+  output reg [4:0] result,
+  output reg done,
+  output wire busy
+);
+
+**Algorithm Details:**
+1. Load phase: Write parent[parent_idx] = parent_val
+2. Build distance matrix: For each node, BFS up to distance 4
+3. DP: Greedy approach
+   - Initialize marked_mask = 0, count = 0
+   - For node = 0 to 15:
+     - If parent[node] == -1 (root) OR all marked nodes are > D away:
+       - Set bit in marked_mask, increment count
+4. Return count
+
+**Constraints:**
+- N ≤ 16, D ≤ 4
+- Clock: 100MHz (10ns period)
+- Max cycles: 1000 (10µs)
+- Resource: ≤ 1000 LUTs, 512 registers
+
+**Edge Cases:**
+- N=1: result=1
+- D=0: marked nodes must be 0 distance apart (no two nodes) → result=1
+- D large (> diameter): all nodes can be marked → result=N

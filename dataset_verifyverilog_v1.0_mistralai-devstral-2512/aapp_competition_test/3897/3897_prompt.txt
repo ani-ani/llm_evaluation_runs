@@ -1,0 +1,29 @@
+You are to implement a module that computes the number of distinct ordered factorizations of a number M into N factors, given M's prime factorization. The input is N (number of factors, 1 <= N <= 500) and a vector of prime counts for M. The result is the product over all distinct primes p of C(count_p + N - 1, N - 1), modulo 1000000007.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start calculation.
+  - `num_primes`: 4-bit integer (max 12 distinct primes supported for scaling).
+  - `prime_counts`: Array of `num_primes` elements, each 32-bit (max total exponent count ~500).
+- Outputs:
+  - `result`: 32-bit integer (result modulo 1000000007).
+  - `done`: 1-cycle pulse indicating valid result.
+
+**Implementation Constraints:**
+1. **Combinatorial Logic:** The core computation is `result = Π ( C(count[i] + N - 1, N - 1) ) mod 1000000007`.
+2. **Factorials:** Since N is up to 500 and counts are up to 500, you need factorials up to 1000 (500 + 500). Precompute factorials `fact[i]` for `i` in `[0, 1000]` and inverse factorials `inv_fact[i]` using Fermat's Little Theorem (`a^(MOD-2) mod MOD`).
+3. **Modular Computation:** Compute `C(n, k) = fact[n] * inv_fact[k] * inv_fact[n-k] mod MOD`. Use a pipelined state machine to iterate through primes.
+4. **States:**
+   - `IDLE`: Wait for start.
+   - `PRELOAD`: Initialize product accumulator to 1.
+   - `COMPUTE_LOOP`: Loop `num_primes` times.
+     - Fetch `c = count[i]`.
+     - Compute `n = c + N - 1`.
+     - Compute `k = N - 1`.
+     - Compute combination `comb = fact[n] * inv_fact[k] % MOD * inv_fact[n-k] % MOD`.
+     - Accumulate `result = result * comb % MOD`.
+   - `DONE`: Pulse `done`.
+5. **Pipelining:** The factorial lookups and modular multiplications should be pipelined to meet timing (approx 3-4 stages per prime).
+6. **Reset:** On reset, `result=0`, `done=0`, state=IDLE.

@@ -1,0 +1,61 @@
+Implement a Verilog module to compute the Longest Palindromic Subsequence (LPS) length for a string of max length 16 characters.
+
+## Interface Specification:
+
+### Inputs:
+- `clk`: Clock signal (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start computation (1-cycle pulse)
+- `str`: 128-bit packed string (8-bit ASCII chars × 16 positions). Bytes are packed: str[7:0] = char[0], str[15:8] = char[1], ..., str[127:120] = char[15]
+- `len`: 4-bit string length (0 to 16)
+
+### Outputs:
+- `result`: 4-bit LPS length (0-16)
+- `done`: 1-cycle pulse indicating completion
+
+## Implementation Requirements:
+
+1. **Memory Structure**:
+   - Implement a 256-entry ROM (16×16 flattened) for DP table L[i][j]
+   - Each entry is 4 bits (max LPS length is 16)
+   - Index calculation: index = (i * 16) + j, where i, j are 4-bit indices
+
+2. **Algorithm Flow**:
+   - **Init Phase (5 cycles)**: Clear all DP entries to 0. Set diagonal L[i][i] = 1 for i < len
+   - **Main Loop**: Iterate length cl from 2 to len (inclusive)
+     - For each cl, iterate i from 0 to (len - cl)
+     - Calculate j = i + cl - 1
+     - Read characters at i and j from packed `str` input
+     - Read L[i+1][j-1] and L[i][j-1] and L[i+1][j] from ROM
+     - Write L[i][j] based on palindrome logic
+
+3. **Timing Constraints**:
+   - Maximum 256 cycles total (16×16 worst case)
+   - Done signal asserts when final value L[0][len-1] is written
+   - Result is valid only when done=1
+
+4. **Control FSM**:
+   - State 0: IDLE
+   - State 1: INIT (set diagonals)
+   - State 2: MAIN_LOOP (compute cl)
+   - State 3: COMPLETE
+
+5. **Bit Widths**:
+   - Index registers: 4-bit (0-15)
+   - Char storage: 8-bit ASCII
+   - DP values: 4-bit (0-16)
+   - String packing: 128-bit total
+
+6. **Reset Behavior**:
+   - On rst_n=0: done=0, result=0, all internal counters reset
+   - Requires at least 2 clock cycles of reset
+
+7. **Edge Cases**:
+   - len=0 or 1: result=1 (immediate)
+   - Empty spaces in string are ignored in LPS calculation
+
+## Implementation Notes:
+- Use combinational logic for character extraction from packed string
+- Use sequential logic for DP state progression
+- The module must be synthesizable with standard tools
+- Do not use BRAM inference; implement logic for DP table storage

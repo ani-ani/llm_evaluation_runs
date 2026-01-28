@@ -1,0 +1,50 @@
+Design a Verilog module named 'cookie_distribution' that maximizes cookie distribution given constraints. 
+
+**Module Specification:**
+- **Inputs:**
+  - `clk`: Clock signal
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle start pulse
+  - `N`: 10-bit input (representing number of friends, constrained to 2^10-1 for simulation)
+  - `A, B, C`: 10-bit inputs (representing cookie counts, constrained to 2^10-1)
+- **Outputs:**
+  - `result`: 22-bit output (max cookies that can be distributed)
+  - `done`: 1-cycle pulse indicating result is valid
+
+**Algorithm:**
+1. The problem is equivalent to finding max cookies such that no two same-type cookies are eaten consecutively per friend.
+2. Simplified Logic for HDL:
+   - Total cookies: `S = A + B + C`
+   - Max possible per friend: `floor(S / N)` is not sufficient due to type constraints.
+   - Heuristic: The maximum cookies is `min(S, 2 * (min(A, B, C) + (S - 3*min(A, B, C))))` is complex.
+   - Simplified approximation for HW:
+     - If `A + B + C <= N`, return `A + B + C`.
+     - Else, calculate the maximum possible cookies. The constraint is mainly on the majority type.
+     - Let `M = max(A, B, C)`, `Rem = S - M`.
+     - If `M > Rem`, then the limiting factor is the spacing for the majority type. You can eat at most `2 * Rem + 1` per person on average? No, total limit is `2 * Rem + N`.
+     - If `M <= Rem`, then `S` cookies can be eaten (limited only by total count).
+     - Verilog Logic:
+       1. Calculate `S = A + B + C` (22-bit).
+       2. Calculate `M = max(A, max(B, C))` (10-bit).
+       3. Calculate `Rem = S - M` (12-bit)
+       4. If `S <= N`, Result = `S`.
+       5. Else if `M > Rem`: 
+          - Check spacing: If `2 * Rem + N >= S`, Result = `S`. 
+          - Else: Result = `2 * Rem + N`.
+       6. Else: Result = `S`.
+   - *Refined Logic:* A known solution for this specific problem type is to check if the largest pile is too large. If `M > (S - M) + N`, then you cannot eat all cookies. The answer is `(S - M) * 2 + N`. Otherwise, you can eat all `S` cookies.
+   - **Verilog Implementation Steps:**
+     1. Calculate `Sum = A + B + C` (22-bit).
+     2. Find `MaxVal = max(A, max(B, C))` (10-bit).
+     3. Calculate `Rest = Sum - MaxVal` (12-bit).
+     4. Calculate `Threshold = Rest + N` (12-bit).
+     5. If `MaxVal > Threshold`, Result = `Rest * 2 + N`.
+     6. Else, Result = `Sum`.
+     7. Use a Finite State Machine (FSM) with states: IDLE, CALC, DONE.
+     8. Timing: IDLE -> CALC (1 cycle), CALC -> DONE (1 cycle). Total 3 cycles + latency of arithmetic.
+
+**Interface Constraints:**
+- Use 10-bit for A, B, C, N (scaled from 10^9 for simulation feasibility).
+- Use 22-bit for Sum and Result (covers 3 * 2^10).
+- Clock domain: synchronous design.
+- Reset: Clears registers and sets `done=0`.

@@ -1,0 +1,37 @@
+Design a Verilog module that processes queries on a set of stored strings. 
+
+Constraints:
+- Number of stored strings (N): 16 maximum.
+- Length of each stored string (barbarian word): 16 characters maximum.
+- Length of input query string (P): 32 characters maximum.
+- Total number of rounds (Q): 64 maximum.
+- Characters: Lowercase English letters ('a'-'z'), encoded as 5-bit values (0-25).
+
+Module Interface:
+- Inputs:
+  - `clk`: System clock (rising edge).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle high pulse to initiate processing.
+  - `mode`: 1-bit. 0 = Load barbarian word (Store `data` into `barbarian_words[addr]`). 1 = Query process (Execute `op`)
+  - `addr`: 4-bit (0-15). Index of the barbarian.
+  - `op`: 2-bit. 00 = Store word (depreacted, use mode 0), 01 = Type 1 (Load query word P), 10 = Type 2 (Query count for barbarian `addr`).
+  - `data`: 80-bit packed vector containing the string to be loaded or queried (16 chars * 5 bits). Characters are packed sequentially (char[0] at MSB).
+- Outputs:
+  - `result`: 32-bit integer (count of matches).
+  - `done`: 1-cycle high pulse when calculation is complete.
+
+Functionality:
+1. **Storage**: Maintain an array of 16 strings (each 16 chars max, 80-bit wide).
+2. **Type 1 Operation**: When `start` is high, `mode` is 1, and `op` is 01: Store the `data` vector into an internal buffer `query_P` (80 bits).
+3. **Type 2 Operation**: When `start` is high, `mode` is 1, and `op` is 10:
+   - Look up the stored string for barbarian index `addr`.
+   - Check if the stored string appears as a consecutive substring in `query_P`.
+   - Note: Since `query_P` is 16 chars and target is 16 chars, simple equality check is sufficient for exact matches. For partial matches, implement a naive sliding window comparator.
+   - Output `1` if found, `0` otherwise on `result`.
+4. **Timing**: `done` must be asserted within 100 clock cycles after `start`. 
+5. **Reset**: `done` = 0, `result` = 0.
+
+Implementation Details:
+- Use Finite State Machine (FSM) to manage operation sequence.
+- Use fixed-size loops for searching (max 16 iterations for length, 16 for position).
+- Output `done` signal exactly one cycle after `start` (single cycle latency allowed for simple operations) or after the internal search loop completes.

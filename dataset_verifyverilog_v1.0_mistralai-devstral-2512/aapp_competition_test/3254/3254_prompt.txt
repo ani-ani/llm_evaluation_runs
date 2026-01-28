@@ -1,0 +1,45 @@
+Verilog Module Specification: Paper Puzzler
+
+Goal: Given target average P (1.0 to 5.0), find counts of numbers 1-5 with minimal total papers N such that average equals P.
+
+Scaling: Multiply P by 10^9 to handle decimals (Max: 5*10^9 = 5,000,000,000 fits in 32-bit signed). Input P is provided as a 32-bit fixed-point number (Q16.16 not suitable, use integer scale: input_val = int(P * 1e9)).
+
+Interface:
+- Inputs:
+  - clk: System clock
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start calculation
+  - p_scaled[31:0]: Input target average P scaled by 10^9 (integer)
+- Outputs:
+  - n1[7:0]: Count of papers with number 1
+  - n2[7:0]: Count of papers with number 2
+  - n3[7:0]: Count of papers with number 3
+  - n4[7:0]: Count of papers with number 4
+  - n5[7:0]: Count of papers with number 5
+  - done: 1-cycle pulse indicating valid output on n1-n5
+
+Constraints:
+- Max total papers N: 256 (sufficient for precision)
+- Max count per value: 255 (fits in 8 bits)
+- Algorithm: Iterate N from 1 to 256. For each N, iterate counts n5 down to n1 (ensuring sum=n). Check if sum(counts*v) * 10^9 == P * N. If found, output counts and set done.
+- If no solution found (should not happen for valid P), output zeros and done.
+- Timing: start->done within 10,000 cycles max.
+- Reset: Done=0, outputs=0, min 2 cycles.
+
+Implementation Details:
+- Use FSM: IDLE -> SEARCH -> DONE
+- Inner loops: Use counters for n5, n4, n3, n2 (n1 derived as N - sum(others))
+- Math: Compute left_sum = (5*n5 + 4*n4 + 3*n3 + 2*n2 + 1*n1). Multiply by 10^9. Compare with p_scaled * N. To avoid 64-bit math, check: left_sum * 10^9 == p_scaled * N. Since left_sum max is 5*256=1280, multiply by 10^9 fits in 64-bit (1.28e12 < 2^64). Use 64-bit logic or verify equality via fraction reduction.
+- Fraction check: Target is P = S/N. Scale check: S * 10^9 == N * p_scaled. This avoids division.
+
+Optimization: Precompute target numerator and denominator if P is rational, but general case requires integer multiplication.
+
+Verilog Module Header:
+module paper_puzzler (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [31:0] p_scaled,
+    output reg [7:0] n1, n2, n3, n4, n5,
+    output reg done
+);

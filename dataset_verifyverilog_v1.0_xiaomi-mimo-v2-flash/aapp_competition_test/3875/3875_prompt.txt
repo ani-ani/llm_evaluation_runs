@@ -1,0 +1,34 @@
+Implement a Verilog module to compute the expected length of the longest increasing subsequence (LIS) of a random sequence X, where each X_i is uniformly chosen from [1, A_i], modulo 1000000007. Constraints: N <= 6, A_i up to 10^9 (scale to 32-bit).
+
+Input Interface:
+  - clk: System clock
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start calculation
+  - A[0:5]: 6 inputs of 32-bit unsigned integers (for N <= 6, unused inputs are ignored)
+  - len: 3-bit input (1-6) indicating valid inputs
+
+Output Interface:
+  - result: 32-bit result R (mod 1000000007)
+  - done: 1-cycle pulse indicating valid result
+
+Implementation Strategy (Simplified for HW):
+1. Since N <= 6, the number of possible monotone increasing sequences (LIS patterns) is 1680 (Bell number variant). For HW implementation, we can unroll the search.
+2. Algorithm:
+   a. Generate all possible 'shapes' of increasing sequences (e.g., for N=3: [0,0,0], [0,0,1], [0,1,0], [0,1,1], [0,1,2]).
+   b. For each shape, calculate the number of assignments of values to X that result in that LIS structure.
+   c. The count is a product of combinatorial terms: C(A_j - offset, count) where A_j are sorted constraints and offset depends on the shape.
+   d. Sum (count * length_of_shape) for all shapes.
+   e. Divide by Product(A_i) using modular inverse.
+3. Modular arithmetic: Use 64-bit internal accumulators to prevent overflow, perform modulo 1000000007 at each step.
+4. Since A_i can be large, but N is small, we can compute combinations C(n, k) where n = A_j (large) but k <= N (small) using the formula: n*(n-1)*.../(k!).
+5. Timing: Start-to-done within 1000 cycles (N=6, ~1680 shapes, pipelined calculation).
+
+Testbench Requirements:
+- Verify with N=3, A=[1,2,3] (Result=2).
+- Verify with N=1, A=[78261382] (Result=1).
+- Verify edge cases like N=2, A=[936650041, 936650041].
+- Check result against sample outputs.
+- Use cocotb with reset, clock, and random stimulus.
+- Must handle 32-bit inputs and 32-bit results.
+
+Note: This is a combinatorial problem solved via dynamic programming or inclusion-exclusion. The HDL implementation should efficiently compute the sum over all permutations/sequences.

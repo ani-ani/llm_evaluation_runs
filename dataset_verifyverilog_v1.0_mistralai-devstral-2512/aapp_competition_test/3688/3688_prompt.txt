@@ -1,0 +1,64 @@
+Implement a Verilog module that computes the minimum vertical moves to collect all item types (1..m) starting and ending at (0,0). The problem reduces to a dominance pre-processing followed by bitmask DP.
+
+**Input Format (Simplified for HDL):**
+- n <= 16 (reduced from 3e5 via per-item dominance pruning)
+- m <= 16 (max bitmask size 2^16 = 65536 states)
+- Each mall is defined by (dx, dy, item_type) where dx and dy are coordinates relative to school (0,0). Coordinates are scaled 16-bit signed integers (Q16.16 fixed-point).
+
+**Algorithm:**
+1. **Preprocessing (Dominance)**: For each item type (1..m), select at most one candidate mall. A mall A (dx1, dy1) dominates B (dx2, dy2) if:
+   - abs(dx1) <= abs(dx2) AND abs(dy1) <= abs(dy2) (Horizontal & Vertical dominance)
+   - AND the vertical cost condition holds.
+   Since we minimize vertical moves, a mall closer in both axes (or strictly better in vertical dominance) is preferred. We approximate by selecting the mall with minimum `max(abs(dx), abs(dy))` per item, or if tied, minimum `abs(dy)`. If `abs(dx) <= abs(dy)` is true for a mall, it incurs 1 vertical move (transition cost), else 0.
+   *HDL Constraint*: We assume input `n` is pre-filtered to `n <= 16` (top candidates per item). The module processes these `n` candidates.
+
+2. **Bitmask DP**:
+   - State: `dp[mask][i]` = min vertical moves to visit the subset `mask` of items, ending at the mall `i` associated with the last item collected.
+   - We only keep states for the item assigned to each `i`.
+   - Transitions: From `dp[prev_mask][i]` (mask includes item `t_i`), we try to add `t_j` (j != i) by transitioning to `dp[prev_mask | (1<<(t_j-1))][j]`.
+   - Cost of transition `i -> j`:
+     If `abs(dx_j - dx_i) < abs(dy_j - dy_i)`: Cost = 1 (Vertical move)
+     Else: Cost = 0 (Horizontal move)
+   - Base Case: Start from school (0,0) to each mall `i`. Cost is 1 if `abs(dx_i) < abs(dy_i)`, else 0.
+   - Final Answer: For all masks containing all items (`(1<<m)-1`), add return cost `i -> (0,0)` and take the minimum.
+   - Return cost `i -> (0,0)` is 1 if `abs(dx_i) < abs(dy_i)`, else 0.
+
+**Interface:**
+- Inputs (Clock Domain):
+  - `clk`, `rst_n`: Standard synchronous signals.
+  - `start`: High for 1 cycle to initiate computation.
+  - `n`: 5-bit integer (number of candidates, <= 16).
+  - `m`: 5-bit integer (number of items, <= 16).
+  - `din_x`, `din_y`: 16-bit signed inputs for coordinates.
+  - `din_type`: 4-bit input for item type (1..16).
+  - `din_valid`: High when `din_x`, `din_y`, `din_type` are valid.
+  - `din_ready`: Handshake output.
+- Outputs:
+  - `result`: 16-bit integer (minimum vertical moves).
+  - `done`: High for 1 cycle when result is ready.
+  - `valid`: High when result is valid (keeps high until reset).
+
+**Implementation Details:**
+- Store candidate list in a buffer: `cand_x[15:0][15:0]`, `cand_y[15:0][15:0]`, `cand_type[15:0]`.
+- Implement FSM for data loading, preprocessing (dominance logic simplified to sort/scan if area allows, or just store all 16), and DP calculation.
+- DP table size: `2^16 * 16` entries. Use BRAM or distributed RAM. Since 2^16 is large (65536), optimize: 
+  - We only need to store DP for the current mask iteration or use a full table if resources allow (2^16 * 16 * 8 bits = ~1MB, which is tight but possible on FPGA).
+  - Alternative: Iterate through masks 0 to 2^m-1. Update `next_dp` from `curr_dp`.
+  - `dp[mask]` stores an array of size 16 (min cost ending at specific item).
+- Since `m <= 16`, we iterate masks from 0 to 2^m - 1.
+- Cycle count: ~2^m * 16 * 16 (approx 4 million cycles at 100MHz -> 40ms). Limit to 256 cycles for simulation if `m` is small (e.g., `m <= 6`) or use `MAX_CYCLES` heuristic.
+- **Optimization**: Since `n` (candidates) is <= 16, but `m` (types) is also <= 16, we can map candidate index `i` to item `t_i`. Not every item needs to be the *last* visited node, but DP requires a last node index. If `n > m`, multiple nodes have same type. We must handle this: DP state `dp[mask][i]` where `i` is node index. Transitions skip nodes of same type already in mask? No, standard TSP DP works on nodes. If multiple nodes have same type, we treat them as distinct locations but same item ID.
+
+**Scaling for Simulation:**
+- To fit within Verilog simulation limits, assume `m` is small (e.g., <= 6 for the testbench) or use a simplified version where `n` is strictly <= 16 and `m` <= 8.
+- The DP complexity is O(2^m * n^2). For `m=16, n=16`, this is too slow for simple simulation. We will specify the module to handle up to `m=12, n=12` (approx 12^2 * 2^12 = 600k ops) or simply specify that the testbench will use small inputs.
+
+**Verilog Spec:**
+- Module `shopping_route`.
+- Inputs: `clk`, `rst_n`, `start`, `n`, `m`, `din_x`, `din_y`, `din_type`, `din_valid`.
+- Outputs: `dout_ready`, `result`, `done`, `valid`.
+- Internal: FSM states (IDLE, LOAD, DP, FINISH).
+- Memory: `dp[2^M_MAX][N_MAX][16]` (using flattened arrays).
+- Fixed-point math: `abs_diff_x = (dx_j > dx_i) ? dx_j - dx_i : dx_i - dx_j` (signed subtraction). Compare `abs_diff_x < abs_diff_y`.
+- Since coordinates are large (16-bit), subtraction needs 17 bits.
+- **Constraint**: `MAX_N = 16`, `MAX_M = 16` (mapped to `MAX_MASK = 2^12` for sanity in sim if needed, or full 2^16). Spec will state full capability but testbench uses small values.

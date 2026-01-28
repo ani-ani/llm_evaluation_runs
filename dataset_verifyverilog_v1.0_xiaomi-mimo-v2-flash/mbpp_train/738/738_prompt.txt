@@ -1,0 +1,48 @@
+Implement a Verilog module to compute the geometric sum of n-1 using fixed-point arithmetic. The module should calculate: sum = 1/(2^0) + 1/(2^1) + ... + 1/(2^(n-1)). Use 16-bit fixed-point Q8.8 format (8 integer bits, 8 fractional bits). Input n is 4-bit (0-15). Output sum is 16-bit. Use a loop-based iterative approach (NOT recursive) with a state machine. Maximum iterations: 16. The module should handle n=0 by outputting 0. The sum should be computed over 16 clock cycles after start is asserted. Output done signal indicates completion.
+
+Interface Specification:
+- Inputs:
+  - clk: System clock, rising edge
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate calculation (1 for one clock cycle)
+  - n: 4-bit unsigned input (0-15)
+- Outputs:
+  - sum: 16-bit fixed-point result in Q8.8 format
+  - done: 1-cycle pulse when calculation completes (value valid on same cycle)
+
+Behavioral Requirements:
+1. On reset (rst_n=0): sum=0, done=0, internal state reset
+2. When start=1: Begin calculation for given n
+3. For n=0: Sum should be 0 (empty sum)
+4. For n>0: Calculate sum = 1 + 1/2 + 1/4 + ... + 1/2^(n-1)
+5. Use fixed-point arithmetic: 1.0 in Q8.8 = 256
+6. Division by powers of 2 is right shift: 1/2^k = 256 >> k
+7. Compute iteratively: term_k = 256 >> k, add to running sum
+8. Sum all n terms (from k=0 to n-1)
+9. done pulses high for 1 clock cycle when calculation completes
+10. Maximum value for n=15: sum ≈ 1.9999, within Q8.8 range (0-255.996)
+11. Start cannot be asserted while busy (no pipeline)
+
+Timing Requirements:
+- start to done latency: n cycles (4-16 cycles)
+- done signal pulses high for exactly 1 cycle
+- sum output valid only when done=1
+- Internal counter for iteration count
+
+State Machine Design (suggested):
+- State 0: IDLE (wait for start)
+- State 1: COMPUTE (iterate n times, accumulate sum)
+- State 2: DONE (assert done, return to idle)
+
+Implementation Notes:
+- Use 16-bit registers for accumulator and term
+- term = 256 >> iteration_count
+- iteration_count goes from 0 to n-1
+- Add term to accumulator each cycle
+- In Q8.8, 1.0 = 256, 0.5 = 128, 0.25 = 64, etc.
+- Handle n=0 case immediately in IDLE state
+
+Example Test Cases (fixed-point conversions):
+- n=7: sum ≈ 1.9921875 = 0x1FE0 (510 in Q8.8)
+- n=4: sum ≈ 1.9375 = 0x1F00 (496 in Q8.8)
+- n=8: sum ≈ 1.99609375 = 0x1FE0 (510 in Q8.8)

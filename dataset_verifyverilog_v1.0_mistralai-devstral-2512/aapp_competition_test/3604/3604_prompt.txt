@@ -1,0 +1,31 @@
+Implement a Verilog module that finds the maximum clique in a sensor network graph. Given n sensors (≤8) with 2D coordinates (Q8.8 fixed-point) and distance threshold d (Q8.8), compute the largest subset where all pairs are within distance d.
+
+**Interface:**
+- Inputs: clk, rst_n, start (1-cycle pulse)
+- Parameters: MAX_N=8, COORD_BITS=16, DIST_BITS=16, MAX_CYCLES=256
+- For i=0 to 7: sensor_x[i], sensor_y[i] (16-bit Q8.8 each, pad unused to 0)
+- Output: done (1-cycle when finished), size (4-bit), indices[0:7] (8x4-bit packed)
+
+**Behavior:**
+1. On start=1, read coordinates into internal registers
+2. Compute adjacency matrix: adj[i][j] = 1 if distance ≤ d for i≠j
+3. Use BFS/DFS to find maximum clique iteratively:
+   - Try all subsets of size k from 1 to n
+   - Check if subset forms a clique (all pairs adjacent)
+   - Track maximum clique found
+4. When found, output size and indices
+
+**Constraints:**
+- Distance: sqrt((x1-x2)² + (y1-y2)²) ≤ d
+- Use fixed-point: compute squared distance (x_diff² + y_diff²) ≤ d² to avoid sqrt
+- Cycle budget: ≤ 256 cycles from start to done
+- Reset: all outputs 0, done=0
+
+**Output Format:**
+- indices packed: index[i] in bits[4*i+3:4*i] (0-indexed, add 1 for 1-based)
+- size=0 indicates no valid subset (impossible given n≥1)
+
+**Example:**
+For n=4, d=1.0 (1024 in Q8.8), coords [(0,0),(0,1),(1,0),(1,1)]:
+- adj[0][1]=1 (dist=1.0), adj[0][2]=1, adj[0][3]=0 (dist≈1.41)
+- Max clique size=2, indices={0,1} → output size=2, indices packed=0x12

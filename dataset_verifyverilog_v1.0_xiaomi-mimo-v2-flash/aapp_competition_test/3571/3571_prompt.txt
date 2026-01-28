@@ -1,0 +1,66 @@
+Create a Verilog module 'ancient_viewport' that renders a text viewport with scrollbar based on a simplified ancient GUI spec.
+
+## Input Interface
+- `clk`, `rst_n`: Standard clock and active-low reset
+- `start`: 1-cycle pulse to start processing
+- `W`: 4-bit (3-20) viewport width in chars
+- `H`: 4-bit (3-20) viewport height in lines
+- `F`: 6-bit (0-63) first visible line index
+- `text_lines`: 32 x 80-bit inputs representing raw text lines (char per bit is simpler: use 80 x 8-bit per line)
+  *Simplified Interface:*
+  `text_char_0_0` to `text_char_31_79` (2560 pins total) is too large. Instead, use a RAM-like interface:
+  - `input_ram_addr`: 5-bit (0-31)
+  - `input_ram_data`: 80-bit (8 chars per 10-bit word, or just 80-bit vector)
+  - `input_ram_write`: 1 cycle pulse
+- `N`: 5-bit (1-22) number of text lines provided
+
+## Processing (Internal FSM)
+1. **Word Parsing**: Read text lines from RAM. Extract words (separated by single spaces). Limit word length to 20 chars. If word > `W`, truncate to `W`.
+2. **Line Wrapping**:
+   - Iterate words.
+   - If current line width + word width <= `W`, append to current line.
+   - Else, start new line.
+   - Store result in an internal buffer: `wrapped_lines` (max 64 lines, 20 chars each).
+   - Total lines `L` must be calculated.
+3. **Viewport Rendering**:
+   - Determine visible lines: indices `F` to `F + H - 1`.
+   - For each visible line, output character sequence padded with spaces to width `W`.
+4. **Scrollbar Logic**:
+   - Calculate `L` (total wrapped lines).
+   - Calculate thumb position `T`.
+     Formula: `T = ((H - 3) * F) / (L - H)` (Integer division).
+     *Note: `(H - 3)` is the available track height. If `L <= H`, thumb covers full track (0).
+   - Render right edge column:
+     - Top: `^` (always visible)
+     - Middle: 3 rows (H must be >= 3). Row 0: Empty, Row 1: `X` at `T`, Row 2: Empty (simplified for H=3) or distributed.
+       *Refined*: The sample shows 5 rows of viewport. `H=5`. Track length = 3. Thumb `T` is 0, 1, or 2.
+       Track rows relative to window: `H-1` (bottom `v`), `H-2`, `H-3`, `H-4` (top `^`).
+       Track is between `H-4` and `H-2` (3 rows).
+       Thumb is at `T` offset from `H-4`.
+     - Bottom: `v` (always visible)
+
+## Output Interface (Simplified for Simulation)
+To avoid massive output pins, the module will fill an internal framebuffer during the `start` -> `done` sequence.
+For this problem, we will output a single stream of characters for verification.
+
+- `output_char`: 8-bit ASCII character
+- `output_valid`: High when `output_char` is valid
+- `done`: High for 1 cycle when rendering is complete
+
+## Timing
+- Reset: `done = 0`, `output_valid = 0`.
+- Start: Pulse high. Module processes text and prepares output.
+- Duration: Max 20,000 cycles (safe bound for 32 lines).
+
+## Implementation Details
+- Use fixed-width arrays: `wrapped_text[63:0][19:0]` (64 lines, 20 chars).
+- Use FSM states: IDLE, PARSE_WORDS, WRAP_LINES, CALC_SCROLL, RENDER.
+- For `text_lines`, accept them serially via `input_ram_data` and `input_ram_addr` (incrementing).
+
+## Example Sequence
+1. Reset.
+2. Load N lines into internal buffer (simulated RAM write).
+3. Assert `start`.
+4. Module calculates `L`.
+5. Module generates output stream: Border, Line 1, Border... Thumb placement...
+6. `done` goes high.

@@ -1,0 +1,38 @@
+Implement a Verilog module that solves the onion fence problem. Constraints: N (onions) <= 16, M (fence posts) <= 16, K (laser posts) <= 4. Coordinates are 16-bit integers (0 to 65535). The module should compute the maximum number of onions strictly inside the convex hull of K selected fence posts.
+
+Inputs:
+  clk: Clock signal
+  rst_n: Active-low synchronous reset
+  start: 1-cycle high to start computation
+  onions_x[0:15]: 16x16-bit array of onion x-coordinates
+  onions_y[0:15]: 16x16-bit array of onion y-coordinates
+  posts_x[0:15]: 16x16-bit array of fence post x-coordinates
+  posts_y[0:15]: 16x16-bit array of fence post y-coordinates
+  n_onions: 4-bit input (number of onions, actual count N)
+  n_posts: 4-bit input (number of fence posts, actual count M)
+  k_limit: 4-bit input (number of laser posts to select, K)
+
+Outputs:
+  result: 8-bit integer (maximum number of protected onions)
+  done: 1-cycle high when result is valid
+
+Functionality:
+1. On reset: done=0, result=0, internal state reset.
+2. On start: Begin computation.
+3. Algorithm:
+   - Iterate through all subsets of fence posts of size K (using combinations generated in hardware).
+   - For each subset, compute the convex hull (order the points counter-clockwise).
+   - For each onion, check if it is strictly inside the convex hull (using point-in-polygon winding number or ray casting).
+   - Track the maximum number of onions found for any subset.
+4. When finished: Set result to the maximum count and assert done for 1 cycle.
+
+Timing:
+- Start to Done: Within 2^20 cycles (brute-force is acceptable for small N, M, K).
+- Reset duration: 2 cycles minimum.
+
+Implementation Notes:
+- Use 16-bit fixed-point arithmetic for cross products (det) used in convex hull and point-in-polygon checks. Assume coordinates fit in 16 bits; intermediate products may require 32 bits but clamp to 16 bits for simplicity if overflow is unlikely for max coordinate 65535 (65535^2 > 2^32, so use 33 bits for product).
+- For convex hull, use Monotone Chain algorithm (iterative).
+- For point-in-convex-polygon, use winding number or checking if point is to the left of all edges (for CCW hull).
+- Since N, M, K are small, unrolled loops or FSM with counter-based iteration is acceptable.
+- The module must handle the input counts (n_onions, n_posts) to only process valid data.

@@ -1,0 +1,92 @@
+Implement a Verilog module to decrypt a substitution cipher text given a set of known words. The module should perform a constrained backtracking search to find a unique mapping from encrypted letters to plaintext letters.
+
+## Design Requirements
+
+1. **Fixed Vocabulary**: Use only the 12 known words, but limit to first 8 letters of each word to fit in 16-bit registers. Pad shorter words with spaces.
+   - "be"      -> "be      " (ASCII: 62 65 32 32 32 32 32 32)
+   - "our"     -> "our     " (ASCII: 6F 75 72 20 20 20 20 20)
+   - "rum"     -> "rum     " (ASCII: 72 75 6D 20 20 20 20 20)
+   - "will"    -> "will    " (ASCII: 77 69 6C 6C 20 20 20 20)
+   - "dead"    -> "dead    " (ASCII: 64 65 61 64 20 20 20 20)
+   - "hook"    -> "hook    " (ASCII: 68 6F 6F 6B 20 20 20 20)
+   - "ship"    -> "ship    " (ASCII: 73 68 69 70 20 20 20 20)
+   - "blood"   -> "blood   " (ASCII: 62 6C 6F 6F 64 20 20 20)
+   - "sable"   -> "sable   " (ASCII: 73 61 62 6C 65 20 20 20)
+   - "avenge"  -> "avenge  " (ASCII: 61 76 65 6E 67 65 20 20)
+   - "parrot"  -> "parrot  " (ASCII: 70 61 72 72 6F 74 20 20)
+   - "captain" -> "captain " (ASCII: 63 61 70 74 61 69 6E 20)
+
+2. **Search Algorithm** (Iterative BFS with depth-first fallback):
+   - Maintain an array of 16 possible mappings (one per encrypted letter index)
+   - Each mapping tracks: encrypted_char -> plaintext_char or X (unknown)
+   - For each word position in input (max 16 words), attempt to match against vocabulary
+   - Use backtracking with max 256 search iterations
+   - Prune invalid branches (duplicate mappings, letter count mismatch)
+
+3. **Input/Output Handling**:
+   - Input encrypted text: maximum 200 characters, stored as 8-bit ASCII array (max 32 chars for HW)
+   - Output decrypted text: same length, 8-bit ASCII array
+   - Spaces (0x20) are passed through unchanged
+   - Letters (0x61-0x7A) are mapped through substitution table
+
+4. **Interface**:
+   - `clk`: System clock
+   - `rst_n`: Active-low reset
+   - `start`: 1-cycle pulse to initiate decryption
+   - `encrypted_text[0:31][7:0]`: Input text (32 chars × 8 bits)
+   - `length[5:0]`: Actual input length (0-32 chars)
+   - `result[0:31][7:0]`: Output decrypted text
+   - `done`: 1-cycle pulse when valid result available
+   - `possible`: High when decryption succeeded (unique mapping found)
+
+5. **State Machine**:
+   - `IDLE`: Wait for start signal
+   - `PARSE`: Split input into words (spaces as delimiters)
+   - `SEARCH`: Attempt mapping discovery (bounded loops)
+   - `DECRYPT`: Apply mapping and generate output
+   - `DONE`: Signal completion
+
+6. **Constraints**:
+   - Maximum 256 clock cycles for search phase
+   - Maximum 16 words in input (space-separated)
+   - Maximum 8 letters per word
+   - Total unique encrypted letters ≤ 16 (fits in 4-bit index)
+   - Use 8-bit ASCII values (clamp to 7-bit: 0-127)
+
+7. **Output Behavior**:
+   - If unique mapping found: `done=1`, `possible=1`, `result` contains decrypted text
+   - If impossible: `done=1`, `possible=0`, `result` is invalid
+   - Result matches input length exactly (spaces preserved)
+
+## Implementation Guidelines
+
+- Use combinational logic for character comparison and mapping lookup
+- Use sequential logic for state machine and iteration counters
+- Implement word matching with 8×8 bit comparators (one letter at a time)
+- Store vocabulary as 12 × 8 × 8-bit ROM (or combinational lookup)
+- The search space is constrained: only consider mappings that preserve unique letters
+- Reject mappings where one encrypted letter maps to two different plaintext letters
+- The solution is unique if exactly one valid mapping exists
+
+## Testbench Requirements
+
+The cocotb testbench should:
+1. Initialize clock and reset
+2. Write encrypted text to input array (one byte at a time)
+3. Assert `start` for 1 cycle
+4. Wait for `done` with timeout (256 cycles)
+5. Verify `possible` flag
+6. Compare `result` with expected plaintext (accounting for 8-char truncation)
+7. Test with given examples and edge cases (no spaces, all spaces, impossible cases)
+
+## Example Test Cases
+
+1. Input: "ex eoii jpxbmx cvz uxju sjzzcn jzz" (29 chars)
+   Expected: "we will avenge our dead parrot arr" (29 chars)
+   Note: First 8 chars only for HW: "we will " -> "we will "
+
+2. Input: "wl jkd" (6 chars)
+   Expected: "Impossible" (indicates no unique mapping)
+
+3. Input: "dyd jkl cs" (10 chars)
+   Expected: "Impossible"

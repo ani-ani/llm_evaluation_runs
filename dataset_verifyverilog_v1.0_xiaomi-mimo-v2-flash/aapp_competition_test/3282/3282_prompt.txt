@@ -1,0 +1,46 @@
+Design a Verilog module that finds valid lunch bills for a fixed price P. The module must satisfy these constraints:
+1. Beverage price (B) + Main dish price (M) = Total price (P).
+2. B < M.
+3. Digits in B, M, and P must be mutually exclusive (no shared digits).
+4. Output all valid pairs (B, M) sorted by ascending B.
+
+Interface Specification:
+- Inputs:
+  - clk: System clock (rising edge triggered).
+  - rst_n: Active-low asynchronous reset.
+  - start: 1-cycle pulse to start the search.
+  - P[15:0]: The fixed total price (16-bit unsigned integer).
+
+- Outputs:
+  - b_out[15:0]: Beverage price of the current valid bill.
+  - m_out[15:0]: Main dish price of the current valid bill.
+  - valid: 1-cycle pulse asserted when (b_out, m_out) is a valid bill.
+  - done: 1-cycle pulse asserted when the search is complete.
+  - count[13:0]: Total number of valid bills found (max 4096).
+
+Implementation Details:
+1. Since P is fixed for a session, the module performs a sequential search over B from 1 to P/2 (since B < M).
+2. For each B, calculate M = P - B.
+3. Digit extraction: Decompose P, B, and M into decimal digits. Use BCD representation or bit-wise checks for digits 0-9. Since P <= 65535, digits <= 5.
+4. Digit validation: Check that the set of digits in B, set in M, and set in P are disjoint. Use a bitmask (10 bits) for each number and verify (mask_B & mask_M) == 0, (mask_B & mask_P) == 0, (mask_M & mask_P) == 0.
+5. Storage: Valid pairs can be stored in a small internal buffer (e.g., 5000 entries of 32 bits) or streamed directly to output. For simplicity, stream valid pairs as they are found.
+6. Timing: The search runs sequentially. For P=65535, max iterations is ~32k. Assume clock period allows completion within reasonable simulation time (e.g., 100ms).
+7. Reset: Sets 'done' low, 'valid' low, and resets the search state to B=1.
+
+Verilog Module Template:
+module bill_finder (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] P,
+    output reg [15:0] b_out,
+    output reg [15:0] m_out,
+    output reg valid,
+    output reg done,
+    output reg [13:0] count
+);
+    // Internal registers for state machine (idle, calc, check, output)
+    // Registers for current B, M, digit masks
+    // Logic to extract decimal digits and compare masks
+    // ... implement search algorithm ...
+endmodule

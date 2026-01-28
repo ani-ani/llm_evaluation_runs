@@ -1,0 +1,37 @@
+Implement a Verilog module for calculating the optimal SMS keypress sequence to type a target word using a dictionary.
+
+**Core Algorithm (HW Adaptation):**
+1. **Digit Mapping**: Precompute 8-bit digit codes for all words (max 10 chars). 'a'-'z' map to 2-9 as defined.
+2. **Dictionary Structure**: Store words as fixed 10-char arrays (padding with 0). Store digit codes and original index (for up/down count).
+3. **Target Processing**: Accept target word as char array. Compute digit sequence for prefixes (max 10 chars).
+4. **DP Segmentation**: For each position `i` in target, find minimum cost to reach `i` using dictionary words.
+   - Cost = sum of digit presses + cost of up/down presses to select the word + 'R' press (if not first segment).
+   - Up/Down cost: `min(index, N - index)` where `index` is the word's position in the dictionary for that digit code (0-based).
+5. **Reconstruction**: Store backpointers and select choices to output the sequence.
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `dictionary_valid`: High when writing dictionary.
+  - `word_in[9:0][7:0]`: 10-byte input for dictionary/target (ASCII).
+  - `len_in[3:0]`: Length of input word (0-10).
+  - `query_valid`: High when writing target word.
+- Outputs:
+  - `done`: 1-cycle pulse when result is valid.
+  - `result_char[7:0]`: ASCII output for the sequence (requires external buffering or streaming).
+  - `result_valid`: High when `result_char` is valid.
+
+**Constraints:**
+- Max Dictionary Size: 1000 words (10k bytes).
+- Max Target Length: 100 chars (hardcoded limit for HW).
+- Word Length: 10 chars max.
+- Bit Widths: 8-bit ASCII, 16-bit counters for up/down (since N <= 1000, 10 bits sufficient), 32-bit cost accumulator.
+- Operations: Lookups in SRAM-like arrays (implemented as logic for small N), comparisons, additions.
+- Control: Finite State Machine (FSM) to handle loading, DP calculation, and output generation.
+
+**Implementation Hints:**
+- Use a blocking RAM interface for dictionary storage (simulated via registers or external memory in real synthesis).
+- The DP loop iterates 100 times (max target length). Inside, it scans the dictionary (max 1000 entries).
+- Output requires a FIFO or shift register to stream characters.
+- Handle the 'up'/'down' cost calculation by finding the index of the matching digit code in the sorted dictionary.

@@ -1,0 +1,35 @@
+Implement a Verilog module that solves the maximum revenue data sales problem.
+
+**Problem:** Given N≤14 data pieces with values S_i (≤1000), partition them into subsets. Revenue for a subset is the count of distinct prime factors in the sum of S_i in that subset. Maximize total revenue.
+
+**Algorithm:**
+1. Precompute prime factor counts for sums 0-14000 using lookup table.
+2. DP over subsets: `dp[mask]` = max revenue for subset `mask`.
+3. Iterate over all submasks `s` of `mask` (s != 0, s != mask).
+4. `dp[mask] = max(dp[mask], dp[mask^s] + revenue(s))`.
+5. Answer is `dp[(1<<N)-1]`.
+
+**Interface:**
+- Inputs:
+  - `clk`: Clock
+  - `rst_n`: Active-low reset
+  - `start`: Start computation (1 cycle pulse)
+  - `N`: 4-bit integer (1-14)
+  - `S[14][10]`: 14 values, each 10-bit (max 1023)
+- Outputs:
+  - `result`: 8-bit maximum revenue (max 14 * distinct primes in 14000 ≈ 14*4=56)
+  - `done`: 1-cycle pulse when valid
+
+**Timing:**
+- Reset: 2 cycles, sets `done=0`, `result=0`.
+- Start: After `start` pulse, computation completes within 20,000 cycles.
+- When `done=1`, `result` holds the answer.
+
+**Implementation Details:**
+- Use a 16KB ROM for prime factor lookup (pre-filled in synthesis).
+- State machine: IDLE -> LOAD_S -> PRECOMPUTE_SUM -> DP_ITERATE -> FINISH.
+- Inner loops for subset enumeration must be bounded.
+- Since N≤14, `1<<N` is 16384.
+- Data widths: Sum (14 bits), dp values (8 bits).
+- Internal control signals: `state`, `submask`, `current_sum`, `valid_sum`, `temp_max`.
+- Do NOT implement the prime sieve in Verilog; assume the lookup table exists or is a simple combinational function based on small sums (simplified for Verilog: check divisibility by 2,3,5,7,11,13,17,19,23,29,31,37).

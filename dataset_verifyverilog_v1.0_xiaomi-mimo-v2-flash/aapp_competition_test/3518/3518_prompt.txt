@@ -1,0 +1,33 @@
+Implement a minimum weight perfect matching module for a graph with up to 16 nodes. The graph is given as a list of edges. The module should compute the minimum total weight of a perfect matching (pairing all nodes into disjoint pairs) or indicate impossibility.
+
+**Input Interface:**
+- `clk`: System clock, rising edge
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `num_nodes`: 4-bit input (1-16)
+- `edge_valid`: 1-bit input, indicates `edge_u`, `edge_v`, `edge_weight` are valid
+- `edge_u`: 4-bit input (source node 0-15)
+- `edge_v`: 4-bit input (dest node 0-15, u != v)
+- `edge_weight`: 16-bit input (0-65535)
+
+**Output Interface:**
+- `result`: 24-bit output (minimum total weight, or 0xFFFFFF if impossible)
+- `done`: 1-cycle pulse, indicates `result` is valid
+
+**Timing & Behavior:**
+1. Reset (`rst_n=0`): Clears internal state. `done=0`, `result=0`.
+2. After reset, host sends `num_nodes`.
+3. Host streams `m` edges via `edge_valid`. Each edge is (u, v, weight).
+4. Host pulses `start` after all edges are sent.
+5. Module computes minimum weight perfect matching for the graph.
+6. When `done=1`, `result` holds the minimum total weight. If no perfect matching exists, `result` must be `0xFFFFFF` (or a designated "impossible" value).
+7. Computation must complete within 2048 clock cycles.
+
+**Constraints & Scaling:**
+- Max nodes: 16 (scaled from 200)
+- Max edges: 32 (scaled from 250)
+- Max weight: 65535 (scaled from 10^6)
+- State: Use a lookup table (LUT) or iterative DP for 2^16 states (65536 entries).
+- Algorithm: DP over subsets (bitmask). dp[mask] = min weight for subset 'mask'. Iterate over all masks, try to match the lowest set bit with any other set bit.
+- Hardware: Use a state machine to iterate masks from 0 to (1<<num_nodes)-1. Use block RAM for DP table if possible, or registers for small N.
+- Edge storage: Store edges in a small BRAM or reg file indexed by node pair.

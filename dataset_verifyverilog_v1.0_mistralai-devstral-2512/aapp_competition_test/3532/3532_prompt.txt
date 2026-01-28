@@ -1,0 +1,50 @@
+Implement a Verilog module that simulates the string explosion chain reaction.
+
+**Problem Constraints (Scaled for Hardware):**
+- Input string length: 64 characters maximum (ASCII)
+- Explosion pattern length: 8 characters maximum
+- Characters: 8-bit ASCII (0-255)
+- Explosion pattern characters: Unique (no duplicates)
+- Output string: 64 characters maximum
+
+**Algorithm:**
+Use a stack-based approach (hardware friendly):
+1. Maintain a stack buffer (64 chars) and a stack pointer (6-bit)
+2. For each input character (streamed in 64 cycles):
+   a. Push character onto stack
+   b. If stack top matches the explosion pattern:
+      - Pop the pattern length from stack
+3. Output the remaining stack contents
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `in_char`: 8-bit ASCII input character (valid when processing)
+  - `explosion_pattern`: 8x8-bit array (fixed width)
+  - `pattern_len`: 4-bit integer (1-8)
+  - `input_len`: 7-bit integer (1-64)
+- Outputs:
+  - `out_char`: 8-bit ASCII output character (valid when outputting)
+  - `out_valid`: 1-bit, high when out_char is valid
+  - `done`: 1-cycle pulse when processing is complete
+  - `frula`: 1-bit flag indicating if final result is "FRULA" (empty)
+
+**Timing:**
+- Processing begins after `start` pulse
+- Input character is consumed on each rising edge when `input_valid` is high
+- `done` asserted after `input_len` cycles of processing
+- Result can be read from `out_char` and `out_valid` during output phase
+- Output phase follows immediately after processing
+
+**Reset Behavior:**
+- Stack pointer = 0
+- `done` = 0, `out_valid` = 0, `frula` = 0
+
+**Implementation Notes:**
+- Implement a state machine: IDLE -> PROCESSING -> OUTPUTING
+- The stack is implemented as a synchronous memory array
+- Pattern matching must compare the top `pattern_len` stack entries
+- If `pattern_len` is 0, treat as no explosion
+- Output phase iterates through stack contents from bottom to top

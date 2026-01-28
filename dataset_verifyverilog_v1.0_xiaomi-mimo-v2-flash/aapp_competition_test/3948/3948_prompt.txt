@@ -1,0 +1,48 @@
+Implement a Verilog module to verify if a given undirected tree (up to 16 nodes, nodes 0-15) is a valid k-multihedgehog (k up to 15). A k-multihedgehog is defined by a recursive structure: For k=1, there must be one center node with degree ≥3, and all other nodes are leaves (degree 1). For k>1, it consists of a center node connected to m ≥ 3 'arms', where each arm is a valid (k-1)-multihedgehog connected via its own center.
+
+The input is provided as a list of edges (adjacency matrix format) and the parameter k.
+
+Module Interface:
+Inputs:
+  clk: Clock signal (positive edge triggered)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start verification
+  n: 4-bit input (number of nodes, 1-16)
+  k: 4-bit input (multihedgehog parameter, 1-15)
+  adj_matrix[0:15][0:15]: 16x16 bit matrix. `adj_matrix[i][j]` is 1 if edge (i,j) exists.
+    - Only indices < n are valid.
+    - Assume symmetric and no self-loops.
+
+Outputs:
+  result: 1-bit output (1 if valid k-multihedgehog, 0 otherwise)
+  done: 1-cycle pulse indicating result is valid
+
+Implementation Constraints:
+- The module must be purely combinational or use a small FSM (max 64 states) for the peeling process.
+- The peeling process (removing leaves iteratively) is bounded: maximum depth is k (up to 15).
+- At each peeling step (for depth d from 1 to k), the set of removed leaves must have had a common parent node.
+- This common parent must have degree >= 3 in the current graph (before removal).
+- After k steps, exactly one node must remain (the ultimate center).
+- For k=1: Direct check: exactly one node with degree ≥3, all others degree 1.
+- For k>1: The central node must exist and have degree >= 3, but the 'arms' are verified by the iterative process.
+
+Algorithm Logic (FSM approach):
+1. Reset: `result` = 0, `done` = 0.
+2. Wait for `start`.
+3. **Validation Phase**:
+   - Compute degrees for all nodes.
+   - **Outer Loop (iter k times)**:
+     - If k=0 and nodes=1: Valid (trivial case).
+     - Identify leaves (degree == 1) in the current remaining graph.
+     - If no leaves: Fail.
+     - Identify the parent of these leaves. All leaves must share the same parent (unique common neighbor).
+     - Check parent degree: Must be >= 3 (or >= 2 if it's the very last step and only 2 leaves remain? No, definition implies branches).
+       - Strictly: For k>=1, center degree >= 3. For the peeling step, the parent node (center of current subgraph) must have degree >= 3.
+     - 'Remove' leaves: Decrement degree of parent and mark leaves as removed.
+     - If any check fails, jump to fail state.
+   - **Final Check**:
+     - After k iterations, check if exactly one node remains (degree > 0 or marked as center).
+     - If exactly one node remains and valid steps: `result` = 1.
+4. **Completion**: Set `done` = 1 for one cycle.
+
+Note: Since inputs are fixed size (16 nodes), logic depth is bounded.

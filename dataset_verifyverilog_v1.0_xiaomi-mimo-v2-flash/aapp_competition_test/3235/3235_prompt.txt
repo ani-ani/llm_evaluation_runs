@@ -1,0 +1,28 @@
+Implement a Verilog module that settles IOUs between friends by canceling cycles. The module processes up to 8 friends (n≤8) and 16 IOUs (m≤16), with amounts 1-255 scaled to 8-bit.
+
+Interface:
+- Inputs: clk, rst_n, start (1-cycle pulse)
+- For each IOU: a, b, c (4-bit for friend indices, 8-bit for amount)
+- Output: p (4-bit count of remaining IOUs), and for each possible IOU (i,j) where i!=j: result_ij (8-bit amount, 0 if none)
+- Control: done (1-cycle when settling complete)
+
+Algorithm:
+1. Represent debts as 8x8 matrix D, D[i][j] = amount friend i owes j (0 if none)
+2. Process all m IOUs: D[a][b] += c (scale amounts to 8-bit, clamp overflow)
+3. Settlement: For n=8, use iterative cycle reduction:
+   - For each triplet (i,j,k) where i,j,k distinct:
+     - If D[i][j] > 0 and D[j][k] > 0 and D[k][i] > 0:
+       - Find min_amount = min(D[i][j], D[j][k], D[k][i])
+       - Subtract min_amount from all three debts
+   - Repeat up to 16 iterations or until no cycles found
+4. Output: count p (number of non-zero D[i][j]), then the IOUs
+
+Constraints:
+- Use 8-bit for amounts, 4-bit for friend indices
+- Maximum 16 cycles for settlement
+- All operations within 256 cycles
+- Done signal indicates completion, result valid
+
+Timing: start→done within 256 cycles, reset clears all matrices, min 2 cycles
+
+Cocotb testbench required: simulate with examples, clamp values, check cycle cancellation, verify output counts.

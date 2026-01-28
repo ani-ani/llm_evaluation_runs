@@ -1,0 +1,41 @@
+Verilog Module Specification: IPv4 Leading Zero Remover
+
+**Overview**:
+Design a sequential finite-state machine (FSM) that processes an IPv4 address string (e.g., "216.08.094.196") and outputs the normalized string without leading zeros in each octet (e.g., "216.8.94.196").
+
+**Interface**:
+- Inputs:
+  - `clk`: System clock, rising edge triggered.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate processing of `ip_in`.
+  - `ip_in`: Input string. Represented as a 64-bit packed array of 8 characters (8-bit ASCII). Only the first `len_in` characters are valid. Input format is IPv4 dotted-decimal (e.g., "12.01.024" is 8 chars, "216.08.094.0196" is 14 chars). Max length 15 chars. Characters are ASCII.
+  - `len_in`: 4-bit unsigned integer (0-15) indicating valid input length.
+
+- Outputs:
+  - `ip_out`: Output string. Packed 64-bit array (8x8-bit ASCII). Contains the normalized IPv4 address. Valid when `done` is high.
+  - `len_out`: 4-bit unsigned integer indicating output string length (1-15).
+  - `done`: 1-cycle high pulse indicating valid output on `ip_out` and `len_out`.
+  - `error`: 1-bit flag (high if input format is invalid, e.g., non-numeric characters in octet, invalid dot placement).
+
+**Functional Requirements**:
+1.  **State Machine**: Must track parsing of 4 octets separated by dots '.'. 
+2.  **Zero Removal Logic**: When parsing an octet (up to 3 digits), if the first digit is '0' and the octet has subsequent digits, the '0' must be suppressed in the output. Single '0' is preserved.
+3.  **Output Generation**: Construct `ip_out` sequentially. The string must be terminated conceptually, though hardware output is fixed width.
+4.  **Constraints**:
+    - ASCII: '0'-'9' (0x30-0x39) and '.' (0x2E).
+    - Max Input: 15 chars.
+    - Max Output: 15 chars.
+    - Timing: `done` asserted within 256 clock cycles of `start`.
+
+**Implementation Guidelines**:
+- Use a datapath (ALU-like logic) to detect '0' vs non-zero digits.
+- Use a control FSM with states: IDLE, PARSE_OCTET, OUTPUT.
+- Use a ring buffer or shift register for input/output byte storage.
+- Input valid check: strictly 3 digits max per octet, dots at correct positions (1, 5, 9... or variable).
+- Output `ip_out` as 64-bit vector. Pack bytes: bit[63:56] = char[0], etc.
+
+**Timing**:
+1.  On `start`, load `ip_in` and `len_in`.
+2.  Process in sequential cycles.
+3.  Assert `done` for 1 cycle when finished.
+4.  Reset sets `done=0`, `error=0`, `ip_out=0`.

@@ -1,0 +1,49 @@
+Implement a module that counts the number of functions f: {0,1,...,p-1} -> {0,1,...,p-1} satisfying f(k*x mod p) ≡ k*f(x) mod p for all x.
+
+The solution requires:
+1. For k=0: p^(p-1) functions
+2. For k=1: p^p functions
+3. For k>1: Find the order 'o' of k modulo p (smallest o>0 such that k^o ≡ 1 mod p). The answer is p^((p-1)/o) functions.
+
+SCALED IMPLEMENTATION:
+- Input p: 8-bit (scaled down from 1M, max 255)
+- Input k: 8-bit (0 ≤ k < p)
+- Compute result modulo 10^9+7 (30-bit)
+- For k>1: Find order 'o' by simulating multiplication: n=k, count=1, while n≠1: n=k*n%p, count++
+- Use modular exponentiation for p^exp
+
+MODULE INTERFACE:
+Inputs:
+  clk: system clock
+  rst_n: active-low reset
+  start: 1-cycle start pulse
+  p_in: 8-bit prime value (scaled, max 255)
+  k_in: 8-bit multiplier (0 ≤ k < p)
+Outputs:
+  result: 30-bit result modulo 10^9+7
+  done: 1-cycle pulse when calculation complete
+  valid: indicates result is valid
+
+TIMING:
+- Reset: 2 cycles minimum, outputs 0
+- Start triggers calculation
+- For k=0 or k=1: completes in ~10 cycles
+- For k>1: Order finding takes at most 255 iterations (p-1)
+- Total max cycles: 256 + exponentiation ~30 cycles = ~300 cycles
+
+OPERATIONAL DETAILS:
+- Use 32-bit registers for modular arithmetic
+- 10^9+7 = 1000000007 (fits in 30 bits)
+- For k>1, track current value 'n' and cycle count 'o'
+- Modular multiplication: (a*b)%MOD using iterative subtraction
+- Modular exponentiation: binary exponentiation
+- State machine: IDLE → COMPUTE_ORDER → COMPUTE_POWER → DONE
+
+IMPLEMENTATION NOTES:
+- The hardware must handle p up to 256 (scaled from 1M)
+- For k=0: result = p^(p-1) mod MOD
+- For k=1: result = p^p mod MOD
+- For k>1: result = p^((p-1)/o) mod MOD where o is order
+- If p=2 (special case): handle separately
+- Use 8-bit counters for iteration bounds
+- All operations modulo 10^9+7

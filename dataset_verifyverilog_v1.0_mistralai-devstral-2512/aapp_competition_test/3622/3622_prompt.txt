@@ -1,0 +1,42 @@
+Design a Verilog module `pachinko` that computes the probability of hitting each target in a simplified 16x16 Pachinko grid.
+
+**Constraints & Scaling:**
+- Grid dimensions: Fixed `w=16`, `h=16`. Max cells = 256.
+- Grid Data: Stored as a 256-element array of 2-bit values. 0=Empty ('.'), 1=Wall ('X'), 2=Target ('T').
+- Probabilities: The ball moves Up, Down, Left, Right with fixed probabilities $u, d, l, r$ (percentages summing to 100). These are provided as 8-bit inputs.
+- Calculation: Use a system of linear equations for the probability $P_{ij}$ of hitting any target starting from cell $(i,j)$.
+  - $P_{ij} = 1$ if cell is a Target.
+  - $P_{ij} = 0$ if cell is a Wall.
+  - For Empty cells: $P_{ij} = u \cdot P_{up} + d \cdot P_{down} + l \cdot P_{left} + r \cdot P_{right}$.
+  - Boundary conditions: If a move goes off-grid or hits a Wall, the ball stays in the current cell (self-loop).
+- Solver: Implement an iterative solver (Gauss-Seidel method) in hardware. Since H=16 and W=16, convergence is fast (approx 200-500 cycles).
+- Precision: Use **16-bit fixed-point arithmetic (Q4.12)**. Range 0.0 to 16.0 (enough for normalized probabilities 0.0-1.0). Probabilities $u,d,l,r$ are integers 0-100; normalize by dividing by 100 (shift/division logic).
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: System clock and active-low reset.
+  - `start`: 1-cycle pulse to start computation.
+  - `u, d, l, r`: 8-bit unsigned integers (percentages 0-100).
+  - `grid_flat`: 512-bit input (packed 16x16 grid, 2 bits per cell). Pack order: Row-major, top-to-bottom, left-to-right.
+- Outputs:
+  - `result_valid`: 1-cycle pulse indicating results are ready.
+  - `target_prob_{0..15}`: 16 outputs, each 16-bit fixed-point (Q4.12). These represent the probability of hitting that specific target starting from a random top-row cell. The probabilities should be normalized such that the sum of all target outputs equals 1.0 (100%). If fewer than 16 targets exist, unused outputs should be 0.
+
+**Implementation Details:**
+1. **Storage**: Instantiate a dual-port RAM or 2D register array for the probability grid (16x16, 16-bit width).
+2. **Iteration Loop**: 
+   - State Machine: IDLE -> LOAD_GRID -> SOLVE -> OUTPUT.
+   - SOLVE state: Iterate through all cells. For each empty cell, compute the weighted sum of neighbors (including self-loops for walls/boundaries).
+   - Convergence: Run for a fixed number of cycles (e.g., 512 iterations) to ensure stability, or use a simplified heuristic. 
+3. **Top Row Aggregation**: After solving, the top row contains the probability of hitting *any* target given a specific launch position. Average these values (divide by width `w=16`) to get the final launch probability.
+4. **Target Identification**: During `LOAD_GRID`, scan the grid to identify the coordinates of targets. Store a lookup table (Target Index -> Linear Address). The outputs `target_prob_{0..15}` map to these indices.
+
+**Simplified Logic:**
+- Fixed grid size eliminates dynamic memory allocation.
+- Fixed-point arithmetic handles fractional probabilities.
+- The solver runs for a deterministic number of cycles, avoiding complex convergence detection.
+
+**Verification:**
+- The testbench will load the grid and probabilities.
+- It will verify that the sum of output probabilities is close to 1.0.
+- It will check specific target probabilities against expected values derived from the scaled-down problem.

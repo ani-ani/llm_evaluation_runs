@@ -1,0 +1,51 @@
+You are designing a Verilog module to find the longest path in a graph where node values form a contiguous subsequence of the Fibonacci sequence. The graph is small (≤16 nodes) so we use an adjacency matrix. Fibonacci sequence is pre-computed up to length 16 (max 987).
+
+**Specification:**
+- **Graph Representation:** Adjacency matrix `adj[15:0][15:0]` where `adj[i][j] = 1` if there is an edge between node i and j (undirected, so symmetric).
+- **Node Heights:** Array `heights[15:0]` each 16-bit (scaled down from 64-bit).
+- **Fibonacci Subsequence Check:** A path is valid if its node heights form a contiguous subsequence of the Fibonacci sequence (1, 1, 2, 3, 5, 8, ...). We need to check if the sequence of node heights matches `fib[k]`, `fib[k+1]`, ..., `fib[k+len-1]` for some k.
+- **Algorithm:** Use dynamic programming (DP). For each possible starting Fibonacci index k (0 to 15) and starting node i, compute the longest path starting from node i where the first height is `fib[k]`. The DP state is `dp[k][i]` = length of longest valid path starting at node i with Fibonacci index k. Transition: For each neighbor j of i, if `heights[j] == fib[k+1]` and we haven't visited j, update `dp[k+1][j] = dp[k][i] + 1`. This is a DAG in the Fibonacci index dimension, so we can iterate k from high to low or use topological order (since Fibonacci index strictly increases along the path). We can use iterative DP over k from max_len down to 0.
+- **Implementation Details:**
+  - Pre-compute Fibonacci numbers `fib[0:15]` as constants.
+  - Input: `clk`, `rst_n`, `start`, `num_nodes[3:0]` (4-bit, max 16), `heights[15:0][15:0]` (16 nodes × 16 bits), `adj[15:0][15:0][15:0]` (16×16×16-bit matrix, but only 256 bits needed if flattened).
+  - Output: `max_len[4:0]` (5-bit, max length 16), `done`.
+  - Timing: Start -> Done within 500 cycles.
+  - Reset: `max_len = 0`, `done = 0`.
+  - Process: 
+    1. On `start`, initialize DP table `dp[16][16]` to 0 (max 16×16×16 bits = 4KB, feasible in FPGA BRAM).
+    2. For k from 14 down to 0 (Fibonacci index):
+       For each node i from 0 to n-1:
+         If `dp[k][i] > 0` or (starting condition: `heights[i] == fib[k]`):
+           For each neighbor j from 0 to n-1:
+             If `adj[i][j] == 1` and `heights[j] == fib[k+1]`:
+               Update `dp[k+1][j] = max(dp[k+1][j], dp[k][i] + 1)`
+    3. Compute max over all `dp[k][i]` and starting nodes with `heights[i] == fib[k]`.
+    4. Assert `done`.
+
+**Exact Interface:**
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset
+  start: 1-cycle pulse to start computation
+  num_nodes[3:0]: number of nodes (1-16)
+  heights[0:15][15:0]: node heights (16-bit each, 256 bits total)
+  adj[0:255]: flattened adjacency matrix (256 bits, row-major: adj[0]=node0-node0, adj[1]=node0-node1, ... adj[255]=node15-node15)
+
+Outputs:
+  max_len[4:0]: maximum length of Fibonacci Tour (0 if none)
+  done: 1-cycle pulse when computation complete
+
+Timing:
+  - Reset: min 2 cycles, sets max_len=0, done=0
+  - Start: Assert start=1 for one cycle when ready
+  - Done: Asserted for one cycle after computation completes (within 500 cycles)
+  - Result: Available on same cycle as done=1
+
+Constraints:
+  - Node heights are scaled to 16-bit integers (original up to 10^18 scaled down)
+  - Fibonacci sequence: fib[0]=1, fib[1]=1, fib[2]=2, ..., fib[15]=987
+  - Graph is undirected: adj[i][j] == adj[j][i]
+  - Self-loops not considered (adj[i][i] ignored)
+  - Path must be simple (no repeated nodes) - ensured by increasing Fibonacci index constraint (each node visited at most once as heights strictly increase except for first two 1s)
+
+Note: The DP works because Fibonacci sequence is strictly increasing after first two elements, so we can't revisit nodes with same height.

@@ -1,0 +1,36 @@
+Implement a Verilog module that filters even numbers from a fixed-depth nested structure. The input is represented as a flattened 8-element array of 8-bit values where negative numbers indicate nested boundaries, and 0-255 are data values. The algorithm: traverse the array, detect even numbers (LSB=0), skip odd numbers, and reconstruct the filtered structure in a flattened output array. A negative input value (e.g., -1) represents the start of a nested tuple boundary. Output should be a flattened array of even numbers with preserved nesting markers.
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  data_in[0:7]: 8x8-bit array containing the flattened input (values 0-255 or negative markers)
+  depth[2:0]: 3-bit input indicating maximum nesting depth (0-7)
+
+Outputs:
+  data_out[0:7]: 8x8-bit array containing filtered results
+  count_out[3:0]: 4-bit count of valid output elements
+  done: 1-cycle pulse when processing complete
+  valid: flag indicating output is valid
+
+Timing: start->done within 256 clock cycles
+Reset: When rst_n=0, done=0, valid=0, count_out=0, data_out all zeros, min 2 cycles
+
+Processing rules:
+1. Even numbers: bits[0] == 0 (LSB=0)
+2. Odd numbers: bits[0] == 1 (LSB=1) - skip these
+3. Nesting markers: values 255 (0xFF) represents start of nested tuple, 254 (0xFE) represents end
+4. The algorithm must flatten the structure but preserve nesting markers for filtered even numbers
+5. Output should contain: even numbers and nesting markers that enclose them
+6. Maximum output elements: 8
+
+Interface specification:
+- Module should use a stack-based DFS approach
+- Stack size: 4 elements (max depth 3 + root)
+- Each stack entry tracks: index (3 bits), depth (3 bits), valid flag
+- Process: scan data_in array, when even number found, add to output with current nesting context
+- Skip odd numbers and their nested content
+- Maintain nesting markers only for structures containing even numbers
+- Use finite state machine with states: IDLE, SCAN, PROCESS, OUTPUT, DONE
+- Clock domain: synchronous, 100MHz (10ns period) expected
+- No combinational loops, all outputs registered

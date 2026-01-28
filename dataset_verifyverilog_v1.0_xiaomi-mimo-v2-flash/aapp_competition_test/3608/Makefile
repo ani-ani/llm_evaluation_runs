@@ -1,0 +1,19 @@
+# Cocotb Makefile - Auto-generated
+SIM ?= icarus
+TOPLEVEL_LANG ?= verilog
+PWD := $(shell pwd)
+
+# Source files
+VERILOG_SOURCES = $(PWD)/3608_gen_0.sv
+
+# Top level module
+TOPLEVEL = task_counter
+
+# Python test module
+MODULE = 3608_testbench
+
+# SystemVerilog support
+COMPILE_ARGS += -g2012
+
+# Include cocotb's make rules
+include $(shell cocotb-config --makefiles)/Makefile.sim

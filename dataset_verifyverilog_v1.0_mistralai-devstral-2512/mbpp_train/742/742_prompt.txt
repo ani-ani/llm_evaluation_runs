@@ -1,0 +1,53 @@
+Design a Verilog module that calculates the surface area of a regular tetrahedron given its side length.
+
+**Mathematical Basis**: Surface Area = √3 × side²
+
+**Design Requirements**:
+1. **Input**: side length as fixed-point Q16.16 (16-bit integer, 16-bit fractional)
+2. **Core Operations**:
+   - Square the side length (side × side)
+   - Multiply by √3 ≈ 1.7320508075688772 (use fixed-point representation: 0xB504 × 0x10000 = 11292047 in Q16.16)
+   - Apply integer square root for final result
+3. **Architecture**:
+   - Use iterative approximation for sqrt (binary search or Newton-Raphson) with max 16 cycles
+   - Fixed-point multiplication with 32-bit intermediate, truncate to Q16.16
+   - Pipeline: square → multiply by √3 → sqrt
+4. **Interface**:
+   - Inputs: clk, rst_n, start, side[31:0] (Q16.16)
+   - Outputs: result[31:0] (Q16.16), done (1-cycle pulse)
+   - Timing: start→done ≤ 64 cycles
+   - Reset: result=0, done=0, min 2 cycles
+
+**Implementation Notes**:
+- Represent √3 as 16-bit constant: 0x1B504 (11292047 in Q16.16)
+- Square: side × side → 64-bit product, take middle 32 bits as Q16.16
+- Multiply: square_result × √3 → 64-bit product
+- sqrt: implement integer sqrt on 48-bit value, result in Q8.24, normalize to Q16.16
+- All operations should be combinational or pipelined within 64 cycles
+- Use no loops >16 iterations; unroll where possible
+
+**Edge Cases**:
+- Input side = 0 → result = 0
+- Maximum side (0xFFFF.FFFF) → saturate result to 0xFFFFFFFF
+- Include done signal to indicate valid result
+
+**Module Header**:
+module tetrahedron_area(
+  input wire clk,
+  input wire rst_n,
+  input wire start,
+  input wire [31:0] side,  // Q16.16
+  output reg [31:0] result, // Q16.16
+  output reg done
+);
+
+**Test Cases** (for verification):
+- side = 3.0 (0x0003_0000) → result ≈ 15.5885 (0x000F_962E)
+- side = 20.0 (0x0014_0000) → result ≈ 692.8203 (0x02B4_0000)
+- side = 10.0 (0x000A_0000) → result ≈ 173.2051 (0x00AD_0000)
+
+**Constraints**:
+- Use only synthesisable constructs
+- No floating-point, no real literals
+- Fixed-point arithmetic with proper saturation
+- Maximum 16 iterations for any iterative operation

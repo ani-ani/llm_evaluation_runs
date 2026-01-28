@@ -1,0 +1,35 @@
+Design a Verilog module that computes the minimum changes required to make an array K-S-smooth. The array is K-S-smooth if every K consecutive elements sum to exactly S.
+
+**Adapted Constraints:**
+- N = 16 (fixed array size)
+- K = 4 (fixed window size)
+- S = 255 (max sum, 8-bit unsigned)
+- Input values: 8-bit unsigned (0-255)
+- Output: Minimum changes (0-16)
+
+**Algorithm:**
+1. For a K-S-smooth array, the pattern repeats every K elements. Specifically, if the array is A[0..N-1], then A[i] must equal A[i mod K] for all i.
+2. The sum of one period (first K elements) must be exactly S.
+3. We need to find a period P[0..K-1] (values 0-255) that minimizes the Hamming distance to the input array when repeated, subject to sum(P) = S.
+4. Since K is small (4), we can iterate through all possible assignments of P[0..K-1] that sum to S, but this is computationally expensive (combinatorial).
+5. **Hardware Simplification:** We will process the array in a pipeline. For each position `i` (0 to N-1), it belongs to group `g = i mod K`. We accumulate the counts of existing values for each group. Since S is fixed (255) and K=4, the target values P[g] must satisfy sum(P) = 255.
+6. **Optimization:** To fit in hardware, we constrain the search space. We will treat the problem as finding a pattern `P` that minimizes changes. Since exact search is hard, we use a heuristic or approximate logic: we assume the input array is already somewhat smooth. We calculate the required pattern for each sliding window of K elements. If the window sum is S, the window is a candidate period. We pick the period that minimizes changes across the whole array.
+7. **Implementation Detail:** We will implement a sliding window sum and a frequency counter for each position modulo K. The logic will compute the cost of assigning a specific value to each modulo class. Since we cannot search all sums to S, we will allow the user to specify the target period P explicitly as an input (8-bit x K) to verify the logic, or compute the best period based on the most frequent values in each modulo class, scaled to sum to S.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: Start pulse (1 cycle)
+  - `arr`: Array of 16 elements, 8-bit each (packed into 128-bit bus or sequential input)
+  - `target_sum`: 8-bit value S (255)
+- Outputs:
+  - `min_changes`: 8-bit result (0-16)
+  - `done`: 1-cycle pulse indicating valid result
+
+**Timing:**
+- Throughput: One result per `N` cycles (16 cycles latency + processing).
+- Reset: Clears counters and state.
+
+**Implementation Hint:**
+Use a sequential process. Iterate `i` from 0 to 15. Calculate `group = i % 4`. Accumulate the input value `arr[i]` into a sum register for that group. Also count occurrences. After processing all elements, the target value for each group should be the most frequent value in that group, adjusted to ensure the total sum of the 4 values equals `S`. The cost is the number of elements not equal to their group's target value.

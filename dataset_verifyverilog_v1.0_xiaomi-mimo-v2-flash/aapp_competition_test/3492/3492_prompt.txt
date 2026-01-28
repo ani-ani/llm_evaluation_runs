@@ -1,0 +1,59 @@
+Design a Verilog module to solve a bounded maximum flow problem for bipartite matching between suppliers and factories.
+
+**Problem Adaptation**:
+- Input states are mapped to indices 0..15 (max 16 states)
+- Suppliers connect to a virtual source node (index 0)
+- Factories connect to a virtual sink node (index 15)
+- Transportation companies define edges between states (or source/sink)
+- Each edge has capacity 1 (binary matching)
+- Goal: Find maximum flow from source to sink
+
+**Interface Specification**:
+Inputs:
+  clk: 1-bit clock
+  rst_n: 1-bit active-low synchronous reset
+  start: 1-bit start pulse (1 cycle)
+  num_nodes: 4-bit (max 16 nodes, including source 0 and sink 15)
+  num_edges: 6-bit (max 64 edges)
+  edge_u[63:0]: 64-bit packed array of source node indices (each 4 bits)
+  edge_v[63:0]: 64-bit packed array of destination node indices (each 4 bits)
+  capacity[63:0]: 64-bit packed array of capacities (each 1 bit, always 1)
+
+Outputs:
+  max_flow: 4-bit result (max matching count)
+  done: 1-bit pulse when calculation complete
+
+**Internal Logic**:
+1. Use a Synchronous Depth-First Search (DFS) based augmenting path finder (Edmonds-Karp simplified)
+2. Maintain residual graph in a 16x16 bit matrix (max 256 bits)
+3. State Machine:
+   - IDLE: wait for start
+   - INIT: zero residual matrix
+   - BUILD: populate initial edges
+   - SEARCH: find augmenting path using DFS (max 256 cycles per path)
+   - AUGMENT: update residual capacities
+   - UPDATE: increment flow counter
+   - DONE: set done=1
+4. Use BFS queue for path finding (16-bit registers for parent tracking)
+5. Max 16 augmenting paths (16-bit flow counter)
+6. Timeout: 4096 cycles maximum
+
+**Implementation Details**:
+- Node indices: 0=Source, 1..14=States, 15=Sink
+- Edge format: 4-bit u, 4-bit v per edge (packed in 64-bit vectors)
+- Residual graph: 16x16 bit array (256 bits total)
+- Queue size: 16 entries (FIFO for BFS)
+- DFS depth limit: 16
+- Use 16-bit registers for tracking visited nodes per search
+
+**Timing**:
+- start pulse triggers calculation
+- done pulses high for 1 cycle when result is valid
+- Maximum 4096 cycles for worst case
+- Reset: max_flow=0, done=0
+
+**Key Constraints**:
+- Fixed 16-node limit (including source/sink)
+- Capacity always 1 (matching problem)
+- No dynamic memory allocation
+- Sequential state machine implementation

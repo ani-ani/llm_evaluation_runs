@@ -1,0 +1,28 @@
+Design a Verilog module to find the rank (position) of a test composite string in the lexicographically sorted list of all permutations of k unique strings chosen from n unique strings. Assume n≤16, k≤16, max string length=16 chars, total string storage 512 bytes. The module uses a fixed Trie (combinational tree) for the initial strings and iterates over the test string characters to compute the count of lexicographically smaller valid concatenations.
+
+Module Interface:
+- Inputs:
+  clk: System clock (rising edge)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  [String Data Inputs]: Packed arrays for the n initial strings and the test string. Since Verilog needs fixed sizes, assume 16 strings max, each 16 chars max. You may use a flattened RAM interface or combinational inputs for the small constraint. For simplicity in the spec: provide inputs `str_en[15:0]` (valid string flags) and `str_data[255:0]` (packed 16x16 chars).
+  test_str[255:0]: The test string packed (16 chars, unused bits 0).
+- Outputs:
+  result[31:0]: The rank modulo 10^9+7 (32-bit integer).
+  done: 1-cycle pulse indicating valid result on 'result'.
+- Logic:
+  1. Construct a Trie from the n strings (combinational lookup). Since n and length are small, this can be unrolled or pipelined.
+  2. Parse the test string into k segments by traversing the Trie.
+  3. For each of the k positions:
+     - Calculate the number of available initial strings strictly lexicographically smaller than the current string segment.
+     - This count is multiplied by the number of permutations of the remaining (k-1-i) strings from the remaining pool of strings.
+     - Add this to the cumulative rank.
+     - Mark the current string as used.
+  4. Use 32-bit modular arithmetic (modulo 10^9+7) for all additions and multiplications.
+  5. Timing: Process should complete within 256 clock cycles.
+
+Constraints:
+- Use a Finite State Machine (FSM) for the parsing and ranking logic.
+- Pre-compute or compute on-the-fly the permutation counts (factorials) for up to 16 items.
+- String comparison must be lexicographical (byte-by-byte).
+- Do not use dynamic memory; use fixed registers for the Trie nodes and 'used' mask.

@@ -1,0 +1,27 @@
+Implement a Verilog module that solves the traveling salesman airport restaurant problem for a small DAG (up to 16 nodes, 32 edges). The input is a directed acyclic graph (DAG) where each node represents a city and edges represent one-way train lines. Since there are no cycles, we can visit all nodes using trains only if the graph is a single path. Otherwise, we need flights to connect disconnected components. The minimum number of flights needed is equal to (number of connected components - 1) if we can traverse within each component, but since trains are one-way, we need to consider sources and sinks. Actually, for a DAG, the minimum number of flights to visit all nodes is equal to (number of sources - 1) if we can chain them, but more precisely, it's the minimum number of edges to add to make the graph have a Hamiltonian path, which for a DAG is (number of connected components in the undirected sense) - 1. However, given the constraints, we can compute the minimum flights as follows: perform a topological sort, then find the longest path length; if it equals n, answer is 0; else, we need flights equal to (n - longest_path_length). For airports visited: any city that is on some longest path or can be part of a minimal flight route. Simplified: all cities except isolated ones (degree 0) if flights are needed, but since we want airports he can visit on some route with minimum flights, and he can start anywhere, the answer is all nodes that are not isolated (have at least one incoming or outgoing edge) if min flights > 0, else all nodes. For 16 nodes max, use 4-bit node indices. Module interface:
+
+Inputs:
+  clk: system clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  n[3:0]: number of cities (1-16)
+  m[4:0]: number of edges (0-32)
+  edge_a[3:0], edge_b[3:0]: input edge endpoints, valid when start=1 and we feed edges one per cycle
+  edge_valid: 1 when current edge is valid
+  edge_done: 1 when all edges have been provided
+
+Outputs:
+  min_flights[4:0]: minimum number of flights (0-15)
+  airport_count[4:0]: number of cities where airport can be visited (0-16)
+  airport_list[4:0]: packed bits for cities 1-16 (bit 0 = city 1, bit 15 = city 16), valid when done=1
+  done: 1-cycle pulse when computation complete, result valid
+
+Internal Logic:
+1. Store adjacency matrix (16x16 bits) or adjacency list using 32-bit packed format.
+2. Compute indegree/outdegree for each node (4-bit counters).
+3. Perform BFS/DFS iterative to find number of connected components (undirected sense).
+4. Minimum flights = number of connected components - 1.
+5. For airport list: if min_flights > 0, all nodes with indegree+outdegree > 0 are included; if min_flights == 0, all nodes (1 to n) are included.
+6. The computation should complete within 256 cycles after all edges provided.
+
+Assumptions: The graph is a DAG (no cycles). Input edges will be given sequentially; module must buffer them. For 16 nodes, we can represent adjacency as 16-bit rows in a 256-bit SRAM (or registers). Use 4-bit counters for loops. The module must be sequential (state machine).

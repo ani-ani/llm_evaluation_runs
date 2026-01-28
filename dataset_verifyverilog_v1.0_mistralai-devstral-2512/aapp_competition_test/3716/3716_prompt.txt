@@ -1,0 +1,58 @@
+Design a Verilog module to find the maximum possible LCM (least common multiple) of three integers not greater than n.
+
+**SCALING REQUIREMENTS:**
+- Input n: 16-bit unsigned (max 65535)
+- Result: 32-bit unsigned (LCM of three 16-bit numbers fits within 32 bits for scaled inputs)
+- Search space: 64 elements (n down to max(n-63, 1)) to cover edge cases
+- Brute force triple loop: 64x64x64 iterations max = 262,144 cycles
+- GCD computation: Sequential Euclidean algorithm, max 16 iterations per GCD
+- Timing: Start-to-done within 262,144 + overhead cycles
+
+**ALGORITHM:**
+1. When start is high, copy n and compute search_start = max(n-63, 1)
+2. Use three nested loops: i from n downto search_start, j from i downto search_start, k from j downto search_start
+3. For each triple (i,j,k), compute LCM(i,j,k) using two-stage GCD pipeline:
+   - Stage1: Compute GCD(i,j), then LCM1 = (i*j)/GCD(i,j) (32-bit multiplication)
+   - Stage2: Compute GCD(LCM1,k), then LCM2 = (LCM1*k)/GCD(LCM1,k)
+4. Track maximum LCM seen, update when larger
+5. Set done=1 when all triples processed, output result
+
+**INTERFACE SPEC:**
+Inputs:
+  clk: 1-bit, rising edge
+  rst_n: 1-bit, active-low synchronous reset
+  start: 1-bit, single cycle pulse
+  n: 16-bit unsigned, value of n (1 ≤ n ≤ 65535)
+
+Outputs:
+  result: 32-bit unsigned, maximum LCM found
+  done: 1-bit, high for one cycle when result is valid
+
+**TIMING:**
+- After start: assert done within ~300k cycles
+- On done=1, result is valid
+- Reset: Set done=0, result=0, and internal state to idle
+
+**IMPLEMENTATION DETAILS:**
+1. Use FSM with states: IDLE, INIT, LOOP_I, LOOP_J, LOOP_K, GCD1, LCM1, GCD2, LCM2, UPDATE, DONE
+2. Loop counters: i_reg (16-bit), j_reg (16-bit), k_reg (16-bit), search_start (16-bit)
+3. LCM tracking: max_lcm (32-bit), current_lcm (32-bit)
+4. GCD state machine: Euclidean algorithm using subtraction or modulo
+5. Multiplication: Use combinational 16x16 multiplier for (i*j) and 32x16 multiplier for LCM1*k
+6. Division: Integer division by GCD (since GCD divides exactly, can use shift/add divisor)
+7. Edge cases: n < 3 handled by special cases in FSM
+8. Optimization: Early break when i*j*k < max_lcm (pruning)
+
+**CONSTRAINTS:**
+- All arithmetic uses unsigned arithmetic
+- LCM computation: lcm(a,b) = (a * b) / gcd(a,b)
+- Reset cycle: Minimum 2 cycles
+- No external memory required
+- 100% combinatorial for GCD/LCM calculations (no loops in combinational)
+
+**VERILOG STYLE:**
+- Use single always @posedge block for sequential logic
+- Use combinational always @(*) for next state and data path
+- Keep states encoded as parameters
+- Ensure no timing loops
+- Use localparam for constants

@@ -1,0 +1,49 @@
+Implement a Verilog module that computes the number of valid hour:minute pairs where:
+1. Hours range 0 to N-1, Minutes 0 to M-1 (inputs provided as N/M)
+2. Each value is displayed in base-7 with leading zeros to fill required digit count
+3. Total digits (hours_digits + minutes_digits) must be distinct across both fields
+4. Required digit count per field is the minimum to represent max value (e.g., max(1, floor(log7(max_val)) + 1))
+
+Module Interface:
+Inputs:
+  clk: clock signal
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start calculation
+  n [31:0]: number of hours (1 to 10^9)
+  m [31:0]: number of minutes (1 to 10^9)
+
+Outputs:
+  result [15:0]: number of valid pairs (max 5040)
+  done: 1-cycle pulse indicating valid result on 'result'
+
+Timing Constraints:
+- Start->Done within 10,000 cycles (handles worst-case 7! = 5040 iterations)
+- Reset clears all state, done=0, result=0
+
+Implementation Guidelines:
+1. First compute required digit counts for hours (dh) and minutes (dm):
+   - dh = 1 if N <= 1 else number of base-7 digits in (N-1)
+   - dm = 1 if M <= 1 else number of base-7 digits in (M-1)
+   - If dh + dm > 7, return 0 immediately (impossible to have distinct digits)
+
+2. Generate permutations of base-7 digits {0..6} of length (dh + dm):
+   - Use a state machine to iterate through permutations
+   - For each permutation, extract first dh digits (hours) and last dm digits (minutes)
+   - Convert both digit sequences to base-7 numbers
+   - Check if hours < N and minutes < M
+   - Increment result counter if valid
+
+3. Output:
+   - When calculation complete, assert done=1 for 1 cycle
+   - result contains valid count
+
+4. Implementation notes:
+   - Use 7-bit arrays for digit tracking (one-hot style or 3-bit encoded)
+   - Permutation generation can be implemented as nested loops with state tracking
+   - Base-7 conversion: value = sum(digits[i] * 7^(dh-1-i))
+   - Clamp inputs to 32-bit unsigned
+
+5. Edge cases:
+   - N=1 or M=1: digit count = 1 (need to display 0)
+   - dh + dm > 7: output 0
+   - If result count exceeds 15 bits, saturate (though max is 5040)

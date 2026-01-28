@@ -1,0 +1,41 @@
+Design a Verilog module to find the minimal distance D such that in any connected component of cities (connected by edges with length <= D), there exists a subset of cities whose population sum is divisible by K. 
+
+Adaptations:
+1. Scale N to 16, K to 16 (max 16).
+2. Coordinates and distances are handled as fixed-point Q16.16 integers to avoid floating point. However, since we need to sort distances and compare, we will work with squared distances (integers) to avoid sqrt in the hardware logic, and convert back to distance only for output.
+3. We need to find the minimal D such that the condition is met. This is equivalent to a minimum spanning tree process: we sort all possible edges by distance, add them one by one, and check after each addition if the condition is met in any component.
+4. Since N is small (16), the total number of edges is 120. We can sort these 120 edges.
+5. The check for "subset sum divisible by K" for a component is a small dynamic programming problem. Since K is small (16), we can maintain a bitmask of possible remainders for each component. When merging two components, we merge their bitmask sets (convolution of remainders).
+6. The module will be a FSM that:
+   - Receives inputs (coordinates, populations) for N cities (up to 16).
+   - Calculates distances for all pairs.
+   - Sorts edges by distance.
+   - Iterates through sorted edges, updating Disjoint Set Union (DSU) structure and component remainder sets.
+   - Checks if any component has remainder 0 reachable.
+   - Outputs the first distance that satisfies the condition.
+
+Interface:
+- Inputs:
+  - clk, rst_n (active low)
+  - start: 1-cycle pulse to start calculation
+  - n_in: 4-bit input indicating number of cities (1-16)
+  - k_in: 4-bit input indicating K (1-16)
+  - city_valid: 1-bit, high when city data is valid
+  - city_x, city_y: 32-bit fixed point (Q16.16) coordinates
+  - city_pop: 16-bit population
+- Outputs:
+  - result_valid: 1-cycle pulse when calculation is done
+  - result_dist_sq: 32-bit integer squared distance (Q32.0, since distances are compared as integers)
+  - busy: 1-bit high while processing
+
+Internal Logic:
+- Memory for city data (x, y, pop) - 16 entries of 32-bit each.
+- Edge list generator (combinatorial or sequential) producing 120 edges.
+- Sorter (Bubble sort or insertion sort suitable for small dataset) to sort edges by distance squared.
+- DSU (Disjoint Set Union) hardware implementation (16 entries, path compression optional but good for speed).
+- Remainder Set per component: 16-bit bitmask (bit i set if remainder i is possible).
+- FSM states: IDLE, LOAD_CITY, GEN_EDGES, SORT_EDGES, CHECK_CONDITION, DONE.
+
+Timing:
+- Start -> Done within ~10,000 cycles (sorting 120 edges is cheap).
+- Reset: Clears all memories and state.

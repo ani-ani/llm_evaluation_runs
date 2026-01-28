@@ -1,0 +1,51 @@
+Implement a Verilog module that counts the number of badge IDs permitting passage from a start room S to a destination room D.
+
+**SCALED SPECIFICATIONS:**
+- Maximum Rooms (N): 16 (indexed 1-16)
+- Maximum Locks (L): 32
+- Badge Range (B): 16-bit (0-65535)
+- Input badge values: 16-bit unsigned integers
+
+**INTERFACE:**
+Inputs:
+  clk: System clock, rising edge
+  rst_n: Active-low asynchronous reset
+  start: 1-cycle pulse to initiate computation
+  s_room: 4-bit input (1-16), starting room
+  d_room: 4-bit input (1-16), destination room
+  lock_count: 5-bit input (1-32), number of locks to configure
+  lock_config_valid: 1-bit, valid when configuring locks
+  lock_from: 4-bit, source room
+  lock_to: 4-bit, destination room
+  lock_min: 16-bit, minimum badge ID
+  lock_max: 16-bit, maximum badge ID
+Outputs:
+  result: 16-bit number of valid badge IDs
+  done: 1-cycle pulse, asserted when result is valid
+  ready: 1-bit, asserted when ready to accept lock configuration or start
+
+**FUNCTIONALITY:**
+1. **Configuration Phase:** When `ready` is high, input `lock_config_valid` along with lock details (`lock_from`, `lock_to`, `lock_min`, `lock_max`). The module must store up to 32 locks in internal memory (using Block RAM or registers). This is done sequentially; `ready` may go low during processing if needed, but for simplicity assume sequential input with `lock_config_valid` held high for `lock_count` cycles.
+2. **Processing Phase:** When `start` is asserted (after configuration), the module must compute the set of badge IDs that allow traversal from `s_room` to `d_room`.
+   - Model the system as a directed graph where nodes are rooms and edges are locks.
+   - An edge from `u` to `v` is active for badge IDs in the range `[x, y]`.
+   - A badge ID `id` is valid if there exists a path from `S` to `D` where `id` lies within the range of every lock on the path.
+   - **Hardware Strategy:** Since B is large (up to 65535) and N is small (16), iterate through all possible badge IDs (0 to 65535) is feasible in 65536 cycles (max ~65k cycles). For each `id`, perform a graph traversal (BFS/DFS) on the 16-node graph to check if a path exists using only locks active for that `id`. Increment a counter if a path is found.
+   - **Optimization:** Pre-process locks into an adjacency list or matrix. For each ID, check connectivity.
+
+**TIMING:**
+- Configuration: `lock_count` cycles (max 32 cycles).
+- Computation: Up to ~65,536 cycles (worst case checking all IDs).
+- Reset: Asynchronous, `result` and `done` cleared on reset.
+
+**IMPLEMENTATION DETAILS:**
+- Use 16-bit counter for badge IDs.
+- Use a 16-bit counter for the result.
+- Use a standard BFS queue (implemented as a register array) for connectivity checks.
+- Lock storage: Array of 32 entries, each storing `from`, `to`, `min`, `max`.
+- Internal State Machine: IDLE -> CONFIG -> PROCESS -> DONE.
+
+**CONSTRAINTS:**
+- No dynamic memory allocation.
+- All loops must be bounded (max 65536 iterations for the outer loop).
+- Graph traversal (BFS) depth is bounded by 16 nodes.

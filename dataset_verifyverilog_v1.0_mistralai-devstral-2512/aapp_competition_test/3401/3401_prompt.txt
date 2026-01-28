@@ -1,0 +1,48 @@
+Implement a Verilog module that solves a minimum-cost bipartite matching problem with geometric constraints. The module must find the minimum total aqueduct length connecting each town to a unique spring, respecting height constraints and maximum length limits.
+
+## Specification
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous clock and active-low reset
+  - `start`: 1-cycle pulse to start computation
+  - `springs[31:0]`: 32-bit vector encoding spring hill indices (max 16 springs, 4 bits each)
+  - `towns[31:0]`: 32-bit vector encoding town hill indices (max 16 towns, 4 bits each)
+  - `hill_x[63:0]`: 16x4-bit array of x-coordinates (Q4.0 fixed-point, scaled by 100)
+  - `hill_y[63:0]`: 16x4-bit array of y-coordinates (Q4.0 fixed-point, scaled by 100)
+  - `hill_h[63:0]`: 16x4-bit array of heights (Q4.0 fixed-point, scaled by 100)
+  - `max_len[7:0]`: 8-bit maximum aqueduct length (Q4.4 fixed-point, scaled by 10)
+
+- Outputs:
+  - `result[23:0]`: 24-bit fixed-point total length (Q8.16 format)
+  - `done`: 1-cycle pulse when result is valid
+  - `impossible`: 1-bit flag when no solution exists
+
+**Constraints:**
+- Maximum 16 hills (n ≤ 16)
+- Maximum 16 springs (s ≤ 16)
+- Maximum 16 towns (t ≤ 16)
+- t ≤ s
+- Coordinates/heights scaled to 16-bit fixed-point (Q8.8 or similar)
+- Maximum aqueduct length limited to 256 units (scaled)
+- Water flows downhill: spring_hill_height > town_hill_height
+- Euclidean distance: sqrt((x₂-x₁)² + (y₂-y₁)²) ≤ max_len
+
+**Algorithm Requirements:**
+1. Build cost matrix C[i][j] = distance(spring_i, town_j) if valid (height constraint and length constraint), else INF
+2. Use Hungarian algorithm (Kuhn-Munkres) for minimum weight bipartite matching
+3. Maximum matrix size: 16x16
+4. Fixed iteration bounds (O(n³) = 4096 cycles max)
+5. Return IMPOSSIBLE if any town cannot be matched or no perfect matching exists
+
+**Implementation Notes:**
+- Use fixed-point arithmetic for all calculations
+- Scale coordinates/heights by 100, lengths by 1000
+- INF = 2^24-1 (maximum representable value)
+- The result should be the sum of valid distances for the optimal matching
+- Handle floating-point sqrt with integer approximation: use precomputed LUT or iterative Newton-Raphson
+
+**Timing:**
+- start → done within 1000 cycles
+- Reset clears all internal state
+- Result valid only when done=1

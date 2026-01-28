@@ -1,0 +1,33 @@
+Implement a Verilog module that calculates the y-coordinates where a laser reflects off a mirror to hit an infinite wall at x=0.
+
+**Interface:**
+- Inputs: `clk`, `rst_n`, `start` (1-cycle pulse)
+- Mirror endpoints: `x1, y1, x2, y2` (16-bit signed Q8.8 fixed-point)
+- Shooter position: `sx, sy` (16-bit signed Q8.8 fixed-point)
+- Outputs: `hit` (1-bit, 1 if possible), `y_min, y_max` (16-bit signed Q8.8), `done` (1-cycle pulse)
+
+**Algorithm:**
+1. Compute mirror line equation: `Ax + By + C = 0` where `A = y1 - y2`, `B = x2 - x1`, `C = x1*y2 - x2*y1`
+2. Reflect shooter point (sx, sy) across mirror line to get virtual point (vx, vy)
+3. Compute line from virtual point to wall at x=0: `y = vy - (vx * (vy - sy) / vx)` (simplified reflection formula)
+4. Determine if reflection hits mirror segment: Calculate intersection of line (virtual->wall) with mirror segment. This requires checking if intersection point lies between endpoints.
+5. If valid, output y-coordinate at wall intersection. Handle vertical/horizontal cases.
+6. If mirror is parallel to wall or shooter line doesn't intersect, `hit = 0`.
+
+**Constraints:**
+- All arithmetic in 32-bit signed for intermediate to prevent overflow
+- Q8.8 format: integer part 8 bits, fractional 8 bits
+- Use sequential logic for division (shift-and-subtract method)
+- Pipeline the geometry calculations
+- Max 256 cycles latency
+- Output `y_min` and `y_max` are same value for point mirror, or range for segment hit
+
+**Example Cases:**
+- Mirror (5,10)-(10,10), Shooter (10,0) → Wall y=0 (reflection from horizontal mirror)
+- Mirror (5,10)-(10,5), Shooter (10,0) → Wall y=12.5
+
+**Special Handling:**
+- If mirror is vertical (x1==x2), check if shooter x != mirror x
+- If mirror is horizontal (y1==y2), reflection is symmetric
+- Return `hit=0` if shooter cannot see mirror (same side as wall)
+- Output 'negative-infinity' by setting `y_min = -32768` and `hit=1` with a special flag bit.

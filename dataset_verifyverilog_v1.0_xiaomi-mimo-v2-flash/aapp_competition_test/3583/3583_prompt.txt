@@ -1,0 +1,40 @@
+Implement a Verilog module that computes the maximum perimeter hexagon containing each vertex. The problem is scaled down: input polygon has n vertices (6 ≤ n ≤ 8 for hardware feasibility). Coordinates are 16-bit integers (Q16.0). The output perimeter is a 32-bit fixed-point number (Q16.16). The module must compute the maximum perimeter for each vertex i (0 to n-1) and output it sequentially on 'result' when 'done' is high.
+
+Module Interface:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - n_in: 3-bit input for number of vertices (6-8)
+  - coord_x[0:7]: 8x16-bit array for x coordinates
+  - coord_y[0:7]: 8x16-bit array for y coordinates
+- Outputs:
+  - result: 32-bit fixed-point output (Q16.16) representing perimeter
+  - done: 1-cycle pulse indicating valid result (valid for each vertex)
+  - vertex_idx: 3-bit output indicating which vertex's max perimeter is on result
+
+Behavior:
+1. On start=1, reset internal state.
+2. For each vertex i from 0 to n-1:
+   a. Iterate through all combinations of 5 other vertices from the remaining n-1 vertices.
+   b. For each combination, check if the resulting 6-vertex polygon is convex.
+   c. If convex, compute perimeter (sum of Euclidean distances between consecutive vertices in cyclic order).
+   d. Keep track of the maximum perimeter found.
+   e. When maximum for vertex i is found, output on result and vertex_idx, pulse done for 1 cycle.
+3. Repeat for all vertices.
+
+Constraints:
+- n ≤ 8 (hardware limitation).
+- Coordinates are 16-bit signed integers.
+- Combinations: Permutations of 5 other vertices (P(7,5) = 2520 max for n=8).
+- Distance calculation: Use integer sqrt approximation or lookup table (8-bit precision). For simplicity, use integer arithmetic for squared distances and approximate perimeter.
+- Convexity check: Cross product of consecutive edges must have same sign (all positive or all negative for CCW order).
+- Timing: Complete all computations within 100,000 cycles.
+- Reset: When rst_n=0, state reset, done=0, result=0, vertex_idx=0.
+
+Implementation Hints:
+- Use a finite state machine (FSM) for control.
+- Use counters for vertices and permutations.
+- Use internal registers for current max perimeter.
+- The output 'done' should pulse once per vertex.
+- The order of output vertices must match input index (0 to n-1).

@@ -1,0 +1,78 @@
+Implement a Verilog module that transforms an n x m grid maze to meet connectivity requirements. The maze has empty cells ('.'), walls ('#'), and needs exactly k empty cells turned into 'X' while keeping connectivity.
+
+**SCALING CONSTRAINTS:**
+- n, m ≤ 16 (scaled from 500)
+- k < number of empty cells
+- Total cells: 16 x 16 = 256 max
+- Grid is guaranteed to be initially connected
+
+**INTERFACE SPEC:**
+
+Inputs:
+  - clk: system clock (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start processing
+  - grid_in[16][16]: 256x8-bit input array where:
+    * 8'h2E = '.' (empty)
+    * 8'h23 = '#' (wall)
+  - n: 4-bit height (1-16)
+  - m: 4-bit width (1-16)
+  - k: 8-bit number of cells to mark as 'X' (0-255)
+
+Outputs:
+  - grid_out[16][16]: 256x8-bit output array
+    * 8'h2E = '.' (empty)
+    * 8'h23 = '#' (wall)
+    * 8'h58 = 'X' (transformed empty cell)
+  - done: 1-cycle pulse when valid
+  - result_valid: 1-bit flag indicating valid output
+
+**FUNCTIONAL REQUIREMENTS:**
+1. When start=1, load input grid
+2. Find first empty cell ('.') as starting point using row-major scan
+3. Perform iterative BFS/DFS from start to discover all connected empty cells
+4. Count total reachable empty cells (should equal all empty cells since initial maze is connected)
+5. Mark exactly (total_empty - k) cells as '.' (keep connected)
+6. Mark remaining k empty cells as 'X'
+7. Keep all '#' walls unchanged
+8. Output result to grid_out
+9. Assert done=1 for one cycle when finished
+
+**IMPLEMENTATION GUIDELINES:**
+- Use iterative stack/queue for traversal (no recursion)
+- Stack depth ≤ 256, use 8-bit index pointers
+- Coordinate encoding: {row, col} packed as {4-bit row, 4-bit col}
+- Use 2D array for visited tracking: visited[16][16] (1-bit each)
+- Traversal order: BFS using queue or DFS using stack (your choice)
+- Maximum cycles: 10,000 (deep pipeline acceptable)
+- State machine: IDLE → FIND_START → TRAVERSE → MARK → OUTPUT → DONE
+- Internal memory: 256x8 grid buffer, 256-bit visited array
+- Stack: depth 256, 8-bit entries (packed coordinates)
+
+**TIMING:**
+- Start-to-done: ≤ 10,000 cycles
+- Reset: minimum 2 cycles, clears all outputs
+- Output valid when done=1
+
+**DATA FLOW:**
+1. On reset: grid_out = grid_in, done=0, result_valid=0
+2. On start: begin processing
+3. During processing: internal state updates
+4. On completion: grid_out updated, result_valid=1, done=1 for 1 cycle
+5. Result remains stable until next start
+
+**IMPLEMENTATION NOTES:**
+- The algorithm is: (1) Count reachable empty cells from start (BFS/DFS), (2) Mark (total - k) as '.' in traversal order, (3) Mark rest as 'X'
+- You may implement BFS (queue) or DFS (stack) - both acceptable
+- For BFS: use queue with head/tail pointers
+- For DFS: use stack with pointer
+- The key is to ensure connectivity: the '.' cells must form one connected component
+- The exact cells marked 'X' can be any k cells outside the first (total - k) visited
+
+**PRECISE SPEC:**
+- Output format: grid_out[0] = row 0, grid_out[1] = row 1, etc.
+- Each row: 16 x 8-bit entries, only first m columns valid
+- Rows 0 to n-1 contain data, others can be zero
+- k must be ≤ total empty cells
+- It's guaranteed solution exists
+- For any valid input, output must have exactly k 'X' cells and keep connectivity

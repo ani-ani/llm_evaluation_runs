@@ -1,0 +1,36 @@
+Design a Verilog module that calculates the Mean Absolute Deviation (MAD) of up to 8 fixed-point input numbers (Q8.8 format). The module must compute: 1) The arithmetic mean of the inputs (sum / N). 2) The absolute difference between each input and the mean. 3) The average of these absolute differences (MAD = sum(|x_i - mean|) / N).
+
+Interface:
+- Inputs:
+  - clk: System clock (rising edge active).
+  - rst_n: Active-low synchronous reset. Resets all internal logic, sets done=0, result=0.
+  - start: 1-cycle high pulse to trigger computation.
+  - arr: 8-element array of 8-bit inputs representing Q8.0 integers (scaled by 256). Max value 255.
+  - len: 4-bit integer (1 to 8) indicating the valid number of elements in `arr`.
+- Outputs:
+  - result: 16-bit output in Q8.8 format (scaled by 256).
+  - done: Single cycle high pulse indicating result is ready. Only active after processing is complete.
+
+Behavior:
+1. Idle State: Waiting for `start` pulse. done=0.
+2. Start: On `start` high, begin computation. Assume inputs are stable.
+3. Calculation Steps (Fixed-Point Arithmetic):
+   a. Summation: Compute sum of `arr[0:len-1]`. Use 16-bit accumulator (values fit: 8*255=2040 < 65535).
+   b. Mean: Compute `mean = sum / len`. Integer division. (e.g., 10/3 = 3).
+   c. Difference & Absolute: For each element, compute `diff = element - mean`. Absolute value. 16-bit signed to handle negative diffs (min diff: 0-255=-255).
+   d. Accumulate AbsDiff: Sum all absolute differences. Max sum: 8*255=2040.
+   e. MAD: Compute `mad = abs_diff_sum / len`. Integer division. Result is 8-bit (max 255).
+4. Output: Present `mad` on `result` (padded to 16 bits). Raise `done` for one cycle.
+5. Timing: The entire operation must complete within 64 clock cycles (max 8 cycles for summation + 8 for abs diff + overhead).
+
+Constraints:
+- No dividers for large numbers; use integer arithmetic as described.
+- The inputs are interpreted as integers representing fixed-point values (e.g., input 1.0 is represented as 256).
+- The module must handle 1 to 8 inputs.
+- Reset must clear all accumulators and control registers.
+
+Implementation Hint:
+- Use a finite state machine (FSM) with states: IDLE, SUM, MEAN, DIFF, ACCUM, OUTPUT.
+- Use counters for index and cycles.
+- Registered outputs for `result` and `done`.
+- Handle division by `len` via simple integer subtraction or lookup if `len` is small, but since `len` is variable (1-8), a bit-shift isn't generic. A simple iteration or state loop is preferred for fixed-point division of small numbers.

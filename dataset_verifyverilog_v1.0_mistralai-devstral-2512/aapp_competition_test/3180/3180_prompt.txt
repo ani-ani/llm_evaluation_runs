@@ -1,0 +1,61 @@
+Design a Verilog module `paint_fsm` that processes a sequence of drawing commands to reconstruct a canvas.
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to begin processing
+- `cmd_type`: 2-bit command type (00=PAINT, 01=SAVE, 10=LOAD, 11=IDLE)
+- `cmd_data`: 32-bit packed command data
+  - For PAINT: {color[3:0], x1[2:0], y1[2:0], x2[2:0], y2[2:0]} (22 bits)
+  - For SAVE: unused
+  - For LOAD: {save_id[3:0]} (4 bits)
+- `cmd_valid`: 1-bit valid command indicator
+
+**Outputs:**
+- `done`: 1-cycle pulse when all commands processed
+- `result`: 32-bit result when done (packed 8x8 4-bit colors)
+- `busy`: 1-bit indicating FSM is processing
+
+**Requirements:**
+1. **Canvas**: 8x8 grid, each cell stores 4-bit color (1-15)
+2. **Initial state**: All cells white (1)
+3. **Command processing**:
+   - Accept 16 commands max (M ≤ 16 for scalability)
+   - Each command processed over 1-10 cycles
+   - PAINT command: Fill rectangle with checkerboard pattern
+     - Upper-left cell gets color c
+     - Alternating colors: c, white(1), c, white(1)...
+     - Only paint cells if condition matches (i+j parity)
+     - Non-painted cells retain previous value
+   - SAVE: Store current canvas in buffer (max 4 saves)
+   - LOAD x: Restore canvas from save x
+4. **State machine**:
+   - IDLE: Waiting for start
+   - FETCH: Get next command
+   - EXECUTE: Process PAINT (iterative loop over cells)
+   - SAVE/LOAD: Handle memory operations
+   - DONE: All commands processed
+5. **Constraints**:
+   - Max 8x8 canvas (N=8)
+   - Max 4-bit colors (K=16)
+   - Max 16 commands (M=16)
+   - Max 4 save slots
+   - Processing time: ≤256 cycles total
+
+**Interface Protocol:**
+- Start sequence: `start` high for 1 cycle
+- Command streaming: After start, stream commands via `cmd_type`, `cmd_data`, `cmd_valid`
+- When `cmd_valid` high, accept command
+- Processing occurs internally
+- `done` goes high for 1 cycle when complete
+- Read `result` when `done` is high (8x8 packed, row-major)
+
+**Implementation notes:**
+- Use combinational logic for checkerboard pattern calculation
+- Use sequential logic for canvas updates
+- Use FSM to coordinate command sequence
+- Use memory array for canvas (8x8 4-bit)
+- Use SRAM-style array for save buffer (4x8x8 4-bit)
+- Reset: Canvas=all 1, saves=0, done=0, busy=0
+
+Write the module specification with clear state definitions and timing constraints.

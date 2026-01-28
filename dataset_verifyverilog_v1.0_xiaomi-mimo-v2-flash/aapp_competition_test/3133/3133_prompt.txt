@@ -1,0 +1,48 @@
+Implement a Verilog FSM module to solve the 'Alice and Bob in Pisa' problem with scaled constraints.
+
+**Problem Adaptation:**
+- Map size: 16 nodes (original n scaled to 16)
+- Maximum steps to check: 256 (2^8 cycles)
+- Node IDs: 0-15 (4-bit)
+- Tower visibility: 1-bit per node
+- Left/Right transitions: 4-bit per node
+
+**Module Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset (min 2 cycles)
+- `start`: 1-cycle pulse to begin search
+- `alice_start` [3:0]: Starting node for Alice (0-15)
+- `bob_start` [3:0]: Starting node for Bob (0-15)  
+- `left_trans [15:0][3:0]`: 16×4-bit array, left transitions (packed as 64-bit input or 16x4 separate wires)
+- `right_trans [15:0][3:0]`: 16×4-bit array, right transitions
+- `tower_visible [15:0]: 16-bit array, 1 if tower visible from that node
+
+**Outputs:**
+- `result`: 16-bit result (lowest 8 bits = step count if found, MSB=valid flag)
+- `done`: 1-cycle pulse when finished
+
+**Behavior:**
+- Reset state: done=0, result=0
+- On `start` pulse, begin synchronous search
+- Iterate steps from 0 to 255 (8-bit counter)
+- At each step, simulate both paths:
+  - Maintain current node for Alice (4-bit reg)
+  - Maintain current node for Bob (4-bit reg)
+  - Compare tower visibility: if `tower_visible[alice_node] != tower_visible[bob_node]`, success
+- If found at step k, output: `result[7:0] = k`, `result[15] = 1'b1`, `done = 1`
+- If no distinction after 256 steps, output: `result = 16'hFFFF`, `done = 1`
+- `done` must be high for exactly 1 cycle
+
+**Timing:**
+- start → done within 256 cycles
+- Result valid when done=1
+
+**Constraints:**
+- Use 4-bit registers for node IDs
+- Use 8-bit step counter
+- State machine: IDLE → SEARCH → DONE
+- Parallel simulation of both paths in same clock cycle
+
+**Note:** The input arrays are provided as separate 4-bit wires for each node and direction (left_0, left_1, ..., left_15 and right_0, ..., right_15). Similarly, tower_visible is provided as 16 separate 1-bit wires (tower_0 through tower_15).

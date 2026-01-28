@@ -1,0 +1,45 @@
+Implement a Verilog module that determines if a given 6x6 connected arrangement of 6 unit squares can be folded into a cube.
+
+## Input Adaptation
+The input is a 6x6 binary grid where '#' represents a square (1) and '.' represents empty (0). The input pattern is provided via an array of 36 bits. Since the input is static (6x6), we process it cycle-by-cycle over 36 cycles.
+
+## Algorithm
+1. Represent the 6-square net as a connectivity graph or pattern signature.
+2. The known fact is that there are exactly 11 distinct ways (ignoring rotation/reflection) to arrange 6 squares such that they fold into a cube. The problem states the input has no 2x2 blocks and is connected.
+3. We will implement a fixed-logic check for these 11 patterns. Since Verilog requires fixed loops, we will unroll the check for a limited set of representative patterns or use a cycle-by-cycle scan.
+4. Simplified approach: Accept if the pattern is one of the valid canonical nets (e.g., 'T', 'Cross', 'Step', etc.) when mapped to the 6x6 grid.
+
+## Module Interface
+- **Inputs**: 
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `grid_flat[35:0]`: 36-bit input representing the flattened 6x6 grid (row-major: row0-col0 is MSB, row5-col5 is LSB). 1 means '#', 0 means '.'.
+- **Outputs**:
+  - `result`: 1-bit output. 1 if 'can fold', 0 if 'cannot fold'.
+  - `done`: 1-cycle pulse indicating result is valid.
+
+## Timing & Behavior
+- **Reset**: Clears state, `done` = 0, `result` = 0.
+- **Operation**: On `start`, the module begins processing. Since the logic is combinational lookup, `done` is asserted 1-2 cycles after `start` (pipeline latency). 
+- **Latency**: Fixed 2 clock cycles from `start` to `done`.
+- **Constraints**: The module must work for any 6x6 input provided in `grid_flat`.
+
+## Implementation Details
+- The module should contain a look-up mechanism. Since the input space is small (2^36, but sparse), we can hardcode checks for valid patterns. 
+- Use a Finite State Machine (FSM) with states: IDLE, CHECK, DONE.
+- In CHECK state, perform bit-wise comparisons against stored valid pattern masks.
+- The pattern masks should be parameterized or hardcoded constants.
+- The core logic checks if `grid_flat` matches any of the canonical 6-square nets.
+
+## Signal Widths
+- `grid_flat`: 36 bits
+- `result`: 1 bit
+- `done`: 1 bit
+- `state`: 3 bits
+
+## Testbench Requirements
+- Initialize `grid_flat` with specific test patterns.
+- Assert `start`, wait for `done`, check `result`.
+- Include a helper to convert ASCII grid strings to `grid_flat` bit vector.
+- Test cases: Straight line (fail), Cross (pass), T-shape (pass), L-shape (fail), Zig-zag (fail), etc.

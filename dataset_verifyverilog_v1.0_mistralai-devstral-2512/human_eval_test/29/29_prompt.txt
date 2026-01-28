@@ -1,0 +1,56 @@
+Design a Verilog module that filters strings based on a prefix match. The module processes a fixed array of strings (8 strings, each 8 characters max) and outputs those that start with a given prefix (8 characters max).
+
+**Interface Specification:**
+
+**Inputs:**
+- clk: rising edge clock
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to initiate filtering
+- strings[7:0][7:0]: 8x8-bit array of strings (each 8-bit character)
+- prefix[7:0]: 8-bit prefix (null-terminated if shorter)
+- valid_strings[7:0]: 8-bit mask indicating which input strings are valid
+
+**Outputs:**
+- result_str[7:0][7:0]: 8x8-bit array of filtered strings (null-terminated where invalid)
+- result_valid[7:0]: 8-bit mask indicating valid filtered strings
+- result_count: 4-bit count of filtered strings
+- done: 1-cycle pulse when filtering complete
+
+**Implementation Requirements:**
+1. Process strings sequentially over 8-16 cycles
+2. For each valid string, compare first N characters where N = prefix length (determined by null terminator at prefix[7:0])
+3. If prefix matches, copy the entire string (8 chars) to output position
+4. Output array should maintain input order
+5. Use comparator logic with bounded loop (max 8 iterations per string, max 8 strings)
+6. Done signal pulses after processing all strings
+7. Result valid mask indicates filtered strings
+8. Clear result_valid and result_str on reset
+
+**Example:**
+Input: strings = ['abc', 'bcd', 'cde', 'array'] (encoded), prefix = 'a', valid_strings = 0b1111
+Output: result_str contains ['abc', 'array'], result_valid = 0b1001, result_count = 2
+
+**Timing:** start→done within 16 cycles
+
+**Reset:** Clears result_valid, result_count, result_str
+
+**Constraints:**
+- 8-bit ASCII characters
+- Strings are null-terminated (0x00 indicates end)
+- Prefix is null-terminated
+- Max 8 strings, max 8 chars per string
+- Output maintains input order
+
+**Hardware Notes:**
+- Use parallel comparators for prefix matching
+- Counter for string index and character index
+- Finite state machine: IDLE → LOAD_PREFIX → COMPARE → COPY → DONE
+- Avoid division/modulo; use bit masking for range checks
+- Use fixed-size registers with zero padding for shorter strings
+
+**Verification:**
+- Test with empty input
+- Test with prefix longer than string
+- Test with prefix exactly matching string
+- Test with multiple matches
+- Test with no matches

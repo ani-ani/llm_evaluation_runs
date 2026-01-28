@@ -1,0 +1,28 @@
+Implement a Verilog module to count castles that lie inside a convex hull of Nazi troops. Since full N^4 checks are infeasible in hardware, simplify by:
+1. Scaling coordinates to Q8.8 fixed-point (2.10 range)
+2. Limiting max input points to 16
+3. Using a simplified approach: for each castle, check if it lies inside the convex hull of the troops. The convex hull will be computed externally (or assumed given) and passed as a polygon of max 8 vertices.
+
+Interface:
+- Inputs: 
+  - clk, rst_n (active low)
+  - start (1-cycle pulse)
+  - polygon_verts (8 vectors of {x, y} coordinates, 16 bits each)
+  - castle_x, castle_y (16-bit fixed-point each)
+  - num_verts (3-bit, 3-8)
+- Outputs:
+  - result (1-bit): 1 if point is inside or on hull boundary
+  - done (1-cycle pulse): 1 when calculation complete
+
+Algorithm: 
+1. Reset state to IDLE.
+2. On start, latch inputs.
+3. Use ray-casting algorithm (even-odd rule) in a pipeline: iterate through each edge (v_i to v_{i+1}), compute if ray from castle to right (+x) intersects edge. Use cross products for orientation.
+4. If intersection count is odd, point is inside. Handle on-boundary by checking colinearity and bounding box of edge.
+5. Output result and done.
+
+Constraints:
+- All arithmetic in fixed-point Q8.8 (16-bit).
+- Max 8 polygon vertices.
+- Max 100 cycles latency.
+- Use registered outputs.

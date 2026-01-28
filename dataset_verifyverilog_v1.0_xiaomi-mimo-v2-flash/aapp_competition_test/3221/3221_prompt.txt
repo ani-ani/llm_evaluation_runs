@@ -1,0 +1,43 @@
+Design a Verilog module that finds the minimum energy cycle in a small undirected graph with edge weights.
+
+**Problem Adaptation**: Given a graph with up to N=16 nodes and M≤24 edges, find a cycle (closed path) that visits each edge at most once (Eulerian cycle requirement) to minimize energy = (max_edge_weight)^2 + α * K, where K is the number of edges traversed.
+
+**Core Algorithm**: Since we need a cycle that starts/ends at same node and traverses edges without repetition, this is finding an Eulerian cycle. For undirected graphs, a connected component has an Eulerian cycle iff all nodes have even degree. We'll search all possible subsets of edges (2^M possibilities, M≤24 is feasible) and check if they form a valid Eulerian cycle, then compute energy.
+
+**Interface Specification**:
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `N`: 4-bit input (1-16)
+  - `M`: 5-bit input (1-24)
+  - `alpha`: 5-bit input (1-20)
+  - `edge_u[0:23]`: 24x4-bit array for source nodes
+  - `edge_v[0:23]`: 24x4-bit array for destination nodes  
+  - `edge_c[0:23]`: 24x32-bit array for candy weights
+
+- Outputs:
+  - `result`: 64-bit minimum energy (or 0 if impossible)
+  - `done`: 1-cycle pulse when computation complete
+  - `valid`: 1-bit flag indicating valid solution found
+
+**Implementation Details**:
+1. Store edges in registers: each edge has (u, v, c)
+2. For each subset of edges (0 to 2^M-1):
+   - Calculate degree of each node in this subset
+   - Check if all nodes have even degree (Eulerian condition)
+   - Check if subset forms a connected component
+   - If valid, compute max_c and K
+   - Calculate energy = max_c * max_c + alpha * K
+   - Track minimum
+3. Use state machine: IDLE → CHECK_SUBSET → EVALUATE → UPDATE_MIN → DONE
+4. Edge case: empty subset (K=0) should be ignored (not a valid cycle)
+
+**Timing**: Complete within 2^M * N cycles (max ~2^24 * 16 ≈ 268M cycles, but for small M it's fine). Use pipelining where possible.
+
+**Data widths**: 
+- Node IDs: 4 bits (0-15, offset by 1)
+- Edge weights: 32 bits (c ≈ 10^9 fits in 32-bit)
+- Energy: 64 bits (L^2 can be 10^18, plus alpha*K)
+- Subset counter: 24 bits for M=24
+
+**Reset behavior**: `result=0`, `done=0`, `valid=0`, internal counters reset to 0.

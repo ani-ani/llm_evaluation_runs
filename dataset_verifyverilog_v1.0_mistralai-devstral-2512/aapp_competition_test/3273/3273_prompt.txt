@@ -1,0 +1,40 @@
+Implement a Verilog module to find the optimal reconstruction of manuscript fragments from overlapping text segments. 
+
+**Problem Specification:**
+Given N fragments (1 ≤ N ≤ 8), each a fixed-length string of 8 characters (padded with nulls/whitespaces if shorter), identify sequences where a suffix of fragment A (length ≥ 5) matches a prefix of fragment B. Construct a directed graph where edges represent valid overlaps. Find the longest path in this DAG (maximizing number of vertices). If multiple longest paths exist, output AMBIGUOUS. Otherwise, output the reconstructed text by concatenating fragments with overlaps removed.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock (rising edge).
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle pulse to initiate processing.
+  - `fragments[7:0][63:0]`: Array of 8 fragments, each 64 bits (8 ASCII chars, 8 bits/char). Strings shorter than 8 chars must be null-terminated or padded with spaces on the right.
+  - `n`: Number of valid fragments (1-8), 3-bit input.
+
+- **Outputs:**
+  - `result[127:0]`: Reconstructed text (128 bits, 16 chars). Valid when `done` is high.
+  - `status`: 2-bit output. 00 = Valid Reconstruction, 01 = AMBIGUOUS, 10 = ERROR.
+  - `done`: 1-cycle pulse indicating calculation is complete.
+
+**Implementation Logic:**
+1. **Overlap Detection:** Compute an 8x8 adjacency matrix `adj[i][j]` where `adj[i][j]` is 1 if fragment `i` overlaps fragment `j` (suffix of `i` matches prefix of `j` with length >= 5).
+2. **Longest Path:** Use dynamic programming. For each node, compute `dp[i]` (max length path ending at i) and `count[i]` (number of paths of that length). 
+   - Initialize `dp[i] = 1`, `count[i] = 1` for all i.
+   - Iterate through nodes (topological order implied by checking all edges). Update `dp[j]` and `count[j]` if `dp[i] + 1 > dp[j]` (new longest path found) or `dp[i] + 1 == dp[j]` (alternative path of same length found).
+3. **Result Construction:**
+   - Find the node with the maximum `dp` value. 
+   - If any `count` for that max length > 1, set `status = 01` (AMBIGUOUS).
+   - Otherwise, trace back from the end node to construct the sequence. Concatenate fragments while removing overlapping characters (keep suffix of A, append non-overlapping suffix of B).
+   - Output the final string in `result`.
+
+**Constraints:**
+- Max 8 fragments.
+- Max string length 8 chars.
+- Overlap check: Compare suffixes/prefixes of length 5 to 8.
+- State machine required to control iteration over fragments and edges.
+- Output `result` must be packed ASCII.
+
+**Timing:**
+- `start` triggers calculation.
+- `done` asserted after finite cycles (e.g., 256 cycles max).
+- Reset sets `done=0`, `status=00`.

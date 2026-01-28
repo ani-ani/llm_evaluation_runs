@@ -1,0 +1,33 @@
+Design a Verilog module that identifies all critical nodes (stations) that lie on every shortest path from source `s` to destination `t` in a directed graph. The graph is defined by N nodes (scaled to max 16) and M directed edges with weights (scaled to 16-bit). 
+
+**Inputs:**
+- `clk`, `rst_n`: Standard synchronous control signals.
+- `start`: 1-cycle pulse to start computation.
+- Graph data is provided via a configuration interface. Since N and M can be large, we implement a stream interface for edge input:
+  - `edge_valid`: Input valid flag for edge data.
+  - `u`, `v`, `w`: Edge source, destination, and weight (16-bit each).
+  - `config_done`: 1-cycle pulse indicating all edges loaded.
+- `src_node`, `dst_node`: 4-bit inputs for source and destination (since N<=16).
+
+**Outputs:**
+- `result_valid`: High when result is ready.
+- `result_idx`: 4-bit index of the current node being output.
+- `is_critical`: 1-bit flag indicating if `result_idx` is a critical node on the shortest path.
+- `done`: 1-cycle pulse when all nodes have been processed.
+
+**Algorithm:**
+1. **Memory:** Implement 2 BRAMs: `dist_s` (N x 32-bit) storing distances from `s`, and `dist_t` (N x 32-bit) storing distances to `t` (reverse graph).
+2. **Distance Computation:** Use a synchronous Bellman-Ford iterative relaxation loop. Since N=16, run for exactly 16 cycles per relaxation pass. Process edges from the stream buffer.
+3. **Critical Node Logic:** After distances are computed, the shortest path distance is `dist_s[dst_node]`.
+4. **Check Node `u`:** A node `u` is critical if:
+   - `dist_s[u] + dist_t[u] == dist_s[dst_node]` (lies on some shortest path).
+   - AND `dist_s[u]` is finite and `dist_t[u]` is finite.
+   - This check can be done in a single cycle per node.
+5. **Output:** Iterate `u` from 0 to N-1. If the condition holds, assert `result_valid` and output `u`. Finally, assert `done`.
+
+**Constraints:**
+- N <= 16 (4-bit node address).
+- M <= 32 edges (buffered in internal logic or streamed).
+- Weights are positive integers (scaled to 16-bit).
+- Result latency: < 1000 cycles.
+- Reset: Clears all registers and memories.

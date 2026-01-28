@@ -1,0 +1,44 @@
+Implement a Verilog module that checks if any three distinct elements in an array sum to zero. Use a fixed-size array (max 16 elements) of 16-bit signed integers. The algorithm should use two-pointer technique: first sort the array (using a sorting network), then iterate through each element as potential first of triple (i), and use two-pointer search on remaining elements (j=k+1, l=n-1) to find pairs summing to -arr[i]. Output done=1 when done, and result=1 if triple found, else 0.
+
+Interface:
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low sync reset (min 2 cycles)
+  start: 1-cycle pulse to begin computation
+  arr[0:15]: 16 x 16-bit signed integers (Q0.16 or 2's complement)
+  len: 4-bit input indicating actual array length (1-16)
+Outputs:
+  result: 1-bit (1 if triple found, 0 otherwise)
+  done: 1-bit pulse (single cycle when computation complete)
+
+Constraints:
+- Max array size: 16 elements
+- Data width: 16 bits (signed)
+- Max iterations: 16³ = 4096 comparisons worst case
+- Must use sorted array (sort first with comparison network)
+- Must find distinct elements (indices i<j<k)
+- When done=1, result is valid
+- Start ignored while computing (busy flag)
+
+Reset behavior:
+- rst_n=0: result=0, done=0, busy=0
+- Must wait 2 cycles after reset before accepting start
+
+Timing:
+- start->done: within 1000 cycles for n=16
+- Result only valid when done=1
+
+Algorithm:
+1. On start, load array into internal registers
+2. Sort array (bitonic or bubble sort - implementation specific)
+3. For i from 0 to len-3:
+   - For j from i+1 to len-2:
+     - Use two pointers: left=j+1, right=len-1
+     - While left < right:
+       - If arr[i] + arr[left] + arr[right] == 0: found=1
+       - Else if sum < 0: left++
+       - Else: right--
+4. Set result=found, done=1 for one cycle
+5. Wait for next start
+
+Important: All indices and values are 16-bit signed. Handle overflow in addition carefully (check for overflow conditions).

@@ -1,0 +1,46 @@
+Design a Verilog module that removes parentheses and their contents from input strings.
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `input_string`: 64-bit input, interpreted as 8 ASCII characters (8 bits per char), little-endian [char0..char7]
+- `input_len`: 4-bit integer (0-8), indicating valid character count
+
+**Outputs:**
+- `output_string`: 64-bit output, filtered string (8 chars, ASCII)
+- `output_len`: 4-bit output length (0-8)
+- `done`: 1-cycle pulse when processing complete
+
+**Functionality:**
+1. On start pulse, begin scanning input_string from index 0 to input_len-1
+2. For each character:
+   - Track parenthesis state: 0 = normal, 1 = inside parentheses
+   - When '(' is encountered, set state=1, do NOT output
+   - When ')' is encountered, set state=0, do NOT output
+   - When state=0 AND character is not '(', ')', output character to result
+   - When state=1, skip all characters (including nested parens if any)
+3. Build output_string by packing filtered characters into 8-bit slots
+4. Count filtered characters for output_len
+5. Set done=1 for one cycle after completion
+
+**Constraints:**
+- Fixed 8-character strings (hardcoded loop of 8 iterations)
+- ASCII only (no Unicode)
+- All characters are printable ASCII (0x20-0x7E) or null (0x00)
+- Maximum 100 cycles to complete (start->done)
+- Reset clears output_string, output_len to 0, done=0
+
+**Interface Example:**
+If input_string = 0x6368726F6D65 ("chrome") with len=6, parentheses at indices 1-6:
+- After processing: output_string = 0x6368726F6D65 ("chrome")
+- If input was "(chrome)": output_string = empty, len=0
+
+**Implementation Notes:**
+- Use a state machine with states: IDLE, SCAN, WRITE, DONE
+- SCAN state iterates through 8 character positions
+- Internal buffer for filtered string (64-bit shift register)
+- Counter for output position (0-7)
+- Parenthesis depth counter (only 0 or 1 needed, but allow deeper)
+- Stall on reset, ignore start when processing
+- Output is valid only when done=1

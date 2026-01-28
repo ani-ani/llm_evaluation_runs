@@ -1,0 +1,51 @@
+Implement a Verilog module `char_position_counter` that counts how many characters in a string occur at the same position as in the English alphabet (case insensitive).
+
+### Interface:
+- **Inputs**: 
+  - `clk`: clock signal (rising edge)
+  - `rst_n`: active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `string_input[127:0]`: 16-byte fixed-width string input (ASCII)
+  - `string_len[3:0]`: actual length of the string (0-16)
+
+- **Outputs**:
+  - `result[3:0]`: 4-bit count (max 16)
+  - `done`: 1-cycle pulse indicating completion (asserts for one clock cycle when result is valid)
+
+### Functional Specification:
+1. **Reset Behavior**: When `rst_n` is low, `result` and `done` should be 0
+2. **Operation**: 
+   - Start counting when `start` is high
+   - Process characters sequentially (1 per clock cycle)
+   - For each position `i` (0-indexed):
+     - Extract byte `i` from `string_input` (bits [8*i+7:8*i])
+     - Convert to uppercase if lowercase (A-Z/a-z only)
+     - Check if `i == (character - 'A')` i.e., `character == 'A' + i`
+     - Increment counter if condition true
+   - After processing `string_len` characters, assert `done` for 1 cycle
+3. **Constraints**:
+   - Process maximum 16 characters (string_len ≤ 16)
+   - Input guaranteed to contain only uppercase/lowercase letters A-Z
+   - Each character comparison takes exactly 1 clock cycle
+   - Total latency: `string_len + 2` cycles (1 for start, 1 for done)
+4. **Register Usage**:
+   - Counter `i` (3 bits)
+   - Result `count` (4 bits)
+   - State machine: IDLE → PROCESSING → DONE
+
+### Implementation Notes:
+- Extract bytes: `char = string_input[8*i +: 8]`
+- Uppercase conversion: `upper_char = char | 32` (clear bit 5) for lowercase, or `upper_char = char` for uppercase
+- Alphabet index check: `is_match = (upper_char == (8'h41 + i))` where 8'h41 is 'A'
+- Use sequential logic (always @(posedge clk)) for processing
+- Use non-blocking assignments in sequential blocks
+
+### Timing Requirements:
+- Start to done: ≤ 20 cycles (worst case 16 characters + overhead)
+- Result valid only when done=1
+- Do not modify output when done=0
+
+### Test Cases (for verification):
+- "xbcefg" (len=6): positions 0-5, matches at 'b' (pos=1) and 'e' (pos=4) → result=2
+- "ABcED" (len=5): matches at 'A'(0), 'B'(1), 'D'(4) → result=3  
+- "AbgdeF" (len=6): matches at A(0), b(1), g(5), d(3), e(4), F(5) → result=5

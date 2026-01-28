@@ -1,0 +1,58 @@
+Design a Verilog module that computes the minimum months to unify political parties across connected governors. 
+
+**SCALED REQUIREMENTS**:
+- Maximum governors (nodes): 16 (scaled from 100)
+- Maximum friendships (edges): 64 (scaled from ~5000)
+- Node IDs: 4-bit (0-15)
+- Parties: 1-bit (0=Orange, 1=Purple)
+- Max months: 16 cycles (sufficient for BFS depth)
+- Result: 4-bit integer (0-15)
+
+**ALGORITHM**:
+You will implement a BFS (Breadth-First Search) over the graph of possible states. Each state represents the current party configuration of all 16 nodes. Since 2^16 states is too large for a single clock cycle lookup, implement this as a **sequential FSM**:
+
+1. **Input Registers**: 
+   - `party[15:0]`: 16-bit vector for initial party affiliations
+   - `edges[0:63][7:0]`: Flattened array of edges. Each edge is 8 bits: `{src[3:0], dst[3:0]}`. Valid edges are marked by a `valid` bit (implied by index < m).
+   - `num_edges[5:0]`: Number of active edges (0-64).
+
+2. **State Storage**: 
+   - Use a dual-port Block RAM (BRAM) to store visited states and distances. 
+   - Address: 16-bit state vector.
+   - Data: 5-bit distance (months) + 1-bit visited flag.
+   - **Note**: Since 64KB BRAM is large, optimize by storing distances in a compact array indexed by an internal hash or simply use the upper bits of the state as the address if we assume sparse BFS. For this problem, we will use a **Frontier Buffer** approach to limit memory to 2^8=256 entries.
+
+3. **FSM States**:
+   - `IDLE`: Wait for `start` signal.
+   - `INIT`: Set initial state `party` into the frontier.
+   - `STEP`: Process one month (one BFS layer).
+     - For each node `i` (0-15), generate a new state by flipping `i`'s party.
+     - Apply propagation: If node `i` flips, all connected nodes `j` (via friendship graph) that share the **original** party of `i` also flip.
+     - **Propagation Rule**: 
+       - Identify the connected component of `i` containing only nodes of `party[i]`.
+       - Flip all nodes in that component.
+     - Check if the new state is all 0s or all 1s (unified). If yes, latch result and go to `DONE`.
+     - If not seen, add to next frontier.
+   - `DONE`: Output result.
+
+4. **Propagation Logic**:
+   - Pre-store adjacency matrix or list in registers.
+   - In `STEP`, for a candidate flip `i`:
+     - Compute `mask` of nodes to flip. Start with `mask[i] = 1`.
+     - Iterate through neighbors of `i`. If neighbor `j` has `party[j] == party[i]`, add `j` to mask and iterate neighbors of `j` (repeat for up to 16 nodes).
+     - Apply `mask` to `current_state` to get `next_state`.
+
+5. **Interface**:
+   - Inputs: `clk`, `rst_n`, `start`, `party[15:0]`, `edge_data[0:63][7:0]`, `num_edges[5:0]`
+   - Outputs: `result[3:0]`, `done`
+   - Timing: `start` high for 1 cycle. `done` goes high when solution found (max ~16 BFS steps * 16 nodes * 16 cycles = < 10k cycles). 
+
+6. **Optimization**:
+   - Use parallel neighbor checks (combinational logic) for the 16 nodes.
+   - Since `n` is small (16), unroll the inner loops where possible.
+   - The BFS queue (frontier) should be a circular buffer of size 256.
+
+**Implementation Details**:
+- Store `visited` states in a lookup table (LUT) sized 256 entries (using lower 8 bits of state hash) to prevent infinite loops, approximating full visitation for the scope.
+- The `propagate` logic is a fixed iterative loop (max 16 steps) to find the connected component of the same color.
+- Output `result` increments on each `STEP` cycle until unification.

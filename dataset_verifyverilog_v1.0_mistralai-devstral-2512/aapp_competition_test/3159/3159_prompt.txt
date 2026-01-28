@@ -1,0 +1,111 @@
+Implement a Verilog module that detects and removes advertisement images from a simulated web page.
+
+**Problem Adaptation:**
+- The web page is a fixed 200x200 grid of ASCII characters (8-bit).
+- Images are rectangular frames bordered by '+' characters.
+- Images are 3x3 minimum and do not share borders (no touching edges or corners).
+- Nested images are allowed.
+- Banned characters (everything except alphanumeric, '?', '!', ',', '.', space) trigger removal of the smallest enclosing image.
+- When an image is removed, its content (including borders) is replaced with spaces (0x20).
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock (rising edge).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to begin processing.
+  - `din`: 8-bit character input (row-major order).
+  - `din_valid`: 1 when `din` contains valid data.
+- **Outputs:**
+  - `dout`: 8-bit character output (processed grid).
+  - `dout_valid`: 1 when `dout` is valid.
+  - `done`: 1-cycle pulse when processing is complete.
+
+**Implementation Requirements:**
+1. **Buffer Phase:** Clock in the 200x200 grid (40,000 characters) into internal Block RAM (BRAM).
+2. **Detection Phase:** Scan the grid to identify all rectangle borders (frames) defined by '+'.
+   - Store coordinates: Top-Left (x1, y1) and Bottom-Right (x2, y2) for each detected frame.
+   - Use a stack or list to handle nesting (innermost frames are pushed last).
+   - Maximum frames: 100 (scaling constraint).
+3. **Validation Phase:** For each detected frame, scan its interior (excluding borders) for banned characters.
+   - Allowed: a-z, A-Z, 0-9, '?', '!', ',', '.', space.
+   - Banned: anything else (e.g., '#', '=', '>', '=').
+4. **Selection Phase:** If a frame contains banned characters, flag it as an ad.
+   - Conflict Resolution: If a larger frame also contains a banned character, the *smallest* enclosing frame is removed. 
+   - Area Calculation: Width = (x2 - x1 + 1), Height = (y2 - y1 + 1). Area = Width * Height.
+   - Strategy: Store flagged frames. Sort or compare by area (pixel count). Select the minimum area for removal if multiple frames overlap the same banned char (simplified: remove all flagged frames, but prioritize smaller if nested logic is strictly enforced via the problem rules - actually, the problem states "smallest image that contains that character". A character belongs to the innermost frame containing it. If that innermost frame is valid (no banned chars), check outer frames. If the innermost frame has a banned char, remove it. If the innermost is valid but an outer one has a banned char, remove the outer one. Wait, "smallest image that contains that character" means if a char is banned, we look for the minimal area frame containing it. If frames are nested and disjoint, this is simply the innermost frame containing the char. If frames overlap (not allowed per rules), logic is complex. Assuming strict nesting or disjoint frames per constraints.)
+   - Refined Logic: 
+     1. Detect all frames.
+     2. For every banned character coordinate (r, c), find the frame with the smallest area that contains (r, c).
+     3. Mark that frame for removal.
+     4. Output: Read BRAM. If a coordinate falls within any marked frame (inclusive of borders), output space (0x20). Otherwise output original char.
+
+**Control Flow (FSM):**
+- **IDLE**: Wait for `start`.
+- **LOAD**: Shift in 40,000 chars into BRAM (1 char/cycle).
+- **SCAN**: Iterate through grid to find '+' corners. 
+  - Horizontal scan: Identify top/bottom rows.
+  - Vertical scan: Identify left/right columns.
+  - Validate rectangle structure (corners match).
+  - Store frame data (x1, y1, x2, y2) in a small FIFO/RAM (max 100 entries).
+- **CHECK**: Iterate through stored frames. For each frame, scan interior for banned chars.
+  - If banned char found, calculate area (W*H). 
+  - Keep track of the minimal area frame for each banned char location (requires mapping or simply processing innermost first).
+  - Simplified: Sort frames by area (ascending). Iterate. If a frame contains a banned char AND is not inside a previously marked frame (already removed), mark it for removal.
+- **OUTPUT**: Iterate through grid. If coordinate is inside a marked frame, output 0x20, else output stored char.
+- **DONE**: Pulse `done`.
+
+**Signal Widths:**
+- Grid Index: 12 bits (0-39999).
+- Coordinates (Row/Col): 8 bits (0-199).
+- Frame Count: 8 bits (0-100).
+- Area: 16 bits (200*200).
+- Character: 8 bits.
+
+**Constraints:**
+- 40,000 cycles to load.
+- 200*200 = 40,000 cycles to scan (approx).
+- 100 frames * 200*200 = 4M cycles worst case (too slow). Optimization: 
+  - Optimization 1: Only check borders during SCAN.
+  - Optimization 2: During CHECK, for each frame, only scan interior. Max interior size is small (avg). 
+  - Optimization 3: Brute force is not feasible. Use a "Pixel Ownership" map or simply process pixels once. 
+    - Better Approach: 
+      1. Parse all frames into an array (max 100).
+      2. For every pixel in the grid (40k cycles):
+         - Check if it's a banned char.
+         - If banned, find the smallest frame containing this pixel.
+         - Mark that frame ID for removal.
+      3. Output phase: Iterate grid, if pixel belongs to any marked frame, output space.
+      This is O(Grid + Frames * Grid) worst case if naive, but O(Grid * Frames) is 4M (acceptable in 10k cycles? No, 4M cycles is too high for a simple benchmark). 
+      Let's optimize: O(Grid + Frames * log(Frames)).
+      Actually, standard approach: 
+        - Store frames sorted by area (ascending).
+        - For each pixel (r, c):
+          - If char is banned:
+            - Iterate frames (sorted by area). 
+            - First frame containing (r, c) is the smallest. Mark it. Break.
+      This is O(Grid * Frames). With Grid=40k and Frames=100, that's 4M operations. 
+      Hardware can do 4M cycles (4ms at 1GHz). Okay for simulation.
+
+**Verilog Module Spec:**
+- **Depth:** 40,000 x 8-bit buffer (use inferred BRAM).
+- **Frame Storage:** 100 entries x 4 x 8-bit (x1, y1, x2, y2).
+- **Logic:** 
+  - `LOAD`: `addr <= addr + 1`, `mem[addr] <= din`.
+  - `SCAN`: Double loop (i=0 to H-1, j=0 to W-1). Detect '+' corners. 
+    - Top-Left: mem[r][c]=='+' && mem[r][c+1]=='-'? No, check horizontal runs of '+' and vertical runs of '+'.
+    - Simple Scan: Find top-left '+'. Scan right for '+', down for '+'. Check bottom-right '+'. 
+    - Store if valid rectangle and borders don't touch others.
+  - `CHECK`: 
+    - Sort frames by area (insertion sort in hardware for small N=100).
+    - Iterate `pixel_idx` 0 to 39999.
+    - Calculate `r`, `c` from `pixel_idx`.
+    - If `char` is banned:
+      - Loop `f_idx` 0 to N-1. If `pixel_in_frame(r, c, frame[f_idx])` -> `mark[f_idx] = 1`. Break.
+  - `OUTPUT`: 
+    - Iterate `pixel_idx` 0 to 39999.
+    - `dout = space` if `pixel_in_marked_frame` else `mem[pixel_idx]`.
+
+**Cocotb Testbench:**
+- Generate random grid with defined frames.
+- Inject banned chars inside frames.
+- Verify output matches Python logic.

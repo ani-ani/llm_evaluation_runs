@@ -1,0 +1,58 @@
+Implement a Verilog module to generate all possible combinations of a fixed set of input elements.
+
+### Interface
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to begin generation
+- `len`: 4-bit unsigned integer (0-15), number of elements in input array
+- `elements_in[0:3]`: 4 elements of 8-bit data (ASCII characters representing element identifiers)
+
+**Outputs:**
+- `result[0:3]`: 4 elements of 8-bit data (current combination subset)
+- `result_len`: 4-bit unsigned integer (length of current combination)
+- `valid`: 1-bit, high when `result` and `result_len` are valid
+- `done`: 1-cycle pulse, high on last combination
+
+### Behavior
+1. **Reset State**: `result` cleared, `result_len=0`, `valid=0`, `done=0`
+2. **Start Pulse**: 
+   - Sample `len` (must be 0-4)
+   - Sample `elements_in[0:len-1]` into internal buffer
+   - Begin generation of 2^len combinations
+3. **Generation Logic**:
+   - Use binary counting from 0 to (2^len)-1
+   - For each count, extract bits where bit=1 include element at that index
+   - Output subset in `result` and length in `result_len`
+   - `valid` is high for all cycles except idle
+4. **Timing**:
+   - After `start` goes low, wait 1 cycle
+   - Output combinations sequentially, 1 per clock cycle
+   - Final combination (all bits=1) triggers `done` pulse
+   - Total cycles: 2^len + 2 (reset+start) + 1 (done)
+5. **Constraints**:
+   - Max `len` = 4 (16 combinations, 17 cycles total)
+   - Input elements are 8-bit bytes
+   - Result array is 4x8-bit (max 4 elements)
+   - `result_len` never exceeds 4
+
+### Example Sequence (len=4, elements=['r','g','b','w'])
+Cycle | valid | result_len | result[0:3]
+0     | 0     | 0          | [0,0,0,0] (idle)
+1     | 0     | 0          | [0,0,0,0] (start)
+2     | 1     | 0          | []
+3     | 1     | 1          | ['r']
+4     | 1     | 1          | ['g']
+5     | 1     | 2          | ['g','r']
+6     | 1     | 1          | ['b']
+...
+16    | 1     | 4          | ['w','b','g','r'] (done)
+17    | 0     | 0          | [0,0,0,0] (idle)
+
+### Implementation Notes
+- Use a 4-bit counter for 2^len cycles
+- Use 4 registers to store input elements
+- Use priority encoder logic to filter bits
+- Keep FSM simple: IDLE -> SAMPLE -> COUNTING -> DONE
+- All outputs registered
+- Reset clears internal state

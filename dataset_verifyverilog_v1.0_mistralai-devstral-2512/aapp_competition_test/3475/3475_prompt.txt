@@ -1,0 +1,54 @@
+Implement a Verilog module `transport_solver` that calculates the minimum number of transportation switches needed for a tourist itinerary in Welsh valleys.
+
+**Problem Adaptation:**
+- Points: 16 nodes (indices 0-15), with 15 edges between them.
+- Transportation Modes: 4 types max.
+- Distances: 0-65535 (16-bit unsigned).
+- Heading angles: -128 to 127 degrees (scaled to 16-bit signed, representing thousands).
+- Max segments: 16.
+- DP State: Use a 4D lookup table or iterative computation for `min_switches[segment_index][transport_mode]`.
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start computation.
+- `t_cnt`: 4-bit input (number of transport modes, max 4).
+- `n_cnt`: 4-bit input (number of points, max 16).
+- For `t_cnt` modes (parametric 0..3):
+  - `dmin_t[i]`: 16-bit input (min distance for mode i).
+  - `angle_range_t[i]`: 16-bit signed input (max heading variation for mode i).
+- For `n_cnt-1` edges (parametric 0..14):
+  - `dist_edge[i]`: 16-bit input (distance between point i and i+1).
+  - `heading_edge[i]`: 16-bit signed input (heading of edge i).
+
+**Outputs:**
+- `result`: 8-bit unsigned output (minimum switches k).
+- `done`: 1-cycle pulse indicating completion.
+- `valid`: Flag indicating if result is valid (1) or impossible (0).
+
+**Behavior:**
+1. On `start` pulse, reset internal state.
+2. Initialize DP table where `dp[i][j]` is the min switches to reach point `i` using transport mode `j`. Initialize with `INF` (e.g., 255).
+3. Base case: `dp[0][j] = 0` for all valid `j` (starting at point 0, switch count 0).
+4. Iterate through points `i` from 0 to `n_cnt - 2`:
+   - For each transport mode `j` (0 to `t_cnt-1`):
+     - If `dp[i][j]` is reachable:
+       - Try to extend the current segment using mode `j` to the next point `i+1` (and potentially further).
+       - Check constraints:
+         - **Distance**: Sum of `dist_edge` from start of segment to `i+1` must be `>= dmin_t[j]`.
+         - **Heading**: Max `heading_edge` minus Min `heading_edge` in segment must be `<= angle_range_t[j]`.
+       - If constraints satisfied, update `dp[i+1][j] = min(dp[i+1][j], dp[i][j])` (no switch).
+       - If constraints broken or choosing to switch: Update `dp[i+1][k] = min(dp[i+1][k], dp[i][j] + 1)` for all other modes `k`.
+       - *Optimization for HW*: Since n is small (16), unroll loops or use a fixed iteration count of 16.
+5. After iterating through all points, find the minimum value in `dp[n_cnt-1][*]`.
+6. If the minimum is `INF`, set `valid = 0`. Else, `valid = 1` and output the value.
+7. Set `done` high for one cycle.
+
+**Timing:**
+- `start` to `done`: Within 1024 clock cycles.
+- Reset: 2 cycles, `done = 0`, `result = 0`.
+
+**Implementation Note:**
+Use sequential logic. The state machine should iterate `i` from 0 to 15, and `j` from 0 to 3. Since the number of points is small, combinational logic for constraint checking is acceptable, but registers must be updated on the clock edge. Assume a maximum latency of 1000 cycles.

@@ -1,0 +1,36 @@
+Implement a Verilog module to count the number of contiguous subarrays whose sum equals a power of k. Scale constraints: n ≤ 16, array values ≤ ±127 (8-bit signed), powers of k up to ±2^16 range.
+
+Module Interface:
+Inputs:
+  clk: 1-bit, rising edge clock
+  rst_n: 1-bit, active-low synchronous reset
+  start: 1-bit, single-cycle pulse to start calculation
+  arr[0:15]: 16x8-bit array, fixed-size, signed values
+  len: 4-bit, actual number of elements (1-16)
+  k: 3-bit, base value (range -7 to 7)
+
+Outputs:
+  result: 16-bit, count of valid segments
+  done: 1-bit, single-cycle pulse when calculation complete
+
+Functional Requirements:
+1. Precompute powers of k: For k ≠ 0, generate all powers k^i where |k^i| ≤ 65535. For k=0, powers = {1}. For k=1, powers = {1}. For k=-1, powers = {1, -1}.
+2. Compute prefix sums: For i from 0 to len-1, compute sum(arr[0..i]). Store in 16-bit signed buffer.
+3. For each prefix sum at index i, for each power p in powers:
+   - Check if there exists a prefix sum at index j < i such that prefix[j] = prefix[i] - p
+   - Count occurrences using a frequency table (16 entries, 4-bit count each)
+4. Result is the total count across all indices and powers.
+
+Implementation Notes:
+- Use pipelined processing: 16 cycles for prefix sum accumulation, 16 cycles for lookup and counting
+- Frequency table: Array of 16x16-bit values (prefix sums) with 4-bit counters
+- Maximum count: 16*16 = 256, fits in 16-bit result
+- All operations must complete within 256 cycles
+- Reset state: result=0, done=0, all internal arrays cleared
+
+Timing:
+- start pulse asserted for 1 cycle
+- done pulse asserted 1 cycle after completion (within 256 cycles)
+- result stable when done=1
+
+Use 32-bit internal signals for intermediate calculations to avoid overflow during power computation.

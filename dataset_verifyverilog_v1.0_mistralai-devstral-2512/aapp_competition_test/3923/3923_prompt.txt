@@ -1,0 +1,34 @@
+Implement a Verilog module that finds a permutation P[1...N] where every element is part of a cycle of length exactly A or B. The input N is up to 128, and A, B are up to 32.
+
+**Specification:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous reset.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `N`: 8-bit unsigned (1-128).
+  - `A`: 8-bit unsigned.
+  - `B`: 8-bit unsigned.
+- **Outputs:**
+  - `result`: 128x8-bit array (packed into 1024 bits or individual ports `result_0` to `result_127`). Represents permutation P.
+  - `valid`: High when the result is valid.
+  - `impossible`: High if no such permutation exists (detected after search fails).
+  - `done`: 1-cycle pulse indicating completion (either valid or impossible).
+
+**Algorithm:**
+1. **Search Phase:** Iterate `k` from 0 to `N/A` (max 128 iterations). For each `k`, check if `(N - k * A) % B == 0`. If true, set `l = (N - k * A) / B` and proceed to construction. If loop finishes without finding a solution, assert `impossible`.
+2. **Construction Phase:** Build the permutation in a 1024-bit register array (8-bit elements).
+   - Initialize a pointer `curr = 1`.
+   - For `i` in 0 to `k-1`: Construct a cycle of length `A` using values `curr` to `curr + A - 1`. The cycle should map `curr -> curr+1 -> ... -> curr+A-1 -> curr`. Store these in the result array at indices `curr-1` to `curr+A-2`.
+   - For `j` in 0 to `l-1`: Construct a cycle of length `B` using values `curr` to `curr + B - 1`. Similarly store the cycle.
+   - Update `curr` after each cycle.
+
+**Constraints:**
+- Max cycles: N/A + N/B (approx 160).
+- Result array indices correspond to P[1..N]. Index 0 corresponds to P[1].
+- Use a standard state machine (IDLE, SEARCH, CONSTRUCT, DONE).
+- **Timing:** Start-to-done within 500 cycles.
+
+**Interface Details:**
+- Output `result` as individual signals `result_0`, `result_1`, ..., `result_127` (8-bit wide each) for compatibility with testbenches that cannot assign packed arrays directly.
+- `valid` is 1 only when a valid permutation is found.
+- `impossible` is 1 when no solution exists.
+- `done` is a single cycle pulse.

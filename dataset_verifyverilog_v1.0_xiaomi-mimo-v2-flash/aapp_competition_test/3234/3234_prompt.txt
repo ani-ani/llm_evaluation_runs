@@ -1,0 +1,34 @@
+Implement a Verilog module to find the minimum empty squares for 2D packing problem.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start calculation (valid when `start` is 1)
+  - `N`: 32-bit unsigned integer (N >= 1, N <= 2^32-1)
+- **Outputs:**
+  - `result`: 32-bit unsigned integer (minimum empty squares)
+  - `done`: 1-cycle pulse indicating calculation is complete (asserted for 1 cycle when result is valid)
+
+**Functional Requirements:**
+1. **Problem Scaling:** Scale N from the original constraint (10^16) to 32-bit range (2^32-1 ≈ 4.29e9). The input `N` will be provided in this scaled range.
+2. **Box Constraints:** Find integers W (width) and H (height) such that:
+   - `W * H >= N`
+   - `0.5 * H <= W <= 2 * H`
+   - Minimize `W * H - N` (empty squares)
+3. **Algorithm:** Iterate through possible H values (1 to 1024, scaled bound) and corresponding valid W values. Calculate `empty = W*H - N` and track the minimum.
+   - For a given H, valid W range is: `W_min = ceil(N/H)` (enforcing W*H >= N) and `W_max = floor(2*H)` (enforcing W <= 2H).
+   - Additional constraint: `W >= ceil(H/2)` (enforcing W >= H/2).
+   - Intersection: `W_start = max(ceil(N/H), ceil(H/2))`.
+   - If `W_start <= W_max`, calculate `empty = W_start * H - N`.
+4. **Timing:** The calculation must complete within 2048 clock cycles after `start` is asserted.
+5. **Reset:** On reset (`rst_n=0`), `done` should be 0 and `result` should be 0.
+
+**Hardware Constraints:**
+- Use 32-bit arithmetic for multiplication and comparison.
+- Minimize area; combinational logic for `ceil` operations is acceptable.
+- State machine required to control iteration.
+
+**Example:**
+- If `N=47`, valid boxes include 6x8 (area 48, empty 1) and 5x10 (area 50, empty 3). Minimum is 1.
+- If `N=523`, valid box 22x24 (area 528, empty 5) or 21x25 (area 525, empty 2). Minimum is 2.

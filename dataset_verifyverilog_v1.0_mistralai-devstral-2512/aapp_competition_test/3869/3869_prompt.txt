@@ -1,0 +1,32 @@
+Implement a Verilog module that computes the intersection area of two rectangles. First rectangle is axis-aligned, centered at origin with width w and height h. Second rectangle is same dimensions rotated by angle α (degrees) about origin. 
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to initiate computation
+  w_i, h_i: 16-bit unsigned inputs (scale: 1/256, i.e., Q8.8 format where 256 represents 1.0)
+  alpha_i: 8-bit unsigned angle in degrees (0-180)
+
+Outputs:
+  area_o: 32-bit signed fixed-point result (Q16.16 format)
+  done: 1-cycle pulse when area is valid
+
+Timing: Start asserted, computation completes within 500 cycles. 
+
+Implementation approach: 
+1. Normalize angle: α = min(α, 180-α)
+2. If α == 0, result = w * h
+3. If α >= 90, result = min(w,h)^2 / sin(α)  (clipped rectangle case)
+4. Else (0 < α < 90), use formula: 
+   area = w*h - ( (w - h*tan(α/2))^2 * tan(α) + (h - w*tan(α/2))^2 * tan(α) ) / 4
+   This approximates polygon clipping area. Scale all values to Q8.8.
+5. Use iterative CORDIC or LUT for sin/cos/tan (64 iterations, precision ~1e-6).
+6. All intermediate calculations in 32-bit Q16.16 to avoid overflow.
+7. Output area_o in Q16.16 (full scale ~65535.0).
+
+Constraints: 
+- Use combinational logic for trig functions (loop unrolled for speed).
+- Pipeline stages for multiplication/add.
+- Do not implement floating-point; use fixed-point.
+- For tan(α/2), compute using double-angle formulas to reduce LUT size.
+- Module should have no external dependencies (no DPI functions).

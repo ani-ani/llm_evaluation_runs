@@ -1,0 +1,57 @@
+Design a Verilog module that computes the number of valid ball arrangements under constraints:
+
+**Problem Analysis**:
+- Scale: n (colors) ≤ 10, counts per color ≤ 10, total balls ≤ 100
+- Pattern length l ≤ 5 (sequence to match)
+- Colors that can't be adjacent: adjacency matrix
+- Must maximize pattern occurrences, then count arrangements
+
+**Algorithm**:
+Use DP with state [last_color][remaining_counts_mask][pattern_state]
+1. Encode remaining counts as a single integer (base-11, 10 colors = 11^10 states ≈ 2.6B, too large)
+2. **Scaled approach**: n=5, counts≤4 → 5^5 = 3125 states (fits BRAM)
+3. DP transition: for each color, if valid (not adjacent, has balls left), update state
+4. Track pattern matches using automaton (like KMP failure function)
+5. Final answer: max over pattern counts at all-valid states
+
+**Interface**:
+- Inputs:
+  - clk, rst_n: standard
+  - start: 1-cycle pulse to start computation
+  - n: 4-bit (colors)
+  - freq[0:4]: 5x4-bit arrays (counts per color, max 10)
+  - adj[0:4][0:4]: 5x5-bit matrix (1=cannot be adjacent)
+  - pattern_len: 3-bit (max 5)
+  - pattern[0:4]: 5x4-bit (colors in sequence)
+- Outputs:
+  - result: 32-bit (mod 1000000007)
+  - done: 1-cycle pulse when computation complete
+  - busy: high during computation
+
+**Implementation Details**:
+1. **State Memory**: Use block RAM for DP table
+   - Index: packed (last_color * 3125 + remaining_state * 5 + pattern_state)
+   - Width: 32-bit (count) + 3-bit (max_pattern)
+2. **Automaton**: Precompute next_state for pattern matching
+   - If color matches pattern position, advance; else fallback to failure function
+3. **Counter**: Encode remaining counts in base-(freq+1) for current n (not full 5 colors)
+4. **FSM**: 
+   - IDLE: wait for start
+   - INIT: build automaton table
+   - DP_MAIN: iterate over all states (nested loops)
+   - DP_UPDATE: compute transitions
+   - FINISH: find max result
+5. **Parallelism**: For each state, test all possible next colors (n ≤ 5) in parallel cycles
+6. **Modulo**: 1000000007 is 2^32 range, use 32-bit arithmetic
+
+**Constraints**:
+- Max states: 5 colors * 3125 count states * 6 pattern states = 93,750 (fits 18-bit address)
+- Clock frequency: 100 MHz
+- Reset: Clear all DP entries to 0
+- Timeout: After 10^6 cycles, stop (safety)
+
+**Key Simplifications**:
+- Fixed n=5 (scale from larger inputs by ignoring extra colors or fail early)
+- Fixed pattern length ≤ 5
+- Pattern colors are unique and disjoint from adjacency colors
+- Use iterative DP, no recursion

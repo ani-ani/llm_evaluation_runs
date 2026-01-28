@@ -1,0 +1,31 @@
+Implement a Verilog module to solve the stone-taking game using Grundy numbers.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: Start signal (1 cycle pulse).
+  - `a_i` [31:0]: Input A (number of stones).
+  - `k_i` [31:0]: Input K (parameter).
+- **Outputs:**
+  - `grundy` [15:0]: Computed Grundy number for the current pile (valid when `done` is high).
+  - `done`: High for 1 cycle when calculation for a pile finishes.
+
+**Behavior:**
+1. On `start` rising edge, the module accepts `a_i` and `k_i`.
+2. The module computes the Grundy number `g(a, k)` using the iterative algorithm:
+   - Initialize `a_reg = a_i`.
+   - Loop while `a_reg >= k_i`:
+     - Calculate `q = a_reg / k_i` (integer division) and `r = a_reg % k_i`.
+     - If `r == 0`: The result is `q`. Break the loop.
+     - Else: Calculate `q_plus_1 = q + 1`. Update `a_reg` by subtracting `x * q_plus_1`, where `x` is the number of full blocks of size `q_plus_1` contained in `r`.
+       - Specifically: `x = ceil(r / q_plus_1)` (integer arithmetic).
+       - Update: `a_reg = a_reg - x * q_plus_1`.
+   - If the loop finishes because `a_reg < k_i`, the result is 0.
+3. The calculation must complete within a fixed number of clock cycles (e.g., 500 cycles). Use an FSM to control the loop.
+4. Output `done` pulses once when the result is valid on `grundy`.
+5. **Constraints:**
+   - Use 32-bit unsigned arithmetic for intermediate calculations.
+   - Division (`/`) and Modulo (`%`) operations should be implemented using standard synthesis-friendly operators or a dedicated iterative divider (e.g., restoring division) to ensure timing.
+   - The FSM must have an idle state.
+   - Assume `k_i >= 1`. If `k_i == 0`, behavior is undefined (per problem constraints, `K_i >= 1`).

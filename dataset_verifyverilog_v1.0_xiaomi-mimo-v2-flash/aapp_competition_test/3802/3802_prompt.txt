@@ -1,0 +1,29 @@
+Implement a Verilog module that computes the longest common subsequence of two strings without containing a given virus substring. The solution uses dynamic programming with a KMP automaton.
+
+Interface:
+- Inputs: clk, rst_n (active-low), start (1-cycle pulse)
+- Data inputs: s1[0:15][7:0], s2[0:15][7:0], virus[0:7][7:0] (8-bit ASCII characters)
+- Length inputs: len1[3:0], len2[3:0], len3[3:0] (4-bit for max 16)
+- Outputs: result[0:15][7:0] (16-byte output buffer), result_len[3:0], done (1-cycle when valid)
+
+Constraints:
+- Max string length: 16 characters
+- Max virus length: 8 characters
+- Result max length: 16 characters
+- Timing: start->done within 10,000 cycles
+- Reset: done=0, result_len=0
+
+Implementation details:
+1. Compute KMP next table (length = len3+1)
+2. Use 3D DP array F[17][17][9] storing length (4 bits)
+3. Use 3D parent array to reconstruct path (store packed indices)
+4. Iterate i from 0 to len1, j from 0 to len2, k from 0 to len3-1
+5. Transitions:
+   - Skip s1[i]: F[i+1][j][k] = max(F[i+1][j][k], F[i][j][k])
+   - Skip s2[j]: F[i][j+1][k] = max(F[i][j+1][k], F[i][j][k])
+   - Match s1[i]==s2[j]: compute next KMP state, update F[i+1][j+1][next_k] = max(..., F[i][j][k]+1)
+6. Track max state (max_i, max_j, max_k)
+7. Reconstruct path backwards using parent array
+8. Output result in correct order (reverse reconstructed path)
+
+Testbench will verify with scaled test cases (16 chars max).

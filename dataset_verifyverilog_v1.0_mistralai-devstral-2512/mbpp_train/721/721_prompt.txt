@@ -1,0 +1,37 @@
+Design a Verilog module that computes the maximum path average in an N*N grid from top-left to bottom-right using only right/down moves. Scale to N=8 fixed grid size. Input costs are 8-bit signed integers. Use dynamic programming to find maximum sum path, then compute average as (sum / (2*N-1)) using fixed-point division (Q8.8 format). The module should process the grid row by row, computing DP values in pipeline fashion.
+
+Interface Specification:
+Inputs:
+- clk: rising edge clock
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to initiate computation
+- cost[63:0]: 64x8-bit packed input array (cost[7:0] = cost[0][0], cost[15:8] = cost[0][1], ..., cost[63:56] = cost[7][7])
+- valid_input: 1-bit signal indicating cost data is valid
+
+Outputs:
+- result: 16-bit signed integer in Q8.8 format representing the maximum average
+- done: 1-cycle pulse when computation complete
+- overflow: 1-bit flag if any intermediate sum exceeds 16-bit range
+
+Timing Constraints:
+- start -> done: within 200 clock cycles for 8x8 grid
+- Reset: 2 cycles minimum, sets done=0, result=0, overflow=0
+- Data sampling: On start pulse (cost must be held stable for 1 cycle)
+
+Implementation Guidelines:
+1. Use DP table with 16-bit signed accumulators (2 bytes per cell)
+2. Process grid row-by-row: first row (left to right), then subsequent rows
+3. For each cell (i,j): dp[i][j] = max(dp[i-1][j], dp[i][j-1]) + cost[i][j]
+4. Final result = dp[7][7] * 256 / 15 (2*N-1=15 for N=8, Q8.8 fixed-point)
+5. Use pipelining to handle 8x8=64 cells
+6. Handle overflow detection for intermediate sums
+7. Use parameterized constants: N=8, DATA_WIDTH=8, DP_WIDTH=16, OUT_WIDTH=16
+
+State Machine States:
+- IDLE: wait for start
+- LOAD_ROW0: load first row costs and compute cumulative sums
+- LOAD_ROWS: load remaining rows and compute DP values
+- COMPUTE_AVG: compute average with fixed-point division
+- DONE: set done signal
+
+Area Constraints: Use resource sharing for DP values, only 8 DP registers needed per row (not full 64-cell table).

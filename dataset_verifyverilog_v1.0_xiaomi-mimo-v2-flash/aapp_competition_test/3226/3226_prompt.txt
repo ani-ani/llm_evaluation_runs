@@ -1,0 +1,63 @@
+Design a Verilog module `police_escape` that computes the minimal speed needed to escape a city graph.
+
+**Core Algorithm Adaptation:**
+1. Represent city as a graph with 8 nodes max (scaled from n≤100). Each node has edges with lengths (distance). Lengths are scaled to 8-bit integers (0-255).
+2. Police start at node P, Brothers start at node B, there are E exit nodes.
+3. The problem reduces to: Find minimal speed S (as Q8.8 fixed-point) such that Brothers can reach an exit before police can intercept.
+4. Police interception constraint: For any path the brothers take to an exit at distance D_brothers, police must not be able to reach the same point at the same time. This is equivalent to checking if D_police_to_exit * S <= D_brothers * 160 (where 160 is police max speed).
+5. Actually, the precise condition is: Brothers win if for ALL points on their path to exit, police distance to that point * S > brothers distance to that point * 160. Simplification: Compute shortest distances from police (distP) and brothers (distB) to all nodes. The critical constraint is at exit nodes: brothers must reach exit e with distB[e] such that distB[e] > (distP[e] * S) / 160. Rearranged: S < 160 * distB[e] / distP[e]. But wait, brothers can choose path. We need to find a path where min over path (distB/path_len vs distP/path_len) works. Actually, the known solution for this problem (like UVA 1083) uses binary search on speed and BFS/Dijkstra to check feasibility.
+
+**Simplified Hardware Version:**
+- **Graph Scale:** n=8 nodes max. Edges: m=16 max. Weights (distances): 8-bit (0-255).
+- **Speed:** Q8.8 fixed-point (8 integer, 8 fractional bits). Range 0.0 to 255.99.
+- **Police Speed:** Fixed at 160.0 (Q8.8: 160 << 8 = 40960).
+- **Check Logic:** For a given speed S, compute shortest paths from Police node (distP) and Brothers node (distB) using Floyd-Warshall (8 nodes = 64 comparisons) or BFS if unweighted, but here weighted.
+- **Feasibility Check:** Brothers can escape if there exists an exit `e` such that `distB[e] * 160 < distP[e] * S` (strict inequality). If `distP[e] == 0`, impossible (police already there). 
+- **Search:** Binary search on S from 0.0 to 255.0 (10 iterations for 0.1% precision).
+
+**Module Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to start computation.
+  - `node_count`: 4-bit (actual n, 2-8).
+  - `exit_count`: 4-bit (actual e, 1-8).
+  - `bro_start`: 4-bit node ID (1-8).
+  - `police_start`: 4-bit node ID (1-8).
+  - `edge_src`, `edge_dst`, `edge_len`: 3x4-bit arrays (for up to 16 edges, loaded sequentially or static).
+  - `exit_list`: 8x4-bit array (list of exit node IDs).
+- Outputs:
+  - `result_speed`: 16-bit Q8.8 fixed-point result.
+  - `impossible`: 1-bit flag.
+  - `done`: 1-cycle pulse.
+
+**Internal Logic:**
+1. **Edge Storage:** Use registers to store up to 16 edges (src, dst, len). Initialize via input signals or assume static configuration for benchmark.
+2. **Distance Matrix:** 8x8 matrix of 16-bit values (max dist 255*7 < 4096, fits in 12 bits, use 16 bits). Initialize to 0 on diagonal, Infinity (e.g., 0xFFFF) elsewhere.
+3. **Floyd-Warshall:** 3 nested loops (k, i, j) iterating 8 times each. `dist[i][j] = min(dist[i][j], dist[i][k] + dist[k][j])`.
+4. **Binary Search State Machine:**
+   - State 0: IDLE
+   - State 1: INIT_FW (Reset distances, load edges)
+   - State 2: FW_LOOP (Run Floyd-Warshall)
+   - State 3: CHECK_EXIT (Check all exits for current speed)
+   - State 4: UPDATE_SPEED (Adjust binary search bounds)
+   - State 5: DONE
+5. **Speed Representation:** Fixed point arithmetic. `distB * 160` vs `distP * S`. 
+   - `160` is constant (0xA0 in Q8.8).
+   - Multiplication: `dist (16-bit) * 160 (16-bit) = 32-bit result`. Since distances are small (max ~2000) and 160 is small, 32-bit is safe.
+   - `distP * S`: `S` is 16-bit Q8.8. `distP` is 16-bit integer. Result is 32-bit Q8.8.
+   - Comparison: Compare 32-bit values. Shift `distB * 160` left by 8 to align Q8.8 (since `distB` is integer, `distB * 160 * 256`).
+6. **Timing:** Floyd-Warshall on 8 nodes takes ~512 cycles. Binary search 10 iterations. Total ~6000 cycles max.
+7. **Output:** `result_speed` is the minimal S where escape is possible. If no speed works up to max, set `impossible`.
+
+**Verilog Spec Details:**
+- Use `reg [15:0] dist [0:7][0:7]` for distance matrix.
+- Use `reg [15:0] speed_high`, `speed_low`, `speed_mid`.
+- Use `reg [31:0] val_bro`, `val_pol` for comparison.
+- Use `integer` loops for synthesis (or unrolled if fully combinational).
+- Clock domain: Synchronous design.
+- Reset: Async low, clears state and results.
+
+**Edge Cases:**
+- Police at exit: Impossible.
+- No path: Impossible (graph is connected per input).
+- Fixed point precision: 10 binary search steps give high precision.

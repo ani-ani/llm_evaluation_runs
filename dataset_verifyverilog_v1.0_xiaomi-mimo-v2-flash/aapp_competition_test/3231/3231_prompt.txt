@@ -1,0 +1,44 @@
+Design a Verilog module `group_validator` that checks if a graph of n nodes (n≤16) can be partitioned into groups satisfying constraints: group size ≤p (p≤15), cross-group friend edges ≤q (q≤15). Use a fixed-state FSM to iterate through all possible partitions (2^n states max, but we limit to 16 nodes). Input adjacency matrix as 16x16 bits. Output valid=1 and a partition mask when feasible. The module should have:
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start evaluation
+  adj[15:0][15:0]: 16x16-bit packed adjacency matrix (flattened)
+  n: 4-bit number of active nodes (1-16)
+  p: 4-bit max group size (1-15)
+  q: 4-bit max cross edges (0-15)
+
+Outputs:
+  valid: 1-bit (1 if partition exists)
+  done: 1-cycle pulse when evaluation complete
+  partition[15:0]: 16-bit group assignment (each node gets 4-bit group ID, 0-15)
+  group_count: 4-bit number of groups
+  groups[15:0]: 16-bit mask indicating which nodes are in each group (packed, 16 groups of 16 bits each)
+
+Internal Architecture:
+- State machine: IDLE, CHECK_PARTITION, UPDATE, VALIDATE, DONE
+- Use a 16-bit counter to generate candidate partitions (2^n possibilities)
+- For each partition, validate: each group size ≤p, cross edges ≤q
+- Store best valid partition in registers
+- Use combinational logic for graph validation
+- Timing: complete within 2^16 cycles (65536 cycles)
+
+Implementation Notes:
+- Adjacency is symmetric: adj[i][j] = adj[j][i]
+- Node i in group g[i]
+- Group size: count of nodes with same g[i]
+- Cross edges: sum over edges (i,j) where g[i] != g[j]
+- Partition encoding: each node uses 4 bits for group ID (0-15)
+- Use max 2 clock cycles per partition check
+- Output group masks as 16-bit vectors (bit k set if node k in that group)
+
+Reset Behavior:
+- When rst_n=0: state=IDLE, valid=0, done=0, partition=0, group_count=0
+- Must hold reset for 2 cycles
+
+Timing Constraints:
+- start pulse clears internal state
+- Within 100000 cycles (worst-case), done=1
+- valid=1 indicates success and partition contains valid assignment
+- group_count reflects actual groups in partition (1-16)

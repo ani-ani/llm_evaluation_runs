@@ -1,0 +1,57 @@
+Implement a Verilog module that calculates the volume of a cone using fixed-point arithmetic. Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits). The module must compute: volume = (1/3) * π * r² * h.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start calculation
+  - `r`: 16-bit signed input (Q16.16) representing radius
+  - `h`: 16-bit signed input (Q16.16) representing height
+- Outputs:
+  - `result`: 32-bit signed output (Q16.16) representing volume
+  - `done`: 1-cycle pulse indicating calculation complete
+
+**Implementation Requirements:**
+1. Use a fixed-point approximation for π: 0x3243F (3.14159 in Q16.16)
+2. Use a fixed-point approximation for (1/3): 0x5555 (0.3333 in Q16.16)
+3. The calculation should pipeline through stages:
+   - Stage 1: Compute r² (multiply r by r)
+   - Stage 2: Multiply r² by h
+   - Stage 3: Multiply by π
+   - Stage 4: Multiply by (1/3)
+4. Each multiplication should result in a Q32.32 format, then shift right by 16 bits to get back to Q16.16
+5. Use 32-bit signed arithmetic for all intermediate results
+6. The `done` signal should assert exactly 5 cycles after `start` goes high (1 cycle to register start, 4 pipeline stages)
+7. `result` is only valid when `done` is high
+
+**Timing:**
+- `start` is registered on rising edge of `clk`
+- `done` pulses high for exactly one cycle
+- After `done`, you can start a new calculation
+- Minimum 2 cycles reset time
+
+**Synthesis Constraints:**
+- Maximum latency: 100 cycles (your design must complete within 5 cycles)
+- Maximum combinational delay: 100ns
+- All signals must be registered
+
+**Module Definition:**
+module cone_volume(
+  input wire clk,
+  input wire rst_n,
+  input wire start,
+  input wire signed [15:0] r,
+  input wire signed [15:0] h,
+  output reg signed [31:0] result,
+  output reg done
+);
+
+**Critical Notes:**
+- Do not use floating-point or real numbers
+- Use signed arithmetic operators
+- All multiplications must be full-width (e.g., 16x16->32) before truncation
+- Handle sign extension properly
+- Use `reg` for all outputs and pipeline registers
+- The pipeline registers should be cleared on reset
+- When `start` is 0, `done` should remain 0
+- `result` should retain previous valid value or 0 after reset

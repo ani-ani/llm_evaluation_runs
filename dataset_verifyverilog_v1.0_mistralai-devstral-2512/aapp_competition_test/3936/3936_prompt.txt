@@ -1,0 +1,50 @@
+Module Specification: Domino Coloring Counter
+
+Task: Count valid colorings of 2xN domino tiling with 3 colors (red, cyan, green) where adjacent dominoes (by side) have different colors. Dominoes are given as two strings S1, S2 where same letter = same domino.
+
+Key Logic:
+1. Parse input into domino segments: Single (vertical, covers row i at col j) or Double (horizontal, covers both rows at cols j,j+1)
+2. Count colorings incrementally with state transitions:
+   - State 0: Previous domino was vertical (covers single column)
+   - State 1: Previous domino was horizontal (covers two columns)
+3. Transition rules (modulo 1e9+7):
+   * Start: If first domino is vertical (S1[0]==S2[0]): ans=3, state=0
+           If first domino is horizontal (S1[0]!=S2[0]): ans=6, state=1
+   * For each subsequent domino:
+     - Current Vertical + Previous Vertical: ans *= 2, state=0
+     - Current Vertical + Previous Horizontal: ans *= 1, state=0
+     - Current Horizontal + Previous Vertical: ans *= 2, state=1
+     - Current Horizontal + Previous Horizontal: ans *= 3, state=1
+
+Interface Requirements:
+- Clock/Reset: Optional (combinational or sequential)
+- Data Widths:
+  * N: 6 bits (max 52)
+  * Character input: 8 bits per char (ASCII)
+  * Counter/Multiplier: 32 bits (handles 3^52 < 2^84)
+  * Modulo constant: 32-bit (1000000007)
+  * State: 1 bit (0=vertical, 1=horizontal)
+
+Input Ports:
+  - rst_n: 1-bit, active-low async reset
+  - start: 1-bit, pulse to begin processing (if sequential)
+  - s1_in[0:7]: 8-bit, current character from row 1
+  - s2_in[0:7]: 8-bit, current character from row 2
+  - idx_in[5:0]: 6-bit, current column index (0 to N-1)
+  - is_last: 1-bit, flag for final column
+
+Output Ports:
+  - result[31:0]: 32-bit, final coloring count modulo 1000000007
+  - done: 1-bit, output valid flag (sequential only)
+
+Behavior:
+- Combinational mode: Process all N columns in one cycle
+- Sequential mode: Process one column per clock cycle
+- Internal logic must detect domino type by comparing S1[idx] == S2[idx]
+- Accumulate product modulo 1e9+7
+- Reset: result=0, done=0, state=0
+
+Edge Cases:
+- N=1: Single vertical domino → 3 colorings
+- N=2: Either two vertical (3*2=6) or one horizontal (3*2=6)
+- Must handle strings with different cases (uppercase/lowercase letters)

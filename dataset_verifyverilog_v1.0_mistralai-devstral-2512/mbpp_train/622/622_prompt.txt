@@ -1,0 +1,40 @@
+Implement a Verilog module that finds the median of two sorted lists of the same size (N). The input arrays must be sorted in ascending order.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock (rising edge trigger).
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle pulse to initiate the calculation.
+  - `n`: 4-bit input indicating the number of elements in each array (range 1-16).
+  - `arr1`: Input array of 16 elements, each 8 bits wide. Only the first `n` elements are valid.
+  - `arr2`: Input array of 16 elements, each 8 bits wide. Only the first `n` elements are valid.
+- **Outputs:**
+  - `result`: 16-bit output representing the median in Q8.8 fixed-point format. (Integer part in bits [15:8], fractional part in bits [7:0]).
+  - `done`: 1-cycle pulse asserted when the result is valid.
+
+**Implementation Details:**
+1. **Data Path:**
+   - Use the provided two-pointer algorithm (as seen in the Python code) to merge the sorted arrays until `n + 1` elements are processed.
+   - Maintain indices `i` and `j` for `arr1` and `arr2` respectively.
+   - Keep track of the last two processed values (`m1` and `m2`) to find the median of `2n` elements.
+   - Handle boundary conditions where one array is exhausted.
+
+2. **State Machine (FSM):**
+   - **IDLE:** Wait for `start`. Reset indices and counters.
+   - **COMPARE:** Calculate the median. This requires a loop or a pipeline to process `n+1` elements. Since `n` is small (max 16), a sequential state machine is acceptable.
+     - In each cycle, compare `arr1[i]` and `arr2[j]` (handling out-of-bounds if index equals `n`).
+     - Update `m1` and `m2` and the active index (`i` or `j`).
+     - Increment a counter.
+     - Transition to `DONE` when the counter reaches `n + 1`.
+   - **DONE:** Assert `done` for one cycle and return to IDLE. Compute the average of `m1` and `m2`. 
+     - Formula: `(m1 + m2) / 2`. Since we need Q8.8 output, calculate: `(m1 + m2) << 7`. (Assuming inputs are 8-bit integers). 
+     - *Note on Scaling:* The Python example returns a float. If inputs are integers, the median is either an integer or an integer + 0.5. `Q8.8` is suitable: `(m1 + m2) * 128`.
+
+3. **Timing:**
+   - The operation takes `n + 3` cycles (initialization + `n+1` comparisons + final output latch).
+   - `start` to `done` latency: ~20 cycles for max N=16.
+
+**Constraints:**
+- N is provided at runtime but maxes at 16.
+- Arrays are static size 16.
+- No external memory access required (inputs are combinational or registered).

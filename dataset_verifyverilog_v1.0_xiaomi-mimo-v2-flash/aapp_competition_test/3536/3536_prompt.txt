@@ -1,0 +1,47 @@
+Verilog HDL module for computing heap probability on a rooted tree with weighted random numbers.
+
+## PROBLEM SPECIFICATION
+Given a rooted tree with n nodes (n ≤ 16 scaled down from 300). Each node i has:
+- Fixed integer b[i] (1 ≤ b[i] ≤ 1000, scaled from 10^9)
+- Random uniform value X[i] in [0, b[i]]
+- Parent node p[i] (0 means root)
+
+The tree forms a heap if X[parent] > X[child] for all edges (parent -> child).
+
+Probability = ∏ over all edges of P(X[p] > X[child])
+For edge (u,v): P(X[u] > X[v]) = b[v] / (2*b[u]) if b[u] >= b[v], else b[u] / (2*b[v])
+
+## INTERFACE
+module heap_probability (
+    input wire clk,           // Clock
+    input wire rst_n,         // Active-low reset
+    input wire start,         // Start computation
+    input wire [3:0] n,       // Number of nodes (1-16)
+    input wire [15:0] b_0, b_1, b_2, b_3, b_4, b_5, b_6, b_7,  // Node values (scaled)
+    input wire [15:0] b_8, b_9, b_10, b_11, b_12, b_13, b_14, b_15,
+    input wire [3:0] p_0, p_1, p_2, p_3, p_4, p_5, p_6, p_7,   // Parent indices (0=none)
+    input wire [3:0] p_8, p_9, p_10, p_11, p_12, p_13, p_14, p_15,
+    output reg [31:0] result, // Q8.8 fixed-point probability
+    output reg done           // Valid pulse when done
+);
+
+## IMPLEMENTATION DETAILS
+1. Use Q8.8 fixed-point arithmetic (8 integer, 8 fractional bits)
+2. Probability starts at 1.0 (256 in Q8.8)
+3. For each edge (i from 1 to n-1):
+   - Get b_i, b_p (parent)
+   - If b_i <= b_p: prob_edge = (b_i << 8) / (2 * b_p)  // Q8.8
+   - Else: prob_edge = (b_p << 8) / (2 * b_i)
+   - result = (result * prob_edge) >> 8
+4. Final result is in Q8.8 format
+5. Timing: Compute in 16 cycles (n ≤ 16)
+
+## CONSTRAINTS
+- Reset: result=0, done=0
+- Start pulse: 1 cycle
+- Computation: 16 cycles max
+- Output: result valid when done=1
+- No division: use bit shifts for powers of 2 (denominator is 2*b)
+- Handle edge case: b values scaled to fit 16 bits
+
+Do not provide implementation code. Provide only the detailed interface and algorithm specification.

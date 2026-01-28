@@ -1,0 +1,38 @@
+You are to design a Verilog module that solves the 'Gerald's Secret' problem. The problem is: given an integer n (1 ≤ n ≤ 10^17), calculate the minimum number of coins (powers of 3: 1, 3, 9, 27...) required to sum to at least n, under the constraint that the sum cannot be exactly n (i.e., the buyer cannot pay without change). The mathematical solution is: find the smallest power of 3, k = 3^p, such that n is NOT divisible by k. Then the answer is ceil(n / k).
+
+Since n can be up to 10^17, use 64-bit integers (Q32.32 fixed-point or just 64-bit integer logic). The module must operate iteratively or as a pipeline.
+
+Interface Specification:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate calculation
+  - n[63:0]: Input integer n (unsigned 64-bit)
+- Outputs:
+  - result[63:0]: Output integer (unsigned 64-bit)
+  - done: 1-cycle pulse indicating result is valid
+
+Timing Requirements:
+- Throughput: One operation per 100-200 clock cycles (since max loop iterations is log3(10^17) ≈ 36).
+- Latency: start asserted -> done asserted within 100 cycles.
+- Reset: Initialize internal state, done=0, result=0. Reset requires at least 2 clock cycles.
+
+Implementation Details:
+1. State Machine: Use an FSM with states IDLE, CALC_LOOP, and DONE.
+2. Calculation Logic:
+   - Initialize `k = 1` (power of 3).
+   - Loop: Check if `n % k == 0`. 
+     - In hardware, `n % k` implies division. Since k is always a power of 3, we can check if `n & (k-1) == 0` (only for powers of 2), but for powers of 3, we must use division or repeated subtraction.
+     - Optimization: Since k grows exponentially, the loop runs at most ~36 times. A combinational divider can be used, or a sequential subtraction loop.
+     - Alternative: Iterate bit-by-bit. However, a simple state machine checking `n % k == 0` using a division unit is acceptable.
+   - If `n % k != 0`, break loop.
+   - Update: `k = k * 3` (check for overflow, 3^38 ≈ 4.5e18, so 64-bit is sufficient for k up to 3^38).
+3. Final Result: Calculate `ceil(n / k)`. This can be computed as `(n + k - 1) / k`.
+4. Fixed-Point Arithmetic: All values (n, k, result) should be treated as 64-bit unsigned integers.
+
+Testbench Constraints:
+- Verify against the provided examples and large numbers.
+- Ensure the `start` pulse is handled correctly in the IDLE state.
+- Check for reset functionality.
+- Test boundary cases: n=1, n=10^17.
+- The testbench must use 64-bit values.

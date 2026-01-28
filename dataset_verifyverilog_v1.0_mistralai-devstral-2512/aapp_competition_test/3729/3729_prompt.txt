@@ -1,0 +1,49 @@
+You are to implement a Verilog module that computes the probability Jon Snow likes an arrangement of food and wine stacks.
+
+**Problem Analysis:**
+- We have `f` food boxes and `w` wine barrels.
+- Stacks must alternate types (food, wine, food, ... or wine, food, wine, ...).
+- Jon dislikes if any wine stack height <= h.
+- Probability = (Number of valid arrangements) / (Total arrangements).
+- Output `p * q^-1 mod 10^9 + 7`.
+
+**Hardware Simplification:**
+The original problem scales up to 10^5, which is impossible in a small FPGA. We will scale this down to a fixed-size problem suitable for sequential logic:
+- Max `f` and `w`: 16 items (4-bit input).
+- Max stack count: 8 stacks (3-bit counter).
+- The modulus `10^9+7` requires ~30 bits. We use 32-bit arithmetic.
+- **Algorithm**: Implement a brute-force counter or a dynamic programming loop that iterates over valid stack counts and distributions.
+- **Logic**: 
+  1. Accept `f`, `w`, `h` as inputs (clamped to 4 bits or 16 max).
+  2. Total arrangements calculation: Iterate `k` (number of stacks). Count ways to split items into `k` stacks.
+  3. Valid arrangements: Count ways to split `w` wine barrels into `k` stacks where each stack > `h`.
+  4. Compute modular inverse using Fermat's Little Theorem (exponentiation).
+  5. Output `valid * inv(total) % MOD`.
+
+**Interface Specification:**
+- **Inputs**:
+  - `clk`: System clock.
+  - `rst_n`: Active-low reset.
+  - `start`: 1-cycle pulse to start computation.
+  - `f_in`: 4-bit input (number of food boxes).
+  - `w_in`: 4-bit input (number of wine barrels).
+  - `h_in`: 4-bit input (minimum height threshold).
+- **Outputs**:
+  - `result`: 32-bit output (probability modulo 10^9+7).
+  - `done`: 1-cycle pulse indicating result is valid.
+- **Timing**: Start to done within 10,000 cycles.
+- **Internal**: 
+  - Use 32-bit registers for `valid_count`, `total_count`, and intermediate values.
+  - Use an iterative loop to calculate combinations (multichoose) or use precomputed logic for small N.
+  - Division by zero edge case: If `w == 0`, probability is 1 (Jon likes empty wine stacks).
+
+**Implementation Details**:
+1. **State Machine**: IDLE -> CALC_TOTAL -> CALC_VALID -> COMPUTE_RESULT -> DONE.
+2. **Modular Arithmetic**: All operations (add, multiply, power) must be modulo 10^9+7 (32-bit overflow is fine, use `(a * b) % MOD`).
+3. **Combination Logic**: For small numbers (N<=16), use a multiplier loop to compute `nCr`. The recurrence `C(n,k) = C(n-1, k-1) + C(n-1, k)` is too expensive for hardware, better to compute directly from factorials or iterative multiplication.
+4. **Stack Distribution**: 
+   - Total stacks `k` ranges from 1 to `f+w`.
+   - Valid configurations require `w` items split into `k` stacks, each > `h`.
+   - This corresponds to stars and bars: `C(w - k*(h+1) + k - 1, k - 1)` -> `C(w - k*h - 1, k - 1)`.
+
+**Constraint**: Max cycles 10,000, Resource: LUTs, Registers.

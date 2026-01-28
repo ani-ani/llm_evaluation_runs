@@ -1,0 +1,99 @@
+Implement a Verilog module that calculates the probability of evasion in a grid search problem. The input constraints are simplified: R=8, C=8, K=4 (Manhattan distance). The modulus is 1000000007. The probability is (Total cells - Searched cells) / Total cells. You must calculate the number of unique cells reachable within distance K from any starting cell on an 8x8 grid. Since the grid is small, you can use a combinatorial approach or lookup table. The output is p * q^-1 mod 1000000007. 
+
+Inputs:
+  None (Fixed problem parameters: R=8, C=8, K=4)
+Outputs:
+  result: 32-bit integer representing the probability modulo 10^9+7.
+  
+Implementation Details:
+1. Total cells N = 8 * 8 = 64.
+2. Calculate the number of distinct cells covered by a search radius of K=4 from a center (r, c). 
+3. Since the grid is small, you can precompute the coverage count for all 64 positions. 
+4. Sum these counts to get total checks (if the police were at every cell). 
+5. However, the police are at one random cell. The probability you are caught is (Cells covered by police) / (Total cells). 
+6. Wait, the problem states: Police at random location P. You at random location Y. 
+7. If distance(P, Y) <= K, caught. 
+8. We need P(dist > K). 
+9. For an 8x8 grid, count pairs (P, Y) such that dist(P, Y) > K. 
+10. This is a double loop (64 * 64 = 4096 iterations). 
+11. In hardware, this can be a combinational logic or a sequential counter. 
+12. Let's use a sequential counter for scalability: iterate through all 4096 pairs in 4096 cycles. 
+13. Inputs: Start signal. 
+14. Modulus M = 1000000007 (0x3B9ACA07). 
+15. Compute: Total pairs = 4096. Count 'safe' pairs. Result = (safe * inv(4096)) % M. 
+16. Inv(4096) is the modular inverse of 4096 modulo M. 4096 = 2^12. 
+17. Calculate inv4096 offline or compute it. 4096 mod M = 4096. 
+18. Inverse: x = 2^12. x * inv(x) = 1 mod M. 
+19. 1000000007 = 0x3B9ACA07 (odd prime). 
+20. Inverse of 2^12 = (1/2)^12 mod M. 
+21. 500000004 is inverse of 2. 
+22. Power of 500000004 by 12. 
+23. Or simpler: since 4096 = 1<<12, and M is odd, inv(4096) = 2^(phi(M)-12) mod M. 
+24. Phi(M) = M-1 = 1000000006. 
+25. Wait, we can just hardcode the result for K=4, R=8, C=8. 
+26. Actually, let's make it general for small R, C, K. 
+27. Inputs: R, C (max 8), K (max 4). 
+28. Widths: R/C 4 bits, K 4 bits. 
+29. Module interface: Start, R, C, K. 
+30. Output: Result 32-bit, Done. 
+31. Logic: 
+   - Count safe pairs. 
+   - Total pairs = R*C * R*C. 
+   - Loop P_r from 0 to R-1, P_c from 0 to C-1. 
+   - Loop Y_r from 0 to R-1, Y_c from 0 to C-1. 
+   - If abs(P_r - Y_r) + abs(P_c - Y_c) > K, safe++. 
+   - Result = (safe * inv(total_pairs)) % M. 
+   - Modular inverse needs extended Euclid or Fermat. 
+   - Since inputs are small, we can compute inverse in SW or precompute. 
+   - For HDL, we can use a modular inverse module. 
+   - But to keep it simple for the benchmark: 
+   - Since R, C, K are inputs, but small, we can assume the testbench calculates the expected value or we implement a full modular inverse calculator. 
+   - Let's implement a sequential modular inverse (binary extended GCD) which is O(log N). 
+   - Target clock: 10ns. 2^32 is huge, but inputs are small. 
+   - Let's restrict R, C <= 4 to keep cycle count low (max 256 pairs). 
+   - Wait, the prompt says 8x8. 64*64 = 4096 pairs. 
+   - 4096 cycles is acceptable. 
+   - Let's stick to 8x8 max. 
+   - We need to compute inv(q). q is not constant if R, C vary. 
+   - So we need a modular inverse circuit. 
+   - Or, simpler: Output numerator and denominator, let external unit handle mod? 
+   - No, spec says output remainder. 
+   - We will implement a simple modular inverse unit. 
+   - Total cycles: 4096 (counting) + ~32 (inverse) = ~4128. < 10k. Good. 
+   - 
+   - Refined Spec: 
+   - Inputs: R (4-bit), C (4-bit), K (4-bit). Start (1-bit). 
+   - Outputs: Result (32-bit), Done (1-bit). 
+   - Fixed Modulus: 1000000007. 
+   - 
+   - State Machine: 
+   - IDLE -> CALCULATE_COUNT (iterates pairs) -> CALC_INVERSE (compute inv(N^2)) -> MULTIPLY (safe * inv) -> DONE. 
+   - 
+   - Pairs Loop: 
+   - P_idx (0 to R*C - 1). Y_idx (0 to R*C - 1). 
+   - Convert index to (r, c). 
+   - Calc dist. Compare. Increment safe. 
+   - 
+   - Inverse: 
+   - Inputs: N_sq (32-bit). 
+   - Algorithm: Binary Extended GCD. 
+   - While B != 0: if A even, A/=2, X*=2; if B even, B/=2, Y*=2; else (A>B) A-=B, X-=Y else B-=A, Y-=X. 
+   - Result X. 
+   - 
+   - Multiply: 
+   - Modular multiplication (a*b)%M. 
+   - 
+   - Testbench: 
+   - Set R=8, C=8, K=4. 
+   - Expected result? 
+   - Total pairs = 64*64 = 4096. 
+   - Manhattan distance > 4. 
+   - Let's verify count. 
+   - We will rely on the Python calculation in the testbench to verify. 
+   - 
+   - Bit widths: 
+   - Safe counter: 32 bits (max 4096). 
+   - Intermediate: 64 bits for product. 
+   - Mod M: 30 bits. 
+   - 
+   - Let's refine the prompt.

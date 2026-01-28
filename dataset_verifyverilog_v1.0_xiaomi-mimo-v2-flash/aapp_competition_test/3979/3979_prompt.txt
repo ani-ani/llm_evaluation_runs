@@ -1,0 +1,47 @@
+Design a Verilog module that determines which letters to capitalize (make large) in Bookland's alphabet so that a sequence of words becomes lexicographically ordered. The alphabet size is scaled to 16 letters (indexed 0-15), and we handle 16 words with each word having up to 16 characters of 8-bit values. The input encoding uses fixed-width signals for efficient hardware implementation.
+
+## Interface Specification:
+
+**Inputs:**
+- `clk`: Rising edge clock (mandatory for sequential execution)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to begin processing
+- `n_words`: 4-bit value (0-15) representing number of words
+- `word_lens[0:15]`: 16x4-bit array storing lengths of each word
+- `words_flat[0:255]`: 256x8-bit array storing flattened word data (concatenated letters). Max 16 words × 16 letters × 8 bits = 2048 bits total, scaled to 2048 bits in practice but we'll use 256x8 for simplified interface (max 16 words × 16 letters = 256 letters total).
+- `num_letters`: 4-bit value (0-15) representing number of distinct letters in alphabet
+
+**Outputs:**
+- `result_valid`: 1-bit flag indicating valid output
+- `result_mask`: 16-bit mask where bit i=1 means letter i+1 should be capitalized
+- `done`: 1-cycle pulse when processing completes
+
+## Algorithm Requirements:
+
+1. **Parsing**: Extract words from `words_flat` using `word_lens` array
+2. **Comparison Logic**: For each consecutive word pair:
+   - Find first differing position
+   - If word1[i] < word2[i]: Constraint - if word2[i] is capitalized, word1[i] must also be capitalized (2-SAT implication)
+   - If word1[i] > word2[i]: Must capitalize word1[i] and NOT capitalize word2[i]
+   - If one word is prefix of another: OK only if prefix word is not longer
+3. **2-SAT Resolution**: Use implication graph with 2*m nodes (m = letters, scaled to 16). Implement iterative BFS/DFS to find forced assignments
+4. **Conflict Detection**: If any contradiction found (must capitalize and must not capitalize same letter), output No
+
+## Implementation Notes:
+- Use fixed-point arithmetic for alphabet values (8-bit unsigned)
+- Scale all loops to max 16 iterations
+- Use lookup tables for implication graph (16x16x2 for forward/backward edges)
+- State machine: IDLE → PARSE → COMPARE → IMPLY → VERIFY → DONE
+- Timing: Within 256 cycles max
+- Reset: Clear all internal state, result_mask=0, done=0
+
+## Constraints:
+- Max 16 letters (alphabet index 1-16 mapped to 0-15)
+- Max 16 words
+- Max 16 letters per word
+- Total letter count ≤ 256
+- All values are 8-bit unsigned
+- No dynamic memory - all arrays fixed size
+
+## Testing Requirements:
+The testbench will verify correctness against sample inputs by packing data into the flattened format and checking the result_mask output.

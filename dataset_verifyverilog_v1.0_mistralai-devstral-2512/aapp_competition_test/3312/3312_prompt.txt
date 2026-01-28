@@ -1,0 +1,52 @@
+Design a Verilog module to maximize points in the Johnny5 oil can game, adapting for hardware constraints: grid size N≤16, energy E≤8, cans C≤8, time steps T≤32. Use a stateful design with synchronous FSM and lookup table for DP.
+
+**Inputs**:
+- `clk`: System clock, rising edge.
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to initiate calculation.
+- `grid_size`: 4-bit input, N (1 to 16).
+- `start_energy`: 4-bit input, E (0 to 8).
+- `start_x`, `start_y`: 4-bit inputs (0 to 15).
+- `can_count`: 4-bit input, C (0 to 8).
+- `can_x_in`, `can_y_in`, `can_time_in`: 4-bit inputs for current can data.
+- `can_write`: 1-bit control to load can data into internal buffer.
+
+**Outputs**:
+- `result`: 8-bit output, maximum points (0 to 255).
+- `done`: 1-cycle pulse when calculation is complete.
+- `busy`: High while processing.
+
+**Internal Behavior**:
+1. On `start` or `can_write` high, load data into internal registers (can_buffer[0:7], grid_size_reg, etc.).
+2. Sort cans by time using a simple bubble sort network (clocked) during initialization.
+3. Implement DP state array `dp[time][x][y][energy]` (dimensions 32x16x16x9) using distributed RAM or registers. Initialize to -1 (or a sentinel like 255) except dp[0][start_x][start_y][start_energy] = 0.
+4. Process cans sequentially sorted by time. For each can, update the DP table for the time interval leading to it.
+   - For each state (x, y, e) at time `t`, consider:
+     a) **Stand still**: Energy unchanged, valid if energy > 0 (wait cost 0). Score unchanged.
+     b) **Move**: Up to 4 directions. Move cost 1 energy. Valid if e > 0. New position after 1 second. Increment time by 1.
+   - Propagate scores forward in time. Handle boundaries (0 to N-1).
+5. At the exact time of a can appearing at (CX, CY):
+   - If Johnny5 is at (CX, CY): Add 1 point to score.
+   - If Johnny5 is adjacent (Manhattan distance 1) to (CX, CY): Add 1 energy (capped at max energy, e.g., 8).
+   - If neither: No change.
+6. After processing all cans, scan the final DP state (at max_time) to find the maximum score. Output to `result`.
+7. Set `done` high for 1 cycle when finished.
+
+**Timing**:
+- Reset: Set `done`=0, `result`=0, clear buffers. Min 2 cycles.
+- Calculation: Start triggered, process within 5000 cycles.
+- Energy costs and scores are tracked via DP values.
+- Fixed point not needed; use integer arithmetic.
+
+**Constraints**:
+- All coordinates and times are 4-bit (0-15, padded if needed for times up to 32).
+- Use iterative loops in FSM for updates (nested loops over x, y, e).
+- Clamp energy to max 8.
+- Handle can input buffering (store up to 8 cans in internal array).
+
+**Testbench**:
+- Load N, E, start pos, C.
+- Write C cans: write each can's X, Y, CT sequentially using `can_write`.
+- Assert `start`.
+- Wait for `done`.
+- Verify `result` matches expected.

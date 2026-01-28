@@ -1,0 +1,45 @@
+Implement a Verilog module that reconstructs arrow mapping (permutation f) from final positions after K steps. Given N nodes and final permutation P (where P[i] is person at position i after K moves), find permutation f such that f^K = P, with f[i] != i (no self-loops).
+
+Key Adaptations:
+1. Scale N from 10000 to 8 (for hardware feasibility)
+2. K up to 10^9 mapped to cycle length analysis on N≤8 nodes
+3. Each cycle of length L in P must be decomposed into cycles in f such that their lengths divide L and LCM of all f-cycles = L
+4. For a cycle of length L in P, possible cycle lengths in f are divisors of L. We need to partition divisors to form valid f-cycles.
+5. For N=8, we can use brute-force search over all possible cycle decompositions of P.
+
+Interface:
+Inputs:
+  clk: clock
+  rst_n: active-low reset
+  start: 1-cycle pulse to start computation
+  N[7:0]: number of nodes (N ≤ 8)
+  K[31:0]: number of steps (any value, we check modulo cycle lengths)
+  P[0:7]: array of 8 4-bit values (1-indexed positions, P[i] = person at position i after K steps)
+
+Outputs:
+  f[0:7]: array of 8 4-bit values (1-indexed, f[i] = next person from person i)
+  valid: 1-bit, high when result is valid
+  done: 1-cycle pulse when computation complete
+
+Implementation Details:
+1. Parse input permutation P
+2. Decompose P into cycles (use cycle decomposition of permutation)
+3. For each cycle of length L in P, find all divisors of L
+4. Use brute-force search to find a set of cycle lengths (for f) such that:
+   - Each cycle length divides L
+   - LCM of all f-cycles equals L
+   - Sum of f-cycles equals L (covers all elements)
+5. For each valid decomposition, construct f by:
+   - For each f-cycle of length d, assign consecutive elements in the P-cycle to f
+   - Example: P-cycle (a,b,c) of length 3, if we use f-cycles of length 1 and 2: f(a)=a (invalid, skip), or f-cycles of length 3: f(a)=b, f(b)=c, f(c)=a
+6. Verify f[i] != i for all i
+7. Output the first valid f found
+
+Special Case Handling:
+- If P has fixed points (P[i]=i), then K must be 0 mod cycle_length, but K≥1 in problem, so fixed points in P are invalid (unless K=0). For K≥1, P[i]=i means person returned to start after K steps.
+- For a cycle of length L in P, if L=1, it's a fixed point. For K≥1, we need f to have a cycle whose length d satisfies: K ≡ 0 mod d, and d > 1 (no self-loops). So if P has any 1-cycle, it's impossible unless K=0.
+- For L>1, we need to find cycle decomposition of f that maps to the L-cycle after K steps.
+
+Complexity: With N≤8, exhaustive search over cycle decompositions is feasible.
+
+Timing: done within 10000 cycles for N=8.

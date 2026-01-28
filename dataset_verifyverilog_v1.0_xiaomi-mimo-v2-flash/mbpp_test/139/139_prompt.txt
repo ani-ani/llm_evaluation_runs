@@ -1,0 +1,43 @@
+Design a Verilog module to calculate the circumference of a circle given its radius.
+
+**Specification:**
+- Use fixed-point arithmetic: Q16.16 format (16 integer bits, 16 fractional bits)
+- Scale constant: π ≈ 3.141592653589793 * 65536 = 205887 (decimal) or 0x3243F
+- Formula: C = 2 * π * r
+- Input: `radius` (8-bit unsigned integer) representing integer radius values (0-255)
+- Output: `circumference` (24-bit signed integer in Q16.16 format) containing the fixed-point result
+- Input is sampled on rising clock edge when `start` signal is high
+- Output becomes valid on the same cycle (combinational/registered multiplication)
+- Module must be purely combinational after input registration
+
+**Interface:**
+- `clk`: Input, rising edge
+- `rst_n`: Input, active-low synchronous reset
+- `start`: Input, 1-cycle pulse (active high) to load radius
+- `radius`: Input, 8-bit unsigned integer
+- `circumference`: Output, 24-bit signed integer (Q16.16 format)
+- `done`: Output, 1-cycle pulse when result is valid (same cycle as start)
+
+**Timing:**
+- Reset: Initialize `done=0`, `circumference=0`
+- On `start` asserted: Load `radius`, calculate `circumference = 2 * π * radius` using fixed-point multiplication
+- `done` signal asserted high for 1 cycle when result is ready
+- All calculations complete within 1 clock cycle (combinational logic)
+
+**Constraints:**
+- Use 8-bit input for radius (0-255)
+- Use Q16.16 format for π constant (0x3243F = 205887)
+- Result range: 0 to ~8.4 million (24-bit signed)
+- Multiplication: (2 * π * radius) = (π * radius) << 1 (multiply by 2)
+- Implement using 17x8 multiplier for π * radius, then shift left by 1
+- No arrays, strings, or recursion needed
+- Fixed loop iteration: 1 multiplication cycle
+- Hardware-friendly: Use built-in Verilog multiplication operator
+
+**Implementation Hints:**
+1. Define constant `PI_FIXED = 205887` (0x3243F)
+2. On start, register the radius
+3. Calculate `temp = radius * PI_FIXED` (24-bit result)
+4. Calculate `circumference = temp << 1` (multiply by 2)
+5. Set `done` high for 1 cycle when calculation is complete
+6. Ensure no overflow: 255 * 205887 = 52,501,185 (< 2^26, fits in 26 bits, truncatable to 24)

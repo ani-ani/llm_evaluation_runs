@@ -1,0 +1,51 @@
+Implement a Verilog module that computes the product of odd digits in a decimal integer.
+
+## Core Algorithm (Adapted for Hardware)
+- Input: Decimal integer (0-65535, max 6 digits)
+- Process: Extract digits sequentially from right (LSB to MSB) using modulus 10
+- Filter: Keep only odd digits (digit % 2 != 0)
+- Compute: Multiply filtered digits together
+- Edge Case: Return 0 if no odd digits found
+
+## Interface Specification
+
+### Inputs
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to begin processing (sampled on rising edge)
+- `n_in`: 16-bit input number (0-65535)
+
+### Outputs
+- `result`: 16-bit product of odd digits (0-65535)
+- `done`: 1-cycle pulse indicating valid result available
+
+### Timing Requirements
+- Reset: `done=0`, `result=0`, takes minimum 2 cycles
+- Operation: Process starts on `start` pulse, completes within 100 cycles
+- Sample `result` when `done=1` (1-cycle window)
+
+## Internal Design Constraints
+- Maximum input: 65535 (5 decimal digits), but handle up to 65535
+- Digit extraction: Sequential modulus 10, integer division by 10
+- Odd detection: `digit[0] == 1` (least significant bit)
+- Multiplication: 16-bit × 8-bit → 16-bit (cap at 65535)
+- State machine: 1 idle, 2 extract, 3 multiply, 4 done
+- Clock domain: Synchronous design, single clock
+
+## Expected Behavior
+- `digits(1)` → 1
+- `digits(4)` → 0 (even only)
+- `digits(235)` → 15 (3×5)
+- `digits(5014)` → 5
+- `digits(2468)` → 0
+
+## Implementation Notes
+- Use standard sequential logic (always @(posedge clk)
+- No combinational loops
+- All outputs registered
+- State variable width: 2 bits
+- Counter: 4 bits (max 6 iterations)
+- Intermediate product: 16 bits
+- Division and modulus operations implemented via subtraction loops
+
+The module should be synthesizable and follow typical FPGA/ASIC design practices for sequential integer processing.

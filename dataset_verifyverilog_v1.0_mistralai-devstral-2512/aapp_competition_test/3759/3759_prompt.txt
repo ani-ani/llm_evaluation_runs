@@ -1,0 +1,37 @@
+Design a Verilog module that computes the minimum number of points to block for the 'Chubby Yang' problem. 
+
+**Problem Analysis**: 
+For radius n, the answer is floor(4 * n * sqrt(2)) when n > 0, and 1 when n = 0. The key challenge is computing sqrt(2) multiplication with high precision for n up to 40,000,000.
+
+**Module Interface**: 
+- Inputs: 
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle start pulse (triggers computation)
+  - `n_in`: 26-bit unsigned input (covers 0 to 40,000,000)
+- Outputs: 
+  - `result`: 32-bit unsigned output (maximum ~226M fits in 28 bits)
+  - `done`: 1-cycle pulse when computation completes
+
+**Implementation Details**:
+1. Use fixed-point Q32.32 arithmetic for sqrt(2) multiplication
+2. sqrt(2) ≈ 1.4142135623730951 (binary: 0x1.6A09E667F3BCD)
+3. Compute: result = (n * sqrt2_fixed) >> 32
+4. Special case: if n_in == 0, result = 1
+5. Pipeline the 32-bit multiplication using a single-cycle multiplier
+6. Total latency: 4-8 cycles (reset + multiplication + rounding)
+7. No external memories - all computation in registers
+
+**Fixed-Point Specification**:
+- sqrt2_fixed = 0x16A09E66 (integer part) | 0x7F3BCD (fractional, 28 bits)
+- Full 32.32 format: 0x16A09E667F3BCD
+- Use only upper 32 bits after multiplication
+
+**Test Requirements**:
+- Verify n=0 → result=1
+- Verify n=1 → result=4
+- Verify n=2 → result=8
+- Verify n=3 → result=16
+- Verify n=4 → result=20
+- Verify large n (e.g., 40000000 → 226274168)
+- No combinational loops, purely sequential design

@@ -1,0 +1,42 @@
+Implement a Verilog module that solves the candy splitting problem. Given N candies (N <= 10), each with values for Alf (a_i) and Beata (b_i), determine the assignment that minimizes the absolute difference between Alf's total and Beata's total. Output the lexicographically smallest assignment string ('A' for Alf, 'B' for Beata).
+
+Interface Specification:
+- Inputs:
+  - clk: clock signal, rising edge active
+  - rst_n: asynchronous active-low reset
+  - start: 1-cycle start pulse (high for one clock cycle)
+  - a_vals[9:0][7:0]: 10x8-bit array for Alf's values (-128 to 127)
+  - b_vals[9:0][7:0]: 10x8-bit array for Beata's values (-128 to 127)
+  - N[3:0]: 4-bit integer (1 to 10) indicating number of candies
+- Outputs:
+  - result[39:0]: 40-bit output packed as 5 characters (8 bits each). Index 0 is first candy (MSB).
+    - Character 'A' (65) = give to Alf
+    - Character 'B' (66) = give to Beata
+  - done: 1-cycle pulse indicating valid result available
+- Timing:
+  - start initiates computation
+  - Computation completes within 2000 cycles
+  - result is valid when done=1
+  - result must remain stable until next start
+- Reset Behavior:
+  - rst_n=0: result=0, done=0
+  - rst_n=1: normal operation
+
+Implementation Requirements:
+1. Core Algorithm: Use dynamic programming with state DP[i][diff], where diff is the difference between Alf's and Beata's total values. Since N <= 10 and values are -100 to 100, the maximum possible difference is +/- 1000. Use a 16-bit offset (512) to handle negative indices. The DP state size is N x 2048.
+2. State Encoding: Store only the current and previous DP rows to save memory. Each state bit represents whether this assignment path is possible.
+3. Lexicographical Ordering: To get the lexicographically smallest solution, process candies in reverse order (N-1 to 0) during DP, and prefer 'A' (Alf) over 'B' (Beata) when backtracking.
+4. Fixed-Point: All values are signed 8-bit integers.
+5. Throughput: Sequential state machine, no unbounded loops.
+6. Initialization: DP[0][diff=0] = 1 (base case). For i from 1 to N, compute new states from previous.
+
+Edge Cases:
+- N=1: Single candy assignment
+- All values zero: Choose lexicographically smallest (all 'A')
+- Negative values: Handle signed arithmetic correctly
+
+Testbench Requirements:
+- Test with given examples and random cases with N=10
+- Verify absolute difference is minimized
+- Verify lexicographically smallest property
+- Use 8-bit signed values, verify no overflow

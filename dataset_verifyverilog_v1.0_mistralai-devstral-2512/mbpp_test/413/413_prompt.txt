@@ -1,0 +1,41 @@
+Design a Verilog HDL module to extract the nth element from a list of tuples. The input list contains tuples with 3 elements each: an 8-byte string (ASCII), and two 8-bit integer scores. The module must support up to 4 tuples (array size 4), each tuple of fixed width 8 bytes + 16 bits = 10 bytes (80 bits). The `n` parameter selects which element (0, 1, or 2) to extract from each tuple.
+
+**Interface Specification:**
+Inputs:
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low asynchronous reset
+- `start`: 1-cycle pulse to start operation
+- `data_in`: 80-bit input word containing one tuple (8*8-bit ASCII chars + 8-bit score1 + 8-bit score2)
+- `n`: 2-bit selector (0=string, 1=score1, 2=score2)
+- `len`: 2-bit number of tuples (0-3, maps to 1-4 elements)
+
+Outputs:
+- `data_out`: 8-bit output data (extracted element)
+- `valid_out`: 1-bit flag (high when `data_out` contains valid data)
+- `done`: 1-bit pulse (high for one cycle when all elements extracted)
+
+**Behavior:**
+1. On `start` pulse, reset state and begin sequential extraction.
+2. For each tuple (up to 4 cycles):
+   - Wait for `data_in` to be available (combinational read)
+   - Extract element based on `n`:
+     - If `n=0`: Extract 8-bit ASCII char (byte 0-7)
+     - If `n=1`: Extract score1 (bits 8-15)
+     - If `n=2`: Extract score2 (bits 16-23)
+   - Output `data_out` with `valid_out=1` for one cycle per element.
+3. After extracting `len` elements, assert `done` for one cycle.
+4. `rst_n` should reset: `done=0`, `valid_out=0`, `data_out=0`.
+
+**Implementation Notes:**
+- Use a state machine with 3 states: IDLE, EXTRACT, DONE.
+- Use a counter for tuple index (0 to len-1).
+- Combinational extraction logic: select bits based on `n`.
+- Output is byte-wide (8-bit) to handle both ASCII chars and scores.
+- Timing: Start to first valid_out <= 1 cycle, total processing <= 4 cycles (max 4 tuples).
+
+**Constraints:**
+- Max 4 tuples (16-byte string data, 8-byte score data)
+- String data: ASCII only (0-127)
+- Scores: 0-255 (8-bit)
+- No external memory; process one tuple per clock cycle
+- Ensure sequential output: one element per clock cycle when active

@@ -1,0 +1,28 @@
+Create a Verilog module to compute the expected area of a random k-gon from an n-vertex convex polygon. Use fixed-point Q16.16 arithmetic (16 integer, 16 fractional bits). Inputs are x/y coordinates and parameters. Constraints: n <= 16, k <= 16. Implementation details:
+
+1. Input Interface:
+   - clk, rst_n (active low, synchronous)
+   - start: 1-cycle pulse to begin calculation
+   - n[3:0]: Number of vertices (<=16)
+   - k[3:0]: Number of vertices to choose (3 <= k <= n)
+   - x[0:15], y[0:15]: 16 pairs of 32-bit fixed-point coordinates (Q16.16). Valid indices 0 to n-1.
+
+2. Output Interface:
+   - result[63:0]: 64-bit fixed-point expected area (Q32.32). Upper 32 bits integer, lower 32 bits fractional.
+   - done: 1-cycle pulse indicating result is valid.
+
+3. Algorithm (Hardware Adaptation):
+   - Convert Polygon Area: Iterate i from 0 to n-1. Compute signed area of triangle (0, i, i+1) using cross product: (x[i]-x[0])*(y[i+1]-y[0]) - (y[i]-y[0])*(x[i+1]-x[0]). Sum these areas. Result is total polygon area (divided by 2).
+   - Combinatorial Logic: The expected area of a random k-gon from a convex polygon is (C(n-1, k-1) / C(n, k)) * Total Area. This simplifies to (k/n) * Total Area.
+   - Calculation: Result = (Total_Area * k) / n. Implement division by n (fixed 8-bit divisor) using a restoring division algorithm over 64-bit fixed-point values.
+
+4. Timing Constraints:
+   - Reset: Done=0, result=0. Min 2 cycles.
+   - Processing: Start -> Done within 256 cycles (sufficient for n=16 loops and division).
+   - Output: Sample result when done=1.
+
+5. Implementation Hints:
+   - Use a finite state machine (FSM) with states: IDLE, CALC_AREA, DIVIDE, DONE.
+   - Area Calculation: Use a loop counter (0 to n-1) and a 64-bit accumulator for the sum.
+   - Multiplication: 32-bit inputs -> 64-bit product. Extend to 64-bit for accumulation.
+   - Division: Implement a 64-bit dividend / 8-bit divisor restoring divider.

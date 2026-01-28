@@ -1,0 +1,42 @@
+Design a Verilog module to solve the magic spell optimization problem. You are given a sequence of M steps (up to 32) and a strength S (up to 16). Each step is either '+' (add 1) or 'x' (multiply by 2). Twilight starts with power 1. The final power is taken modulo 2^S. You can replace any step with 'o' (no-op). The goal is to maximize the final value.
+
+Logic Adaptation:
+1. The power state is an S-bit number (wrapped at 2^S).
+2. Process steps sequentially.
+3. At each step, the power evolves as either `P = P + 1` or `P = P * 2`.
+4. We want to choose to keep or skip each step to maximize the final result.
+5. This is a dynamic programming problem: at step `i`, we have a set of reachable states (values). However, since we want to maximize the final value, we can use a greedy approach or simplified DP.
+6. Since S <= 16, the state space is small (0 to 65535). We can maintain a bitset or boolean array `reachable[val]` indicating if value `val` is achievable after the current step.
+7. For each step:
+   - If we skip the step, all currently reachable states remain reachable.
+   - If we apply the step, transform all currently reachable states:
+     - If '+': new_val = (val + 1) % 2^S
+     - If 'x': new_val = (val * 2) % 2^S
+   - Update reachable states.
+8. After processing all steps, the answer is the maximum value in the reachable set.
+9. To output the sequence of kept/skipped steps, we need to store back-pointers (parent pointers) during the DP. This requires M * 2^S memory. With M=32 and S=16 (2^16=65536), this is 32 * 65536 bits = 256KB, which is large but potentially manageable in BRAM for a simulation or large FPGA, or we can reduce constraints further if needed. Let's set M <= 16 and S <= 12 for practical HDL block RAM size (16 * 4096 = 64KB).
+
+Interface Specification:
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous clock and active-low reset.
+  - `start`: 1-cycle pulse to start the computation.
+  - `step_type`: 2-bit input (00: '+', 01: 'x', others: invalid). Valid when `step_valid` is high.
+  - `step_valid`: High when `step_type` is valid.
+  - `step_end`: High when the input sequence ends.
+- Outputs:
+  - `result`: The maximum achievable value (S bits wide).
+  - `done`: 1-cycle pulse indicating `result` is valid.
+- Operation:
+  1. Assert `start` to reset internal state.
+  2. Feed the sequence of steps via `step_type` and `step_valid`. The module should buffer or process on the fly.
+  3. After processing the last step (indicated by `step_end`), the module computes the result and asserts `done`.
+
+Implementation Details:
+- Use a RAM-based approach for the DP state. `reachable_curr` and `reachable_next` are bit arrays of size 2^S.
+- If S > 14, use a smaller window or approximate (e.g., track only top N values), but ideally stick to S <= 12 for full DP.
+- Back-tracing: Store the decision (kept/skipped) for each step and state. Since RAM is limited, we can store the decision bit in a separate RAM (M x 2^S bits). Reading this back will reconstruct the sequence.
+
+Constraints (Scalable):
+- M <= 16 (Number of steps)
+- S <= 12 (Strength, determines RAM size 4096 entries)
+- Clock speed: Standard 100MHz.

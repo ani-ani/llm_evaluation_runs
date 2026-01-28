@@ -1,0 +1,30 @@
+Design a Verilog module that flattens a list of lists into a single list of unique numbers, preserving insertion order. The input is a 2D array: 8 inner lists of up to 8 elements each (64 total max). Values are 16-bit signed integers. Output is a flattened list of unique values in order, maximum 64 elements.
+
+Interface:
+- Inputs: clk (1-bit), rst_n (1-bit, active-low sync), start (1-bit, 1-cycle pulse)
+- Input data: 2D array arr[0:7][0:7] of 16-bit signed integers. Also provide len[0:7]: 8x4-bit, each indicating valid elements in corresponding inner list (1-8, 0=empty).
+- Outputs: result[0:63] (64x16-bit) flattened unique values, valid_count[5:0] (6-bit), done (1-bit, 1-cycle pulse when finished)
+
+Behavior:
+1. On rising edge of start, begin processing.
+2. Iterate through inner lists in order (i=0..7), then elements within each list (j=0..7). Skip if j >= len[i].
+3. For each element value, check if it already exists in the output buffer (0 to count-1).
+4. If not found, append to output buffer and increment valid_count.
+5. When all elements processed (or after max 64 outputs), assert done=1 for one cycle with valid_count and result buffer holding the flattened unique list.
+6. On reset (rst_n=0), all outputs zero, done=0. Reset takes 2 cycles.
+
+Timing:
+- start->done within 256 cycles max (for worst case: 64 elements * 4 cycles lookup).
+- Use sequential logic for loop control and lookup buffer.
+- For uniqueness check: can use a small parallel comparator tree (e.g., 64x16-bit) or sequential search through output buffer. Sequential is acceptable with 64 cycles max.
+
+Constraints:
+- Values are 16-bit signed, range -32768 to 32767.
+- Input arrays are fixed size; unused elements ignored.
+- Output buffer size: 64 elements max.
+- Use single clock domain.
+- No combinational paths from start to output; pipeline if needed.
+
+Example:
+Input: arr = [[3,4,5,0], [4,5,7,0], [1,4,0,0]], len = [3,3,2,0,0,0,0,0]
+Expected output: result = [3,4,5,7,1,0,...], valid_count = 5

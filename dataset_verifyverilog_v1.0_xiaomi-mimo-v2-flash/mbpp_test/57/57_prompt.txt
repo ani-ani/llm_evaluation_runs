@@ -1,0 +1,37 @@
+Implement a Verilog module that constructs the largest possible number from an array of decimal digits using a sorting network. The core requirement is to sort the input digits in descending order and then combine them into a single integer.
+
+### Interface Specification:
+- **Inputs**:
+  - `clk`: Clock signal (rising edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate the operation
+  - `digits[7:0]`: Array of 8 input digits, each 4 bits wide (values 0-9)
+  - `len`: 4-bit input indicating the number of valid digits (1 to 8)
+- **Outputs**:
+  - `result`: 32-bit output holding the final constructed number (max value: 9,999,999,9 fits in 32 bits)
+  - `done`: 1-cycle pulse asserted when the result is valid
+
+### Functional Requirements:
+1. **Sorting**: Sort the `digits` array in descending order (largest to smallest). Implement this using a parallel sorting network (e.g., bitonic sort or odd-even transposition sort) that completes in a fixed number of clock cycles (e.g., 16 cycles for 8 elements). The `len` input defines the valid range; unused elements can be ignored or zero-filled.
+2. **Combination**: After sorting, combine the digits into a single number. For sorted digits `[d7, d6, d5, d4, d3, d2, d1, d0]`, the result is `d7*10^7 + d6*10^6 + ... + d0*10^0`. This should be done iteratively or in a pipeline, building the number in a 32-bit accumulator.
+3. **Control Flow**: On `start` pulse, assert `done` after a fixed latency (e.g., 30 cycles). While processing, `done` remains 0. `result` is valid only when `done=1`.
+4. **Reset**: On reset (`rst_n=0`), `done=0` and `result=0`. Minimum 2 cycles of reset required.
+5. **Constraints**: 
+   - Input digits are 4-bit unsigned (0-9).
+   - Array size is fixed at 8 elements; `len` specifies valid count.
+   - Output fits in 32 bits (max 99999999).
+   - Use combinational logic for sorting network within sequential FSM.
+
+### Implementation Notes:
+- Sort using a sequence of comparator-exchange stages. For 8 elements, a 3-stage bitonic sorter or 7-stage bubble sort network can be used.
+- For combination, use a loop: `result = 0; for i=0 to len-1: result = result*10 + sorted_digits[i]`.
+- FSM states: IDLE -> SORTING -> COMBINING -> DONE.
+- Ensure all signals are properly sized (digits: 4 bits, result: 32 bits).
+
+### Timing:
+- Start asserted for 1 cycle.
+- Done asserted 1 cycle after start, after fixed latency.
+- Result is valid when done=1.
+
+### Example:
+For input `digits=[1,2,3,0,0,0,0,0]` and `len=3`, the sorted array is `[3,2,1,0,0,0,0,0]`, and `result` should be 321.

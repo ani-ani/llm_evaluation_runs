@@ -1,0 +1,60 @@
+Implement a Verilog module that counts the number of spanning unicyclic subgraphs in a graph with up to 8 vertices. A spanning unicyclic subgraph is a subgraph that is connected (one component) and contains exactly one cycle (unicyclic), covering all vertices of the original graph.
+
+Input Constraints:
+- V: 1 to 8 vertices (3-bit input)
+- E: Up to 16 edges (4-bit input)
+- Edges: Represented as a bit vector 'edge_mask' of 16 bits (1 if edge exists between vertex pair)
+- Graph is simple, no duplicate edges
+
+Module Interface:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - V: 3-bit, number of vertices (1-8)
+  - E: 4-bit, number of edges (0-16)
+  - edge_mask: 16-bit, edges present in the graph
+- Outputs:
+  - result: 32-bit, count modulo 10^9+7 (0x3B9ACA07)
+  - done: 1-cycle pulse when computation completes
+
+Behavior:
+1. On rising edge of start, reset internal state and begin computation.
+2. Enumerate all possible edge subsets (2^16 = 65536 possibilities, manageable in hardware with sequential processing).
+3. For each subset:
+   - Check if it forms a spanning unicyclic subgraph:
+     a. Must include all vertices (connected subgraph with V vertices)
+     b. Must be connected (single component)
+     c. Must have exactly one cycle (E_sub = V, since a connected graph with V vertices and E edges has E-V+1 cycles; for exactly one cycle, E_sub = V)
+4. Count valid subgraphs modulo 10^9+7.
+
+Implementation Notes:
+- Use a sequential FSM that iterates through all edge subsets (0 to 2^E-1).
+- For each subset, check connectivity using BFS/DFS on the small graph (max 8 vertices).
+- Use bitmask operations for vertex reachability.
+- Cycle detection: For a connected graph with V vertices, if number of edges in subset equals V, it is unicyclic (since E - V + 1 = 1).
+- Since V <= 8, the graph is small; we can compute reachability using bitmask operations on 8-bit vertex masks.
+- Timeout: The computation should complete within 2^16 * (some cycles for connectivity check) = ~65536 * 64 cycles worst case = ~4M cycles; set timeout in testbench accordingly.
+- Reset: On rst_n=0, clear all internal state, result=0, done=0.
+- Done signal: Assert for one cycle when all subsets processed.
+
+Timing:
+- start -> done: Within 100,000 cycles (for 65536 subsets * 1-2 cycles per subset check).
+- Result is valid only when done=1.
+- After done, the module should stay idle until next start.
+
+Edge Mapping (16-bit edge_mask):
+Assume vertex pairs in order: (1,2), (1,3), (2,3), (1,4), (2,4), (3,4), (1,5), (2,5), (3,5), (4,5), (1,6), (2,6), (3,6), (4,6), (5,6), (1,7), (2,7), (3,7), (4,7), (5,7), (6,7), (1,8), (2,8), (3,8), (4,8), (5,8), (6,8), (7,8).
+For V <= 8, only first 28 combinations are possible, but edge_mask is 16 bits for simplicity (use only first V*(V-1)/2 bits).
+
+Algorithm Pseudocode (for FPGA implementation):
+- Initialize: cur_subset = 0, count = 0, done = 0
+- Loop over cur_subset from 0 to (1<<E)-1:
+  - Select edges in subset.
+  - Check if subset spans all vertices: count vertices with degree > 0; must equal V.
+  - Check connectivity: BFS from any vertex, count visited; must equal V.
+  - If connected, count edges in subset: if equals V, increment count modulo MOD.
+  - Increment cur_subset.
+- After last subset, assert done.
+
+MOD = 1000000007 (0x3B9ACA07). Use 32-bit addition with modulo.

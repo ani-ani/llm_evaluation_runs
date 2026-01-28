@@ -1,0 +1,31 @@
+Implement a Verilog module that calculates the probability of a traffic light being a specific color given previous observations. The module accepts the cycle durations (green, yellow, red) and a stream of observation pairs (time, color), followed by a query (time, color). The output is a fixed-point probability (Q16.16).
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous active-low reset.
+  - `Tg`, `Ty`, `Tr`: 32-bit unsigned integers (Q16.16 fixed-point, though integer input is expected).
+  - `obs_t`, `obs_c`: 32-bit observation time (Q16.16) and 2-bit color code (0=Green, 1=Yellow, 2=Red).
+  - `valid_in`: 1-bit signal indicating valid observation data on `obs_t` and `obs_c`.
+  - `start_query`: 1-bit pulse indicating the current `obs_t` and `obs_c` are the query parameters, and processing should begin.
+- **Outputs:**
+  - `result`: 32-bit output (Q16.16 fixed-point probability).
+  - `done`: 1-bit pulse indicating computation is complete and `result` is valid.
+
+**Functional Requirements:**
+1. **Data Storage:** Store the cycle parameters (Tg, Ty, Tr) and total cycle length C = Tg + Ty + Tr.
+2. **Interval Processing:** When `valid_in` is high, treat the input as an observation constraint. For each observation (t, c), derive the set of valid start times T (mod C) that satisfy the observation. 
+   - If `c` is Green (0), T must be in [t - Tg, t).
+   - If `c` is Yellow (1), T must be in [t - Tg - Ty, t - Tg).
+   - If `c` is Red (2), T must be in [t - C, t - Tg - Ty).
+   Since the space is modular (0 to C), intervals might wrap around. Maintain a list of disjoint valid intervals [start, end) in the range [0, C).
+3. **Intersection:** Intersect the current list of valid intervals with the new constraint interval(s) derived from the observation. Update the list. If the list becomes empty, the probability is 0.
+4. **Query:** When `start_query` is high, pause observation processing. Use the query (t_q, c_q) to determine the target interval where T must lie for the light to be the queried color. 
+   - Target interval calculation follows the same logic as observation constraints.
+5. **Probability Calculation:** Calculate the total length of the intersection between the valid T intervals (from observations) and the query T intervals. Divide this favorable length by the total length of the valid T intervals. 
+6. **Fixed-Point:** Perform all calculations (additions, subtractions, comparisons, division) using 32-bit fixed-point arithmetic (Q16.16). The division `favorable / total` should be performed iteratively (e.g., bit-shifting or repeated subtraction) to output a Q16.16 result.
+7. **Timing:** 
+  - Observations are processed sequentially.
+  - `start_query` triggers the final calculation.
+  - `done` is asserted for one cycle when the result is ready.
+  - Reset must clear all state and internal intervals.
+  - Assume C < 2^32 and N < 1000. Design the state machine to handle up to 1000 observations.

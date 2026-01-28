@@ -1,0 +1,44 @@
+Design a Verilog module named 'almost_palindrome_counter' that counts the number of non-empty almost palindromic substrings within a specific window of a static input string.
+
+**Core Logic Adaptation:**
+1. The input string `S` is provided as a fixed-width array of characters (ASCII values, 7-bit).
+2. A 'window' is defined by indices `L` and `R`.
+3. A substring is 'almost palindromic' if:
+   - It is a palindrome (reads same forwards/backwards).
+   - OR it can be made a palindrome by swapping exactly two characters (requires specific mismatch structures).
+4. Since `N` is large (200k), we cannot process arbitrary windows in a single cycle. The module should process **one specific window** per simulation run (static configuration). For benchmarking, the testbench will configure a small window (length 8-16).
+5. The algorithm must be iterative but bounded (max 256 cycles).
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: Start processing (1-cycle pulse).
+  - `char_in[6:0]`: Input character data (7-bit ASCII).
+  - `addr[7:0]`: Address for loading `char_in` into the internal buffer.
+  - `load_en`: Enable signal to load `char_in` at `addr`.
+  - `len[3:0]`: Length of the current window (4 bits, max 16).
+- Outputs:
+  - `result[7:0]`: Count of almost palindromic substrings (8-bit counter, sufficient for window lengths up to ~16).
+  - `done`: Flag indicating calculation is complete.
+  - `busy`: Flag indicating the module is processing.
+
+**Implementation Details:**
+1. **Storage:** Use an internal register array `buffer[0:15][6:0]` to store the window characters.
+2. **Loading:** On `start` or via `load_en`, fill the buffer at the specified `addr`.
+3. **Processing Logic:**
+   - Iterate through all possible substring start indices `i` (0 to `len-1`).
+   - For each start index, iterate through substring end indices `j` (i to `len-1`).
+   - For each substring `buffer[i:j]`, check if it is 'almost palindromic'.
+   - **Palindrome Check:** Compare `buffer[i+k]` vs `buffer[j-k]` for all valid k. Count mismatches.
+   - **Almost Palindrome Check (Swap Logic):**
+     - If 0 mismatches: It's a palindrome. Count it.
+     - If exactly 2 mismatches: Let the mismatched pairs be (x1, y1) and (x2, y2). Check if swapping x1 with x2 (or x1 with y2) results in a palindrome. Specifically, if the pairs are (a, b) and (c, d), we need to check if swapping yields (b, a) and (d, c) matching correctly. 
+     - Optimization: Since `len` is small (≤16), a brute-force check for each substring is acceptable within a cycle budget of 256.
+   - **Timing:** The state machine should transition: IDLE -> LOAD -> CALCULATE -> DONE.
+
+**Testbench Requirements:**
+- Load a static test string (e.g., 'beginning') into the module.
+- Configure the window (e.g., L=1, R=5 -> chars 'b','e','g','i','n').
+- Assert `start` and wait for `done`.
+- Verify `result` matches expected count.

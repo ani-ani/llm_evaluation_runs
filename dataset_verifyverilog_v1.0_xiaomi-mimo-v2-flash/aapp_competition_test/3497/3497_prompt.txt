@@ -1,0 +1,27 @@
+Design a Verilog module that computes the minimum number of wolves to remove so all pigs on a tree can reach leaf nodes. Input constraints: V ≤ 16, P ≤ 16. The tree is defined by V-1 edges, and P pig positions. Wolves occupy the remaining vertices.
+
+Interface:
+- Inputs:
+  - clk: system clock
+  - rst_n: active-low reset
+  - start: start computation (1 cycle pulse)
+  - edges: array of (V-1) x 8-bit values representing edges as (u << 4) | v. Since V≤16, 4 bits per node are sufficient. Total width is (V-1)*8 bits.
+  - pigs: array of P x 4-bit values representing pig positions (0 to V-1).
+  - V: 5-bit input (value 3 to 16)
+  - P: 5-bit input (value 3 to V)
+- Outputs:
+  - result: 4-bit output (min wolves to remove, 0-15)
+  - done: 1-bit output (high for 1 cycle when result is valid)
+
+Implementation Details:
+1. Use a state machine to process the tree. Since V is small, we can use a bit-mask approach or greedy leaf-removal simulation.
+2. Logic: Identify all leaf nodes in the tree. If a leaf contains a pig, it can escape immediately. If a leaf contains a wolf, that wolf might need to be removed to allow a pig to pass through or to open a path. 
+3. Greedy Strategy: Prune the tree. Remove all leaf nodes that are safe (i.e., contain a pig or are connected to a safe internal node). Any wolf leaf that blocks a path must be counted. A simplified heuristic for the small scale: count the number of connected components of wolves that surround pigs or block leaf paths. 
+4. A practical hardware implementation for V≤16:
+   - Parse edges into an adjacency matrix (16x16 bits).
+   - Perform a multi-source BFS/DFS from all pigs. The 'reachable' set is expanded until blocked by wolves.
+   - The cost is the number of wolves that must be removed to connect all pigs to the set of leaf nodes. 
+   - Since the graph is a tree, we can root it arbitrarily. The minimal removals correspond to covering the paths from pigs to leaves with the minimum number of wolf nodes (Vertex Cover on a specific subgraph of the tree).
+   - Given the strict size limit (V=16), the module should implement a brute-force check or a greedy tree DP using a Lookup Table (LUT) or explicit state transitions.
+   - Specifically, iterate through all subsets of vertices (2^16 = 65536 states is too large for a single clock cycle logic but manageable for a small FSM iterating over edges). However, for a purely combinational/FSM approach on 16 nodes, we can use a heuristic: count wolves adjacent to the pig's connected component that separate pigs from leaves.
+5. Timing: Start signal initiates the FSM. Done is asserted after processing the tree (bounded by ~256 cycles for V=16).

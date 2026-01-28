@@ -1,0 +1,60 @@
+Design a Verilog module that counts activated pixels on an LCD grid based on pulse timing. The grid size is fixed to 16x16 (wires 1-16). There are at most 200000 input pulses, but we will process them in batches or use a fixed-size representation.
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low asynchronous reset
+- `start`: 1-cycle pulse to start processing a set of pulses
+- `pulse_direction`: 1-bit input, 0=horizontal, 1=vertical (sampled when `valid_i` is high)
+- `pulse_time`: 16-bit input, start time of pulse (0-65535)
+- `pulse_length`: 16-bit input, length of pulse (1-65535)
+- `pulse_wire`: 5-bit input, wire number (1-16, mapped to 0-15 internally)
+- `valid_i`: 1-bit input, indicates valid pulse data on current cycle
+
+**Outputs:**
+- `result`: 32-bit output, number of activated pixels
+- `done`: 1-bit output, high for 1 cycle when processing is complete
+- `busy`: 1-bit output, high while processing pulses
+
+**Processing Logic:**
+1. On `start` pulse, reset internal counters and state.
+2. Accept pulses serially via `valid_i`. Store them in internal memory (FIFOs or registers). Since max pulses is 200k, we cannot store all; instead, process immediately or use a sliding window. Given hardware constraints, we will assume a maximum of 16 horizontal and 16 vertical pulses (one per wire) to fit in hardware. Any additional pulses are ignored or we process in batches.
+3. For each horizontal pulse (h_wire, h_time, h_len) and vertical pulse (v_wire, v_time, v_len), calculate if they intersect at pixel (v_wire, h_wire).
+   - The vertical pulse starts at y=1 at time v_time, travels at 1 alu/atu. At pixel y, it arrives at time v_time + (y - 1).
+   - The horizontal pulse starts at x=1 at time h_time, travels at 1 alu/atu. At pixel x, it arrives at time h_time + (x - 1).
+   - Intersection at (v_wire, h_wire) happens when both pulses are active.
+   - Vertical pulse is active at pixel y during interval: [v_time + (y - 1), v_time + (y - 1) + v_len)
+   - Horizontal pulse is active at pixel x during interval: [h_time + (x - 1), h_time + (x - 1) + h_len)
+   - Activation occurs if these intervals overlap (non-zero duration). Since we consider discrete alu, overlap condition is: max(start_v, start_h) < min(end_v, end_h)
+4. Count the number of pairs (h, v) where overlap is true.
+5. Output count when all pulses processed.
+
+**Simplified Hardware Architecture:**
+- Use two 16-entry memories (BlockRAMs) for horizontal and vertical pulses.
+- Each memory entry stores: wire (5 bits), time (16 bits), length (16 bits), valid (1 bit).
+- Processing state: Iterate over all valid horizontal pulses (0..15) and vertical pulses (0..15). Use nested loops in FSM.
+- Since 16*16=256 comparisons max, this is feasible in hardware.
+- The `start` signal initiates the FSM. `busy` is high during FSM operation.
+- `result` is computed and latched. `done` goes high for one cycle when finished.
+
+**Interface Timing:**
+- `valid_i` is high for each pulse input. The module accepts pulses until `start` is asserted again or a limit is reached.
+- The module must process exactly the pulses received since last `start`.
+- `busy` remains high during calculation.
+
+**Verilog Module Spec:**
+Module name: `LCD_Pixel_Activator`
+Ports: as described above.
+Internal: 
+- State: IDLE, LOAD_PULSES, CALCULATE, DONE
+- Registers for storing pulses (e.g., `h_time[15:0]`, `h_len[15:0]`, `h_wire_valid[15:0]`).
+- Loop counters for h_idx and v_idx.
+- Comparator logic for overlap.
+- Accumulator for result count.
+
+**Constraints:**
+- Clock frequency: Assume 100 MHz. Latency < 1000 cycles.
+- Reset: Clears all states, result=0, done=0.
+- Input pulses: Time and length are 16-bit unsigned. Wire is 5-bit (1-16).
+- Output result: 32-bit (max 256 pixels).
+
+Do not write the Verilog code. Only provide the specification.

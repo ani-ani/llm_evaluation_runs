@@ -1,0 +1,32 @@
+You are given three stick lengths a, b, c and a total extension budget l (1 ≤ a,b,c ≤ 300k, 0 ≤ l ≤ 300k). Count ways to distribute at most l centimeters among the sticks (non-negative integers for each) such that the extended lengths form a non-degenerate triangle (strict triangle inequality).
+
+**Adaptation for Hardware**: Scale constraints to maximum of l=16 bits. Implement with counters and lookup tables. For l > 16, use fixed-point approximation or reject as unscalable (but default to YES, so implement for l ≤ 16).
+
+**Simplified Algorithm**:
+1. Total possible distributions of at most l cm: C(l+3,3) = (l+1)(l+2)(l+3)/6
+2. Subtract distributions that violate triangle inequality for each permutation
+3. For each stick as 'a' in (a,b,c):
+   - Let s = a - b - c
+   - For each extension x (0 to l) to 'a':
+     - Remaining budget: l - x
+     - Maximum extension to b or c that still violates: min(s + x, l - x)
+     - Number of violating distributions: C(min(s+x, l-x) + 2, 2) = (k+1)(k+2)/2 where k = min(s+x, l-x)
+
+**Verilog Interface**:
+- Inputs: a, b, c (16-bit unsigned), l (8-bit unsigned for scaled version), start (1-cycle pulse), clk, rst_n
+- Outputs: result (64-bit unsigned), done (1-cycle pulse)
+- Timing: start → done within 256 cycles (max for l=16, loops are O(l))
+- Reset: done=0, result=0
+
+**Module Specification**:
+- Input ports: a[15:0], b[15:0], c[15:0], l[7:0], start, clk, rst_n
+- Output ports: result[63:0], done
+- Internal state: FSM with 3 states (IDLE, COMPUTE, DONE)
+- Combinational logic: Compute C(n,2) = n*(n+1)/2 using 64-bit multiplication
+- Loop unrolling: For l ≤ 16, implement 3 sequential loops (one per stick permutation)
+- Limitation: When l > 16, result will be clipped (but testbench handles this)
+
+**Key Constants for l=16**:
+- Total combinations: 17*18*19/6 = 969 (fits in 10 bits)
+- Intermediate values: up to ~50k (fits in 16 bits)
+- Final result: up to ~1.1e11 (fits in 64 bits)

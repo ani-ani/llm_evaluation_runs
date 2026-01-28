@@ -1,0 +1,46 @@
+Design a Verilog module `circular_shift` that performs a circular shift on a decimal integer represented as a 16-bit binary number.
+
+**Functionality:**
+- Input `x`: 16-bit unsigned integer representing a decimal number (0-9999)
+- Input `shift`: 4-bit unsigned integer (0-15)
+- Output `result`: 16-bit unsigned integer
+
+**Operation:**
+1. Convert `x` to its decimal digit representation (max 4 digits). For example, `x=12` -> digits `[1,2]` (or `[0,1,2]` depending on leading zeros). Treat as fixed 4-digit array for implementation simplicity: pad with leading zeros to 4 digits.
+2. Calculate effective shift: `effective_shift = shift % digit_count` where `digit_count` is the number of non-zero digits, but for fixed implementation, use digit_count = 4.
+3. If `effective_shift == 0`, return original `x`.
+4. Perform circular right shift: Move digits right by `effective_shift`, wrapping around.
+5. Convert shifted digits back to integer.
+6. Return the integer value.
+
+**Simplified Rules (Hardware-friendly):**
+- Treat input `x` as 4 decimal digits: `d3 d2 d1 d0` where `d3` is most significant (thousands).
+- `x` range: 0-9999 (fits in 16 bits).
+- `shift` range: 0-15.
+- Effective shift: `shift % 4` (since max 4 digits).
+- Circular right shift by `k`: `[d_{3-k}, ..., d_0, d_3, ..., d_{4-k}]`
+- Output: Reconstruct integer from shifted digits.
+- **Edge case:** If `x` has fewer than 4 digits (e.g., 12), treat leading zeros as digits for shifting (e.g., 0012).
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock (optional, but recommended for sequential logic)
+  - `rst_n`: Active-low reset (async or sync)
+  - `start`: 1-cycle pulse to initiate computation
+  - `x`: 16-bit input (unsigned)
+  - `shift`: 4-bit input (unsigned)
+- Outputs:
+  - `result`: 16-bit output (unsigned integer)
+  - `done`: 1-cycle pulse, asserted when `result` is valid (1 cycle after start or after fixed latency)
+
+**Timing:**
+- Operation completes within 10 cycles after `start`.
+- `done` goes high for one cycle.
+- When `done` is high, `result` is valid.
+
+**Implementation Hint:**
+- Use a combinational block to extract digits from `x`.
+- Use a fixed-size register array for digits (4 elements, 4-bit each).
+- Compute shifted digit indices.
+- Reconstruct `result` from shifted digits.
+- Use an FSM or a pipeline with fixed stages.

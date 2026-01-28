@@ -1,0 +1,22 @@
+Implement a Verilog module to solve the proportion puzzle with 5 monsters (Salamander, Yeti, Golem, Imp, Kraken), each having 4 food types (burger, slop, sushi, drumstick). 
+
+**Adaptation**: Since absolute values can be large, use 16-bit fixed-point Q8.8 format for intermediate calculations. Search space is bounded by 200 for known values and 65535 for inferred. The problem reduces to finding consistent proportionality ratios. We treat the matrix as 5 rows (monsters) x 4 columns (items). Ratios are defined between columns. 
+
+**Interface**:
+- Inputs: `clk`, `rst_n`, `start`
+- 20 input values (2 lines * 10 entries): `val_0` to `val_19`. Use 16-bit wide. Unknowns are 0.
+- Output: `result` (32-bit integer count), `done` (1 cycle pulse).
+- Logic: 
+  1. Parse inputs into `known[5][4]` (0 for unknown).
+  2. Identify missing values. The system has 2 degrees of freedom: the base ratio between column 0 and 2 (Burger vs Sushi) and the base ratio between column 1 and 3 (Slop vs Drumstick).
+  3. Iterate over possible integer ratios for `Burger:Sushi` (e.g., 1 to 256) and `Slop:Drumstick` (1 to 256).
+  4. For each pair of ratios, check consistency: 
+     - Calculate expected values for all cells based on the first monster (Salamander) having `Burger` and `Slop`. If Salamander has both, they fix the absolute scale.
+     - If Salamander is missing values, we must check all valid scales where calculated values match known integers.
+  5. Count valid configurations. If count > 1000, saturate and output 'many' logic (e.g., return specific marker like 0xFFFFFFFF).
+  6. Use FSM: IDLE -> PARSE -> SEARCH -> OUTPUT.
+
+**Constraints**:
+- Max cycles: 100,000 (use timeouts in testbench).
+- Data width: 16-bit for values, 32-bit for counts.
+- Assumption: All ratios are rational numbers with small integers (1-256). This simplifies the search space to a fixed iteration count.

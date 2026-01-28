@@ -1,0 +1,75 @@
+Implement a crossword solver in Verilog that places words into a grid based on empty slots and void spaces.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: Clock signal, rising edge triggered
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `grid`: 2D array of 8-bit characters, size 16x16 (flattened to 256 ports, each 8-bit). Each byte: '#'=35, '.'=46, 'A'-'Z'=65-90. Fixed size grid.
+  - `words`: 32 words of 16 chars each (flattened). Each word padded with null (0) to 16 chars. Valid words have length >=2.
+  - `num_words`: 5-bit value (0-31) indicating valid words in the input
+  - `grid_rows`: 5-bit (1-16)
+  - `grid_cols`: 5-bit (1-16)
+- Outputs:
+  - `result_grid`: 2D array of 8-bit characters, size 16x16 (256 ports). Only valid cells from 0..grid_rows-1 and 0..grid_cols-1 contain the solution.
+  - `done`: 1-cycle pulse when solution found (always within 2^20 cycles)
+  - `valid`: High when result is valid
+
+**Algorithm Constraints:**
+1. Use backtracking algorithm (Depth-First Search) implemented as a state machine
+2. Max search depth = 32 words (hard-coded limit)
+3. For each word, try all possible placements:
+   - Horizontal: row 0..15, col 0..14 (start), check length fits and slots are '.' or matching letters
+   - Vertical: row 0..14, col 0..15 (start), check length fits and slots are '.' or matching letters
+4. Word must start/end at grid edge or beside '#' (void space)
+5. Track used words with a 32-bit mask
+6. Backtrack on conflict
+7. When all words placed and all '.' slots filled, assert done
+8. Solution is guaranteed unique
+
+**State Machine States (example):**
+- IDLE: wait for start
+- INIT: setup variables
+- WORD_SELECT: pick next unused word
+- FIND_PLACEMENTS: generate valid slots for current word
+- PLACE_WORD: try placement at current slot
+- CHECK_COMPLETE: verify grid full
+- BACKTRACK: undo placement
+- DONE: assert done, keep result
+
+**Implementation Notes:**
+- Use 8-bit ASCII for characters (0-255)
+- Fixed grid size: 16x16 = 256 bytes total storage
+- Fixed word storage: 32 words x 16 chars = 512 bytes
+- Use block RAM or registers for grid/words
+- No dynamic memory allocation
+- Clock cycle limit: 2^20 ≈ 1M cycles max for worst case
+
+**Timing:**
+- Reset: done=0, valid=0, result_grid=0
+- After start, result becomes valid within ~1M cycles
+- Result should be sampled when done=1 and valid=1
+
+**Testbench Expectations:**
+- 8x8 or 16x16 grid tests
+- 1-32 words, each 2-16 characters
+- All uppercase letters A-Z
+- Void spaces '#' (ASCII 35) and empty '.' (ASCII 46)
+- Grid dimensions provided separately (R, C ≤ 16)
+
+**Example Test Cases:**
+1. 1x15 grid with 1 word "CROSSWORD"
+2. 3x6 grid with 6 words including "MAGIC", "VETO", "DOG"
+
+**Error Handling:**
+- If invalid input (R/C out of range, word lengths), assert valid=0
+- No runtime failures, only valid=1 when solution found
+- Timeout after 2^20 cycles asserts valid=0
+
+**Edge Cases:**
+- Single word fills entire row/column
+- Multiple words intersect
+- Words placed at edge
+- Grid with many '#' spaces
+
+**Note:** The Verilog module must handle the search space efficiently. Use hierarchical state machine and bounding boxes to limit search. Implementation should be synthesizable.

@@ -1,0 +1,30 @@
+You are to design a Verilog module that computes the minimum cost to decorate a graph under specific constraints. The graph has N nodes and M edges, with N <= 8 and M <= 16 (scaled down from original constraints). Each edge must be assigned a cost from {0, 1, 2} (encoded as 2 bits). The constraints are:
+1. For any node with two adjacent edges (u-v and u-w), if costs are c1 and c2, then (c1 + c2) mod 3 != 1.
+2. For any simple cycle in the graph, the sum of edge costs must be odd.
+
+The module should take the graph structure (adjacency list representation or edge list) as input, and output the minimum total cost. If no valid assignment exists, output -1 (encoded as a special value, e.g., all 1s).
+
+Inputs:
+- clk, rst_n: Standard synchronous reset.
+- start: 1-cycle pulse to start computation.
+- graph_edges: An array of M pairs (u, v), each node index 0..N-1.
+- num_nodes: 4-bit input (N).
+- num_edges: 4-bit input (M).
+
+Outputs:
+- result: 16-bit signed integer for total cost. If impossible, set to 16'hFFFF (-1).
+- done: 1-cycle pulse when computation is complete.
+
+Implementation Guidance:
+- Since N and M are small (<=8, <=16), you can use a brute-force approach or a systematic search (like backtracking) over all possible edge assignments (3^M possibilities). For M=16, 3^16 is too large, so limit M to 10 for feasibility or use a more clever algorithm like 2-SAT reduction (but this is complex for HDL). A better approach is to treat it as a constraint satisfaction problem and iterate over possible edge values using a state machine.
+- Suggested architecture: Use a finite state machine (FSM) to iterate over edge assignments. Store current assignment in registers. For each assignment, validate constraints for all nodes and cycles. Since cycles are hard to detect generically, assume the graph is small and pre-calculate cycles or use a simple depth-first search (DFS) bounded by N.
+- Cycle detection: For a small graph, you can hardcode cycle detection for up to 8 nodes, e.g., check all permutations of nodes for cycles.
+- Constraint checking: For each node, check all pairs of incident edges. For cycles, compute sum and check parity.
+- To fit in hardware, limit the number of edges to 10 (3^10 = 59049 checks, feasible in <100k cycles). If M > 10, the module can output -1 or truncate, but specify M <= 10 in the spec.
+- Edge encoding: Each edge's cost is 2 bits (00=0, 01=1, 10=2). Input edges are given as node indices.
+- The module should reset: done=0, result=0.
+- Timing: start->done within 10,000 cycles (for brute-force).
+
+Example: For the sample input with N=6, M=5, the module should compute min cost 5. For N=5, M=8, output -1.
+
+Write the Verilog module definition including the FSM and constraint checkers. Do not include testbench; just the module specification.

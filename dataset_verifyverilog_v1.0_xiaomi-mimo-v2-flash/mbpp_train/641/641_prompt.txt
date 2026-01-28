@@ -1,0 +1,42 @@
+Implement a Verilog module that computes the nth nonagonal number using the formula: result = n * (7*n - 5) / 2
+
+SPECIFICATION:
+- Module: nonagonal
+- Inputs:
+  clk: clock, rising edge active
+  rst_n: active-low synchronous reset (min 2 cycles)
+  start: 1-cycle pulse to initiate computation
+  n: 8-bit input (0-255, representing index n)
+- Outputs:
+  result: 16-bit output (range 0-65535, valid when done=1)
+  done: 1-cycle pulse indicating valid result
+
+TIMING:
+- start -> done: Within 20 clock cycles
+- When done=1, result is valid for one cycle
+- After done, ready for next start
+
+RESET:
+- rst_n=0: async reset (or sync, your choice)
+- Clear: done=0, result=0, internal state
+
+IMPLEMENTATION DETAILS:
+1. Use fixed-point arithmetic (Q16.16) for division by 2
+2. Compute: temp = n * (7*n - 5)  (result fits 18 bits max for n≤256)
+3. Right shift by 1 (divide by 2)
+4. Pipeline stages: 3-4 cycles max
+5. All intermediate values must fit in 32-bit signed registers
+
+ALGORITHM (state machine):
+STATE_IDLE: wait for start
+STATE_MUL1: compute 7*n
+STATE_MUL2: compute (7*n - 5) * n
+STATE_DIV: shift right by 1
+STATE_DONE: assert done, output result
+
+CONSTRAINTS:
+- n input: 8-bit unsigned
+- Intermediate max: 7*256*256 ≈ 458,752 (fits in 19 bits)
+- Final max: 229,376 (fits in 18 bits)
+- Use blocking assignments in always_ff blocks
+- No combinational paths from inputs to outputs

@@ -1,0 +1,46 @@
+Design a Verilog module that computes the maximum number of TV shows that can be recorded with k recording slots. Given n shows (n≤16) each with start time x_i and end time y_i, find the maximum count of non-overlapping shows that can be scheduled using k simultaneous recordings. Shows with y_i = x_j can be scheduled in the same slot.
+
+**Input Interface:**
+- clk: Clock signal (active rising edge)
+- rst_n: Active-low synchronous reset
+- start: 1-cycle pulse to initiate computation
+- n: 4-bit unsigned (1-16)
+- k: 4-bit unsigned (1-4, k < n)
+- x[0:15]: 16-element array of 32-bit signed integers (start times)
+- y[0:15]: 16-element array of 32-bit signed integers (end times)
+
+**Output Interface:**
+- result: 16-bit unsigned integer (maximum count)
+- done: 1-cycle pulse (asserted for one clock cycle when computation completes)
+
+**Algorithm Specification:**
+1. Sort shows by their end times (y_i) in ascending order using a hardware-friendly bubble/insertion sort (16*16 = 256 cycles max)
+2. Simulate k recording slots using a priority queue/loop
+3. For each show in sorted order, check if any slot is available (slot's last_end_time ≤ current_show.start_time)
+4. If available, assign show to slot and increment count; update slot's last_end_time
+5. Return total count when all shows processed
+
+**Timing Requirements:**
+- Reset: 2 cycles minimum (done=0, result=0)
+- Computation: start->done within 500 clock cycles
+- Must handle simultaneous shows with equal start/end times correctly
+
+**Implementation Notes:**
+- Times can be up to 1e9, use 32-bit signed arithmetic
+- Input shows may be unsorted; sort is required
+- Only shows that fit entirely (end ≤ next start) count
+- k is the number of simultaneous recording slots
+
+**Example:**
+For n=3, k=1, shows: (1,2), (2,3), (2,3)
+Sorted by end: (1,2), (2,3), (2,3)
+Slot1: record (1,2) end=2 → count=1
+Slot1: record (2,3) end=3 → count=2
+Slot1: cannot record (2,3) (ends at 3, start=2 conflict)
+Result: 2
+
+**Verification:**
+- Test with sample inputs
+- Verify sorting correctness
+- Check k=1 vs k>1 scenarios
+- Handle edge cases: all shows conflict, no conflicts

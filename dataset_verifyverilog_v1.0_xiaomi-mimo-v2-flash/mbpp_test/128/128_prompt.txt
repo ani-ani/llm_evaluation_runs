@@ -1,0 +1,62 @@
+Implement a Verilog module that finds words longer than a specified threshold from a fixed-width ASCII string.
+
+## Interface
+Inputs:
+  - clk: system clock (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start processing
+  - threshold: 4-bit threshold length (0-15)
+  - input_str: 64-bit packed ASCII characters (8 chars × 8 bits)
+    - Bytes [63:56] = char[0], [55:48] = char[1], ..., [7:0] = char[7]
+    - Words are space-separated (ASCII 0x20)
+    - Maximum 8 characters total, words separated by spaces
+
+Outputs:
+  - result_count: 4-bit count of matching words (0-8)
+  - result_words: 8 × 8-bit packed array of matching word characters
+    - result_words[63:0] = word 0, [127:64] = word 1, etc.
+    - Only first 'result_count' words are valid
+  - done: 1-cycle pulse indicating result is valid
+
+## Behavior
+1. On start pulse, parse the input string character-by-character
+2. Extract words separated by space (ASCII 0x20)
+3. For each word, compare its length to threshold
+4. If length > threshold, store the word (up to 8 chars) in output
+5. Output result_count and packed result_words
+6. Clear result_words positions beyond result_count
+
+## Constraints
+- Input string: exactly 8 characters (including spaces)
+- Maximum 8 words in input
+- Each word max 8 characters
+- ASCII only (no Unicode)
+- Pipeline: start→done within 100 cycles
+- Reset: result_count=0, result_words=0, done=0
+
+## Hardware Notes
+- Use FSM with states: IDLE, PARSE, COMPARE, STORE, COMPLETE
+- Parse state: iterate through 8 bytes, detect spaces
+- Compare state: count word length, compare to threshold
+- Store state: pack word into result_words at next available position
+- Complete state: assert done for 1 cycle
+- Word buffer: 8-char buffer to accumulate current word
+- Result buffer: 8 × 8-bit register array
+
+## Timing Diagram
+reset → idle
+start=1 → parse → compare → [store if needed] → complete → idle
+Sample result when done=1
+
+## Test Cases
+1. input_str="python is" (0x707974686F6E206973), threshold=3 → 2 words, 2 matches
+2. input_str="writing a" (0x77726974696E672061), threshold=2 → 2 words, 2 matches
+3. input_str="sorting l" (0x736F7274696E67206C), threshold=5 → 2 words, 1 match
+
+## Implementation Hints
+- Use byte_address counter (0-7)
+- Word counter tracks current word index
+- Char counter tracks current character in word
+- result_words should pack words sequentially: word0 chars in bits[7:0], word1 chars in bits[15:8], etc.
+- For empty result positions, leave as 0
+- Only update result_count after complete parsing

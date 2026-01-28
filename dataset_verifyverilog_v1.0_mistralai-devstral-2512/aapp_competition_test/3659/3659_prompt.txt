@@ -1,0 +1,50 @@
+Implement a Verilog module that solves the bookcase optimization problem. The module must partition N books (3 ≤ N ≤ 70) into three non-empty shelves to minimize (sum of max heights per shelf) * (max total thickness per shelf).
+
+**Constraints & Scaling:**
+- N ≤ 70, book heights h_i: 150-300 (fits in 9 bits), thickness t_i: 5-30 (fits in 6 bits)
+- Sum of thicknesses per shelf ≤ 2100 (16 bits sufficient)
+- Max height per shelf ≤ 300 (9 bits)
+- Area fits in 32 bits, output as 16-bit unsigned (max area ~10^8)
+
+**Algorithm (DP-based):**
+1. Sort books by height descending (hardware: implement O(N^2) bubble sort or accept unsorted for fixed N=4 test)
+2. Use dynamic programming: dp[i][h1][h2][t1][t2] = min area
+   - i: current book index (0..N-1)
+   - h1, h2: max heights of shelves 1 and 2 (shelf 3 height = max of remaining books)
+   - t1, t2: total thickness of shelves 1 and 2 (shelf 3 thickness = total - t1 - t2)
+3. Transition: assign book i to shelf 1, 2, or 3
+4. Result: min over valid partitions (all shelves non-empty)
+
+**Simplifications for Hardware:**
+- Use fixed-size arrays: N ≤ 16 for test (scale N to 4-8 for practicality)
+- Heights/Thicknesses: 8-bit inputs
+- DP Table: 2D lookup with state compression (heights and thicknesses as 16-bit combined index)
+- Iterative computation: Finite State Machine (FSM) with 3 states: INIT, PROCESS, RESULT
+- Unroll loops for N=4 (or N=8 max) for fixed iteration count
+
+**Module Interface:**
+- Inputs:
+  - clk: clock (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to initiate computation
+  - N_in: 8-bit input for number of books (4-8 range)
+  - h_i[0:7]: 8x8-bit array of book heights (max 8 books)
+  - t_i[0:7]: 8x8-bit array of book thicknesses (max 8 books)
+- Outputs:
+  - result: 32-bit area (output lower 16 bits as unsigned)
+  - done: 1-cycle pulse when computation completes
+  - error: indicates invalid input (N < 3)
+
+**Timing:**
+- Reset: done=0, result=0, error=0
+- Start: set start=1 for 1 cycle
+- Processing: expect done within 10,000 cycles (for N=8)
+- Sample result when done=1
+
+**Behavior:**
+- On reset: clear internal state
+- On start: latch inputs, begin computation
+- Must handle edge cases: N=3 (each shelf gets 1 book)
+- Output: minimal area (height_sum * max_thickness_sum)
+
+**Note:** For N=4 test case, expected output is 18000. Implement DP that explores all 3^4=81 partitions for N=4. For N=8, limit to 3^8=6561 partitions (unrolled or iterated).

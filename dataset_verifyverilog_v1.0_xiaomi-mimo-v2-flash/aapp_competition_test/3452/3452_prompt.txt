@@ -1,0 +1,40 @@
+Implement a Verilog module `maze_isomorphism` that identifies sets of effectively identical rooms in a maze graph. The maze is modeled as an undirected graph where nodes are rooms and edges are corridors. Two rooms are effectively identical if the graph structure rooted at them is isomorphic. Since hardware cannot handle arbitrary recursion or dynamic memory, we restrict constraints: n ≤ 16, max degree per node ≤ 8.
+
+The module should compute a canonical signature for each room using a breadth-first search (BFS) with fixed-depth expansion (depth ≤ 4) and sorting neighbor signatures lexicographically. The signature should be a hash derived from the local connectivity pattern. Rooms with the same hash are considered equivalent.
+
+**Inputs:**
+- `clk`: System clock, rising edge.
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start processing.
+- `n_rooms`: Number of rooms (1-16), 4-bit input.
+- `adjacency_valid`: Indicates that adjacency data is ready for the current room index.
+- `room_idx`: Index of the current room (0 to 15), 4-bit.
+- `degree`: Number of connections for `room_idx` (0-8), 4-bit.
+- `connections[0:7]`: Array of 8x4-bit neighbor indices (0-15) for `room_idx`. Unused connections should be 0.
+
+**Outputs:**
+- `result_room`: 4-bit room index (0-15) currently being output for a match set.
+- `result_match`: 4-bit room index that is equivalent to `result_room`.
+- `result_valid`: 1-bit pulse indicating `result_room` and `result_match` are valid.
+- `done`: 1-bit pulse indicating processing is complete.
+- `none`: 1-bit high if no equivalence sets found (size ≥ 2).
+
+**Behavior:**
+1. Upon `start`, the module enters a loading phase. It samples `adjacency_valid` and `degree`/`connections` for each `room_idx` from 0 to `n_rooms-1` (provided externally, possibly via a state machine). The adjacency data must be stable for at least one clock cycle per room. Store degrees and connections in internal registers.
+2. After loading all rooms (or when `start` is held for sufficient cycles), initiate the computation phase.
+3. For each room `i` (0 to n-1), compute a signature `S(i)` using BFS up to depth 2 (to keep logic bounded). For each depth `d` (0 to 2):
+   - Collect the signatures of neighbors at depth `d`. For depth 0, the signature of the root is just its degree.
+   - Sort these neighbor signatures using a fixed comparator network (since max degree is 8, a bitonic sort or simple bubble sort network is feasible in hardware).
+   - Hash the sorted list into a new signature (e.g., rotate and XOR). 
+4. Compare signatures of all rooms. If `S(i) == S(j)` for `i < j`, record a match.
+5. Output matches sequentially: For each unique signature that has ≥2 rooms, output pulses for `(room, match)` pairs. Group outputs by smallest room number in the set.
+6. If no matches found, assert `none` at the end.
+7. Assert `done` when all comparisons and outputs are finished.
+
+**Timing:** Start->Done within 2000 cycles. Reset sets all outputs to 0 and `done`/`none` low.
+
+**Implementation Notes:**
+- Use fixed-size arrays for adjacency storage (16x8x4 bits).
+- Use a lookup table or combinational logic for neighbor sorting (small input size).
+- Hash function: Simple sum of neighbor degrees with shifts.
+- The external testbench must provide adjacency data sequentially.

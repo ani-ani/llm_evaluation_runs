@@ -1,0 +1,48 @@
+Verilog module specification for cumulative sum of a fixed-size 2D tuple list:
+
+Problem: Calculate sum of all integers in a list of variable-length tuples. Example: [(1, 3), (5, 6, 7), (2, 6)] → sum = 1+3+5+6+7+2+6 = 30
+
+Scale constraints:
+- Maximum 3 tuples (max_len = 3)
+- Maximum 4 elements per tuple (max_inner = 4)
+- Input values: 8-bit unsigned (0-255)
+- Output sum: 16-bit unsigned (0-65535)
+- Timing: ≤64 cycles from start to done
+
+Interface:
+Inputs:
+  clk: system clock (rising edge)
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to begin computation
+  tuple_count: 2-bit unsigned (1-3 tuples)
+  tuple_lengths[2:0]: 3x3-bit array (each 1-4 elements)
+  values[11:0]: 12x8-bit array (flattened: first 4 from tuple0, next 4 from tuple1, last 4 from tuple2)
+Outputs:
+  result: 16-bit sum
+  done: 1-cycle pulse (asserted when calculation complete)
+
+Functionality:
+1. On rising edge after start=1, read tuple_count
+2. For each tuple (0 to tuple_count-1):
+   - Read its length from tuple_lengths[i]
+   - Sum values from that tuple segment
+   - Accumulate into total sum
+3. Output total sum on result when done=1
+4. done pulse width: 1 clock cycle
+
+Timing:
+- start to done: within 64 cycles
+- Reset: 2 clock cycles minimum
+- After done, result remains valid until next start
+
+Reset behavior:
+- result = 0
+- done = 0
+- Internal state reset
+
+Implementation hint:
+- Use FSM with states: IDLE, LOAD_TUPLE_COUNT, READ_LENGTH, SUM_VALUES, WRITE_RESULT
+- Use 3-bit counter for tuple index
+- Use 2-bit counter for element index within tuple
+- Use 16-bit accumulator for sum
+- Multiplex values array based on tuple index and position

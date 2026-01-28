@@ -1,0 +1,46 @@
+Implement a Verilog module that constructs a target configuration for a boomerang problem. The module must process n columns sequentially (left-to-right or right-to-left) and output targets that satisfy the hit count sequence a[0:n-1]. Each column i (0-indexed) expects a_i hits (0-3). Each row and column must have at most 2 targets. The algorithm uses three stacks (one_count, two_count, three_count) to track pending targets that need connections. For each column i: if a_i=1, add a new target at (next_row, i); if a_i=2, consume a pending target from one_count and add a connection to (next_row, i), store in two_count; if a_i=3, consume from three_count or two_count, add connections and store new target. The module must handle the case where no valid configuration exists (impossible) by setting an error flag.
+
+**Inputs:**
+- clk: clock signal
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to start processing
+- a_in: 2-bit input (0-3) for current column's hit count
+- valid_in: 1-bit input indicating a_in is valid
+
+**Outputs:**
+- done: 1-cycle pulse when processing complete
+- error: 1-bit flag indicating no valid configuration exists
+- target_count: 18-bit output (max 2n targets, n≤1e5 → need 18 bits)
+- target_addr: 18-bit address for target memory
+- target_row: 10-bit output (max row n=1e5 → need 17 bits, but scaled to 10 bits for 1024 max)
+- target_col: 10-bit output (max col n=1e5 → need 17 bits, but scaled to 10 bits for 1024 max)
+- target_valid: 1-bit output indicating current target is valid
+
+**Internal State:**
+- Three stacks implemented as shift registers (max size = n): one_count, two_count, three_count
+- Each stack element stores row index (10 bits)
+- next_row: 10-bit counter (1 to 1024)
+- col_index: 10-bit counter (0 to 1023)
+- process_state: 3-bit FSM (IDLE, PROCESSING, OUTPUTTING, ERROR)
+- target_buffer: storage for up to 2048 targets (20-bit address)
+
+**Timing:**
+- Start processing on rising edge after start=1
+- For each column: process a_in, update stacks, generate targets
+- After all columns processed, output stored targets sequentially
+- Total cycles ≤ n + target_count (max 3n ≈ 3000 cycles for n=1000)
+- Done signal asserted for 1 cycle when all targets output
+
+**Constraints:**
+- Maximum n: 1000 (scaled from 1e5 for HDL feasibility)
+- Maximum targets: 2000 (2n)
+- Maximum row/col: 1023 (10 bits)
+- Each row and column in output must have ≤2 targets (guaranteed by algorithm)
+- Output targets in any order
+
+**Implementation Notes:**
+- Use a circular buffer for target storage with head/tail pointers
+- Stack overflow detection (max size = n) triggers error
+- If impossible detected during processing, set error=1 and stop
+- Targets are stored as (row, col) pairs and output sequentially after processing
+- The algorithm processes columns sequentially; one_count stores rows for a_i=1, two_count for pending a_i=2 connections, three_count for pending a_i=3 connections

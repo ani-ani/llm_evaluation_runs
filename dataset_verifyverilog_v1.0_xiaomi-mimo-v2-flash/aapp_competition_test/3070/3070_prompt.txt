@@ -1,0 +1,42 @@
+Design a Verilog module `earliest_train` that computes the earliest departure time to earn delay compensation.
+
+**Problem Adaptation**: Scale N to max 4 stations, M to max 16 trains per station, and times to 16-bit integers (0-65535 seconds, clamping delays to fit). The core logic uses dynamic programming: for each station, compute the earliest arrival time considering all possible train delays. The key condition is: for a booking at time `B`, the delay must push the arrival to at least `B + original_arrival - departure + 1800` (since strict inequality `< 30 minutes` delay requires arrival > original_arrival + 1800). We check if there exists ANY path from station 1 to N where the cumulative delay causes arrival > scheduled_arrival + 1800.
+
+**Interface**: 
+- Inputs: `clk` (1-bit), `rst_n` (1-bit, active-low), `start` (1-bit, pulses once). 
+- Data inputs (valid when `start` is high): 
+  - `N` (4-bit), number of stations.
+  - `M` (5-bit, max 16), number of trains.
+  - For each train i (0 to 15): 
+    - `train_X[i]` (4-bit, station X 1-4), 
+    - `train_S[i]` (16-bit, departure time), 
+    - `train_T[i]` (16-bit, arrival time), 
+    - `train_L[i]` (16-bit, delay).
+- Outputs: 
+  - `result` (16-bit), the earliest valid booking time (or 0 if none found), 
+  - `done` (1-bit, pulses 1 cycle when calculation complete).
+
+**Behavior**: 
+1. On `start` rising edge, capture input data. 
+2. Perform iterative DP: 
+   - Initialize `min_arrival[1] = 0`, `min_arrival[2..4] = INF` (65535). 
+   - For each station `s` from 1 to N-1: 
+     - For each train from `s` to `s+1`: 
+       - Calculate `scheduled_arrival = train_T[i]` (original, no delay). 
+       - Calculate `delayed_arrival = train_T[i] + train_L[i]`. 
+       - The condition for compensation: `delayed_arrival >= scheduled_arrival + 1801` (since strict <30 min delay means >1800 sec). 
+       - If condition holds, and `min_arrival[s] <= train_S[i]` (can catch this train), update `min_arrival[s+1] = min(min_arrival[s+1], delayed_arrival)`. 
+   - After processing all stations, `result = min_arrival[N]`. If `min_arrival[N] == INF`, output 0 (or a special value like 65535, but problem expects 'impossible' in text output; for Verilog, we can output 0 and interpret externally). 
+3. Set `done = 1` for one cycle. 
+4. Reset: `result = 0`, `done = 0`, `min_arrival` arrays cleared.
+
+**Constraints**: 
+- Timing: Calculation must complete within 1000 cycles after `start`. 
+- Use combinational logic for train checks, sequential for station iteration. 
+- All inputs are sampled on `start`. Ensure no overflow: clamp times to 16-bit. 
+
+**Example**: For input 1 (N=2, M=3), trains all from station 1 to 2. For booking time 1800, train 1: delayed_arrival = 9000+1800=10800, scheduled=9000, 10800 >= 9000+1801? 10800 >= 10801? False. Wait, recalculate: Condition is: original arrival at 9000, delay 1800, so actual arrival at 10800. Delay is 1800 sec (<1800? No, 1800 is not less than 1800, so no compensation). For train 2: scheduled=9200, delayed=10800, delay=1600<1800, no compensation. Train 3: scheduled=9400, delayed=10800, delay=1400<1800, no. But sample output is 1800. Correction: The condition is 'unable to reach in strictly less than 30 minutes', meaning delay >= 1800 seconds? Actually, the problem states: 'unable to reach your destination in strictly less time than 30 minutes (or 1800 seconds), of the time you would have arrived assuming your booked journey was exactly on time.' This means the actual arrival time - scheduled arrival time >= 1800. For train 1: 10800 - 9000 = 1800, which is >= 1800, so compensation awarded. Yes, >= 1800, not >. So condition: delayed_arrival - scheduled_arrival >= 1800.
+
+Thus in DP: `if (delayed_arrival - scheduled_arrival >= 1800) then eligible`.
+
+**Testbench**: Must validate with the given examples, checking that for output 1800, the module computes it; for 'impossible', the result is 0 (or out-of-range). Use cocotb to drive `start` and read `done` and `result`.

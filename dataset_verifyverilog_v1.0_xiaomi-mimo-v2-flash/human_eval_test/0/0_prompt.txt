@@ -1,0 +1,47 @@
+Design a Verilog module `has_close_elements` that detects if any two numbers in an array are closer than a given threshold. The numbers are floating-point but will be represented as 16-bit fixed-point values (Q8.8 format: 8 integer bits, 8 fractional bits). The threshold is also a 16-bit fixed-point value.
+
+### Interface Specification
+**Inputs:**
+- `clk` (1 bit): Rising edge clock signal.
+- `rst_n` (1 bit): Active-low synchronous reset. Clears all internal state.
+- `start` (1 bit): 1-cycle pulse to start the operation. Data should be sampled when start is high.
+- `data_in` (16 bits): The input data port for loading array elements sequentially.
+- `addr_in` (3 bits): Address for the input data (selects which array element to write to, 0 to 7).
+- `we` (1 bit): Write enable. When high, `data_in` is written to `array[addr_in]`.
+- `threshold` (16 bits): The fixed-point threshold value. Sampled when start is high.
+
+**Outputs:**
+- `result` (1 bit): High if any pair of elements in the array is closer than the threshold.
+- `done` (1 bit): High for one cycle when the calculation is complete.
+
+### Functional Requirements
+1. **Array Storage:** Internal 8-element array of 16-bit registers (`array[0:7]`).
+2. **Data Loading:** Use a register interface. On `clk` with `we=1`, write `data_in` to `array[addr_in]`. This allows sequential loading of the 8 elements.
+3. **Computation:** When `start` is high, latch the `threshold` and trigger the computation.
+   - Calculate the absolute difference between every unique pair of elements (0-1, 0-2, ..., 6-7).
+   - For each pair (i, j), check if `|array[i] - array[j]| < threshold`.
+   - If any pair satisfies the condition, set `result` to 1.
+   - Since the array size is fixed (8), this can be done with combinational logic (or a small FSM if needed, but parallel is preferred).
+4. **Output:** Assert `done` high for exactly one cycle when the result is valid. `result` remains valid until the next `start` or `rst_n`.
+5. **Fixed-Point Math:** Arithmetic is standard integer math on 16-bit values. Absolute difference is computed by subtracting and flipping the sign bit if necessary (or standard subtraction logic).
+
+### Timing
+- `start` to `done` latency: Within 10 clock cycles.
+- Reset: Clears `array` (optional but good practice), `result`, and `done`. Takes 2 cycles.
+
+### Implementation Notes
+- Do not use dynamic memory. The array size is fixed at 8.
+- The loop is unrolled or pipelined to fit within 10 cycles.
+- Handle overflow: 16-bit subtraction result is 17 bits; ensure the comparator handles this correctly or saturates.
+- Absolute difference logic: `diff = (a > b) ? (a - b) : (b - a)`.
+- Comparator: `diff < threshold`.
+
+### Example Sequence
+1. Initialize: Reset module.
+2. Load Data: For i=0 to 7, assert `we=1`, set `addr_in=i`, set `data_in` to the fixed-point value of the number, wait for clock edge.
+3. Set Threshold: Set `threshold` input to the desired fixed-point value.
+4. Start: Assert `start` high for one cycle.
+5. Wait: Wait for `done` to go high.
+6. Read Result: Check `result`.
+
+The module must be synthesizable and follow synchronous design principles.

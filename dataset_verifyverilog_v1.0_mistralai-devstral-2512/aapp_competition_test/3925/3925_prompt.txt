@@ -1,0 +1,170 @@
+You are to implement a digital circuit module in Verilog HDL that solves the "Zebra" problem.
+
+**Problem Description:**
+Given a binary string `s` consisting of characters 'b' (black) and 'w' (white), we can perform an operation any number of times: split the string at some position into two parts, reverse both parts, and concatenate them. This effectively allows us to rearrange the string arbitrarily into any cyclic rotation of the original string (or its reverse). The goal is to find the maximum length of a contiguous substring of alternating characters (a "zebra").
+
+Since the operations allow cyclic shifts, we can treat the string as circular. The longest alternating sequence in a circular binary string is found by examining the string `s + s` (concatenated with itself) to handle the wrap-around. The maximum possible zebra length cannot exceed the length of the original string `n`.
+
+**Hardware Implementation Strategy:**
+1.  **Input:** The input string `s` is provided as a stream of bits. Let 'b' be mapped to `1` and 'w' to `0` (or vice versa, consistent mapping).
+2.  **Logic:** We need to find the longest sequence where consecutive bits are not equal.
+3.  **Scaling:** Since the input string length $|s|$ can be up to 100,000, we cannot store the entire string in FPGA block RAM if we use a naive approach. However, for benchmarking LLMs, we must scale the problem down to fit hardware constraints. 
+    *   **Constraint:** We will support a maximum string length $N = 64$.
+    *   **Storage:** The string will be stored in a BRAM of depth 64 and width 1 bit (or 8 bits for ASCII, but bit-packed is better). Alternatively, for a streaming interface, we process the input as it arrives.
+4.  **Streaming Approach (Preferred for HDL):**
+    *   The module receives the string bits one by one on a serial input `data_in` with a valid signal `data_valid`.
+    *   We need to detect runs of alternating bits.
+    *   To handle the circular nature (wrap-around from end to start), we need to know the first bit and the last bit.
+    *   Since we receive bits serially, we can store the first bit in a register. We calculate the length of the alternating run from the start (prefix) and the length of the alternating run from the end (suffix). If the first and last bits differ, the total length is prefix + suffix, capped at $N$.
+    *   **Buffer:** We need to store at least the suffix of the string to compare with the prefix. Since $N=64$, we need a buffer of 64 bits.
+    *   **Control:** A control FSM will manage the serial input, calculate the alternating lengths, and compute the final maximum.
+
+**Module Interface Specification:**
+*   **Clock Domain:** Synchronous to `clk`.
+*   **Reset:** Active-low synchronous `rst_n`.
+*   **Inputs:**
+    *   `clk`: System clock.
+    *   `rst_n`: Active low reset.
+    *   `start`: 1-cycle pulse to start processing a new string.
+    *   `data_in`: 1-bit serial data input (representing the next character of the string).
+    *   `data_valid`: 1-bit signal indicating `data_in` is valid.
+    *   `len_in`: 6-bit input indicating the length of the current string (valid when `start` is high). Supports lengths up to 64.
+*   **Outputs:**
+    *   `result`: 7-bit output (maximum zebra length, max 64).
+    *   `done`: 1-bit signal asserted for 1 cycle when calculation is complete.
+
+**Algorithm Steps (FSM states):**
+1.  **IDLE:** Wait for `start`. Capture `len_in`. Reset counters.
+2.  **RECV:** Read `data_in` serially. Store bits in a buffer (FIFO or RAM). Track the current alternating run length from the start (prefix length). Store the first bit.
+3.  **CALC:** Once all bits are received, compute the suffix length by scanning the buffer backwards. 
+    *   If the first bit != last bit, result = prefix_len + suffix_len.
+    *   Else, result = max(prefix_len, suffix_len).
+    *   Cap result at `len_in`.
+4.  **DONE:** Output result and assert `done`.
+
+**Verilog Requirements:**
+*   Use non-blocking assignments for sequential logic.
+*   Ensure the buffer size is parameterized (e.g., parameter MAX_LEN = 64).
+*   The solution must be purely combinatorial/sequential logic; no external memory or dynamic allocation.
+
+**Example:**
+Input: "bwwb" (b=1, w=0 -> 1001)
+String: 1 0 0 1
+Prefix alternating runs: 
+- Bit 0: 1
+- Bit 1 (0 != 1): length 2
+- Bit 2 (0 == 0): length 1 (reset)
+- Bit 3 (1 != 0): length 2
+Prefix max run = 2.
+Suffix: Scan from end: 1 (len 1), 0 (len 2, 0!=1), 0 (len 1 reset).
+Suffix max run = 2.
+First bit (1) != Last bit (1)? No (Wait, first is 1, last is 1). They are equal.
+Result = max(2, 2) = 2.
+Wait, example output for "bwwbwwb" is 3.
+Let's recheck "bwwbwwb": 
+b w w b w w b -> 1 0 0 1 0 0 1
+Prefix: 1, 2 (1,0), 1 (0,0), 2 (1,0), 1 (0,0), 2 (1,0).
+Max prefix = 2.
+Suffix: 1, 2 (1,0), 1 (0,0), 2 (1,0).
+Max suffix = 2.
+First (1) == Last (1)? Yes.
+Result = max(2, 2) = 2.
+But expected output is 3.
+
+Let's look at the example again.
+Input: bwwbwwb
+One of the optimal operations: b|wwbwwb -> reverse(b) = b, reverse(wwbwwb) = bwwbww -> b bwwbww. Concatenated: bbwwbww. Zebra: wwb (length 2). Not it.
+Actually, the problem allows cyclic shifts. 
+Original: b w w b w w b
+Cyclic shifts:
+b w w b w w b
+w w b w w b b
+w b w w b b w
+b w w b b w w -> b w w b b w w (break at 'bb'). Max zebra: w w b b w w. Alternating runs: w(1), w(0), b(1), b(0), w(1), w(0). Max run 1? No.
+Wait, "Zebra" is alternating colors.
+b w w b w w b
+Let's try shift: w b w w b b w
+Wait, looking at the code solutions provided in the context:
+Most solutions concatenate the string with itself `s+s` and find the longest alternating sequence, capping at `len(s)`.
+Example "bwwbwwb" (len 7).
+s+s = "bwwbwwbbwwbwwb" (len 14).
+Scan s+s:
+b w (len 2)
+w w (reset 1)
+w b (len 2)
+b w (len 3)
+w w (reset 1)
+w b (len 2)
+b b (reset 1)
+b w (len 2)
+w w (reset 1)
+w b (len 2)
+b w (len 3)
+w w (reset 1)
+w b (len 2)
+b (end)
+Max length = 3 (found at "b w w b w w b" -> no, "b w" then "w b" is broken.
+Wait, look at the segment "b w w b w w b". 
+Actually, looking at the concatenated string logic:
+`b w w b w w b b w w b w w b`
+Indices 0..6: b w w b w w b (break at index 1-2, 3-4, 4-5? No 2-3 is w-b ok, 3-4 is b-w ok, 4-5 is w-w break).
+Run: b w (len 2). Reset at index 2.
+Index 2: w. Index 3: b (len 2). Index 4: w (len 3). Index 5: w (break, len 1).
+Max so far is 3.
+So the algorithm is: find longest alternating run in `s+s`, capped at `len(s)`.
+
+**Hardware Adaptation for `s+s` logic:**
+We process the input stream `s`. We need to detect alternating runs. We need to handle the "join" between the end of the stream and the beginning (for the `s+s` logic).
+Since we process serially, we can:
+1. Store the stream in a buffer (FIFO/RAM) of size `N` (64 bits).
+2. Track the current alternating run length.
+3. If the run breaks, check if we can wrap around using the buffer.
+
+Simpler approach for LLM benchmark:
+1.  **Input:** Serial stream of bits `s` of length `N`. 
+2.  **Logic:** We want to find the longest alternating sequence in `s` (circularly).
+    *   We scan `s` and compute `run_lengths` for alternating segments.
+    *   Store `s` in a buffer.
+    *   Compute prefix alternating length from start.
+    *   Compute suffix alternating length from end.
+    *   If first bit != last bit, result = prefix + suffix.
+    *   Else, result = max(prefix, suffix).
+    *   Also, we must track the max alternating run *inside* the string (not wrapping around).
+    *   Final result is `min(max_inner_run, prefix+suffix_circular)`.
+    *   Wait, the `s+s` logic is more robust. It simply finds the longest alternating run in the doubled string. This automatically handles the wrap-around as the run can span the boundary.
+
+**Refined Logic for Hardware:**
+1.  **Buffer:** Store the entire input string `s` (up to 64 bits) in a shift register or RAM.
+2.  **Processing:**
+    *   Read `s` and compute the longest alternating run in `s` (linear scan). Store this as `max_linear`.
+    *   Read `s` again (or use the buffer) to compute the prefix alternating run length (`prefix_len`) starting from index 0.
+    *   Read `s` backwards to compute the suffix alternating run length (`suffix_len`) ending at index `len-1`.
+    *   Check if `s[0] != s[len-1]`.
+    *   If they differ, `circular_len = prefix_len + suffix_len`. Else `circular_len = max(prefix_len, suffix_len)`.
+    *   Result = `max(max_linear, circular_len)`.
+    *   Cap result at `len`.
+
+**Verilog Interface:**
+Inputs: `clk`, `rst_n`, `start`, `data_in`, `data_valid`, `len_in` (6-bit).
+Outputs: `result` (7-bit), `done`.
+
+**Testbench:**
+Cocotb testbench will feed serial bits. Need to handle the "s+s" logic or the wrap-around logic correctly.
+
+Let's stick to the `s+s` logic as it is the most common solution in the Python snippets.
+Scan `s+s` for longest alternating run.
+In hardware:
+1. Buffer `s` of length `N`.
+2. Iterate `i` from 0 to `2*N - 1`. `idx = i % N`.
+3. Keep track of current run length. Compare `s[idx]` with `s[(idx-1)%N]`. If different, increment. If same, reset.
+4. Update max.
+
+This requires a counter for `2*N` iterations (max 128). This fits easily in an FSM.
+
+**FSM States:**
+- IDLE
+- RECV (read `s` into buffer)
+- SCAN (iterate 0 to 2*N, compute max alternating run)
+- DONE
+
+This is a clean, bounded hardware solution.

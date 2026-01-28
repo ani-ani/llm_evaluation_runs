@@ -1,0 +1,39 @@
+Implement a Verilog module `delivery_optimizer` to compute the minimal delivery time between two moving agents on a 2D plane.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous signals.
+  - `start`: 1-cycle pulse to start calculation.
+  - `misha_len`, `nadia_len`: 4-bit inputs indicating the number of points for each path (max 16).
+  - `misha_pts_x`, `misha_pts_y`: Arrays of 16 elements, each 16-bit fixed-point (Q16.16) representing coordinates.
+  - `nadia_pts_x`, `nadia_pts_y`: Arrays of 16 elements, each 16-bit fixed-point.
+
+- **Outputs:**
+  - `min_time`: 32-bit output (Q16.16) representing the minimal time.
+  - `done`: 1-cycle pulse indicating calculation is complete.
+  - `valid`: 1-bit output indicating if a valid time was found (1) or impossible (0).
+
+**Implementation Logic:**
+1.  **Simplification:** Due to hardware constraints, we limit `n` to 16 points per path. Input coordinates are provided as fixed-point numbers.
+2.  **Algorithm:** The core geometric calculation involves finding the minimum distance between two moving points, where Misha can choose any point on his path as the pickup location (restricted by time constraint `t_misha <= t_pickup`) and Nadia intercepts at any point on her path.
+    -   Convert the problem to a continuous domain: Misha travels from `t=0` to `T_misha` (total path length). Nadia travels from `t=0` to `T_nadia`.
+    -   A pickup at time `t_m` (Misha's travel time) and delivery at `t_n` (Nadia's travel time) requires `t_m <= t_n` (assuming simultaneous start and straight-line messenger).
+    -   The messenger travel time is the Euclidean distance between Misha's position at `t_m` and Nadia's position at `t_n`.
+    -   Total delivery time = `t_n` (since start is `t=0`). We want to minimize `t_n`.
+    -   Constraint: `t_n >= t_m`.
+    -   We must search over combinations of segments. Since `n` is small (16), we can iterate over segments for Misha and Nadia.
+3.  **Hardware Structure:**
+    -   **State Machine:** IDLE, LOAD_INPUTS, CALCULATE, OUTPUT.
+    -   **Calculators:** Use fixed-point arithmetic units. Implement `sqrt`, `add`, `sub`, `mul` (or leverage DSP blocks if available, but structurally describe logic).
+    -   **Iteration:** Use a loop counter to iterate through `misha_len - 1` and `nadia_len - 1` segment pairs. For each pair, calculate the optimal time `t_n` given a pickup segment on Misha's path.
+    -   **Geometric Check:** For two segments (A->B for Misha, C->D for Nadia), the optimal solution often lies at segment intersections or endpoints. For a robust solution, discretize the search into checking start/end points of segments and potential intersection times.
+    -   **Optimization:** Since full continuous optimization is heavy, approximate by checking:
+        a) Misha picks up at segment start/end, Nadia intercepts at segment start/end.
+        b) Check if straight-line interception is possible within the segments (solving linear equations).
+    -   **Output:** `done` goes high when all segment pairs are processed. `min_time` holds the result. `valid` is high if a solution was found.
+
+**Constraints:**
+-   Fixed-point arithmetic for all calculations (Q16.16 precision).
+-   Max 16 points per path.
+-   Pipelining allowed for arithmetic operations.
+-   Do not implement full floating-point or dynamic memory allocation.

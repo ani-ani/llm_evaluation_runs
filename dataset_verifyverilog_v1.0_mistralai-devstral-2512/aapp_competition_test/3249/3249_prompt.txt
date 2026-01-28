@@ -1,0 +1,46 @@
+Implement a Verilog module that calculates the maximum number of bulkhead sections and their x-coordinates for a given polygon.
+
+**Adaptations for Hardware:**
+1.  **Scale:** Limit `N` (vertices) to 16. Coordinates will be 16-bit signed integers (range -32768 to 32767). Area calculation uses 64-bit accumulator (sum of 32-bit intermediate products).
+2.  **Input Interface:** Vertex coordinates are streamed in sequentially.
+3.  **Output:** Since M (number of sections) is small (1-100), the module will output one bulkhead x-coordinate per cycle (fixed-point Q16.16) via a `result` bus. A separate `count` output will indicate `M`. A `busy` signal indicates processing.
+4.  **Algorithm:**
+    -   Calculate Total Area using the Shoelace Formula (sum over edges). Use 64-bit accumulator.
+    -   Determine `M`: Iterate `M` from max possible down to 1 until `TotalArea / M >= C` (where C is minimum area). `M` is bounded by 100.
+    -   Determine Bulkhead X-coordinates: The section area is `Area / M`. We need to find x-coordinates where the cumulative area from the left reaches multiples of the section area. This requires calculating the area of the polygon to the left of a vertical line `x`. Since the polygon is x-monotone (given in problem statement), we can iterate over the vertical sweep line. For simplicity in hardware, we can scan the x-range of the polygon in fixed steps (resolution) or calculate intersections at edge vertices.
+    -   **Hardware-Friendly Simplification:** Use a fixed-point linear interpolation approach. The x-coordinates will be approximated by solving for the cumulative area function. Given the input constraints and the need for a deterministic clock cycle count, the module will accept vertices, compute the area, and output the required count and x-coordinates. The x-coordinates are computed by iterating through the vertical strips defined by the edges and accumulating area until the target section area is reached.
+
+**Module Interface:**
+-   **Inputs:**
+    -   `clk`, `rst_n`: Standard synchronous reset.
+    -   `start`: 1-cycle pulse to start processing.
+    -   `min_area`: 32-bit fixed-point (Q16.16) representing C.
+    -   `vertex_x`, `vertex_y`: 16-bit signed inputs for vertex coordinates.
+    -   `vertex_valid`: Indicates current vertex inputs are valid.
+    -   `vertex_done`: 1-cycle pulse indicating all N vertices have been sent.
+-   **Outputs:**
+    -   `busy`: High while processing.
+    -   `max_sections`: 8-bit output for M.
+    -   `result`: 32-bit fixed-point (Q16.16) output for the current bulkhead x-coordinate.
+    -   `result_valid`: High when `result` is valid.
+    -   `result_done`: 1-cycle pulse when all M-1 bulkheads have been output.
+
+**Implementation Details:**
+1.  **Storage:** Store up to 16 vertices in internal RAM (x and y arrays, 16-bit each).
+2.  **Area Calculation:**
+    -   Iterate through edges (V[i] to V[i+1]).
+    -   Accumulate `x[i]*y[i+1] - x[i+1]*y[i]` in a 64-bit register.
+    -   Divide by 2 to get area (fixed-point math).
+3.  **Section Calculation:**
+    -   Compute `section_area = total_area / M` (integer division for fixed-point).
+4.  **Bulkhead Placement:**
+    -   Since the shape is x-monotone, we can sweep x from min_x to max_x.
+    -   Divide the x-range into segments defined by vertex x-coordinates.
+    -   For each segment, calculate the trapezoidal area under the upper edge and above the lower edge.
+    -   Accumulate area. When `accumulated_area >= k * section_area`, compute the exact x-intercept using linear interpolation on the current edge.
+    -   This requires a state machine: `STATE_COMPUTE_AREA`, `STATE_DETERMINE_M`, `STATE_SWEEP_X`.
+
+**Constraints:**
+-   Use Q16.16 fixed-point arithmetic for all area and coordinate calculations.
+-   Maximum clock cycles: 5000.
+-   Inputs are provided sequentially via the `vertex_x`/`vertex_y` interface.

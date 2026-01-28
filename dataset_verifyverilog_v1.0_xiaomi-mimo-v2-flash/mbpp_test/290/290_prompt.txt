@@ -1,0 +1,52 @@
+Design a Verilog module that finds both the maximum length among sublists and the corresponding sublist with the maximum length.
+
+## Requirements
+- Input: 2D array of 8-bit integers, structured as fixed sublists
+- Constraint: Maximum 4 sublists, each with maximum 4 elements
+- All sublists must have exactly 4 elements (pad with zeros for shorter lists)
+- Output: Maximum length (4-bit) and the sublist with maximum length (4x8-bit array)
+- Tie-breaking: In case of equal lengths, return the sublist with the higher starting value
+
+## Interface Specification
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset (min 2 cycles)
+  start: 1-cycle pulse to start processing
+  sublists[15:0][3:0]: 4 sublists × 4 elements × 8-bit each = 128-bit total
+    - Index 0: sublists[0][0], sublists[0][1], ..., sublists[0][3]
+    - Index 1: sublists[1][0], sublists[1][1], ..., sublists[1][3]
+    - etc.
+  valid_mask[3:0]: 4-bit mask indicating which sublists contain real data (1=valid)
+
+Outputs:
+  max_length: 4-bit (0-4)
+  max_sublist[3:0]: 4x8-bit array (the sublist with maximum length)
+  done: 1-cycle pulse when result is valid
+
+## Behavior
+1. On start pulse, FSM begins scanning sublists
+2. For each sublist (indexed 0-3):
+   - Count non-zero elements (pad=0)
+   - Track max length seen so far
+   - Track which sublist has max length
+3. For tie-breaking: if current sublist length equals max, compare first element
+   - Choose sublist with higher first element
+4. On completion, assert done for 1 cycle with result
+
+## Timing
+- start->done: within 100 cycles
+- Reset: done=0, max_length=0, max_sublist=0, min 2 cycles
+- Pipeline: 1 cycle per sublist (4 cycles minimum), plus overhead
+
+## Implementation Notes
+- Use Moore/Mealy FSM with states: IDLE, INIT, SCAN, DECIDE, OUTPUT
+- Single-cycle comparators for length and value comparison
+- Register to store current max length and max sublist
+- Output valid when done=1
+
+## Example
+Input: sublists = [[0,0,0,0], [1,3,0,0], [5,7,0,0], [9,11,0,0]] with valid_mask=0011
+Max length = 2 (from sublist 1 and 2)
+Tie-break: sublist 2 starts with 5 > 1, so choose [5,7,0,0]
+
+Do NOT provide the module implementation, only the specification above.

@@ -1,0 +1,38 @@
+Implement a Verilog module to solve the IKEA bolt ordering problem using dynamic programming.
+
+**Problem Analysis:**
+We need to find the smallest advertised package size that guarantees at least B bolts, regardless of how companies combine packs. The "worst-case" real amount for a pack of advertised size N is the minimum sum of real amounts from the previous company that yields an advertised sum >= N.
+
+**Algorithm:**
+1. **Initialization (Company 1):** Real amount equals advertised amount.
+2. **Transition (Company i > 1):** For each advertised size `s` at company `i`, calculate the minimum real sum `r` such that a combination of advertised sizes from company `i-1` sums to at least `s`.
+   - This is an Unbounded Knapsack-like problem: minimize sum of real values subject to sum of advertised values >= s.
+   - Use a DP array `dp_real[adv]` storing the minimum real amount for exactly `adv` advertised sum (capped at max needed).
+3. **Result:** After processing all companies, scan advertised sizes to find the smallest `s` where `real_amount[s] >= B`.
+
+**Constraints:**
+- B <= 1000 (Target bolts)
+- k <= 10 (Companies)
+- l_i <= 10 (Package types per company)
+- n_j <= 1000 (Package sizes)
+
+**Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous controls.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `B [9:0]`: Target bolt count (10 bits, up to 1023).
+  - `k [3:0]`: Number of companies (4 bits, up to 10).
+  - `pkg_cnt [3:0]`: Number of package types for current company (4 bits).
+  - `pkg_sizes [9:0]`: Array of package sizes (10 bits each, max 10 types).
+- **Outputs:**
+  - `result [9:0]`: Smallest valid advertised size (10 bits).
+  - `valid`: 1 when result is ready.
+  - `impossible`: 1 if no valid package exists.
+
+**Implementation Details:**
+- Use a control FSM to iterate through companies.
+- For each company, compute the `real_amount` mapping from `advertised_size`.
+- Intermediate storage: `prev_real[0:1023]` array (10-bit values) and `curr_real[0:1023]` array (10-bit values).
+- The core computation for each package type involves an inner loop over the DP array to perform the knapsack update.
+- Output logic finds the minimum index `i` where `curr_real[i] >= B` after processing all companies.
+- Fixed loop bounds: 10 companies, 10 package types, 1024 array elements.

@@ -1,0 +1,50 @@
+Design a Verilog module that solves the problem of finding the minimum number of extension multipliers needed to make a rectangular field (initial size h x w) capable of holding a target rectangle (size a x b). The multipliers are applied to either width or length, and can be rotated (i.e., target a x b is equivalent to b x a).
+
+### Interface Specification
+Inputs:
+- `clk`: System clock (rising edge active)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start the computation
+- `a_i`, `b_i`: 16-bit target dimensions
+- `h_i`, `w_i`: 16-bit initial field dimensions
+- `n_i`: 4-bit number of available multipliers (max 16)
+- `mult_i`: 16-bit input for multiplier values (fed sequentially)
+- `mult_valid`: 1-cycle pulse when `mult_i` contains a valid multiplier
+
+Outputs:
+- `result`: 8-bit minimum number of extensions (0-32, 255 if impossible)
+- `done`: 1-cycle pulse when `result` is valid
+- `busy`: High while processing
+
+### Implementation Requirements
+1. **State Management**: Use a synchronous Finite State Machine (FSM) with states: IDLE, LOAD_MULTS, COMPUTE, DONE.
+2. **Multiplier Storage**: Store up to 16 multipliers in a 16x16-bit internal register array `multipliers[0:15]`. The `mult_i` input fills this array sequentially when `mult_valid` is high.
+3. **Algorithm**: Implement a Breadth-First Search (BFS) approach.
+   - **States**: Track current field dimensions `(h_cur, w_cur)` after applying a subset of multipliers.
+   - **Scaling**: Since dimensions can exceed 16-bit, clamp values to 65535 (0xFFFF) once they exceed the maximum target dimension requirement (max(a_i, b_i)). This represents "large enough" without overflow.
+   - **Search Space**: Use a fixed-size memory block (e.g., 1024 entries) to store visited `(h, w)` pairs. Since we limit the number of extensions to 32, the state space is bounded.
+   - **BFS Logic**: In the COMPUTE state, iterate through extensions. For each extension, generate new states by applying the multiplier to `h` or `w` of the current frontier. Check if the new state satisfies the condition: `(h_new >= a && w_new >= b) || (h_new >= b && w_new >= a)`.
+4. **Optimization**:
+   - Multipliers are sorted in descending order before search to find the minimal count faster (optional but recommended).
+   - Limit the search depth to 32 cycles (max extensions).
+   - If `n_i` is large (>16), only consider the largest 16 multipliers.
+5. **Timing**: The module must complete within 10,000 clock cycles.
+6. **Reset**: On reset, all registers and `result` (set to 255) and `done` (set to 0) are cleared.
+
+### Detailed Logic Flow
+- **LOAD_MULTS**: Accept multipliers on `mult_i` when `mult_valid` is high. Store them. When `n_i` multipliers are loaded, transition to COMPUTE.
+- **COMPUTE**:
+  1. Check if initial `(h_i, w_i)` satisfies the condition. If yes, go to DONE with `result = 0`.
+  2. Initialize BFS queue (using a ping-pong buffer of state pairs).
+  3. Iterate `k` from 1 to `n_i` (or max 32):
+     - For each state in the previous queue, generate new states by multiplying `h` or `w` by `multipliers[k-1]`.
+     - Clamp new dimensions to `max(max(a_i, b_i), initial_dim) + 1` or simply 65535 to prevent overflow while keeping comparison valid.
+     - Check condition for each new state. If met, transition to DONE with `result = k`.
+     - Update queue for next iteration if no match found.
+  4. If loop finishes without match, transition to DONE with `result = 255` (representing -1).
+- **DONE**: Assert `done` for 1 cycle, hold `result`.
+
+Note: Use 16-bit arithmetic. If `h_cur` or `w_cur` exceed 65535, clamp to 65535 (or a safe upper bound like 100000).
+
+### Testbench Expectations
+The testbench will provide `n_i` multipliers sequentially, then assert `start`. It will verify `result` matches expected output for given test cases.

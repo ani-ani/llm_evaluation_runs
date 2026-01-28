@@ -1,0 +1,37 @@
+Implement a Verilog module for the garbage disposal problem. Given n days (n <= 16) and bag capacity k (k <= 1023, 10-bit), compute minimum bags needed.
+
+**Problem Rules:**
+- Each day i produces a_i units (0 <= a_i <= 1023, 10-bit).
+- Garbage can be disposed on day i or day i+1.
+- Bags hold up to k units.
+- Multiple bags allowed per day.
+- No garbage after day n-1.
+
+**Algorithm (Simplified DP):**
+- Maintain a `carry` register (10-bit) for garbage moved to next day.
+- For each day `i`:
+  - Total = a_i + carry
+  - Bags used = ceil(Total / k) if it's the last day, else floor(Total / k) (except edge cases where carry>0 and total<k requires a bag).
+  - Calculate new carry for next day: `carry_next = (Total % k)` if `Total >= k`, else `carry_next = Total` (if not last day).
+- The carry logic ensures units are not stranded.
+
+**Module Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Clock and active-low reset.
+  - `start`: 1-cycle pulse to start computation.
+  - `n`: 4-bit input (1-16).
+  - `k`: 10-bit input (1-1023).
+  - `a_in`: 10-bit input for daily garbage amount.
+- Outputs:
+  - `result`: 20-bit output (maximum bags: 16*1023/1 ~ 16368, fits in 20 bits).
+  - `done`: 1-cycle pulse when result is valid.
+- Operation:
+  - On `start`, reset internal state (current day, carry, result accumulator).
+  - Process one day per cycle. Input `a_in` must be valid when `start` is high or during operation (streaming).
+  - After `n` cycles (plus pipeline latency), `done` goes high.
+  - If `n=0`, result is 0 immediately.
+
+**Constraints:**
+- Use 20-bit accumulator for total bags.
+- Handle the special case where remaining carry > 0 after processing all days (add 1 bag).
+- Pipeline the logic: Load a_i, add carry, calculate bags and next carry.

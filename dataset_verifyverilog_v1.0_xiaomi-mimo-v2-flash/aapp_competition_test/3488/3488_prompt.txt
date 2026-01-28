@@ -1,0 +1,49 @@
+Implement a Verilog module that finds the smallest subset of vertices from a convex polygon that contains all K given points.
+
+**SCALING & ADAPTATIONS**:
+- Original N (up to 200,000): Scaled to N <= 16
+- Original K (up to 100,000): Scaled to K <= 16
+- Coordinates (up to 10^9): Scaled to Q16.16 fixed-point (16 integer bits, 16 fractional bits)
+- Algorithm: Since the original polygon is convex and points are strictly inside, we find the minimum number of original vertices needed. For a convex polygon, the minimal subset Z will be a convex polygon formed by some vertices of A. We can solve this by iterating over all possible subsets of vertices (2^N) which is feasible for N<=16. For each subset, we check if it forms a valid convex polygon that contains all points. However, a more efficient approach for hardware: Find the bounding box of the K points in terms of angular sectors relative to the polygon center, then find the minimal set of vertices covering those sectors.
+
+**INTERFACE**:
+Inputs:
+  - clk: System clock
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - N[3:0]: Number of vertices (3-16)
+  - K[3:0]: Number of points (1-16)
+  - vertices_x[15:0], vertices_y[15:0]: Array of 16 vertices (Q16.16 fixed-point)
+  - points_x[15:0], points_y[15:0]: Array of 16 points (Q16.16 fixed-point)
+
+Outputs:
+  - result[4:0]: Minimum number of vertices (5-bit, max 16)
+  - done: 1-cycle pulse when computation complete
+  - valid: Indicates valid output
+
+**IMPLEMENTATION DETAILS**:
+1. **Geometry Engine**: Implement cross product for point-in-polygon test using Q16.16 arithmetic.
+2. **Subset Generator**: For N<=16, use a bitmask from 1 to (1<<N)-1. Each bit represents whether a vertex is included.
+3. **Convexity Check**: For each subset mask, check if the selected vertices form a convex polygon (turning direction consistent).
+4. **Containment Check**: For each valid convex subset, test if all K points are strictly inside. Use ray casting or winding number adapted for fixed-point.
+5. **Minimization**: Track the minimum vertex count across all valid subsets.
+6. **Optimization**: Since N is small, unroll loops where possible. Use pipeline stages for geometry calculations.
+7. **Data Path**: All arithmetic must handle Q16.16. 32-bit intermediates for multiplication (16.16 * 16.16 = 32.32, truncate to Q16.16).
+8. **State Machine**: 
+   - IDLE: Wait for start
+   - GENERATE: Iterate through masks 1 to 2^N-1
+   - CHECK: For each mask, verify convexity and containment
+   - UPDATE: Update minimum count
+   - DONE: Set done signal
+
+**TIMING CONSTRAINTS**:
+- Must complete within 2^16 * (16+16) cycles ~ 2 million cycles for worst case N=16, K=16.
+- Use clock frequency suitable for FPGA (e.g., 100MHz).
+
+**RESET BEHAVIOR**:
+- On reset: result=0, done=0, valid=0, internal state=IDLE
+
+**TESTING**:
+- Provide test cases with N=4, K=2 as shown in examples.
+- Verify against known outputs.
+- Edge cases: N=3 (always 3), K=1 (minimal subset).

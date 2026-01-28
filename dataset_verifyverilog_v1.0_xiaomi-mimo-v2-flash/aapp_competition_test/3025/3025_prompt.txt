@@ -1,0 +1,65 @@
+Implement a Verilog module that solves the bandit gold problem. The problem is simplified to n <= 16 nodes (instead of 36). The bandits must travel from node 1 (home) to node 2 (castle) via the shortest path (fewest edges). On the return trip, they cannot pass through any node from which they stole gold. We need to find the maximum gold sum they can steal on the shortest path such that a valid return path exists avoiding stolen nodes.
+
+Algorithm (Simplified for Hardware):
+1. First, find all shortest paths from 1 to 2 using BFS (unweighted edges). The shortest distance D is the minimum number of edges.
+2. Identify all simple paths of length D from 1 to 2. Since n is small (<=16), we can iterate through all possible subsets of intermediate nodes (excluding 1 and 2) and check if a path exists of exactly length D using only those nodes plus 1 and 2.
+3. For each valid shortest path (set of nodes P), calculate the total gold if we steal from all nodes in P (excluding 1 and 2).
+4. Check if a return path exists from 2 to 1 avoiding the stolen nodes (from P). This is a connectivity check (BFS/DFS) on the graph with nodes in P removed.
+5. Maximize the gold over all valid P.
+
+Hardware Constraints:
+- n (number of villages) is represented by a 4-bit input (since n <= 16).
+- Edges are represented as a bitmatrix of size 16x16 (256 bits total). Input will be loaded into a local memory.
+- Gold values for nodes 3..n are stored in an array of 14 elements, each 16 bits (max gold 5000 * 50 nodes ~ 250k, fits in 18 bits, use 16 bits safe range 0-65535).
+- Output maximum gold is 16-bit.
+
+Module Interface:
+- Inputs:
+  - clk: System clock
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - n_in: 4-bit input, number of villages (valid 3-16)
+  - gold_in: 16-bit input, gold value for current village index (valid 0-13, map to village 3..16)
+  - gold_valid: 1-bit, indicates gold_in is valid for current index
+  - edge_a, edge_b: 4-bit inputs, village indices (1-based, 1-16) for edge to add
+  - edge_valid: 1-bit, indicates edge_a/edge_b is valid
+  - edge_load_done: 1-bit, indicates all edges loaded, start computation
+- Outputs:
+  - result: 16-bit, maximum gold found
+  - done: 1-cycle pulse when computation finished
+  - busy: High while computing
+
+Internal Logic (Behavioral Description to Implement):
+1. Input Phase: Use start pulse to reset state. Wait for edge_load_done to load edges into a 16x16 reg matrix. Simultaneously, load gold values into a gold_mem[14] array. Use gold_valid and edge_valid flags.
+2. BFS Phase: Compute distance matrix between all pairs of nodes (n nodes). Use simple BFS from each node. Since n<=16, this is feasible in O(n * (n+m)).
+3. Path Enumeration Phase:
+   - Determine shortest distance D from 1 to 2.
+   - Iterate through all possible subsets of nodes that can form a path. Since n is small, iterate through all permutations of nodes of length D-1 (intermediate nodes). This is O(n^D) which is too high. 
+   - Optimization: Iterate through all masks of size n (2^n possibilities, n<=16 => 65536 max). For each mask, check if it forms a valid shortest path. 
+     - A mask P (set of nodes) is a valid shortest path if: 1 and 2 are in P (or endpoints), size of P = D+1, and there exists a sequence covering all nodes in P of length D with consecutive nodes connected.
+     - A simpler check: Iterate through all simple paths from 1 to 2 using DFS with depth limit D. Prune if depth > D or if path length > D. Since D is small (<=15), this is manageable.
+   - Hardware friendly approach: 
+     - Precompute adjacency matrix.
+     - Use a stack-based DFS to find all simple paths from 1 to 2 with depth exactly D.
+     - For each found path, calculate gold sum (sum of gold[v] for v in path, v!=1,2).
+     - Check return connectivity: Remove nodes in path (except 1 and 2) from graph, run BFS from 2 to 1. If reachable, update max_gold.
+
+State Machine:
+- IDLE: Wait for start
+- LOAD: Loading edges and gold
+- PREPARE: Run BFS to get all-pairs shortest paths (Dist[i][j])
+- FIND_DIST: Determine D = Dist[1][2]
+- ENUM_PATHS: DFS from 1 to 2 with depth limit D. Maintain current path stack.
+- CHECK_RETURN: For each valid path found, run connectivity check.
+- UPDATE_RESULT: Update max_gold register.
+- DONE: Assert done signal.
+
+Timing:
+- Computation should finish within 5000 cycles for n=16.
+
+Verilog Implementation Details:
+- Use 2D arrays for adjacency matrix (reg [15:0] adj [0:15]).
+- Use 1D array for gold values (reg [15:0] gold [0:13]).
+- Use stack arrays for DFS (reg [3:0] stack [0:15]).
+- BFS queue can be simulated using a shift register.
+- Control logic must be robust to handle the nested loops and state transitions.

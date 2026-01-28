@@ -1,0 +1,70 @@
+Implement a Verilog module that solves the tree joke selection problem using Dynamic Programming and a finite state machine (FSM).
+
+**Problem Scaling:**
+- Maximum nodes (N) = 16
+- Joke types (V_i) scaled from [1,100] to [1,16] (mapped to [0,15] internally)
+- Tree structure represented as an adjacency matrix (16x16)
+- The goal is to compute the number of valid joke sets (consecutive intervals) that can be selected from the tree rooted at node 1.
+
+**Algorithm (Conceptual):**
+1. Traverse the tree (using a stack-based iterator since recursion is hard in Verilog).
+2. For each node `u`, compute a DP table `dp[u][min_joke][max_joke]` = number of valid ways to select a set of jokes in the subtree of `u` such that the selected jokes form a consecutive interval `[min_joke, max_joke]`.
+3. The interval must contain `V[u]`. If not, the state is 0.
+4. To combine children: For a node `u` with children `c1, c2...`, if we have a valid interval `[L, R]` for `u`, we must merge it with children. A child can contribute only if its joke `V[c]` is in `[L, R]` AND its own valid interval `child_L, child_R` is a sub-interval of `[L, R]` (or matches the boundaries).
+   - Optimization: Since the set must be consecutive, if node `u` takes `L=5, R=7`, a child must contribute a set within `[5,7]`. The count is multiplicative across compatible children.
+   - Simplified Logic: Iterate `L` from 0 to 15, `R` from `L` to 15. Check if `V[u]` is in range. If yes, calculate ways by iterating children.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low reset
+  - `start`: Start processing (1 cycle pulse)
+  - `load_addr`: 4-bit address for loading data (0-15 for nodes, 16 for edges)
+  - `load_data`: 32-bit data to load. 
+    - For `load_addr < 16`: Bits [3:0] = Node ID (0-15), Bits [7:4] = Joke Value (0-15).
+    - For `load_addr >= 16`: Bits [3:0] = Parent, Bits [7:4] = Child (Adjacency matrix input).
+  - `load_valid`: High when writing data.
+- Outputs:
+  - `result`: 32-bit result (Total valid sets).
+  - `done`: High when calculation is complete.
+
+**Internal Logic:**
+1. **Load Phase**: Store `V_i` in array `node_val[0:15]`. Store edges in matrix `adj[15:0][15:0]`.
+2. **DP Phase**: 
+   - Use a `current_node` register (0 to 15) to traverse.
+   - Use a 3D array `dp[16][16][16]` (int, initialized to 0). 
+   - **Base Case (Leaves)**: For a leaf node `u`, `dp[u][v][v] = 1` for all valid `v` where `v == V[u]`.
+   - **Recursive Step (Iterative)**: Iterate nodes from bottom (15) to top (1). For each node `u`, combine children.
+     - For `L` in 0..15, `R` in L..15:
+       - If `V[u]` not in `[L, R]`, `dp[u][L][R] = 0`.
+       - Else, `ways = 1`.
+       - For each child `c` of `u`:
+         - Calculate `child_ways = sum(dp[c][i][j])` for all `i,j` where `L <= i <= j <= R`.
+         - Multiply `ways *= child_ways` (handle modulo if needed, but 32-bit int should suffice for N=16).
+       - `dp[u][L][R] = ways`.
+3. **Result**: Sum `dp[0][L][R]` for all `L,R`. (Root is Node 0).
+
+**Constraints:**
+- Clock frequency: 100MHz (10ns period).
+- Latency: Must finish within 10,000 cycles.
+- No external memory access; all tables in registers.
+- Ensure combinational logic paths (especially the summation loop over children) are broken by registers if they get too long, or rely on the FSM sequence.
+
+**Testbench Requirements:**
+- The testbench must parse the specific input format:
+  - Load Node values via `load_addr` (0-15) and `load_data` (packed Node ID + Joke).
+  - Load Edges via `load_addr` (16+) and `load_data` (packed Parent + Child).
+- Verify the result against expected outputs.
+- Handle reset, load sequence, and check `done` signal.
+- Use `clamp_to_width` for all inputs.
+- Check for `is_value_defined` before reading outputs.
+
+**Verilog Spec Summary:**
+- Module `joke_party_dp`.
+- FSM states: IDLE, LOAD, CALC_INIT, CALC_LOOP, FINAL_SUM, DONE.
+- Arrays: `node_val[0:15]` (5 bits), `adj[15:0][15:0]` (1 bit). `dp[16][16][16]` (32-bit).
+- Calculation involves nested loops: Nodes, L, R, Children. 
+- Since `N=16` is small, unroll loops or use simple counters in FSM.
+- `load_data` is 32-bit to pack inputs efficiently.
+
+**Do not provide the Verilog code. Just provide the specification prompt above.**

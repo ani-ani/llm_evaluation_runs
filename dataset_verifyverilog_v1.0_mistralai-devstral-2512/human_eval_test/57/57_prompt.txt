@@ -1,0 +1,56 @@
+Create a Verilog module that checks if a list of numbers is monotonically increasing or decreasing. The module must handle up to 8 elements of 8-bit signed integers.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: 1-bit, rising-edge clock
+  - `rst_n`: 1-bit, active-low synchronous reset (clears all state)
+  - `start`: 1-bit, single-cycle pulse to initiate calculation
+  - `arr[0:7]`: 8-element array of 8-bit signed integers (each element is 8 bits)
+  - `len`: 4-bit unsigned integer indicating number of valid elements (1-8)
+
+- Outputs:
+  - `result`: 1-bit, high if monotonically increasing OR decreasing, low otherwise
+  - `done`: 1-bit, single-cycle pulse when calculation completes
+
+**Algorithm Specification:**
+1. When `start` is high, capture the input array and length
+2. For elements 0 to (len-2):
+   - Compare element[i] with element[i+1]
+   - Determine direction (increasing if next > current, decreasing if next < current)
+   - If len < 2: result = 1 (trivially monotonic)
+   - First comparison sets the expected direction (unless elements are equal)
+   - Subsequent comparisons must either match the direction OR have equal elements
+   - If any comparison violates the monotonic rule, set result = 0
+3. When done, assert `done` for one cycle and present `result`
+
+**Timing Requirements:**
+- Start-to-done latency: maximum 20 cycles for 8 elements
+- `start` is only sampled when rst_n = 1
+- `done` must be asserted exactly once per calculation
+- `result` must be stable when `done` is high
+
+**Reset Behavior:**
+- On reset (rst_n = 0), `done` = 0, `result` = 0
+- Reset must be held for at least 2 clock cycles
+
+**Implementation Hints:**
+- Use an FSM with states: IDLE, COMPARE, COMPLETE
+- Store captured array in internal registers (8x8-bit)
+- Track comparison count and direction state
+- Handle edge cases: len=0, len=1, all equal elements
+- Use signed comparison operators
+- All operations are combinational except state transitions
+
+**Edge Cases:**
+- len = 0 or 1: result = 1
+- All elements equal: result = 1 (both increasing and decreasing)
+- Alternating values: [1,2,1,2] -> result = 0
+- [4,1,0,-10] -> result = 1 (strictly decreasing)
+
+**Parameterization:**
+- Do not use generate blocks or parameters; assume fixed 8 elements, 8-bit width
+- Use standard Verilog synthesis-friendly constructs
+
+**Example:**
+For inputs: arr = [1,2,4,20], len = 4
+Expected: result = 1, done pulses after 4-5 cycles

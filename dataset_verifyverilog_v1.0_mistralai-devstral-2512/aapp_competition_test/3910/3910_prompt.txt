@@ -1,0 +1,21 @@
+Implement a Verilog module that solves the food arrangement problem for scaled-down inputs (n ≤ 16, so 2n ≤ 32 chairs). The problem reduces to 2-coloring a graph where edges exist between each person and their partner, and between each pair of chairs (i, i^1). The solution uses a simple iterative algorithm: initialize an array `partner` of size 2n (index 0 to 2n-1) where `partner[i]` is the chair index of the partner of the person on chair i. Initialize an array `color` of size 2n (0 means unassigned, 1 for Kooft, 2 for Zahre-mar). For each chair i from 0 to 2n-1, if `color[i]` is 0, assign `color[i] = 1` and `color[i ^ 1] = 2` (ensuring consecutive chairs alternate), then set `i = partner[i ^ 1]` and repeat until all chairs are colored. Finally, output the food types for each original pair (a_i, b_i) from the input.
+
+Module Interface:
+- Inputs:
+  - `clk`: System clock (rising edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `a_i` and `b_i`: For each pair i (0 to n-1), the chair indices. Since n is variable, we use a sequential input: `input_valid` indicates valid pair data, `input_a` and `input_b` are the chair numbers (scaled to 0-based, 0 to 2n-1). `input_last` indicates the last pair.
+  - `pair_index`: Current pair index (0 to n-1) when inputting pairs.
+- Outputs:
+  - `result_a` and `result_b`: Food types (1 or 2) for the current pair being output.
+  - `output_valid`: Indicates valid output data.
+  - `output_done`: 1-cycle pulse when all pairs have been output.
+  - `error`: Set to 1 if no solution exists (though the problem guarantees a solution for bipartite graphs).
+- Internal Constraints:
+  - Maximum n = 16, so 2n = 32 chairs.
+  - Use fixed-size arrays: `partner[0:31]` (5-bit index), `color[0:31]` (2-bit value).
+  - The algorithm must run within 1000 clock cycles.
+  - The input pairs are provided sequentially over multiple cycles. The module should first accept all n pairs, then compute the coloring, then output results sequentially.
+- Behavioral Description: Implement a finite state machine (FSM) with states: IDLE, INPUT, COMPUTE, OUTPUT, DONE. In INPUT state, accept a_i and b_i, update partner array (set partner[a_i] = b_i, partner[b_i] = a_i). In COMPUTE state, iterate through chairs 0 to 2n-1 to assign colors as described. In OUTPUT state, for each original pair (stored during input), output the colors of the two chairs.
+- Note: Assume all inputs are valid and within 0 to 2n-1. The graph is guaranteed bipartite, so no error should occur, but implement error checking for unassigned chairs after COMPUTE.

@@ -1,0 +1,46 @@
+You are to design a Verilog module that finds the lexicographically next tolerable string of the same length. A tolerable string uses only the first p letters (a=0, b=1, ..., z=25) and contains no palindrome contiguous substring of length 2 or more (which simplifies to: each character must differ from the previous character and the character two positions before it).
+
+Module Specification:
+- Input Ports:
+  * clk: Clock signal, rising edge triggered
+  * rst_n: Active-low synchronous reset
+  * start: 1-cycle pulse to start computation
+  * n: 4-bit input (1-16, string length)
+  * p: 5-bit input (1-26, number of allowed letters)
+  * s_in[15:0]: 16 x 5-bit array representing the input string (indices 0-15, each 5 bits, 'a'=0, 'b'=1, etc.)
+
+- Output Ports:
+  * result[15:0]: 16 x 5-bit array for the output string
+  * valid: 1-bit output, 1 when result is valid
+  * done: 1-cycle pulse indicating computation complete
+
+- Behavior:
+  1. When start=1, begin computation.
+  2. Reset behavior: done=0, valid=0, result=0
+  3. Find the lexicographically smallest string larger than s_in that satisfies:
+     - Only uses letters 0 to p-1
+     - For each position i: s[i] != s[i-1] and s[i] != s[i-2]
+  4. If no such string exists, set valid=0, output any value for result.
+  5. If found, set valid=1, output the string in result.
+  6. Complete within 2000 clock cycles (worst case n=16, p=26).
+
+- Algorithm Implementation Details:
+  - Use a backtracking approach: start from the rightmost position, try incrementing it, check constraints, and fill remaining positions greedily.
+  - The string can be stored internally in a 16x5-bit register file.
+  - The state machine should have states: IDLE, FIND_POSITION, INCREMENT, CHECK_CONSTRAINT, FILL_REMAINING, DONE.
+  - For each position i (from n-1 down to 0):
+    * Try values from s[i]+1 up to p-1
+    * Check if value != s[i-1] and (i < 2 or value != s[i-2])
+    * If valid, update position i and fill positions i+1 to n-1 greedily: for each position j, choose the smallest value from 0 to p-1 that differs from s[j-1] and (j < 2 or s[j-2])
+  - If no valid increment at any position, result is invalid.
+
+- Timing Requirements:
+  - After start=1, done will be asserted within 2000 cycles
+  - result is valid only when done=1 and valid=1
+  - Reset clears all registers and sets done=0
+
+- Implementation Notes:
+  - The module should be purely combinatorial after start, with registered outputs.
+  - The algorithm guarantees finding a solution or determining none exists within the cycle limit.
+  - Use internal registers to store the working string (16 x 5 bits).
+  - The constraint checking should be done with simple comparators.

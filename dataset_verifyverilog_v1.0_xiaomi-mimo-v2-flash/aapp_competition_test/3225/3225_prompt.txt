@@ -1,0 +1,34 @@
+Design a Verilog module that simulates a queue elimination process for up to 16 candidates with 16-bit values. 
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard clock and active-low reset
+  - `start`: 1-cycle pulse to start the process
+  - `values_in[0:15]`: 16 input values (16-bit each). The valid count is given by `len_in` (4-bit).
+  - `len_in`: 4-bit input specifying the number of valid candidates (1 to 16).
+- Outputs:
+  - `result_final[0:15]`: 16 output values (16-bit each) representing the final queue state.
+  - `len_final`: 4-bit output specifying the number of valid candidates in the final queue.
+  - `result_rounds[0:15][0:15]`: A 2D array storing up to 16 rounds of eliminations. Each round is a list of up to 16 values (16-bit).
+  - `round_counts[0:15]`: 4-bit array, where `round_counts[i]` is the number of eliminations in round `i`.
+  - `num_rounds`: 4-bit output indicating total minutes passed.
+  - `done`: 1-cycle pulse asserted when the simulation is complete.
+
+**Logic:**
+1. Maintain a register array `queue[0:15]` (16-bit) and a valid mask or length `current_len`.
+2. On `start`, initialize `queue` with `values_in` and `current_len` with `len_in`.
+3. Iteratively perform elimination rounds (max 16 rounds to fit hardware constraints):
+   - In each cycle (representing a minute), check all adjacent pairs in the current `queue`.
+   - If a value at index `i` is strictly less than its neighbor (left or right), it is marked for removal.
+   - Perform removal simultaneously after checking all pairs.
+   - If no candidates are removed in a round, stop.
+4. Store the values removed in each round in `result_rounds` and update `round_counts`.
+5. Update `queue` with the remaining values and `current_len`.
+6. When finished, copy the final `queue` to `result_final` and the final length to `len_final`.
+7. Assert `done` for one clock cycle.
+
+**Constraints:**
+- Use a finite state machine (FSM) to control the rounds.
+- Maximum input size is 16 candidates.
+- Input values are up to 16 bits.
+- The process must complete within a reasonable number of cycles (e.g., 256).

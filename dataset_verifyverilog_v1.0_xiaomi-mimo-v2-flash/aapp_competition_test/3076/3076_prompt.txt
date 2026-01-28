@@ -1,0 +1,55 @@
+Design a Verilog module that solves a scaled 0/1 knapsack problem for multiple capacities simultaneously. The module processes up to 64 items with sizes 1-255 (8-bit) and values 0-65535 (16-bit) to compute maximum values for capacities 1-64 (6-bit).
+
+**Core Algorithm**: Implement 0/1 knapsack DP using a 2D lookup table approach adapted for hardware. For each item (processed sequentially), update DP[capacity] values using: dp_new[cap] = max(dp_old[cap], dp_old[cap - size] + value). Use a dual-buffer technique: current and next DP arrays (64x16-bit each). Process items one-by-one, cycling through capacities.
+
+**Interface**: 
+- Inputs:
+  - `clk`: system clock (rising edge)
+  - `rst_n`: active-low synchronous reset
+  - `start`: 1-cycle pulse to begin processing
+  - `item_size`: 8-bit, size of current item
+  - `item_value`: 16-bit, value of current item
+  - `item_valid`: 1-cycle pulse indicating valid item data
+  - `item_done`: 1-cycle pulse when all items are loaded
+- Outputs:
+  - `dp_out`: 64-bit vector representing DP[1..64] packed as: {dp[64], ..., dp[1]} each 16-bit
+  - `done`: 1-cycle pulse when all items processed and DP values are valid
+  - `busy`: 1-cycle high during processing
+
+**Timing**: 
+- Reset clears all DP entries to 0
+- After `start`, module expects item stream via `item_size`, `item_value`, `item_valid`, `item_done`
+- For each item, compute updates for all 64 capacities (64 cycles per item)
+- After `item_done`, finalize within 64 cycles
+- `done` pulse indicates `dp_out` is valid
+- Max processing time: (64 items × 64 cycles) + 64 cycles = 4160 cycles
+
+**Constraints**:
+- Data widths: item_size [7:0], item_value [15:0], dp_out [1023:0] (64×16)
+- Internal DP arrays: 64 entries × 16-bit each
+- Use combinational max logic: max(a,b) = (a > b) ? a : b
+- Handle boundary: when capacity < item_size, skip update
+- All signals must be defined; no X/Z states
+
+**Implementation Notes**:
+- Use two 64×16-bit register banks (current_dp, next_dp)
+- Item processing state machine: WAIT_ITEM → COMPUTE_DP → UPDATE_BUFFER → WAIT_NEXT
+- Capacity loop: counter 1-64 per item
+- Final stage: copy next_dp to current_dp and output packed dp_out
+- Ensure no combinational loops; all paths through registers
+
+**Module Declaration**:
+module knapsack_multi_capacity (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] item_size,
+    input wire [15:0] item_value,
+    input wire item_valid,
+    input wire item_done,
+    output wire [1023:0] dp_out,
+    output wire done,
+    output wire busy
+);
+
+Provide the full implementation including state machine, DP buffer logic, and output packing. Ensure all internal signals are properly sized and the design is synthesizable.

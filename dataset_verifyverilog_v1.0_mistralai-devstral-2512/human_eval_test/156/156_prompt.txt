@@ -1,0 +1,46 @@
+You are to design a Verilog module that converts a decimal integer (1 to 1000) to a lowercase Roman numeral string. The input is a 10-bit binary number representing the integer (since 1000 requires 10 bits). The output should be a string of up to 8 characters (max length of 'mcmxciv' or 'cdxxvi' etc is 7, but we allocate 8 for safety). Each character is represented as an 8-bit ASCII value. The module should be purely combinational (no clock/reset) for simplicity, mapping the decimal input to a pre-computed lookup table for each digit position (thousands, hundreds, tens, ones).
+
+### Interface Specification:
+- **Inputs**: 
+  - `num` (10 bits): Decimal integer 1-1000
+- **Outputs**:
+  - `result` (8 * 8 = 64 bits): Packed ASCII string (8 bytes, each 8 bits)
+  - `len` (4 bits): Actual length of the string (0-7)
+
+### Implementation Details:
+- **Thousands**: 0->empty, 1->"m" (ASCII 109)
+- **Hundreds**: Use lookup: 1-3->"c"/"cc"/"ccc", 4->"cd", 5->"d", 6-8->"dc"/"dcc"/"dccc", 9->"cm"
+- **Tens**: Similarly for "x", "xx", "xxx", "xl", "l", "lx", "lxx", "lxxx", "xc"
+- **Ones**: "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix"
+- **Zero handling**: Skip digits that are zero (no output)
+- **Word order**: Concatenate thousands, hundreds, tens, ones from left to right
+- **Packing**: Result[7:0] is first char, Result[15:8] second, etc.
+- **Example**: num=426 -> 'cdxxvi' -> 'c'(99) 'd'(100) 'x'(120) 'x'(120) 'v'(118) 'i'(105) (plus null terminator? No, just length)
+
+### Constraints:
+- Must handle edge cases: 1, 4, 9, 10, 40, 90, 99, 100, 400, 900, 1000
+- Output is always lowercase ASCII
+- Use parameterized lookup tables for each digit (thousands: 1 entry, hundreds: 10 entries, tens: 10 entries, ones: 10 entries)
+- Each lookup entry contains: string pointer (start index) and length, or directly the ASCII bytes (better: concatenate pre-computed byte strings)
+- Suggested approach: Have four separate lookup blocks (thousands, hundreds, tens, ones). Each block takes the digit value and outputs a variable-length byte sequence. Then concatenate these sequences.
+- To keep combinational, use a multiplexer-based selector for each digit (e.g., for hundreds: 10 cases).
+- For each case, hardcode the ASCII bytes for that segment (e.g., for 4->"cd", bytes 99, 100).
+- Total output length: sum of lengths of non-zero digits.
+- If num=0? Not in spec (1-1000), but handle num=0 -> empty string (len=0).
+
+### Example Mapping:
+- 426: thousands=0, hundreds=4->"cd" (len=2), tens=2->"xx" (len=2), ones=6->"vi" (len=2). Total len=6, bytes: 99,100,120,120,118,105.
+- 19: thousands=0, hundreds=0, tens=1->"x" (len=1), ones=9->"ix" (len=2). Total len=3: 120,105,120? Wait 'x' is 120, 'i' 105, 'x' 120? Actually 'xix' -> x(120), i(105), x(120).
+
+### Implementation Hint:
+- Extract digits: thousands = num / 1000, hundreds = (num % 1000) / 100, tens = (num % 100) / 10, ones = num % 10
+- Use combinational logic (always @*) to select strings for each digit
+- Concatenate: pack the selected bytes into 64-bit reg
+- Output len = len_thousands + len_hundreds + len_tens + len_ones
+- Note: Some digits may be zero, so len for that digit = 0, no bytes added.
+- The output must be packed in order: thousands first (if present), then hundreds, etc.
+- All arithmetic (division/mod) for digit extraction can be done with simple logic since num is 10-bit.
+
+### Testing:
+- Provide a simple testbench with 10-bit inputs and check the ASCII bytes and length.
+- Test cases: 19, 152, 251, 426, 500, 1, 4, 43, 90, 94, 532, 900, 994, 1000, 0 (if allowed).

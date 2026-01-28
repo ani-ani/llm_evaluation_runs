@@ -1,0 +1,44 @@
+Implement a Verilog module that solves the 'max_fill' problem on an 8x8 binary grid.
+
+**Problem Adaptation**: 
+- Grid size fixed to 8 rows × 8 columns (max 64 water units per well)
+- Water units are bits (0 or 1)
+- Bucket capacity is 1-10, treated as integer
+- Output is total bucket drops (ceil(sum(row_i)/capacity) summed over rows)
+
+**Interface**:
+- Inputs (combinational or synchronous):
+  - `clk`: System clock (for sequential version)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `grid[7:0][7:0]`: 8x8 array of 1-bit values (0/1)
+  - `capacity`: 4-bit integer (1-10, valid range 1-10)
+- Outputs:
+  - `result`: 16-bit total bucket drops (max 64*10 = 640 < 2^10, but use 16-bit for safety)
+  - `done`: 1-cycle pulse indicating result is valid
+
+**Behavior**:
+1. On `start` pulse, reset internal counters
+2. Sequentially process each row (8 rows total)
+3. For each row, count set bits (water units)
+4. For each row, compute drops = ceil(row_water / capacity)
+   - Use formula: drops = (row_water + capacity - 1) / capacity
+5. Accumulate total drops across all rows
+6. Assert `done` pulse when computation completes
+
+**Implementation Hints**:
+- Use a state machine: IDLE → COUNT_ROW → ADD_DROPS → NEXT_ROW → DONE
+- Row index counter: 0-7 (3 bits)
+- Row water counter: 0-8 (4 bits)
+- Drops accumulator: 0-640 (10 bits, extend to 16)
+- Total cycles: < 50 (8 rows * 6 cycles)
+- Reset: done=0, result=0, clear all counters
+
+**Timing**:
+- `start` → `done`: within 100 cycles
+- Sample `result` when `done` = 1
+
+**Constraints**:
+- Capacity input is 1-10 (ignore invalid values)
+- Grid bits are valid 0/1
+- Output range: 0 to 640 (16-bit safe)

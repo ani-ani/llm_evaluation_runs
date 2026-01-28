@@ -1,0 +1,36 @@
+Implement a Verilog module to count 1s in a range of the 'abacaba' sequence derived from a number n.
+
+**Problem Analysis:**
+Given n (0 <= n < 2^32), the process generates a sequence:
+- If n <= 1, sequence is [n].
+- Otherwise, sequence S(n) = S(n/2) + [n%2] + S(n/2).
+This forms a binary tree structure where the root is at the center (index = length/2) and is n%2. The left subtree corresponds to S(n/2) and the right subtree to S(n/2).
+
+**Interface Specification:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `n[31:0]`: Input number.
+  - `l[15:0]`, `r[15:0]`: Range indices (1-based, inclusive).
+- Outputs:
+  - `result[15:0]`: Total count of 1s in positions l to r.
+  - `done`: 1-cycle pulse indicating result is valid.
+
+**Logic to Implement (Iterative/FSM approach):**
+1. Use a stack (or manual recursion simulation) to process intervals. Each stack entry should store: `current_n`, `start_index`, `end_index` (relative to the current node's range).
+2. Initialize with the full range: `{n, 1, TotalLen}` where TotalLen = 2^{bit_length(n)} - 1 (if n > 1) or 1 (if n <= 1).
+3. **FSM States:**
+   - `IDLE`: Wait for `start`.
+   - `CALC`: Process stack.
+     - If current range `[curr_l, curr_r]` is fully inside query `[l, r]`, add `popcount(current_n)` to accumulator.
+     - If disjoint, discard.
+     - If partially overlapping, push children to stack:
+       - Calculate `mid_index = (start + end) / 2`.
+       - Left child: `current_n/2`, range `[start, mid_index-1]`.
+       - Center: if `mid_index` in `[l, r]`, add `current_n%2`.
+       - Right child: `current_n/2`, range `[mid_index+1, end]`.
+4. **Optimization:** Since max depth is 32 and max nodes visited is limited by query size, a fixed-size stack (e.g., 64 entries of 64 bits total) is sufficient.
+5. **Widths:** n is 32-bit. Indices are 16-bit (since r <= 10^5, but support up to 2^16). Result is 16-bit.
+
+**Timing:** Start -> Done within 2000 cycles.
+**Reset:** Clear stack pointer, accumulator, done signal.

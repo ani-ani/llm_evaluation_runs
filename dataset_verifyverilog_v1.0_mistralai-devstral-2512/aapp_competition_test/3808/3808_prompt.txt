@@ -1,0 +1,37 @@
+Design a Verilog module to determine if a bracket sequence of length up to 16 can be made correct by moving at most one bracket.
+
+**Problem Adaptation**: Given a sequence of '(' and ')' of fixed length N (N=16), check if it can become a correct bracket sequence by moving at most one bracket (without reversing).
+
+**Algorithm**: 
+1. Verify total number of '(' equals total number of ')'.
+2. Compute prefix balance (increment for '(', decrement for ')').
+3. If at any point balance < -1, the sequence is invalid (cannot be fixed with one move).
+4. If final balance == 0 and minimum balance >= -1, the answer is "Yes".
+
+**Interface Specification**:
+- **Inputs**:
+  - `clk`: System clock (active rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate processing
+  - `seq_in`: 128-bit vector (N=16, 8 bits per character, ASCII 40='(', 41=')')
+  - `len`: 4-bit input (range 1-16)
+- **Outputs**:
+  - `result`: 1-bit output ('1' for Yes, '0' for No)
+  - `done`: 1-cycle pulse asserted when result is valid
+
+**Implementation Details**:
+- **Fixed-Point**: Balance calculations use signed 8-bit arithmetic (range -128 to 127).
+- **State Machine**: 
+  - IDLE: Wait for `start` pulse.
+  - COUNT: Count total '(' to verify even length and equal counts.
+  - CHECK: Iterate through sequence, compute prefix balance, track minimum balance. Terminate early if balance < -2.
+  - DONE: Set `result` and assert `done` for 1 cycle.
+- **Memory**: No external RAM; process sequence stored in `seq_in` registers.
+- **Timing**: Should complete within 64 cycles (16 chars * 4 cycles per char).
+- **Reset**: Clears all counters and state. `result` and `done` are 0 during reset.
+
+**Edge Cases**:
+- Empty sequence (len=0): result = 1 (already correct).
+- Odd length: result = 0 (impossible).
+- Single char: result = 0.
+- Sequence like "()))(" (balance goes to -2): result = 0.

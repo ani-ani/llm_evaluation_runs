@@ -1,0 +1,83 @@
+Implement a Verilog module that checks if an element exists in a fixed-size tuple/byte array. The module should perform a sequential search and return a boolean result.
+
+**Interface Specification:**
+
+Inputs:
+  - clk: 1-bit clock (rising edge)
+  - rst_n: 1-bit active-low synchronous reset
+  - start: 1-bit start signal (1-cycle pulse)
+  - search_value: 8-bit value to search for
+  - tuple_data[0:15]: 16x8-bit array (element 0 to 15)
+  - tuple_len: 5-bit length of valid tuple (0-16)
+
+Outputs:
+  - result: 1-bit (1 if element found, 0 otherwise)
+  - done: 1-bit done signal (1-cycle pulse when valid)
+
+**Functionality:**
+- On rising edge of clk with rst_n=1:
+  - When start=1: Begin sequential search
+  - Search tuple_data[0] to tuple_data[tuple_len-1] comparing each element to search_value
+  - Set result=1 if match found at any position
+  - Set result=0 if no match found
+  - Set done=1 when search completes (after tuple_len cycles, or earlier if match found)
+  - Continue scanning until end even if match found (for deterministic timing)
+
+**Timing Constraints:**
+- start->done: within 17 cycles max (16 iterations + 1 for setup)
+- Reset: After rst_n goes high, done=0, result=0, all counters reset
+- Pipeline: 1 cycle per comparison
+
+**Edge Cases:**
+- Empty tuple (tuple_len=0): result=0, done after 1 cycle
+- Single element (tuple_len=1): Check one element
+- Element at start/middle/end: should detect any
+- Duplicate elements: detect first occurrence but continue scan
+- search_value in tuple: result=1, done=1
+- search_value not in tuple: result=0, done=1
+
+**Implementation Notes:**
+- Use 5-bit index counter to track position
+- State machine: IDLE -> SEARCHING -> DONE
+- When index == tuple_len: transition to DONE
+- If match found at any point: set found flag
+- Hardcode tuple_data width to 8 bits, max length 16
+- All registers must have asynchronous reset
+
+**Reset Behavior:**
+- When rst_n=0: All outputs and internal registers reset to 0
+- Minimal 2-cycle reset required
+
+**Module Definition:**
+module check_tuple_element (
+  input wire clk,
+  input wire rst_n,
+  input wire start,
+  input wire [7:0] search_value,
+  input wire [7:0] tuple_data[0:15],
+  input wire [4:0] tuple_len,
+  output reg result,
+  output reg done
+);
+
+**Implementation Requirements:**
+1. Use a 5-bit index counter to iterate through tuple_data
+2. Use a state machine with 3 states (IDLE, SEARCHING, DONE)
+3. Use a found flag (reg) to store if element was found
+4. On start: reset index, clear found, go to SEARCHING
+5. In SEARCHING: compare tuple_data[index] with search_value
+6. If match: set found=1
+7. Increment index each cycle
+8. When index == tuple_len: go to DONE state, set result=found, set done=1
+9. On done cycle: keep done=1, reset state to IDLE next cycle
+10. On reset: reset all registers to 0, state to IDLE
+
+**Test cases to validate:**
+- Tuple of 10 elements with 'r' at position 2 (search for 'r') -> result=1
+- Tuple of 10 elements with no '5' (search for '5') -> result=0
+- Tuple of 10 elements with 3 at position 1 (search for 3) -> result=1
+- Empty tuple, any search -> result=0
+- Single element matching search -> result=1
+- Single element not matching search -> result=0
+- Element at last position -> result=1
+- Element at first position -> result=1

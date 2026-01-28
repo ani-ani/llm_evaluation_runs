@@ -1,0 +1,41 @@
+Design a Verilog module that counts the number of elements that occur before the first tuple element in a given input array.
+
+**Problem Adaptation:**
+- A Python tuple like `(1, 5, 7, (4, 6), 10)` is interpreted as an array of mixed types. We will model this as an array of 16-bit signed integers, but we need a way to represent a "tuple" element.
+- **Rule**: We treat the first occurrence of a special 2-element pattern `(TUPLE_VAL_A, TUPLE_VAL_B)` as the tuple delimiter. Any other value is considered a single element.
+- **Parameters**: 
+  - `MAX_LEN = 16` (maximum number of elements)
+  - `TUPLE_VAL_A = 16'sd4` (represents first element of tuple, e.g., 4)
+  - `TUPLE_VAL_B = 16'sd6` (represents second element of tuple, e.g., 6)
+  - `DATA_WIDTH = 16` (signed integers)
+- **Input**: A flat array `arr` of `MAX_LEN` 16-bit values. We scan sequentially.
+- **Logic**: Iterate through `arr`. If the current value matches `TUPLE_VAL_A` AND the next value (if within bounds) matches `TUPLE_VAL_B`, stop and return the index. If any non-matching value is encountered, increment count. If end of array reached without finding tuple, return `MAX_LEN`.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: Clock signal (rising edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `len`: 4-bit input indicating actual length of valid data in `arr` (1 to 16)
+  - `arr[0:15]`: 16-element array of 16-bit signed integers (flat inputs: `arr_0` to `arr_15`)
+- Outputs:
+  - `result`: 4-bit integer (count of elements before tuple, 0-15)
+  - `done`: 1-cycle pulse asserted when result is valid
+
+**Behavioral Specification:**
+1. **Reset**: On `rst_n` low, set `result = 0`, `done = 0`, and internal state to Idle.
+2. **Start**: On `start` pulse, begin scanning from index 0.
+3. **Scanning**:
+   - For each index `i` from 0 to `len-1`:
+     - Read `val = arr[i]`.
+     - Check if `val == TUPLE_VAL_A`. If yes, check `i+1 < len`. If yes, read `next_val = arr[i+1]`. If `next_val == TUPLE_VAL_B`, set `result = i` (count of elements before the first element of the tuple), assert `done` for 1 cycle, and return to Idle.
+     - If match fails, continue to next index.
+   - If loop finishes without finding the specific tuple, set `result = len` (all elements counted), assert `done` for 1 cycle.
+4. **Timing**: The operation should complete within `MAX_LEN + 2` cycles after `start`.
+
+**Implementation Details:**
+- Use a Finite State Machine (FSM) with states: IDLE, SCAN.
+- Use a counter `idx` (0 to 15) to track position.
+- Internal registers for `current_val` and `next_val` if needed.
+- Since we are mapping Python's `isinstance(ele, tuple)` to a specific numeric pattern, the logic is purely combinatorial lookup based on `arr` indices.
+- Note: This treats the tuple as a contiguous pair in the array.

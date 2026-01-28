@@ -1,0 +1,45 @@
+Design a Verilog module to solve a scaled knapsack optimization problem with discrete and continuous items.
+
+**Constraints & Scaling:**
+- Target Weight W: Max 1024 (10-bit)
+- Number of Dishes: Max 8 (3-bit index)
+- Data Width: 16-bit signed for weights/tastiness (Q0.16 implied)
+- Arithmetic: Integer arithmetic required. Inputs will be scaled integers (e.g., floating point 1.5 -> 1500). Tastiness values can be negative; use 2's complement.
+
+**Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous reset.
+  - `start`: 1-cycle pulse to start computation.
+  - `w_total`: 10-bit integer target weight.
+  - `d_count`: 3-bit number of dishes (1 to 8).
+  - `dish_type`: 8-bit array (1 bit per dish, 0=Discrete, 1=Continuous).
+  - `dish_weight`: 16-bit array (valid only for Discrete).
+  - `dish_t`: 16-bit array (initial tastiness).
+  - `dish_dt`: 16-bit array (tastiness decay per unit).
+
+- **Outputs:**
+  - `result`: 32-bit signed integer total tastiness.
+  - `impossible`: 1-bit flag (1 if exact weight W cannot be formed, 0 otherwise).
+  - `done`: 1-cycle pulse indicating result is valid.
+
+**Algorithm:**
+1. Initialize a DP table `dp[0..W]` with -INF (except `dp[0]=0`).
+2. Process each dish:
+   - **Discrete (Type 0):** Treat as a bounded item. Maximum count is limited by `W / dish_weight`. Update DP table using bounded knapsack logic.
+   - **Continuous (Type 1):** Since decay is linear, the optimal use is always at maximum possible capacity (or max 1 unit if decay > taste) or 0. Specifically, for a continuous item, the value function is linear: `Value = t*x - 0.5*dt*x^2`. However, since this is an integer linear combination optimization (knapsack), and we have a specific target weight `W`, continuous items effectively allow us to fill the *remaining* weight after discrete items are chosen, provided the net utility per weight is positive for that remaining segment. The optimal strategy for a single continuous item with linear decay is to take as much as possible until tastiness drops to 0. However, with multiple items, we treat it as an unbounded knapsack problem where the item can be taken in infinitesimal amounts, effectively allowing us to fill any remaining integer weight gap `k` with value `k * (t - dt * (k/2))`. Since we must check exact weight `W`, we iterate `w_cur` from 0 to `W`. If `dp[w_cur]` is valid, we calculate the value of adding a continuous item to fill up to `W`: `val = dp[w_cur] + (t * (W - w_cur) - dt * (W - w_cur) * (W - w_cur) / 2)`. We take the maximum over all valid `w_cur` and all continuous dishes.
+   
+   *Correction for HW:* Since DP table is integer indexed, continuous optimization is best done by iterating over discrete sums and checking if filling the rest with a continuous item yields a better result.
+   
+   **Simplified HW Implementation:**
+   - Use a dual-port Block RAM for `dp[0..1023]` (16-bit width).
+   - Iterate through dishes.
+   - For Discrete: Standard unbounded knapsack loop (iterative). Since counts are small, loop `count` times.
+   - For Continuous: After processing all discrete items, run a final pass: `dp_final[W] = max(dp_final[W], dp[w] + calc_continuous_value(w, W))` for all `w < W`.
+
+**Timing:**
+- Start -> Done: Within 50,000 cycles (safe for 8 dishes * 1024 weight * loop overhead).
+
+**Implementation Details:**
+- `dp` array initialized to a large negative number (e.g., 0x8000).
+- `calc_continuous_value`: Compute `t * diff - (dt * diff * diff) / 2`. Note: Division by 2 (shift right) is integer truncation. Ensure signed arithmetic is handled correctly (e.g., using signed multiplier IP or logic).
+- Result `impossible` is 1 if `dp[W]` remains negative/infinite.

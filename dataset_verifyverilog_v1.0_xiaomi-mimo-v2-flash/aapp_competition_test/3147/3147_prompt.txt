@@ -1,0 +1,40 @@
+Implement a Verilog module that finds the largest square submatrix size (1 <= size <= 16) in a binary matrix that is rotationally symmetric by 180 degrees (the submatrix is identical when rotated 180°). The module should scan through all possible square sizes (from largest to smallest) and all possible top-left positions.
+
+Interface Specification:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start processing
+  - matrix_in: 256-bit vector representing the matrix rows concatenated (R*C bits, where R, C <= 16, max 256 bits)
+  - R: 5-bit input (rows, 1-16)
+  - C: 5-bit input (cols, 1-16)
+- Outputs:
+  - result: 5-bit output (largest square size found, 0 if none)
+  - done: 1-cycle pulse indicating valid result
+
+Algorithm (Simplified):
+1. On start, reset internal state.
+2. For size S from min(R,C) down to 2:
+   a. For row i from 0 to R-S:
+      b. For col j from 0 to C-S:
+         c. Check if the SxS submatrix starting at (i,j) is 180° rotationally symmetric.
+         d. This requires comparing element (r, c) with element (S-1-r, S-1-c) for all r, c in the submatrix.
+         e. If symmetric, output S and assert done.
+3. If no symmetric square of size >=2 is found, output 0 (to indicate -1 case handled by testbench).
+
+Implementation Details:
+- The input matrix_in is a packed vector. Access matrix element (r, c) via: matrix_in[r*C + c].
+- Use a finite state machine (FSM) with states: IDLE, CHECK_SIZE, CHECK_ROW, CHECK_COL, CHECK_CELL, FOUND.
+- Internal Registers: current_S (5-bit), current_r (5-bit), current_c (5-bit), sub_r (5-bit), sub_c (5-bit).
+- Check logic: For the current (S, i, j) candidate, iterate sub_r from 0 to S-1 and sub_c from 0 to S/2 (integer division). Compare bit at (i+sub_r, j+sub_c) with bit at (i+S-1-sub_r, j+S-1-sub_c).
+- The check must happen over multiple cycles. A cell check can take 1-2 cycles.
+- If mismatch found, move to next candidate.
+- If all checks pass for a candidate, set result = S, assert done pulse, and return to IDLE.
+- If loop finishes without finding any, set result = 0 (meaning -1).
+- Reset behavior: done=0, result=0.
+- Timing: Processing should complete within a reasonable number of cycles for 16x16 matrix (e.g., < 50,000 cycles). Optimization is not the primary goal; correctness is.
+
+Constraints:
+- Do not use external memory. Use internal logic.
+- R and C are at most 16.
+- The largest possible size is min(R,C).

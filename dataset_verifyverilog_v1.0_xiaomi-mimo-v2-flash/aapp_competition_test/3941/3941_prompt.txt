@@ -1,0 +1,40 @@
+Design a Verilog module that determines if all doors can be unlocked simultaneously. This is equivalent to checking if a graph (where switches are nodes and doors are edges) is bipartite, or solving a 2-SAT problem.
+
+**Adaptations for Hardware**:
+- Scale maximum inputs: `n` (rooms) and `m` (switches) limited to 16 each.
+- Represent the graph using a 16x16 adjacency matrix.
+- Implement a BFS (Breadth-First Search) algorithm using a FIFO queue (max depth 16).
+- Door status (locked/unlocked) is represented as the edge weight (0 or 1).
+
+**Module Interface**:
+- **Clock & Reset**: `clk`, `rst_n` (active low)
+- **Start Signal**: `start` (1-cycle pulse to load inputs and start computation)
+- **Inputs**:
+  - `door_status [15:0]`: 16-bit vector representing initial status of 16 rooms (1 bit per room).
+  - `switch_ctrl [255:0]`: 256-bit packed vector. `switch_ctrl[i]` is 1 if switch `i` controls the current room (we process rooms one by one).
+  - `room_index [3:0]`: Current room index being processed (valid when `load_room` is high).
+  - `load_room`: Pulse high to load data for the current `room_index` into the adjacency matrix.
+- **Outputs**:
+  - `result`: 1-bit. 1 if possible (YES), 0 if not (NO).
+  - `done`: 1-bit. High for 1 cycle when calculation is complete.
+
+**Logic Requirements**:
+1. **Initialization**: When `start` is high, clear the adjacency matrix and state.
+2. **Loading Phase**: When `load_room` is high, update the adjacency matrix row/col for `room_index`. Since each door is controlled by exactly 2 switches, `switch_ctrl` will have exactly 2 bits set. Update `adjacency_matrix[switch_a][switch_b]` with `door_status[room_index]`.
+3. **Computation (BFS)**:
+   - Iterate through all switches (nodes) 0 to `m-1` (m is fixed to 16 for scaling).
+   - If a switch hasn't been visited, start a BFS traversal.
+   - Use a queue to store nodes. Depth must not exceed 16.
+   - For each edge between current node `u` and neighbor `v`:
+     - If `edge_weight == 1` (initially unlocked), neighbor `v` must have the SAME color as `u`.
+     - If `edge_weight == 0` (initially locked), neighbor `v` must have the DIFFERENT color than `u`.
+     - If a conflict arises (neighbor already visited with wrong color), set `result = 0` immediately.
+   - If traversal completes without conflict, `result = 1`.
+4. **Termination**: Assert `done` when all nodes are processed or conflict detected.
+
+**Constraints**:
+- Max 16 switches, 16 rooms.
+- Max 1000 cycles for computation.
+- Use 2D registers for adjacency matrix `adj[15:0][15:0]`.
+- Use 1D registers for `visited[15:0]` and `color[15:0]`.
+- Use a simple FIFO array for the BFS queue.

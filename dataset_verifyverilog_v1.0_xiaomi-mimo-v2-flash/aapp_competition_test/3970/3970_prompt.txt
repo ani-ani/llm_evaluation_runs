@@ -1,0 +1,43 @@
+Implement a Verilog module `k_multiple_free_set` that computes the size of the largest k-multiple free subset of a given set of distinct positive integers.
+
+**Problem Analysis:**
+The input is a set of distinct positive integers. An integer `y` is forbidden if `x * k = y` for some `x` in the set. We want to select the maximum number of elements such that no pair `x, y` satisfies `y = x * k`.
+
+**Algorithm Adaptation (HW-Friendly):**
+1. **Graph Representation**: Model numbers as nodes. If `x` and `y` are in the set and `y = x * k` (or `x = y * k`), draw an undirected edge between them.
+2. **Connected Components**: The problem reduces to finding the size of the maximum independent set in a graph consisting of disjoint paths (since each number connects only to its k-multiple and k-division). In a path graph, the maximum independent set size is `ceil(length/2)` or `length - floor(length/2)` (specifically, if you pick every other node starting from the larger end).
+3. **Implementation Strategy**: Since `n` is large (100k) in the original problem but hardware requires fixed size, we will constrain the input size `n` to a maximum of **16 elements**. Values can be mapped to **16-bit unsigned integers**.
+   - Sort the 16 numbers.
+   - Identify pairs `(x, y)` where `y = x * k`. This forms a graph.
+   - Perform a greedy selection: Iterate from largest to smallest. If a number is available, select it and mark its `x/k` neighbor as unavailable (to avoid conflict).
+   - Count the total selected.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `n`: 4-bit input representing the number of valid elements in `arr` (0-15).
+  - `k`: 16-bit multiplier.
+  - `arr`: Array of 16 elements, each 16-bit wide. Elements beyond `n` are ignored.
+- **Outputs:**
+  - `result`: 16-bit output for the size of the largest k-multiple free subset.
+  - `done`: 1-cycle pulse indicating result is valid.
+
+**Timing & Constraints:**
+- Reset: Must reset all internal state (arrays, counters, flags) to 0. Duration: 2 clock cycles.
+- Operation: `start` triggers the FSM. Processing must complete within **128 clock cycles**.
+- Result valid on `done` rising edge.
+
+**FSM Design (Suggestion):**
+1. **IDLE**: Wait for `start`.
+2. **LOAD**: Transfer `arr` and `k` to internal registers. Sort `arr` (optional, or assume pre-sorted input for simplicity; let's implement a sorting step or a comparator network). For 16 elements, a bubble-sort like FSM is acceptable or just wire inputs to comparators if synthesis allows.
+3. **BUILD_GRAPH**: Iterate through sorted list. Check if `arr[i] * k == arr[j]`. Mark conflict in a relation matrix.
+4. **CALCULATE**: Iterate from largest to smallest index. If not marked as excluded, increment result count and mark the partner `(arr[i]/k)` as excluded.
+5. **DONE**: Assert `done`, output result, return to IDLE.
+
+**Verilog Specifications:**
+- Use `reg` and `wire` for internal state.
+- Use `localparam` for max sizes (16 elements).
+- Ensure bit widths: `arr` elements are 16-bit, `k` is 16-bit, `result` is 8-bit (max 16).
+- The module must be synthesizable.

@@ -1,0 +1,70 @@
+Verilog Module Specification: Fixed-Point Power Calculator
+
+OVERVIEW:
+Implement an iterative exponentiation module that computes a^b where a and b are integers. Convert recursive logic to iterative hardware with bounded cycle count.
+
+INTERFACE:
+- Module Name: power_calc
+- Inputs:
+  * clk: System clock, rising edge active
+  * rst_n: Active-low synchronous reset
+  * start: 1-cycle pulse to initiate computation
+  * a[7:0]: 8-bit base value (unsigned)
+  * b[3:0]: 4-bit exponent value (unsigned, max 15)
+- Outputs:
+  * result[15:0]: 16-bit result (unsigned)
+  * done: 1-cycle pulse indicating valid result
+  * overflow: 1-bit flag set when result exceeds 16 bits
+
+FUNCTIONAL REQUIREMENTS:
+1. Implement as iterative multiplier: result = a^b
+2. Use repeated multiplication: result = 1, then multiply by 'a' for 'b' times
+3. For b=0: result=1
+4. For b=1: result=a
+5. For a=0: result=0
+6. Maximum iterations: 15 (limited by b[3:0])
+7. Clock cycles needed: 16 cycles max (1 for setup + 15 multiplications)
+8. Overflow detection: If any intermediate multiplication exceeds 16 bits, set overflow flag
+9. Result clamping: If overflow occurs, saturate result to 0xFFFF
+
+ARCHITECTURE:
+- State Machine: IDLE → CALCULATING → DONE
+- Registers:
+  * state_r[1:0]: current state
+  * counter_r[3:0]: iteration counter (0 to 15)
+  * base_r[7:0]: stored base value
+  * result_r[15:0]: accumulating result
+  * exp_r[3:0]: remaining exponent counter
+  * overflow_r: overflow flag
+- Control Logic:
+  * On start: latch a, b, initialize result=1 (or 0 for b=0), counter=0, state=CALC
+  * Each cycle: if counter < b, multiply result by base, check overflow, increment counter
+  * When counter == b: set done=1, transition to DONE state
+  * One cycle later: back to IDLE, clear done
+
+TIMING:
+- Start-to-done: 2-16 cycles depending on exponent value
+- Clock frequency: max 100MHz (10ns period)
+- Reset latency: 2 cycles
+
+RESET BEHAVIOR:
+- rst_n low: result=0, done=0, overflow=0, state=IDLE
+- After reset: ready to accept start pulse
+
+OVERFLOW HANDLING:
+- Any multiplication where result_r + (result_r << 3) > 65535 (i.e., result > 8191) triggers overflow
+- Once overflow detected, stop calculation, set overflow flag, clamp result to 65535
+
+REQUIREMENTS:
+- No state transitions on falling edge
+- Combinational logic for multiplication and overflow detection
+- Registered outputs for timing closure
+- Handshake: start must remain high until ready, or can be pulsed
+
+TEST CASES:
+- power(3,4)=81
+- power(2,3)=8  
+- power(5,5)=3125
+- power(0,5)=0
+- power(5,0)=1
+- power(15,15)=overflow expected

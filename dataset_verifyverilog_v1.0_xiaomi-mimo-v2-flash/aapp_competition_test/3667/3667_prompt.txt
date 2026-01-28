@@ -1,0 +1,64 @@
+Implement a Verilog module that determines if a set of pipe intersections can be cleaned without robot collisions. The problem reduces to checking if the intersection graph is bipartite.
+
+**Problem Reduction:**
+- Wells are ignored (wells don't count as intersections)
+- Each pipe is a node (0 to p-1)
+- Each intersection between two pipes becomes an edge
+- We need to check if this graph is bipartite (2-colorable)
+
+**Constraints:**
+- Maximum 1000 pipes (p ≤ 1000)
+- Coordinates: -10000 to 10000
+- Pipes defined by start well index (1-based) and end point (x,y)
+- Well positions given separately
+- Two pipes intersect if their line segments cross (including endpoints)
+- Intersection at a well location does NOT count as a pipe intersection
+
+**Interface Specification:**
+Inputs:
+- clk: rising edge clock
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to begin processing
+- w: 10-bit (0-1023) - number of wells
+- p: 10-bit (0-1023) - number of pipes
+- For each well i (0 to w-1): well_x[i], well_y[i] (each 17-bit signed, range -10000 to 10000)
+- For each pipe j (0 to p-1): pipe_start[j] (10-bit, 1-based index), pipe_end_x[j] (17-bit), pipe_end_y[j] (17-bit)
+
+Outputs:
+- result: 1-bit - 1 if possible (bipartite), 0 if impossible
+- done: 1-cycle pulse when result is valid
+
+**Implementation Guidelines:**
+1. Compute all intersections between pipes (max ~500k comparisons for p=1000)
+2. Build adjacency list for intersection graph
+3. Perform BFS/DFS to check bipartiteness
+4. Use fixed memory: 1000x1000 adjacency matrix (1M bits) or adjacency list with max edges
+5. Pipeline intersection checking: iterate i=0 to p-1, j=i+1 to p-1
+6. Handle coordinates in 17-bit signed format
+7. Two pipes intersect if:
+   - They share a common point that is NOT a well
+   - The intersection point lies on both segments
+8. Check if intersection point equals any well position (within tolerance)
+9. Use iterative BFS with queue (FIFO) for bipartite checking
+10. Timing: Complete within 100,000 cycles for p=1000
+
+**Pipeline Stages:**
+1. Setup: Read inputs, initialize data structures (10 cycles)
+2. Intersection Detection: For all pipe pairs (p*(p-1)/2 cycles, ~500k)
+3. Graph Construction: Build adjacency lists (1000 cycles)
+4. Bipartite Check: BFS on each connected component (up to 1000 cycles)
+5. Output: Set result and done (1 cycle)
+
+**Memory Requirements:**
+- Well coordinates: w×2×17 bits
+- Pipe definitions: p×3×17 bits
+- Adjacency matrix: p×p bits (1M bits for p=1000)
+- Color array: p×2 bits
+- Queue: p×10 bits
+- Working registers for geometry calculations
+
+**Geometry Operations (scaled to 17-bit):**
+- Use integer arithmetic for intersection detection
+- Cross product for line orientation: (x2-x1)*(y3-y1) - (y2-y1)*(x3-x1)
+- Check collinear and between endpoints
+- Compare points for equality (exact integer match)

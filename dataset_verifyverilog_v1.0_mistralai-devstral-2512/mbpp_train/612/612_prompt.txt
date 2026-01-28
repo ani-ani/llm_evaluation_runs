@@ -1,0 +1,51 @@
+Implement a Verilog module that performs matrix transposition on a 2D array. The module takes a 2D array of 8-bit elements and outputs two 1D arrays representing the transposed rows.
+
+### Interface Specification
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle start pulse to initiate operation
+- `arr`: 2D array input. Must support up to 8 sublists, each with up to 8 elements. Each element is 8 bits. Signal naming: `arr[i][j]` or flattened to `arr_{i}_{j}`
+- `num_rows`: 4-bit input (0-7, representing actual row count)
+- `num_cols`: 4-bit input (0-7, representing actual column count per row)
+
+**Outputs:**
+- `transposed_0`: 64-bit output (8x8 packed array) for first transposed row
+- `transposed_1`: 64-bit output (8x8 packed array) for second transposed row
+- `transposed_2`: 64-bit output (8x8 packed array) for third transposed row
+- `transposed_3`: 64-bit output (8x8 packed array) for fourth transposed row
+- `transposed_4`: 64-bit output (8x8 packed array) for fifth transposed row
+- `transposed_5`: 64-bit output (8x8 packed array) for sixth transposed row
+- `transposed_6`: 64-bit output (8x8 packed array) for seventh transposed row
+- `transposed_7`: 64-bit output (8x8 packed array) for eighth transposed row
+- `valid`: 1-cycle pulse when outputs are ready
+- `num_transposed_cols`: 4-bit output (number of columns in output, equals input num_rows)
+
+**Behavior:**
+- On `start` pulse, capture input array and dimensions
+- Compute transposition: row i of output = column i of input (for i < num_cols)
+- Since input is rectangular (all rows have num_cols elements), output will have num_cols rows
+- Pack each 8-bit element into output vector: bits [7:0] = element 0, [15:8] = element 1, etc.
+- Output `valid` high for 1 cycle after computation completes
+- Computation must complete within 64 clock cycles (max 8 rows x 8 cycles)
+
+**Reset:**
+- On reset, `valid` = 0, all outputs = 0, `num_transposed_cols` = 0
+- Min 2 cycle reset duration
+
+**Simplification:**
+- Use a 8x8 scratch memory or registers to store input
+- Transpose by reading input[j][i] and writing to output[i][j]
+- For hardware efficiency, implement as:
+  1. Store input in row-major register file
+  2. Iterate j from 0 to num_cols-1:
+     - Build output row j by concatenating input[0][j], input[1][j], ..., input[num_rows-1][j]
+  3. Output complete when j == num_cols
+- All outputs (transposed_0 through transposed_7) should have valid data only for indices 0 to num_cols-1
+
+**Constraint:**
+- Max 16 rows, max 16 columns (hard-coded to 8 for simplicity)
+- Element width: 8 bits
+- Pipeline not required; combinational logic or FSM acceptable
+- Must handle variable dimensions at runtime

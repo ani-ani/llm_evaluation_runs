@@ -1,0 +1,39 @@
+Implement a Verilog module that solves the maximum chessmen placement problem on an n×m grid where pairs of cells must have Manhattan distance exactly 3. Scale to 16-bit dimensions (n,m ≤ 65535) with iterative bit-reduction formulas.
+
+**Interface Specification:**
+- Inputs: `clk` (1-bit), `rst_n` (1-bit, active-low), `start` (1-bit, 1-cycle pulse), `n` (16-bit), `m` (16-bit)
+- Outputs: `result` (32-bit), `done` (1-bit, pulses when valid)
+- Timing: Start asserted for 1 cycle, operation completes within 1000 cycles. `done` pulses for 1 cycle when valid. `result` is stable when `done=1`.
+- Reset: After 2 cycles of `rst_n=0`, `done=0`, `result=0`, internal FSM idle.
+
+**Algorithm:**
+1. Ensure n <= m (swap if needed using temporary registers).
+2. Handle special cases via FSM with fixed iteration bounds (≤64 cycles):
+   - If n == 1: Compute `r = m % 6`, then `blocked = (r == 0 || r == 1 || r == 2 || r == 3) ? (6 - r) : (r - 6)` → simplified to `min(r, 6-r)`. Result = `m * 2 - blocked * 2`. Wait, correct formula from reference: `result = 6*(m/6) + 2*max(0, m%6 - 3)`. For n=1, answer is that value (total pieces). Implementation: compute `m_mod6 = m % 6` using repeated subtraction (max 5 iterations). Then compute `add = (m_mod6 > 3) ? (m_mod6 - 3) : 0`. Result = `m * 2` (since each pair contributes 2) but careful: The formula outputs the count of placed pieces. If `k` pairs, result is `2*k`. The formula `6*(m/6) + 2*max(0, m%6-3)` gives the count of pairs? No, that's the total pieces. Let's verify: m=4, formula: 6*0 + 2*max(0, 1) = 2. Correct (2 pairs). m=6: 6*1 + 0 = 6. Correct (3 pairs). So result = formula.
+   - If n == 2: Check m == 2 (result 0), m == 3 (result 4), m == 7 (result 12). Else result = n * m (all cells). Implementation: Check equality using comparison trees.
+   - If n >= 3: Result = n * m if even, else n * m - 1. (Since total cells must be even for pairing, leave one corner empty if odd).
+3. Use a 32-bit multiply block (Verilog `*`).
+4. Use a comparator tree for `n == 1`, `n == 2`, `m == 2`, `m == 3`, `m == 7` checks.
+5. Modular arithmetic for `n % 2`, `m % 2`, `m % 6` using subtractive loops (max 6 iterations).
+
+**Verilog Details:**
+- Use standard synchronous sequential logic (FSM).
+- No dynamic loops; unroll or use fixed-count `always` blocks for modulo operations.
+- Clock frequency: Assume 100MHz (10ns period). Cycle budget: 1000.
+- State Machine: IDLE -> CHECK_N1 -> COMPUTE_N1 -> CHECK_N2 -> CHECK_SPECIAL -> COMPUTEGENERAL -> DONE.
+- All operations must fit in hardware. `m % 6` requires subtraction loop. `max(0, val)` uses ternary operator.
+
+**Module Declaration:**
+module max_chessmen (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] n,
+    input wire [15:0] m,
+    output reg [31:0] result,
+    output reg done
+);
+
+/* Implement FSM and logic here */
+
+endmodule

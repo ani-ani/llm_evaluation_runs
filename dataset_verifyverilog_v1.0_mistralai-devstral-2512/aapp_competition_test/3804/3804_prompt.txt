@@ -1,0 +1,34 @@
+You are to design a Verilog module that solves the combinatorial counting problem for n and t (up to 10^12, requiring 40-bit inputs). The problem asks: given n and t, count how many m (1 <= m <= n) satisfy that the sum of values in row m+1 of a specific matrix equals t. The matrix is defined by (x xor y) operation. The Python solution reveals the underlying logic: if t is not a power of 2, the answer is 0. If t is a power of 2, let k = log2(t). We need to count the number of integers x in the range [1, n] such that the number of set bits in (x+1) equals k, with an adjustment for t=1.
+
+The implementation should process the 40-bit binary representation of n+2. Use a digit-DP style approach: iterate through bits from MSB to LSB. Maintain a counter of '1' bits encountered so far. At each position where the bit of n+2 is '1', calculate the number of ways to choose the remaining bits such that the total count of '1's equals k (or k-1 depending on the offset). This requires accessing precomputed binomial coefficients (combinations). 
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock.
+  - `rst_n`: Active-low reset.
+  - `start`: 1-cycle pulse to start computation.
+  - `n_high`, `n_low`: 40-bit n split into 20-bit chunks (n <= 10^12 < 2^40).
+  - `t_high`, `t_low`: 40-bit t split into 20-bit chunks.
+- **Outputs:**
+  - `result_high`, `result_low`: 64-bit result split into 32-bit chunks.
+  - `done`: 1-cycle pulse indicating valid result.
+
+**Implementation Details:**
+1. **Binomial Coefficients:** Store Pascal's triangle rows up to depth 41 (for 40 bits) in a ROM. Since 40x40 is large, compute on the fly or use a small LUT for N <= 32 if space is constrained, or implement a sequential C(n, k) calculator. Given the benchmark nature, a sequential calculator using a loop over bits is acceptable.
+2. **Logic:**
+   - If `t` is not a power of 2, output 0 immediately.
+   - Let `k = bit_length(t) - 1` (index of the single set bit).
+   - Reconstruct `n_plus_2 = n + 2`.
+   - Iterate bits of `n_plus_2` from MSB to LSB (index `i` down to 0).
+   - Maintain `ones_count` (number of 1s seen so far).
+   - If the current bit of `n_plus_2` is 1:
+     - We can choose 0 for the current bit of `m`. Then we need `k - ones_count` ones in the remaining `i` bits. Add `C(i, k - ones_count)` to the result.
+     - Increment `ones_count`.
+   - After loop, if `t == 1` (k == 0), subtract 1.
+   - Clamp result to 64 bits.
+3. **Timing:** Start -> Done within 200 cycles (approx 40 cycles * 5 operations).
+
+**Constraints:**
+- Bit widths: Inputs 40-bit, Internal 64-bit for accumulation, Output 64-bit.
+- Do not use external RAM. Use registers for state.
+- The module must be synthesizable.

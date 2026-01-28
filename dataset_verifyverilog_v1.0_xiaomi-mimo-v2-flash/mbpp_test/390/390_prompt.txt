@@ -1,0 +1,43 @@
+Design a Verilog module that applies a fixed string format to each element of an input array. The format is a 2-part pattern: a fixed prefix (8 chars) and a fixed suffix (8 chars). The input is an array of 4-bit values representing numeric indices (0-15) or ASCII values. The output is an array of fixed 8-char strings for each input element.
+
+**Interface Specification:**
+
+Inputs:
+  clk: 1-bit, rising edge clock
+  rst_n: 1-bit, active-low synchronous reset
+  start: 1-bit, 1-cycle pulse to start operation
+  data_in[0:15]: 16x4-bit array, input values to format
+  prefix[0:63]: 64-bit, ASCII prefix string (8 chars * 8 bits)
+  suffix[0:63]: 64-bit, ASCII suffix string (8 chars * 8 bits)
+
+Outputs:
+  result[0:15]: 16x64-bit array, formatted strings (8 chars * 8 bits each)
+  done: 1-bit, 1-cycle pulse when all formatting complete
+
+**Behavior:**
+1. On reset (rst_n=0), set done=0, clear all result entries
+2. On start pulse:
+   - For each of 16 input elements:
+     - Extract value (4-bit) from data_in[i]
+     - Convert value to ASCII character (0-9, A-F)
+     - Construct string: prefix[63:0] + [converted_char] + suffix[63:0]
+     - Store in result[i]
+3. Operation completes in 18 cycles (16 for processing + 2 overhead)
+4. done=1 for 1 cycle when complete
+
+**Implementation Notes:**
+- Use ASCII encoding: 0x30 for '0', 0x41 for 'A'
+- Output strings are fixed 9 characters (8 from pattern + 1 converted char)
+- Use sequential FSM with 16-state loop
+- Clock frequency: assume 100MHz, max latency 200ns
+- All signals must be registered
+
+**Timing Constraints:**
+- start pulse must be 1 cycle
+- done rises 18 cycles after start
+- result valid when done=1
+- Reset minimum 2 cycles
+
+**Example:**
+- prefix='temp', suffix='', data_in=[1,2,3,4] => result=['temp1','temp2','temp3','temp4']
+- All strings fixed 9 chars, unused positions should be space (0x20)

@@ -1,0 +1,31 @@
+Design a Verilog module to find the path with minimal magic in a small tree. Constraints: Max 8 nodes (N ≤ 8), node magic values (1-100) scaled to Q16.16 fixed-point (16 integer bits, 16 fractional bits), edges unweighted. Path magic = (product of node magics on path) / (path length). Minimize this value.
+
+Module Interface:
+- Inputs:
+  - clk, rst_n: standard synchronous control
+  - start: 1-cycle pulse to initiate computation
+  - node_magic[7:0][31:0]: 8 nodes, each 32-bit Q16.16 fixed-point value
+  - edges[7:0][7:0]: 8x8 adjacency matrix (packed or individual bits)
+  - num_nodes[3:0]: actual number of nodes (1-8)
+- Outputs:
+  - result_numer[63:0]: numerator of minimal magic fraction (reduced)
+  - result_denom[63:0]: denominator of minimal magic fraction (reduced)
+  - done: 1-cycle pulse when result is valid
+
+Implementation Requirements:
+1. Use iterative traversal (BFS/DFS) to explore all simple paths. Since N≤8, brute-force all path combinations is feasible (2^N paths max).
+2. Represent paths as sequences of node indices (max length 8). Use state machine to generate all paths.
+3. For each path:
+   - Compute product of magics as Q16.16 fixed-point (use 64-bit accumulator to avoid overflow).
+   - Track path length.
+   - Compute magic = product / length. Compare as fixed-point rational: (product * length_best) vs (product_best * length_current).
+4. Track best path: store best product (64-bit), best length (4-bit). Update when current magic < best magic.
+5. After exploring all paths, reduce fraction: compute gcd of best_product and best_length. Output numerator = best_product / gcd, denominator = best_length / gcd.
+6. Timing: start->done within 256 cycles. Reset sets done=0, result=0.
+
+Edge Cases:
+- N=1: path is single node, magic = node value / 1.
+- Product overflow: Use 64-bit intermediate; inputs scaled Q16.16 ensures no overflow for 8 nodes with values ≤100.
+- Adjacency matrix: edges[i][j] = 1 if edge exists (undirected).
+
+Hints: Use a counter to generate next path. Pre-compute all possible paths (2^N) or use BFS queue. Minimization: Compare fractions a/b and c/d by comparing a*d vs c*b.

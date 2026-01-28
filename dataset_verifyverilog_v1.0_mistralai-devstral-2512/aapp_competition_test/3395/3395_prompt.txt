@@ -1,0 +1,44 @@
+Design a Verilog module that solves the resource claiming problem on a directed graph. The module computes the minimum settlers needed, which is (dist_from_start_to_iron + dist_from_start_to_coal - 1) if both resources are reachable, otherwise 'impossible'.
+
+### Specifications
+- **Graph Scale**: Maximum 16 nodes (0-indexed, input 1..16 mapped to 0..15). Maximum 8 outgoing edges per node (clamp input to 8). Node IDs > 15 treated as invalid/ignore.
+- **Distances**: Compute BFS distances from source (node 0). Use 4-bit counters for BFS layers (max distance 15).
+- **Resources**: Iron and Coal lists are 16-bit masks (bit set if node contains resource). Input lists are processed to set bits. Validate that iron/coal nodes are within 0..15.
+- **Output**: 8-bit result (value 0..31 or 255 for impossible). 'impossible' represented as 255 (0xFF).
+
+### Inputs (all synchronous to clk, 1-cycle pulse for 'start')
+- `clk`: Main clock, rising edge.
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to initiate calculation.
+- `graph_in_data`: 8-bit data bus for configuration.
+- `graph_in_addr`: 4-bit address (0..15) for graph edges.
+- `graph_in_valid`: 1-bit, indicates valid edge data for current address.
+- `iron_mask`: 16-bit, bit i set if node i contains iron.
+- `coal_mask`: 16-bit, bit i set if node i contains coal.
+
+### Outputs
+- `result`: 8-bit result. 0-31 for settlers, 255 for impossible.
+- `done`: 1-bit, 1-cycle pulse when result is valid.
+
+### Internal Logic
+1. **Configuration Phase**: Accept graph edges via `graph_in_data` and `graph_in_addr`. Use a write-enable flag to store edges in 16x8-bit SRAM (registered).
+2. **BFS Phase**: 
+   - Perform BFS from node 0 (start node).
+   - Maintain `visited` register (16-bit) and `current_distance` counter (4-bit).
+   - Use a 16x4-bit RAM for distances (initialize to 0xF for unreachable).
+   - Limit BFS iterations to 16 cycles (to prevent lockup).
+3. **Computation**:
+   - After BFS, scan `iron_mask` and `coal_mask` against `visited` and `distance` RAM.
+   - Find minimum distance to any iron node (min_d_iron).
+   - Find minimum distance to any coal node (min_d_coal).
+   - If either is 0xF (unreachable), output 255 (impossible).
+   - Else, result = min_d_iron + min_d_coal - 1.
+4. **Timing**: 
+   - Reset sets state to IDLE.
+   - Start initiates graph loading (requires ~16 cycles if full), then BFS (16 cycles), then scan (4 cycles).
+   - Total latency < 100 cycles.
+
+### Constraints
+- Do not infer standard multi-port memories; use registers for small arrays (16x8 bits) or explicit MUXing.
+- Use blocking assignments for sequential logic.
+- Ensure `start` is ignored if processing (FSM locked).

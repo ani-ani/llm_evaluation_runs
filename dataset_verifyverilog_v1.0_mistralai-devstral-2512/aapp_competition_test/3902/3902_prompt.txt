@@ -1,0 +1,39 @@
+Design a Verilog module to find all distinct 2-length and 3-length substrings that can form a valid suffix sequence according to the following rules:
+
+1. **Input**: A string `s` of 5 to 16 lowercase letters (represented as 16x8-bit arrays, each 8-bit value is ASCII code).
+2. **Rule**: The string is constructed by a root (>4 chars) followed by alternating 2/3-length suffixes where no two consecutive suffixes are identical.
+3. **Algorithm**: Perform DP backward from end of string. Track if position `i` is reachable with last suffix being length 2 or 3. For each reachable position, record the suffix (2 or 3 chars) and check adjacency constraint against next suffix.
+
+**Interface**:
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low async reset
+  - `start`: 1-cycle pulse to start computation
+  - `s_ascii[0:15][7:0]`: 16x8-bit array of ASCII values for input string (unused elements = 0)
+  - `s_len[3:0]`: 4-bit length of actual string (5-16)
+- Outputs:
+  - `result_count[4:0]`: 5-bit count of distinct suffixes found
+  - `result_suffixes[0:15][31:0]`: 16x32-bit packed suffixes (each 32-bit contains 2x16-bit or 3x8-bit characters, left-justified)
+  - `result_len[0:15][1:0]`: 16x2-bit array indicating length (2=01, 3=10, 00=unused)
+  - `done`: 1-cycle pulse when computation complete (within 256 cycles)
+
+**Implementation Details**:
+- State machine with 3 states: IDLE, COMPUTE, FINISH
+- DP arrays: `reach2[15:0]` and `reach3[15:0]` (16-bit registers for positions 0-15)
+- For each position `i` from `s_len-1` down to 5:
+  - Check if `i+2` or `i+3` is reachable
+  - Compare `s[i:i+2]` with `s[i+2:i+4]` for length 2 case
+  - Compare `s[i:i+3]` with `s[i+3:i+6]` for length 3 case
+  - Update `reach2[i]` and `reach3[i]`
+  - If reachable, store suffix in result array (deduplicate)
+- Special case: positions `s_len-2` and `s_len-3` are always reachable
+- Max 16 iterations, each iteration 4-8 cycles
+- Use combinational string comparison with 32-bit bit-parallel logic
+- Deduplication via simple lookup table (16-entry, 32-bit hashes)
+
+**Constraints**:
+- Reset: `done=0`, `result_count=0`
+- Timing: start->done ≤ 256 cycles
+- Character encoding: ASCII 'a'-'z' (0x61-0x7A)
+- Lexicographical sort is handled in testbench (hardware returns raw values)
+- Output suffixes packed as: for 2-char: `{char2[7:0], char1[7:0], 16'b0}`; for 3-char: `{char3[7:0], char2[7:0], char1[7:0], 8'b0}`

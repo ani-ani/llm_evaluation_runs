@@ -1,0 +1,43 @@
+Implement a Verilog module that computes the smallest T in [L, L+9] where probability of being at node N (B-ville) after T steps equals exactly 95% (0.95). Use a Markov chain with transition probabilities derived from connection counts. Simplify to N≤8 nodes, L≤255 (16-bit), fixed-point Q16.16 arithmetic.
+
+**Input Interface:**
+- clk, rst_n: Standard synchronous control
+- start: 1-cycle pulse initiates computation for current L
+- N: 4-bit (1-8)
+- L: 16-bit (0-255)
+- transitions[8][8]: 64 ports, each 8-bit (max 255 edges). Place i to j count.
+- done: 1-cycle pulse when computation complete
+- result_valid: 1-bit (1 if T found)
+- T_out: 16-bit result if valid, else 0
+
+**Computation Algorithm:**
+1. Normalize transition matrix: For each row i (0-indexed, node i+1), compute sum of outgoing edges. For each column j, probability = (edges[i][j] * 65536) / sum. Store as Q16.16 (32-bit).
+2. Compute initial state vector: prob[0][0] = 65536 (100% at node 1), others 0.
+3. For each day t from L to L+9:
+   - Multiply state vector by transition matrix using Q16.16 fixed-point (32-bit intermediate, result truncated to 32-bit Q16.16).
+   - Extract probability at node N (index N-1) as p = state[N-1].
+   - Compare p to target = 0.95 * 65536 = 62259.
+   - If p == 62259 exactly, set T_out = t and result_valid = 1, stop.
+4. If no match found after 10 iterations, set result_valid = 0.
+
+**Constraints:**
+- Use finite-state machine: IDLE → NORMALIZE → ITERATE → DONE
+- Each matrix multiplication: 8x8 unrolled loops (max 64 multiply-accumulate ops).
+- All arithmetic in Q16.16: p * q = (p * q) >> 16, saturate at 0xFFFFFFFF.
+- Timeout: max 1000 cycles from start to done.
+- Reset: T_out=0, result_valid=0.
+
+**Timing:**
+- Normalization: 8*8 = 64 cycles (compute sums and probabilities).
+- Iteration: 10 iterations * 64 cycles = 640 cycles.
+- Total < 800 cycles.
+
+**Implementation Notes:**
+- No dynamic loops; use for-loops with fixed bounds (N≤8).
+- Handle L=0 case (t starts at 0).
+- Node indices: 0-based in HDL, but L input is 0-255.
+- If N=1 or N=2, handle base cases.
+
+**Expected Behavior:**
+- After start, module computes all T in range and reports first match or -1 via result_valid=0.
+- Output T_out is valid only when result_valid=1.

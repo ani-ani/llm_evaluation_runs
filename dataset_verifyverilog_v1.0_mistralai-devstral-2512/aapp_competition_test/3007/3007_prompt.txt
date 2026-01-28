@@ -1,0 +1,52 @@
+You are to design a Verilog module that computes the maximum Bling Johan can achieve in a fruit farming game within a limited number of days (d ≤ 40). The module must simulate the daily decisions: harvesting, selling, buying exotic fruits, and planting, optimizing the state transitions.
+
+### Core Logic:
+Implement a Dynamic Programming approach using an FSM that iterates through each day. 
+1. **State Representation**: Track `Bling` (16-bit), `Fruits` (8-bit), `Exotic Fruits` (8-bit), and `Tree Aging Arrays` (3 arrays of 3 counters each, representing 0, 1, 2 days until yield). 
+2. **Transitions**: For each day, perform the following operations in the optimal order (Heuristic: sell first to buy, then plant, then harvest):
+   - **Sell**: Sell all available Fruits (100 Bling) and Exotic Fruits (500 Bling).
+   - **Buy**: If Bling ≥ 400 and a buy slot is free, spend 400 Bling to gain 1 Exotic Fruit.
+   - **Plant**: Prioritize planting Exotic Fruits (high value), then standard Fruits. Update tree counters: planting a tree sets its counter to 2 (yields in 3 days).
+   - **Harvest**: Update all tree counters (decrement if >0). Trees with counter 0 yield 3 fruits (standard or exotic) and reset counter to 2.
+3. **Optimization**: Since exact DP state space is large, constrain the search space: 
+   - Use a Bloom filter or hash set for visited states (Bling, Fruits, Exotic Fruits, Tree Config Hash).
+   - Prune dominated states (if State A has more resources than State B in all categories, discard B).
+   - Heuristic: Focus on planting Exotic Fruits immediately as they offer the highest ROI (500/400 > 100/0).
+   - Limit `Bling` to 0-16383 (14 bits), `Fruits/Exotic` to 0-255 (8 bits). 
+   - `d` is small (≤40), allowing iterative simulation.
+
+### Interface Specification:
+**Inputs:**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start calculation.
+- `d_in` (5-bit): Number of remaining days (1-40).
+- `b_in` (16-bit): Current Bling (0-500).
+- `f_in` (8-bit): Current standard fruits (0-100).
+- `t0_in`, `t1_in`, `t2_in` (8-bit each): Counts of standard trees yielding in 0, 1, 2 days.
+
+**Outputs:**
+- `result` (16-bit): Maximum Bling after `d_in` days.
+- `done`: 1-cycle pulse indicating calculation complete.
+
+**Timing:**
+- The module operates as a sequential FSM. 
+- `start` initiates the simulation for `d_in` days.
+- `done` asserts when the simulation for all days is complete and `result` is valid.
+- Expected latency: up to `d_in * Cycles_Per_Day` (approx 40 * 100 = 4000 cycles).
+
+**Reset:**
+- On reset, internal state is cleared, `result` = 0, `done` = 0.
+
+### Implementation Details:
+- Use a 3-stage pipeline per day: Update Trees -> Sell/Buy -> Plant.
+- Implement a circular buffer or shift register for tree history (standard and exotic trees need separate tracking, but for scaled spec, assume Exotic Trees are tracked in a separate hidden array).
+- Since memory is limited, use register arrays for the 3 standard tree counters and 3 exotic tree counters.
+- Heuristic for buying: Only buy if `b_in >= 400` after selling.
+- Heuristic for planting: Plant all fruits if we have enough days left for them to yield (i.e., `days_remaining > 3`).
+- If `days_remaining` is small (≤3), prefer selling over planting.
+
+### Constraints:
+- Data widths: Bling=16 bits, Fruit counts=8 bits, Days=5 bits.
+- The module must handle the logic where buying an exotic fruit happens once per day if affordable.
+- The simulation must be iterative, updating the state for each of the `d` days sequentially.

@@ -1,0 +1,64 @@
+Implement a Verilog module that computes the maximum absolute product of number pairs from a fixed-size array.
+
+**Requirements:**
+- Input: 8 pairs of 8-bit signed integers (16 total inputs)
+- Output: 16-bit unsigned maximum absolute product
+- Sequential implementation: start signal triggers computation
+- Each pair: compute absolute value of x*y, compare with running max
+- Output valid when done=1
+
+**Interface Specification:**
+Inputs:
+  clk: clock, rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  pairs[0:7][0:1]: 8 pairs of 8-bit signed integers
+    - pairs[i][0] = first element of pair i
+    - pairs[i][1] = second element of pair i
+
+Outputs:
+  result: 16-bit unsigned (max absolute product)
+  done: 1-cycle pulse, asserts when result is valid
+
+**Functionality:**
+1. When start=1, begin computation on next clock edge
+2. For each pair i from 0 to 7:
+   a. Multiply pairs[i][0] * pairs[i][1] (16-bit signed product)
+   b. Take absolute value of product (convert to unsigned)
+   c. Compare with current max, update if larger
+3. When all 8 pairs processed, assert done=1 for 1 cycle and output final max
+4. During computation, done=0 and result is undefined
+
+**Timing:**
+- start->done: 10-12 cycles max (1 cycle per pair + overhead)
+- Result valid only when done=1
+- reset: done=0, result=0, cycles 1-2
+
+**Constraints:**
+- 8-bit signed inputs: range -128 to +127
+- 16-bit product: -16384 to +16383
+- 16-bit unsigned result: 0 to 65535
+- No external memory, use internal registers
+- Resource limit: 8 multipliers or less
+
+**Implementation Hints:**
+- Use sequential state machine (FSM) with 9 states (IDLE + 8 pair states)
+- Pipeline multiplication: 1 cycle for multiply, 1 for absolute, 1 for compare
+- Store max in 16-bit register
+- Use 16-bit signed multiplier core
+- Implement abs: if product negative, subtract from 0
+
+**Example Test Cases:**
+- Input: [(2,7),(2,6),(1,8),(4,9),...8 pairs...] → Output: 36
+- Input: [(10,20),(15,2),(5,10),...8 pairs...] → Output: 200
+- Input: [(11,44),(10,15),(20,5),(12,9),...8 pairs...] → Output: 484
+
+**Module Declaration:**
+module max_pair_product(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] pairs [0:7][0:1],
+    output reg [15:0] result,
+    output reg done
+);

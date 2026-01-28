@@ -1,0 +1,11 @@
+Implement a Verilog module that computes the number of ways at least C clients purchase colored paintings, modulo 10007. The input has N clients (N ≤ 16), each with limits a_i (colored) and b_i (black/white). Each client has independent choices: (1) buy black/white: b_i ways; (2) buy colored: a_i ways. Total ways for a client is (a_i + b_i) modulo 10007. The result is the sum over all subsets of clients of size ≥ C, multiplied by the product of (a_i + b_i) for clients not in the subset, and 1 for clients in the subset (since they choose colored). Equivalently: let S_total = sum of (a_i + b_i) modulo 10007 over all clients. The answer is the sum over all subsets of size k (k ≥ C) of (product of (a_i + b_i) for i not in subset) * (1 for i in subset). This can be computed using dynamic programming: dp[k] = sum of products for subsets of size k. Initialize dp[0] = 1. For each client i, update dp: new_dp[k] = (dp[k] * (a_i + b_i) + dp[k-1]) mod 10007. After processing all clients, answer = sum_{k=C}^{N} dp[k] mod 10007.
+
+Module Interface:
+- Inputs: clk (1-bit), rst_n (1-bit, active-low), start (1-bit, pulse). Data inputs: a_i, b_i for i=0..N-1 (N=16, each 16-bit). C (4-bit, 1-4). Q (7-bit, number of updates, ≤100).
+- For updates: update_en (1-bit), update_idx (4-bit, 0-15), new_a (16-bit), new_b (16-bit).
+- Outputs: result (16-bit), done (1-bit, pulsed when result valid).
+- Timing: start triggers full computation over all clients (≤256 cycles). update_en triggers a single update (re-compute partials, ≤128 cycles). done goes high when result is valid.
+- Reset: done=0, result=0, internal dp state reset.
+- Constraint: Values a_i, b_i must be reduced modulo 10007 before arithmetic.
+- Logic: Use a simple iterative DP state machine. Maintain dp[0..N] registers (16-bit). Process clients sequentially. For update, modify the specific a_i/b_i and recompute dp from scratch (since N small). Output sum of dp[k] for k ≥ C.
+- Ensure modulo 10007 on all additions/multiplications.

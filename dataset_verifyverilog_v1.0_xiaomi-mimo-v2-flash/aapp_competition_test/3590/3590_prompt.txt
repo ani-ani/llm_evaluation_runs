@@ -1,0 +1,47 @@
+You must implement a Verilog module that computes the minimum cut cost to extract a smaller convex polygon B from a larger convex polygon A. 
+
+**Simplification Constraints:**
+1. **Scale**: Coordinates are integers in range [-1000, 1000] (scaled down from 10^6). Use Q16.16 fixed-point for internal calculations.
+2. **Size**: Maximum vertices for A and B is 8 (reduced from 200).
+3. **Algorithm**: 
+   - Input polygon A and B are given as vertex arrays.
+   - The solution involves finding the minimum perimeter of a cut sequence. This reduces to finding the minimum length of a spanning 'cut' path around B.
+   - Implement a simplified version: Calculate the distance between vertices of B and A, then find the minimum perimeter that encloses B using the vertices of A as support.
+   - Specifically, the cost is the perimeter of the convex hull of the union of A and B? No, that's incorrect. 
+   - Correct Logic: The problem asks for the minimum total length of cuts. Each cut is a line segment incident to an edge of B, passing through A.
+   - Let's simplify: We will compute the "Shortest Path" wrapping around B. This is often the perimeter of the convex hull of B projected to A's boundary.
+   - **Proposed Algorithm**: 
+     1. Read A (up to 8 vertices) and B (up to 8 vertices).
+     2. Scale inputs to Q16.16 fixed point.
+     3. For each edge of B, find the corresponding supporting line tangent to A.
+     4. Sum the lengths of these tangents.
+     5. Use dynamic programming: `dp[i][j]` represents the minimum cost to cover the perimeter up to vertex `j` of B using vertex `i` of A.
+
+**Module Interface:**
+- Inputs: 
+  - `clk`, `rst_n`: Standard clock and active-low reset.
+  - `start`: 1-cycle pulse to begin computation.
+  - `a_valid`, `b_valid`: Flags indicating vertex data availability.
+  - `a_x`, `a_y`: 32-bit signed (16.16 fixed point) coordinates for vertex of A.
+  - `b_x`, `b_y`: 32-bit signed coordinates for vertex of B.
+- Outputs:
+  - `result`: 64-bit fixed-point result (32.32 for precision) representing the minimum cost.
+  - `done`: 1-cycle pulse when result is ready.
+  - `busy`: High while computing.
+
+**Implementation Steps:**
+1. **Storage**: Store A and B in 8-slot arrays (packed or unpacked). 
+2. **Fixed-Point Math**: Implement `add`, `sub`, `mul` modules for 32-bit Q16.16.
+3. **Distance**: Euclidean distance `sqrt(dx^2 + dy^2)`. Approximate sqrt using fixed-point iterations (e.g., 8 iterations of Newton-Raphson).
+4. **DP Logic**:
+   - Iterate through edges of B (0 to N-1).
+   - For each edge, iterate through vertices of A (0 to M-1) to find the "tangent" point that minimizes the cut length.
+   - Accumulate cost.
+5. **Control**: 
+   - `LOAD`: Wait for `start`, load vertices into arrays.
+   - `CALC`: Perform geometry checks (cross products) to determine tangency and sum lengths.
+   - `DONE`: Assert done signal.
+
+**Testbench Strategy:**
+- Use provided inputs scaled to fit range [-1000, 1000].
+- Verify output against expected floating point values scaled to Q16.16.

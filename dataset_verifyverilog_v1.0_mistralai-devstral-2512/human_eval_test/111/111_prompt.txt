@@ -1,0 +1,62 @@
+Implement a histogram module that counts lowercase letters from a space-separated input string. Scale to maximum 16 distinct letters and maximum count of 15. Use ASCII encoding (space=0x20, a-z=0x61-0x7A). Output parallel vectors for letters and counts, with a done signal indicating completion.
+
+**Interface Specification:**
+- Inputs:
+  - clk: system clock, rising edge
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to begin processing
+  - char_in: 8-bit ASCII input character (valid when ready=1)
+  - char_valid: input valid indicator
+  - char_done: 1-cycle pulse indicating end of input string
+- Outputs:
+  - result_letters: 16x8-bit packed array, each 8-bit slot contains letter code (0 if unused)
+  - result_counts: 16x4-bit packed array, each 4-bit slot contains count (max 15)
+  - result_len: 4-bit count of active entries (max 16)
+  - done: 1-cycle pulse when processing complete
+  - ready: indicates ready for next input character
+
+**Functional Requirements:**
+1. Parse space-separated lowercase letters from input stream
+2. Count occurrences of each letter (a-z)
+3. Find maximum count among all letters
+4. Return only letters with count equal to maximum
+5. Clear counts on reset
+
+**Implementation Constraints:**
+- Maximum 16 distinct letters can be tracked
+- Maximum count per letter: 15 (4-bit counter)
+- Output format: Parallel vectors, not dictionary
+- Input string length: process until char_done=1
+- Letters 'a'-'z' only (ASCII 0x61-0x7A)
+- Space character (0x20) used as separator
+- All other characters ignored
+
+**Timing Requirements:**
+- start pulse initiates processing
+- Processing completes within 256 clock cycles
+- ready signal indicates input acceptance capability
+- done signal pulses 1 cycle when result is valid
+- result remains valid until next start
+
+**Reset Behavior:**
+- rst_n=0: clears all counters, ready=1, done=0
+- After reset, min 2 cycles before start
+
+**Memory Architecture:**
+- Use 26-element lookup table (a-z) for counting
+- After processing, scan to find maximum count
+- Filter entries matching maximum
+- Pack results into output vectors
+
+**Edge Cases:**
+- Empty input (char_done before any letters): result_len=0
+- Single letter: result_len=1
+- All letters appear once: result_len equals number of letters
+- Multiple letters with same max count: all included
+
+**Testbench Considerations:**
+- Feed string character by character
+- Monitor ready signal for flow control
+- Verify done pulse timing
+- Check result vectors match expected values
+- Test with various string lengths and distributions

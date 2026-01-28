@@ -1,0 +1,55 @@
+Design a Verilog module that solves a simplified tournament ranking problem.
+
+Problem: Given n=16 players (max) and an n x n adjacency matrix `adj` where `adj[i][j]=1` means player i beats player j, find the smallest set S' of players to disqualify (excluding any in the original set S) such that the remaining players have a fair ranking (no cycles). The size of S' must be strictly less than k (original disqualifying set size). If no such S' exists, output 'impossible'.
+
+Module Interface:
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `adj`: Packed 16x16 bit matrix (256 bits total). Bits are indexed as `adj[i*16 + j]`.
+  - `S_mask`: 16-bit mask where bit i=1 if player i is in the original disqualified set S.
+  - `k`: 4-bit unsigned integer, original set size (2 <= k <= 16).
+
+- Outputs:
+  - `result`: 4-bit unsigned integer. The size of the smallest valid S'.
+  - `found`: 1-bit flag, high when result is valid.
+  - `done`: 1-cycle pulse indicating calculation complete.
+
+- Timing Constraints:
+  - The module should complete within 1000 clock cycles.
+  - The algorithm should find the minimal S' by iterating through all possible subsets of the non-S players.
+  - Since n=16, the search space is manageable with bounded loops.
+  - To check if remaining players form a fair ranking (DAG), perform a topological sort or cycle detection (e.g., Kahn's algorithm) on the induced subgraph.
+
+- Implementation Notes:
+  - Since n=16 is small, the search space for S' is 2^(16-k) subsets.
+  - A fair ranking corresponds to the graph of remaining players being a Directed Acyclic Graph (DAG).
+  - To check for cycles in the remaining graph: 
+    1. Identify set R = (all players) - S - S'.
+    2. Compute in-degrees of nodes in R based on adj matrix restricted to R.
+    3. Perform Kahn's algorithm: repeatedly remove nodes with 0 in-degree.
+    4. If all nodes in R are removed, it's a DAG (valid). If not, there is a cycle.
+  - Start by checking S' size 0 (if k > 0, S' must be < k, so if S' valid and size 0 < k, return 0).
+  - Then check S' size 1, 2, ... up to k-1.
+  - Return the smallest valid size found. If none found within range [0, k-1], the module should output `found=0` and `result=0` (or handle via specific 'impossible' logic, e.g., result = k, but problem expects outputting string; for HDL, we'll return a special code like 15 or handle via `found` flag).
+  - Actually, the problem says output 'impossible'. Since HDL outputs integers, we should define a special result value for 'impossible' (e.g., 15 or any value > k). We will set `result = 15` (max 4-bit) and `found = 0` if impossible, else `found = 1`.
+
+- Logic Flow:
+  1. Reset state.
+  2. On `start`, load `adj` and `S_mask`, `k`.
+  3. Iterate `size` from 0 to `k-1`.
+  4. For each `size`, generate all combinations of `size` players from the set `U = {0..15} \ S`. Use a Gray-code or binary counter approach to iterate masks.
+  5. For each candidate mask `S_prime_mask`: 
+     a. Define `active_mask = ~S_mask & ~S_prime_mask`.
+     b. Extract subgraph for `active_mask`.
+     c. Perform cycle check (Kahn's algorithm).
+     d. If acyclic, `result = size`, `found = 1`, `done = 1`.
+  6. If loop finishes without finding, `result = 15`, `found = 0`, `done = 1`.
+
+- Signal Widths:
+  - `adj`: 256 bits (packed).
+  - `S_mask`: 16 bits.
+  - `k`: 4 bits.
+  - `result`: 4 bits.
+  - Internal: State machine controls iteration.

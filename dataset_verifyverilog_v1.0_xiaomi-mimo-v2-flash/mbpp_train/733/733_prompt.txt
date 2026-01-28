@@ -1,0 +1,48 @@
+Design a Verilog module that finds the first occurrence of a number in a sorted array using binary search with an iterative FSM approach.
+
+**Interface Specification:**
+- Inputs:
+  - clk: System clock (rising edge triggered)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle high to start search
+  - arr_0 to arr_9: 10 input ports, each 8-bit wide (Q8.8 fixed-point for values)
+  - x: 8-bit search value
+  - len: 4-bit array length (max 10)
+- Outputs:
+  - result: 8-bit index (0-9), -1 (0xFF) if not found
+  - done: 1-cycle pulse indicating result is valid
+
+**Implementation Requirements:**
+1. **Binary Search FSM** with states: IDLE, INIT, LOOP, CHECK, UPDATE, COMPLETE
+2. **Iteration Control**: Track left (0-10), right (0-10), mid (0-9), result (0-9 or 0xFF)
+3. **First Occurrence Logic**: When arr[mid] == x, record result and continue searching left (right = mid - 1)
+4. **Array Access**: Read arr[mid] using combinational logic (no block RAM needed for 10 elements)
+5. **Timing**: Maximum 10 iterations (cycles) after start, 2-cycle reset
+6. **Data Types**: 8-bit unsigned indices, 8-bit data values (Q8.8 fixed-point)
+7. **Reset Behavior**: result=0xFF, done=0, left=0, right=0
+
+**FSM State Transitions:**
+- IDLE: Wait for start signal
+- INIT: Set left=0, right=len-1, result=0xFF
+- LOOP: Calculate mid = (left + right) >> 1
+- CHECK: Compare arr[mid] with x
+  - If equal: result=mid, right=mid-1, go to CHECK_LEFT
+  - If x < arr[mid]: right=mid-1
+  - Else: left=mid+1
+  - Then check if left <= right, else COMPLETE
+- COMPLETE: Set done=1 for one cycle
+
+**Constraints:**
+- Maximum array size: 10 elements (len=0 to 10)
+- Fixed 10-bit width for all internal signals
+- No combinational loops in binary search (only sequential FSM)
+- done signal stays high for exactly 1 clock cycle
+- If x not found, result=0xFF (255) and done=1
+- All signals must be registered for timing
+
+**Implementation Notes:**
+- Use case statement for FSM state transitions
+- All arithmetic uses unsigned binary
+- arr array indexed by mid during CHECK state
+- When searching for first occurrence, continue even after finding match
+- If left > right in CHECK state, transition to COMPLETE

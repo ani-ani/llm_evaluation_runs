@@ -1,0 +1,30 @@
+Design a Verilog module that computes the maximum number of towers (including one new tower) that can form a connected coverage region. Scale constraints: n ≤ 16 (4-bit index), coordinates (x,y) are 16-bit fixed-point (Q8.8 format: 8 integer bits, 8 fractional bits). Distance threshold is exactly 1.0 km (i.e., 256 in Q8.8, since 1.0 = 256/256). Two towers are connected if their Euclidean distance ≤ 1.0 km. You have n input towers at positions (xi, yi). Output the maximum number of towers (existing + new) that can be connected by optimally placing one additional tower anywhere. The new tower can connect to any existing towers within 1.0 km.
+
+Implementation strategy: 
+1. Build an adjacency matrix for existing towers (n≤16) where edge exists if distance ≤ 1.0.
+2. Find connected components (via BFS/DFS) on existing graph, store component size for each tower (4-bit each).
+3. To maximize after adding one tower: the best result is either (a) connect two components, or (b) add a tower inside a component (but that doesn't increase count unless it bridges to new towers). Actually, optimal is to place new tower to connect to towers in multiple components. Since new tower connects to all towers within 1.0, it can connect to multiple components simultaneously if they are all within 1.0 of the new point. For discrete placement, the best is to connect the two largest components that can be bridged. Since we can place anywhere, we can connect any number of components that have at least one tower each within 1.0 of the new tower. For simplicity (scale), we consider connecting two components: max (size1 + size2 + 1). If only one component exists, answer is n+1.
+4. Compute component sizes. For each pair of components (i,j), if there exists any tower in comp i and any in comp j such that their distance ≤ 2.0 km (so new tower can be placed in the middle within 1.0 of both), then we can connect them. For n≤16, we can brute-force check all pairs of towers from different components: if distance between them ≤ 2.0 (i.e., 512 in Q8.8), then a new tower at midpoint connects both. Also check connecting more than two components (e.g., a central tower connecting multiple). For simplicity, we can check all combinations of components (2^16 is too big, but number of components ≤16). Better: for each possible new tower placement candidate (consider midpoints of all pairs of existing towers, and maybe each tower itself), compute which components it can connect (distance ≤1.0 to at least one tower in the component). Then total = sum of sizes of connected components + 1. Take max. But exact geometry is complex; for HW, we can approximate by checking all pairs of towers: for each pair (i,j), if dist(i,j) ≤ 2.0, then consider connecting their components. So: for each pair (i,j) where components differ, let c1=comp[i], c2=comp[j]. Total = size(c1)+size(c2)+1. Also, if all towers are already connected, result = n+1.
+
+Module Interface:
+Inputs:
+  clk: clock
+  rst_n: active-low reset
+  start: 1-cycle pulse to start computation
+  n: 5-bit input (0 to 16, though n≥1)
+  x[0:15], y[0:15]: 16x16-bit arrays for coordinates (Q8.8). Only first n entries valid.
+Outputs:
+  result: 6-bit integer (max 16+1=17, so 5 bits? Actually 16+1=17, need 5 bits? Wait, max n=16, +1=17, so 5 bits enough? 2^5=32 >17, so 5 bits. But to be safe, use 6 bits).
+  done: 1-cycle high when result valid
+
+Internal:
+  - Store adjacency matrix (16x16 bits).
+  - BFS to find components: need queue, visited array (16 bits).
+  - Compute component ID for each tower (4-bit each).
+  - Compute component sizes (5-bit each, max 16).
+  - For bridging: iterate over all pairs (i,j) where i<j, if comp[i]!=comp[j] and dist(i,j) ≤ 2.0 (512), then candidate = size[comp[i]] + size[comp[j]] + 1. Also, if only one component, candidate = n+1. Take max candidate.
+  - Distance computation: sqrt((dx)^2 + (dy)^2). For fixed-point, compute dx^2 + dy^2 and compare to (2.0)^2 = 4.0. In Q8.8, 2.0 = 512, so square = 512*512 = 262144. dx, dy are 16-bit signed (Q8.8). dx^2 is 32-bit. Sum dx^2+dy^2 <= 262144 for distance ≤2.0.
+  - Use iterative loops with fixed bounds (max 16 iterations for n). All operations combinational except control FSM.
+  - Timing: within 256 cycles.
+
+Reset: done=0, result=0. Start initiates computation.

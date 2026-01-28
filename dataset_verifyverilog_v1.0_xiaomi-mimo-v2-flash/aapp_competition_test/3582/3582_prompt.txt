@@ -1,0 +1,55 @@
+Design a Verilog module that computes a new mentor assignment for a small group of employees. The problem is a simplified directed graph optimization:
+
+**Problem Reduction:**
+- Number of employees n is 16 (scaled down from 500k)
+- Each employee i has exactly one mentor (outgoing edge)
+- Goal: Find a new assignment where every employee has exactly one mentor, and the graph is strongly connected (from any node you can reach any other by following mentors/mentees)
+- This requires the graph to be a single cycle (a permutation)
+- Tie-breaking: For i from 0 to 15, if original mentor != new mentor, choose the smallest possible new mentor for i
+
+**Implementation Strategy:**
+- Since n is small (16), we can implement a greedy cycle-finding algorithm
+- State machine iterates through employees 0..15
+- For each employee i, try candidates from 0..15 in ascending order
+- Skip self (mentor cannot be yourself)
+- Maintain a visited mask to avoid cycles until all nodes are connected
+- Use iterative DFS/bfs with bounded depth (16 steps)
+- Output the first valid assignment found
+
+**Module Interface:**
+- Inputs:
+  - clk: clock
+  - rst_n: active-low reset
+  - start: 1-cycle pulse to start computation
+  - original[0:15]: 16x4-bit array storing original mentor for each employee
+    (Note: Input is 1-indexed in problem, but use 0-indexed internally; store mentor-1)
+  - n: 4-bit input (fixed to 16 in this design)
+
+- Outputs:
+  - result[0:15]: 16x4-bit array storing new mentor for each employee (0-indexed)
+  - done: 1-cycle pulse indicating valid result
+
+**Timing:**
+- Start-to-done: within 2000 cycles (worst case for exhaustive search)
+- Reset: 2 cycles minimum, sets done=0, result=0
+- Clock: Typical 10-50MHz
+
+**Implementation Details:**
+- Use 16-bit state machine with 4 states: IDLE, FIND_CYCLE, VERIFY, DONE
+- FIND_CYCLE: Iterate i from 0 to 15, try candidates j from 0 to 15
+  - Skip if j == i (no self-mentorship)
+  - Check if adding edge i->j creates a premature cycle (except last edge)
+  - Maintain a bitmask of visited nodes during DFS
+  - Bounded DFS depth of 16
+- VERIFY: After building candidate assignment, verify strong connectivity:
+  - From each node, trace mentors for up to 16 steps
+  - Check if all 16 nodes are reachable from every node
+  - Since we enforce exactly one outgoing edge per node, strong connectivity = single cycle
+- Result storage: 16x4-bit register array
+
+**Constraints:**
+- Input: 16 employees, each mentor is 1..16 (stored as 0..15)
+- Output: Same format, 0-indexed internally
+- Memory: 16*4 bits for original, 16*4 bits for result
+- No dynamic memory; all loops bounded
+- Clock edges: All operations synchronized to posedge clk

@@ -1,0 +1,41 @@
+Implement a Verilog module that solves a simplified scheduling problem to find the maximum number of gold stores Demetrios can visit.
+
+**Problem Context:**
+There are `N` gold stores (N <= 16). Each store `i` has:
+- `t_i`: Round-trip time (1 to 255 seconds)
+- `h_i`: Initial altitude (1 to 255 feet)
+- Sea level rises 1 foot/second starting from 0.
+
+**Constraint:** A store must remain above water during the entire round trip. This means if we visit a store at time `T_start`, the trip ends at `T_end = T_start + t_i`. We must have `T_end <= h_i`.
+
+**Goal:** Find the maximum number of stores visitable.
+
+**Algorithm Suggestion (Simplified):**
+Since N is small (16), we can use a DP approach processing stores sorted by altitude (or time). 
+Let `dp[mask]` be the minimum time to visit the set of stores in `mask` (subset of stores). Iterate through masks and try adding a new store `k` if `dp[mask] + t_k <= h_k`.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: System clock and active-low reset.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `n`: 4-bit input for number of stores (1-16).
+  - `t_i` (8-bit), `h_i` (8-bit): Input data for store `i`. Valid when `addr` is stable.
+  - `addr`: 4-bit address to index into the input array for loading.
+- **Outputs:**
+  - `result`: 5-bit output (max count 0-16).
+  - `done`: 1-cycle pulse indicating calculation complete.
+- **Control Flow:**
+  1. `start` goes high.
+  2. Host sets `addr` and drives `t_i`/`h_i` for `i=0` to `n-1`. Module must latch these values into an internal buffer. (Assume `addr` increments or is handled by host).
+  3. Module computes DP.
+  4. `done` pulses high, `result` holds answer.
+
+**Implementation Details:**
+- Use fixed-point arithmetic (Q8.8) if needed, but given limits (256, 16), 16-bit integers suffice.
+- State: `dp[65536]` is too large. Optimize: We only need the minimum time for each count of visited stores.
+  - `min_time[c]` = minimum time to visit exactly `c` stores. Initialize `min_time[0] = 0`, others `infinity`.
+  - Process stores sorted by altitude.
+  - Update `min_time` in reverse (like knapsack).
+- Since sorting requires logic, we can process stores as they come or sort in a pre-processing step (conceptually).
+- For the module, assume input stores are provided in arbitrary order but must be sorted internally or processed carefully. A simpler approach for the prompt: Accept stores one by one and update the DP state iteratively.
+- **Cycle Budget:** Max 200 cycles for `n=16`.

@@ -1,0 +1,34 @@
+Design a Verilog module that counts lucky numbers with n digits (1 ≤ n ≤ 8). A lucky number has property: for each prefix length k (1 to n), the number formed by first k digits is divisible by k. Input is a 4-bit n. Output is the count of such numbers (supply). Implementation approach: For each position, maintain a remainder state modulo LCM(1..n). Since n ≤ 8, LCM(1..8) = 840, requiring 10-bit state. Use a combinatorial truth table for k=1..8. The module should compute count via a lookup table (brute-force) since search space is 10^8 = 100M, too large. Instead, use dynamic programming: dp[pos][rem] = count. For n=8, DP size is 8*840 = 6720 states, manageable. Output count as 24-bit number.
+
+Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset
+  start: 1-cycle pulse to start computation
+  n: 4-bit unsigned integer (1 to 8)
+Outputs:
+  result: 24-bit unsigned count
+  done: 1-cycle pulse when computation complete
+
+Timing:
+- Reset: min 2 cycles, result=0, done=0
+- Start->done: within 1000 cycles
+- Sample result when done=1
+
+Implementation Details:
+- Use DP with states: pos (0 to n), rem (0 to 839)
+- Transition: for each digit d (1-9 for pos=0, 0-9 for pos>0), new_rem = (rem*10 + d) % lcm[1..n]
+- dp[pos][rem] stores count of ways to reach rem at pos
+- Initialize dp[0][0] = 1
+- For pos from 0 to n-1: update dp[pos+1][...] from dp[pos]
+- Final answer: sum over dp[n][rem] for all rem (since any remainder works at full length)
+- Use 24-bit counters, 10-bit remainder (0-839)
+- Precompute LCMs for n=1..8: [1,2,6,12,60,60,420,840]
+- State machine: IDLE → COMPUTE → DONE
+- Since DP involves loops over digits and positions, implement iterative updates with combinational logic
+- Handle n=1 case: numbers 1-9 (9 numbers)
+- For n=2: numbers 10,12,14,15,16,18,20,21,24,27,30,32,36,40,42,45,48,50,54,60,63,70,72,75,78,80,81,84,90 (28? wait 45 as sample says - need check) Actually sample says 45 for n=2, so count is 45.
+
+Correct Logic: For n=2, first digit 1-9, second digit 0-9, check (first*10+second)%2==0. That's 45 numbers. So DP works.
+
+The module must compute for n=1 to 8 within hardware constraints.

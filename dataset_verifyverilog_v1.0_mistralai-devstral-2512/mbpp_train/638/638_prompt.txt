@@ -1,0 +1,38 @@
+Design a Verilog module that computes the wind chill index using the formula: windchill = 13.12 + 0.6215*t - 11.37*v^0.16 + 0.3965*t*v^0.16, where v is wind velocity in km/h (0-128) and t is temperature in Celsius (-40 to +40). The result should be rounded to the nearest integer.
+
+Implementation Requirements:
+1. Use Q16.16 fixed-point arithmetic throughout
+2. Implement v^0.16 using a lookup table (16 entries) with linear interpolation
+3. The module should be combinational or use a simple sequential control flow
+4. Round final result to nearest integer (add 0.5 and truncate)
+
+Interface Specification:
+Inputs:
+  v: 8-bit unsigned, wind velocity (0-128 km/h)
+  t: 8-bit signed, temperature (-40 to +40°C)
+Outputs:
+  result: 8-bit signed, wind chill index (rounded)
+  valid: 1-bit, indicates when output is ready (for sequential version)
+
+Timing:
+- If sequential: start pulse initiates computation, done within 20 cycles
+- If combinational: output always valid
+
+The module must handle:
+- Fixed-point multiplication (Q16.16 x Q16.16 -> Q32.32, truncate to Q16.16)
+- Fixed-point addition/subtraction (Q16.16)
+- Rounding: add 0x8000 (0.5) before shifting down
+- Range clamping for intermediate results
+
+Key Constants (Q16.16):
+- 13.12 = 0x000D1EB8
+- 0.6215 = 0x0009E5C2
+- 11.37 = 0x000B5D17
+- 0.3965 = 0x00066147
+- 0.5 (for rounding) = 0x00008000
+
+Edge Cases:
+- t < -40: clamp to -40
+- t > 40: clamp to 40
+- v > 128: clamp to 128
+- Result should be saturated to [-50, 50] range

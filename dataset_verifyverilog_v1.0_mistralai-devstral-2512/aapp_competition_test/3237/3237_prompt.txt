@@ -1,0 +1,23 @@
+Implement a Verilog module to find the minimum cost to purchase servers for storing exactly K bytes. The cost is M + N where M is the size of each server (bytes) and N is the number of servers, such that M * N = K. K is given via its prime factorization.
+
+**Adaptations for Hardware:**
+1.  **K Representation:** K can be extremely large (exponential factors). However, the number of divisors is at most 10^10, but we are constrained by hardware. The input provides prime factors as two-digit strings. We will aggregate these into a set of prime powers. Since hardware has limited bit-width, we will scale the problem by focusing on the structure of K. Specifically, we assume K fits within a 32-bit integer or that we are solving for the optimal divisor pair (M, N) where M <= N.
+2.  **Algorithm:** The cost is M + K/M. To minimize this, M should be close to sqrt(K). We iterate through all divisors of K. Since the number of divisors can be large, we limit the search space by iterating M from 1 up to a bounded limit (e.g., 256) or by iterating through the prime factors to generate divisors.
+    *   **Simplified Approach:** Parse the input string to extract prime factors. Construct K as a 32-bit integer (clamping if it overflows, though the problem implies large K, we simulate the divisor enumeration logic). Iterate M from 1 to sqrt(K) (clamped to max iteration count, e.g., 65535 cycles). Check if M divides K. If so, calculate cost = M + K/M. Track the minimum.
+    *   **Constraint:** The input string is up to 700 chars (350 factors). We cannot store 350 factors in small FPGA BRAM easily without deep logic. We will limit the input to the first few factors (e.g., 8-16 factors) or treat the input stream sequentially.
+    *   **Hardware Logic:** A control unit parses the ASCII input stream (simulated as a parallel array for simplicity in the testbench, or a serial stream for the module). It computes K. Then, a divisor iterator loop runs for a fixed number of cycles (e.g., 1024) to find the minimum M + K/M.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`, `rst_n`: Standard clock and active-low reset.
+  - `start`: 1-cycle pulse to begin processing.
+  - `factor_str`: Input string of prime factors (ASCII representation). For hardware simplicity, we will map this to a fixed-width array of 8-bit values, representing the digits. Max length 16 characters (representing 8 factors).
+  - `str_len`: 4-bit integer indicating the length of the factor string.
+- Outputs:
+  - `result`: 32-bit integer representing the minimum cost modulo 10^9+7.
+  - `done`: 1-cycle pulse indicating calculation complete.
+
+**Implementation Steps:**
+1.  **Parsing:** A state machine reads the `factor_str` array. It pairs ASCII digits (e.g., '0', '2') to form a prime factor (02 -> 2). It multiplies these factors to compute K. Since K can overflow, we compute K modulo 10^9+7? No, we need K to check divisibility. We will compute K and store it in a 32-bit register (clamping logic included).
+2.  **Divisor Search:** A loop iterates `i` from 1 to `sqrt(K)` (or a fixed max like 4096). In each cycle, check if `K % i == 0`. If true, cost = `i + K/i`. Update `min_cost` if `cost < min_cost`.
+3.  **Output:** When the loop finishes, output `min_cost` and set `done` high.

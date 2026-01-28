@@ -1,0 +1,57 @@
+## Verilog Module Specification
+
+Implement a module that splits an input array into two parts based on a split length parameter.
+
+### Requirements:
+- Input array: `in_data` - 8-bit elements, max 16 elements
+- Split length: `L` - 4-bit value (0-15)
+- Output: Two separate output arrays `out_first` and `out_second`
+- Input length: `in_len` - 4-bit value (0-15)
+- Boundary: For `in_len` elements, first `L` go to `out_first`, remaining go to `out_second`
+
+### Interface:
+
+**Inputs:**
+- `clk`: Clock signal (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start operation
+- `in_data[0:15]`: 16-element input array of 8-bit values
+- `in_len[3:0]`: 4-bit input length (0-15)
+- `L[3:0]`: 4-bit split point (0-15)
+
+**Outputs:**
+- `out_first[0:15]`: 16-element output array for first part (8-bit each)
+- `out_second[0:15]`: 16-element output array for second part (8-bit each)
+- `first_len[3:0]`: 4-bit length of first output (0-15)
+- `second_len[3:0]`: 4-bit length of second output (0-15)
+- `done`: 1-cycle pulse when operation completes
+
+### Behavior:
+1. On `start` pulse, capture `in_data`, `in_len`, and `L`
+2. Copy first `L` elements (or `in_len` if `L > in_len`) to `out_first`
+3. Copy remaining elements (from index `L` to `in_len-1`) to `out_second`
+4. Set `first_len = min(L, in_len)`
+5. Set `second_len = in_len - first_len`
+6. Set `done = 1` for one cycle
+7. All outputs valid when `done = 1`
+
+### Timing:
+- `start` to `done`: Max 16 cycles (one per element to copy)
+- Reset: Minimum 2 cycles, sets all outputs to 0
+
+### Constraints:
+- If `L > in_len`, first part contains all elements, second part is empty
+- If `L = 0`, first part is empty, second contains all elements
+- Unused output array elements should be zero
+- Input values can be 8-bit unsigned (0-255) or ASCII characters
+
+### Example:
+Input: `in_data[8:0] = [1,1,2,3,4,4,5,1]`, `in_len=8`, `L=3`
+Output: `out_first[0:2] = [1,1,2]`, `out_second[0:4] = [3,4,4,5,1]`
+`first_len = 3`, `second_len = 5`
+
+### Implementation Notes:
+- Use a state machine (IDLE, PROCESSING, DONE) to control flow
+- Use counters to track current element index
+- Copy elements sequentially from input to appropriate output
+- Clear output arrays on reset or new operation

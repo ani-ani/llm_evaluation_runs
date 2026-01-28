@@ -1,0 +1,42 @@
+You are to design a Verilog HDL module that simulates the expected weight updates of N pictures over m visits, where n <= 20 and m <= 3000. The module will track two groups of pictures: liked (a_i=1) and disliked (a_i=0). 
+
+The algorithm uses DP to compute the probability distribution of the number of times a liked picture is selected over m steps. This distribution updates based on current weights and probabilities.
+
+Interface Specification:
+- Inputs: 
+  - clk: System clock
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate computation
+  - n: 4-bit (max 20 pictures)
+  - m: 12-bit (max 3000 visits)
+  - a[0:19]: 20-bit array, each bit indicates if picture i is liked (1) or disliked (0)
+  - w[0:19]: Array of 20x32-bit initial weights (mod 998244353)
+- Outputs:
+  - result[0:19]: Array of 20x32-bit final expected weights (mod 998244353)
+  - done: 1-cycle pulse when computation finishes
+
+Internal Logic Requirements:
+1. Separate liked and disliked weights: compute total_liked_sum and total_disliked_sum.
+2. Use DP to compute probability distribution X[k] for k = 0..m, representing the probability that the total number of times liked pictures are chosen is k.
+   - Initialize X[0] = 1 (or equivalent fixed-point representation).
+   - For each step from 0 to m-1, update X using transition probabilities.
+   - Transition depends on current total weights (liked + disliked + shift).
+3. After DP, compute expected weight changes:
+   - For liked pictures: E[weight] = initial_weight + (expected_additions)
+   - For disliked pictures: E[weight] = initial_weight - (expected_subtractions)
+4. Use fixed-point arithmetic (Q32.32 or scaled integers modulo 998244353) to handle fractions.
+5. The DP array size is m+1 (max 3001 entries), each entry 32-bit.
+6. The module should iterate through steps and update the DP table in place or using a secondary buffer.
+
+Timing:
+- start -> done within m * (n + C) cycles, where C is a small constant.
+- Result is valid when done is high.
+
+Reset Behavior:
+- On reset, internal state (DP table, accumulators) is cleared to zero.
+- done = 0.
+
+Constraints:
+- Use modulo 998244353 arithmetic for all sums and products.
+- Precompute modular inverses if needed (hardcoded or combinational logic).
+- The module must handle the maximum constraints (n=20, m=3000) within reasonable resource usage (e.g., BRAM for DP table).

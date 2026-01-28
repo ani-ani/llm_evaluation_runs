@@ -1,0 +1,50 @@
+Create a Verilog module for left rotating a 32-bit number by d bits.
+
+### Interface Requirements:
+- **Inputs**:
+  - `clk`: system clock (rising edge), `rst_n`: active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate operation
+  - `num_in`: 32-bit input number to rotate
+  - `d_in`: 5-bit rotation amount (0-31)
+- **Outputs**:
+  - `result`: 32-bit rotated result
+  - `done`: 1-cycle pulse indicating valid result
+
+### Functional Requirements:
+1. **Clocking & Reset**:
+   - Synchronous design with registered outputs
+   - Reset clears `result` to 0, `done` to 0, state machine to idle
+   - Minimum 2-cycle reset required
+
+2. **Operation Logic**:
+   - Left rotation: `(n << d) | (n >> (32 - d))`
+   - Edge cases: When `d_in == 0`, result equals `num_in`
+   - Use `d_in[4:0]` to select rotation amount (0-31)
+   - 32-bit boundary: bits shifted beyond MSB wrap to LSB
+
+3. **Timing**:
+   - `start` pulse must be 1 clock cycle
+   - `done` pulses 1 cycle when computation complete
+   - Computation completes in 1-2 clock cycles (combinational logic + register)
+   - `result` is valid when `done == 1` (one cycle after start for simple combinational path)
+
+4. **State Machine** (suggested implementation):
+   - **IDLE**: Wait for `start == 1`, then transition to COMPUTE
+   - **COMPUTE**: Calculate rotation, latch result, pulse `done`, return to IDLE
+
+5. **Bit Widths**:
+   - `num_in`: 32 bits
+   - `d_in`: 5 bits (supports 0-31)
+   - `result`: 32 bits
+   - Internal shifts: 32-bit + 32-bit = 33-bit overflow, truncate to 32 bits
+
+6. **Important Implementation Notes**:
+   - For `d_in == 0`: no shift, `result = num_in`
+   - For `d_in == 32`: effectively no rotation (though d_in max is 31 per spec)
+   - Use masking to ensure only 32 bits are considered
+   - Avoid zero rotation when `d_in == 0` to prevent unnecessary shifts
+
+### Example Valid Input/Output:
+- Input: `num_in = 16 (0x0000_0010)`, `d_in = 2` -> Output: `64 (0x0000_0040)`
+- Input: `num_in = 99 (0x0000_0063)`, `d_in = 3` -> Output: `792 (0x0000_0318)`
+- Input: `num_in = 1`, `d_in = 3` -> Output: `8`

@@ -1,0 +1,46 @@
+Design a Verilog module that computes the minimum initial velocity for a cat to eat n mice (n ≤ 15) on a 2D grid. Each mouse has coordinates (x, y) and a deadline s. The cat starts at (0,0), moves in straight lines between mice, and slows down by factor m (0.75 ≤ m ≤ 0.99) after eating each mouse. The cat can eat a mouse if it reaches it exactly at or before its deadline.
+
+**Inputs**:
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `m`: 16-bit fixed-point Q8.8 representation of slowdown factor (0.75 ≤ m ≤ 0.99)
+- `mouse_x[0:14]`: 15x12-bit signed integers (Q4.8) for x-coordinates
+- `mouse_y[0:14]`: 15x12-bit signed integers (Q4.8) for y-coordinates  
+- `mouse_s[0:14]`: 15x14-bit unsigned integers (Q2.12) for deadlines
+- `num_mice`: 4-bit unsigned (1-15)
+
+**Outputs**:
+- `result`: 32-bit fixed-point Q16.16 minimum initial velocity
+- `done`: 1-cycle pulse when computation complete
+- `valid`: High when result is valid
+
+**Algorithm**:
+1. Precompute distances between all mice and from origin using integer Manhattan-like distance scaled by 256 (fixed-point)
+2. Use DP with bitmask state (1 << 15 possible states) tracking eaten mice
+3. For each state, compute minimum initial velocity needed to reach next mouse within its deadline, considering velocity decay
+4. Implement dynamic programming recurrence: dp[mask][i] = minimum velocity to reach mouse i after eating set 'mask' of mice
+5. Handle velocity scaling: v_current = v_initial * (m)^k where k is number of mice eaten
+6. Use iterative relaxation over time steps (up to 256 cycles per state)
+7. Return minimum v_initial across all final states
+
+**Timing**:
+- `start` to `done` within 100,000 cycles (worst-case 2^15 * 15 * 256)
+- `result` valid when `done` is high
+- Reset clears all DP tables and sets `done=0`, `valid=0`
+
+**Implementation Notes**:
+- Use fixed-point arithmetic: distances in Q8.8, time in Q16.8, velocity in Q16.16
+- Implement sqrt approximation via Newton-Raphson (5 iterations)
+- Clock frequency: 100 MHz
+- Use block RAM for DP state storage
+- Use pipelined multiplication for velocity scaling
+
+**Constraints**:
+- All arithmetic must handle 16-bit inputs
+- No floating-point; use fixed-point throughout
+- State machine must handle 2^15 * 15 = 49152 entries
+- Distance calculation: √(Δx² + Δy²) must be approximated
+- Deadline check: distance / velocity <= deadline_s
+
+Provide complete Verilog module specification with exact port definitions.

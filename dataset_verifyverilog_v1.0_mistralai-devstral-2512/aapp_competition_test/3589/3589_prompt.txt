@@ -1,0 +1,41 @@
+Verilog module specification for digit product distribution counting with scaled parameters.
+
+Problem: For a number, repeatedly multiply non-zero digits until single digit remains (1-9). Count how many numbers in range produce each final digit.
+
+Adaptation: Since 10^15 is too large, we scale to 16-bit numbers (0-65535) with max 5 digits. We precompute digit products using digit DP logic.
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset
+  start: 1-cycle pulse to start computation
+  L[15:0]: 16-bit lower bound
+  R[15:0]: 16-bit upper bound
+
+Outputs:
+  count[0:8]: 9x16-bit outputs, count for digits 1-9 (index 0=1, 8=9)
+  done: 1-cycle pulse when all counts ready
+
+Behavior:
+  1. When start=1, compute counts for range [L, R] inclusive
+  2. Use digit DP with state: position (0-5), tight flags, current product state
+  3. Product state maps to final digit 1-9
+  4. Results appear at done=1 cycle, valid until next start
+  5. Computation completes within 256 cycles
+  6. Reset: counts=0, done=0
+
+Constraints:
+  - L <= R, both 16-bit
+  - Range size up to 65535
+  - Product intermediate may exceed 16-bit, use 32-bit accumulator internally
+  - Fixed-point not needed, exact digit products
+
+Timing:
+  start->done: max 256 cycles
+  Reset minimum 2 cycles
+
+Implementation hint:
+  - Digit DP: iterate numbers 0 to R, subtract 0 to L-1
+  - For each number, simulate digit multiplication
+  - Store counts in 9x16-bit registers
+  - Use shift registers for digit extraction
+  - Product state compression: prime factors 2,3,5,7 only

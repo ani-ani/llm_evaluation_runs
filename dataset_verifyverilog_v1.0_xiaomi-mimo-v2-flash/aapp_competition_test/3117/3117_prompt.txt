@@ -1,0 +1,42 @@
+Create a Verilog module that finds the length of the longest substring appearing at least twice in a string. Constraints: Maximum string length is 64 characters (hardcoded). Characters are ASCII lowercase letters (7-bit ASCII). Algorithm: Use binary search on length L from 1 to string length, check if any substring of length L appears twice using direct comparison. Module interface:
+
+Inputs:
+  clk: clock signal
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  str_len: 6-bit input (0-63) indicating actual string length
+  char_in: 7-bit input for streaming character data
+  char_valid: 1-cycle pulse when char_in contains valid character
+
+Outputs:
+  result: 6-bit output (0-63) containing longest duplicate length
+  done: 1-cycle pulse when computation is complete
+  busy: high while processing
+
+Operation:
+1. When start=1 and rst_n=1, module accepts characters via char_in/char_valid for str_len cycles
+2. Store characters in internal buffer
+3. Perform binary search: max_len = str_len, min_len = 0
+4. For each candidate length mid, scan all positions 0 to str_len-mid
+5. Compare substrings starting at each pair of positions
+6. If any substring appears twice, set min_len = mid, else max_len = mid-1
+7. When binary search completes (max_len <= min_len), output result = min_len
+8. Set done=1 for 1 cycle
+
+Implementation notes:
+- Use 64x8-bit BRAM for string storage
+- Binary search requires at most 6 iterations (log2(64))
+- Each iteration scans up to 64 positions, each comparison up to 64 chars
+- Use 12-bit cycle counter (max 256 cycles per test)
+- Wait for 'start' pulse before accepting characters
+- After last char, wait for computation
+- Reset: result=0, done=0, busy=0
+
+Timing: start to done within 2048 cycles max
+
+Testbench must:
+- Initialize string via streaming char_in/char_valid
+- Verify result matches expected output
+- Handle small test cases (6-18 chars) and edge case (0 length)
+- Include at least 3 test cases
+- Use timeout of 3000ms

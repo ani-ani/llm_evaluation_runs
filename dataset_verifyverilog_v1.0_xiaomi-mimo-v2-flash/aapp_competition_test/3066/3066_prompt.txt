@@ -1,0 +1,54 @@
+Design a Verilog module that reconstructs tape art instructions from a sequence of colors. The core algorithm is a stack-based sweep to verify validity and generate non-overlapping tape instructions.
+
+**Problem Constraints & Scales:**
+- Max sections: 256 (8-bit limit)
+- Max color value: 256 (8-bit limit)
+- Max distinct colors: 256
+- Max instructions: 256 (8-bit limit)
+
+**Algorithm Details:**
+1. **Validity Check:** For each color `c`, let `first[c]` and `last[c]` be the first and last occurrence indices. The art is valid if and only if for every position `i`, the color `c` at `i` matches the color at `first[c]`. If `c_i != color_at_first[c_i]`, output "IMPOSSIBLE".
+2. **Instruction Generation:** Use a stack to track active intervals. Iterate from 1 to `n` (1-indexed). At each position `i` with color `c`:
+   - If stack top is `c`, continue.
+   - If stack top is different, push `(i, c)` if `i <= last[c]`.
+   - If `i == last[c]` for the current top, pop and emit instruction `(l, r, c)` where `l` is the stored start index.
+   - If `i == last[c]` for a color not at top, it implies overlap error (should be caught by validity check).
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `color_in`: 8-bit color value for current section
+  - `len`: 8-bit input (number of sections, $n$)
+- **Outputs:**
+  - `cmd_type`: 2-bit (00: IMPOSSIBLE, 01: VALID, 10: INSTRUCTION)
+  - `l`, `r`, `c`: 8-bit values (valid when `cmd_type` == 10)
+  - `done`: 1-cycle pulse indicating completion
+  - `error`: High if impossible
+
+**Control Flow:**
+- When `start` is high, reset internal state and begin accepting `color_in` values.
+- Process sections in sequence (requires external input generation or internal counter).
+- Since external interface only accepts 1 color at a time, we assume the `color_in` stream is fed over `n` cycles.
+- After `n` cycles, processing shifts to verification/stack operations.
+- `done` goes high once instructions are generated or error is determined.
+
+**Internal Architecture:**
+- **State Machine:** IDLE, READ_COLORS, VERIFY, EMIT_STACK, FINISH.
+- **Memory:** 
+  - `color_ram` (256 x 8-bit): Stores input colors.
+  - `first_ram` (256 x 8-bit): Stores first index of each color.
+  - `last_ram` (256 x 8-bit): Stores last index of each color.
+  - `stack_ram` (256 x 16-bit): Stores (start_index << 8) | color. Stack pointer SP.
+- **Logic:**
+  - During READ_COLORS, write `color_in` to `color_ram[i]` and update `first_ram`/`last_ram`.
+  - During VERIFY, iterate `i` from 1 to `n`. Check `color_ram[i] == color_ram[first_ram[color_ram[i]]]`. If mismatch, latch error.
+  - During EMIT_STACK, perform the stack sweep. 
+  - Output instructions via `l`, `r`, `c` signals sequentially.
+
+**Timing:**
+- Reset to 0.
+- Processing `n` cycles for input.
+- Verification/Stack processing ~2-3n cycles.
+- Total < 1000 cycles for max inputs.

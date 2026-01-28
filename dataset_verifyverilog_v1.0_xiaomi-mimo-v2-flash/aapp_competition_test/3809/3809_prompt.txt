@@ -1,0 +1,41 @@
+You are to implement a Verilog module that solves the boat crossing problem with weights 50 or 100 kg, capacity k, and n people (n <= 50).
+
+**Adaptations:**
+1.  **State Space:** The state is defined by the number of 50kg people (c50, 0-50) and 100kg people (c100, 0-50) on the starting bank, and the current shore (0=start, 1=dest). Since n <= 50, the maximum for c50 is 50 and c100 is 50. 50 needs 6 bits. 50*50*2 = 5000 states, which fits in FPGA BRAM or distributed RAM.
+2.  **BFS Algorithm:** Implement a synchronous Finite State Machine (FSM) that performs a Breadth-First Search (BFS) on the state graph.
+3.  **Memory:** Use three BRAM blocks:
+    - `visited`: 51x51x2 bit array (1-indexed for simplicity).
+    - `dist`: 51x51x2 x 8 bits (max distance ~160 for n=50).
+    - `ways`: 51x51x2 x 32 bits (modulo 10^9+7).
+4.  **Queue:** A synchronous FIFO queue holding the current states (c50, c100, shore). Depth ~1024.
+5.  **Transitions:** For each popped state, generate all valid moves (fifty from 0 to avail50, hundred from 0 to avail100). Check `total_weight <= k`. Calculate next state and update `dist` and `ways`.
+6.  **Combination Logic:** Use a pre-computed combination module (Pascal's triangle up to 50) to calculate `C(n, k)` for the number of ways to choose people.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous signals.
+  - `start`: 1-cycle pulse to start the calculation.
+  - `c50_in`: 6-bit input, count of 50kg people.
+  - `c100_in`: 6-bit input, count of 100kg people.
+  - `k_in`: 13-bit input (max 5000).
+- **Outputs:**
+  - `result_dist`: 8-bit output (min rides).
+  - `result_ways`: 32-bit output (number of ways).
+  - `valid`: High when result is valid.
+  - `done`: High for 1 cycle when search completes (or impossible).
+- **Timing:** The FSM should complete within 200,000 cycles (worst case state space 5000 states * ~40 transitions).
+
+**Implementation Details:**
+- Use a 3-stage FSM: IDLE, SEARCH, FINISH.
+- In SEARCH, pop from queue (BRAM-based or register-based if small enough, but BRAM is safer). Since the state space is small, a distributed RAM might be better for speed.
+- Calculate `ways_next = ways_curr * C(avail50, move50) * C(avail100, move100) % MOD`.
+- Handle the `impossible` case: If queue empties and destination not reached, output -1.
+
+**Verilog Prompt:**
+Write a Verilog module `boat_crossing` that implements the BFS solution. The module should contain:
+1.  **Combination ROM:** A block that computes `C(n, k)` for n, k <= 50.
+2.  **Memory Interface:** Logic to read/write `dist` and `ways` arrays based on (c50, c100, shore).
+3.  **FSM:** Main controller handling the BFS loop.
+4.  **Queue:** A circular buffer for BFS states.
+
+Do not write the full testbench, just the module.

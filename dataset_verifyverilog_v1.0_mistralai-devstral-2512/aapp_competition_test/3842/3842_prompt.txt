@@ -1,0 +1,40 @@
+Design a Verilog module to find the minimum days needed to reach experience p and money q by working on projects. Each project i has daily experience gain a_i and daily income b_i. You can switch between projects at any time.
+
+**Constraints & Scaling:**
+- Number of projects n ≤ 6 (scaled down from 100k for hardware feasibility). This allows a brute-force search or small convex hull.
+- p, q, a_i, b_i are integers 1..1,000,000. Represent as Q16.16 fixed-point (16 integer, 16 fractional bits). Scale all inputs by shifting left 16 bits.
+- Output: Real value days. Format as Q16.16 fixed-point.
+- Maximum days calculation: Since p,q ≤ 1M and min a_i,b_i ≥ 1, max days ≤ 1M. With Q16.16, this fits in 32 bits.
+
+**Algorithm:**
+1. **Input:** 6 projects (padded to 6 if n<6). Each project has a_i, b_i.
+2. **Logic:**
+   - The optimal solution is either:
+     a) Use only one project i: Days = max(p/a_i, q/b_i)
+     b) Mix two projects i and j: Solve for time t1 and t2 such that t1*a_i + t2*a_j = p and t1*b_i + t2*b_j = q. Total days = t1 + t2.
+   - Iterate through all combinations of projects (i, j) where i < j.
+   - For each combination, check if the solution is feasible (t1 >= 0, t2 >= 0).
+   - Find the minimum total days among all valid solutions.
+
+**Module Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `p`, `q`: 32-bit inputs (Q16.16).
+  - Project data: For i in 0 to 5, inputs `a_i` and `b_i` (32-bit each, Q16.16).
+- Outputs:
+  - `result`: 32-bit output (Q16.16) representing minimum days.
+  - `done`: 1-cycle pulse when calculation is complete.
+
+**Timing:**
+- Must complete within 200 clock cycles.
+- Reset: `done` = 0, `result` = 0.
+
+**Implementation Details:**
+- Use combinational logic or a small FSM to handle the arithmetic.
+- Division (p/a_i) must be implemented as integer division of scaled values (e.g., (p << 16) / a_i). Note: inputs are already scaled Q16.16, so division logic needs to handle fixed-point arithmetic carefully or use pre-scaled logic.
+- For mixing projects: Solve linear equations. Denominator D = a_i*b_j - b_i*a_j. If D != 0:
+  - t1 = (p*b_j - q*a_j) / D
+  - t2 = (q*a_i - p*b_i) / D
+  - Total days = t1 + t2.
+- Optimization: The logic should handle the search for the minimum efficiently. Since n is small (6), a loop over pairs is acceptable.

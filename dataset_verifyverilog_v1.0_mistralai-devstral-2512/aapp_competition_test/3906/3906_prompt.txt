@@ -1,0 +1,26 @@
+Implement a Verilog module that calculates the number of random pictures for an n x m grid where each cell has at most one adjacent cell of the same color. The mathematical solution is: ((Fibonacci(n-1) + Fibonacci(m-1) - 1) * 2) % (10^9+7), where Fibonacci(0)=1, Fibonacci(1)=2. Since n and m can be large (up to 100,000), compute Fibonacci numbers iteratively using a finite state machine with a bounded loop counter.
+
+Inputs:
+- clk: rising edge clock
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to initiate calculation
+- n[15:0]: 16-bit row dimension (scaled from original range)
+- m[15:0]: 16-bit column dimension (scaled from original range)
+
+Outputs:
+- result[31:0]: 32-bit result modulo 10^9+7
+- done: 1-cycle pulse indicating result is valid
+
+Implementation Details:
+1. Use a state machine with states: IDLE, CALC_FIB_N, CALC_FIB_M, COMBINE, OUTPUT
+2. Compute Fibonacci numbers iteratively up to max(n, m)
+3. Store Fibonacci values in registers: fib_prev (F_{i-1}), fib_curr (F_i)
+4. Use a 16-bit loop counter (max 65535 cycles for 16-bit inputs)
+5. Perform modulo 10^9+7 (0x3B9ACA07) using conditional subtraction (cheaper than division)
+6. When n=1, Fibonacci(n-1) = Fibonacci(0) = 1. Handle n=1 and m=1 as edge cases
+7. The final formula: result = ((fib_n + fib_m - 1) * 2) mod MOD
+8. Reset: state=IDLE, result=0, done=0, all internal registers cleared
+9. Operation: assert start for 1 cycle when rst_n=1, done asserts after 2*max(n,m) cycles (worst case)
+10. Constraints: max computation cycles ≤ 65,536 for 16-bit inputs
+
+Timing: start->done within 2*max(n,m) cycles, sample result when done=1

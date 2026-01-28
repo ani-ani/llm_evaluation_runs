@@ -1,0 +1,29 @@
+Implement a Verilog module to find the minimum tunnel length for a courier system across circular islands and palm trees. Scale requirements: Max 16 islands, 8 palm trees. Coordinates, radii, and heights scaled to 16-bit signed integers (Q8.8 fixed-point for coordinates, 16-bit integer for radii/heights). Distances computed using integer squared arithmetic to avoid floats. The problem reduces to building a connectivity graph where two islands are connected if palms can throw between them (distance <= k*height sum) or a tunnel connects them. The goal is to find the minimum tunnel length needed to connect all islands, or detect if it's impossible. Use a BFS/DFS or Union-Find approach on the graph of islands, considering edges sorted by tunnel length.
+
+Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset
+  start: 1-cycle pulse to start computation
+  island_x[15:0], island_y[15:0], island_r[15:0]: 16-bit arrays for up to 16 islands
+  palm_x[15:0], palm_y[15:0], palm_h[15:0]: 16-bit arrays for up to 8 palms
+  n_islands[3:0]: 4-bit count of islands (1-16)
+  n_palms[3:0]: 4-bit count of palms (0-8)
+  k[15:0]: 16-bit ratio multiplier
+  n_inputs_ready: 1-cycle pulse indicating all input arrays are valid
+
+Outputs:
+  result[15:0]: 16-bit result (minimum tunnel length in cm, 0 if none needed, or special value 0xFFFF for impossible)
+  done: 1-cycle pulse when computation complete
+
+Constraints:
+- Compute pairwise distances squared between islands (use 32-bit internal accumulation).
+- For each pair of islands, check if connected via palm throws: For any palm in island A and any palm in island B, check if distance(palm_A, palm_B) <= k * (h_A + h_B). If any pair satisfies, islands are connected.
+- If not directly connected via palms, record the required tunnel length as distance between islands minus sum of radii (minimum straight line tunnel through sea).
+- Build an edge list of required tunnel lengths for unconnected island pairs.
+- Find minimum total tunnel length to connect all islands: Sort edges by length, use Union-Find to connect components until all islands in one component. Output the sum of selected edge lengths. If islands are already fully connected via palms, output 0. If impossible (disconnected even with all possible tunnels), output 0xFFFF.
+- Timing: Computation within 10,000 cycles for 16 islands.
+- Reset: result=0, done=0, all internal states cleared.
+- No external memory; use internal registers for graph (max 16 islands, edge list up to 120 edges).
+
+Test with given examples scaled to 16-bit: For sample 1, islands at (0,0,400), (1000,0,400), (2000,0,400); palms at (300,0,150), (1300,0,150); k=3. Output should be 1400. For sample 2, k=2, output 'impossible' (represented as 0xFFFF).

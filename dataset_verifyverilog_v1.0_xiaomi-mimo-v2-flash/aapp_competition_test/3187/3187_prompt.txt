@@ -1,0 +1,45 @@
+Implement a Verilog module that computes the minimum total Manhattan distance for placing a gathering intersection point (x*, y*) given citizen coordinates and a maximum per-citizen distance constraint d. The solution must use fixed-point arithmetic to approximate real distances.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `citizen_count`: 8-bit input representing number of citizens (max 128)
+  - `citizen_x`: 8x16-bit array (packed) for citizen x-coordinates (Q8.8 format, scaled by 256)
+  - `citizen_y`: 8x16-bit array (packed) for citizen y-coordinates (Q8.8 format, scaled by 256)
+  - `max_dist`: 16-bit integer representing maximum allowed Manhattan distance per citizen (scaled by 256)
+- Outputs:
+  - `result`: 32-bit signed integer representing minimum total scaled distance (0 if impossible)
+  - `done`: 1-cycle pulse indicating completion
+  - `impossible`: 1-bit flag indicating no valid intersection exists
+
+**Implementation Requirements:**
+1. **Scaling**: Input coordinates are 16-bit Q8.8 format (integer part in lower 8 bits, fractional in upper 8 bits). For simplicity, we'll treat all distances as integers by ignoring fractional parts (truncating).
+2. **Constraint**: Process up to 128 citizens (hard-coded). For each citizen, x and y are 16-bit values.
+3. **Search Space**: Compute median-like intersection by examining possible x and y coordinates derived from citizen locations. For each candidate (cx, cy):
+   - Check if all citizens satisfy |cx - xi| + |cy - yi| <= d (scaled)
+   - If valid, compute total distance sum(|cx - xi| + |cy - yi|) for all citizens
+   - Track minimum total distance across all valid candidates
+4. **Bounded Search**: To keep hardware feasible, examine only 32 candidate x coordinates and 32 candidate y coordinates derived from citizen positions (e.g., sorted citizens[0:32].x, citizens[0:32].y). This is a heuristic approximation.
+5. **Output**: If no valid intersection found within search space, set impossible=1 and result=0.
+
+**Timing:** start->done within 200 cycles. Reset takes 2 cycles, sets done=0, result=0, impossible=0.
+
+**Verilog Module Interface:**
+```verilog
+module min_total_distance (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] citizen_count,
+    input wire [127:0] citizen_x,  // 8x16-bit packed
+    input wire [127:0] citizen_y,  // 8x16-bit packed  
+    input wire [15:0] max_dist,
+    output reg [31:0] result,
+    output reg done,
+    output reg impossible
+);
+```
+
+**Note:** The testbench will unpack citizen_x and citizen_y arrays. Each 16-bit value represents a fixed-point coordinate (Q8.8). The module should handle signed calculations appropriately. For the 2D search, generate candidate x coordinates as the first 32 unique x values from the input, similarly for y. Then iterate through the Cartesian product of these candidate sets (up to 32x32=1024 combinations). For each combination, check the distance constraint for all citizens (up to 128), compute total distance, and track the minimum. Implement this using a state machine with states: IDLE, LOAD_CITIZENS, BUILD_CANDIDATES_X, BUILD_CANDIDATES_Y, CHECK_COMBINATIONS, UPDATE_RESULT, DONE. Use 16-bit arithmetic for distance calculations (sum can be up to 32-bit).

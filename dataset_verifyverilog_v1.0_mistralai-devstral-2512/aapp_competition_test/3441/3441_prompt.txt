@@ -1,0 +1,46 @@
+Design a Verilog module that computes the maximum number of new one-way roads that can be added to a directed graph without creating new simple cycles (round trips). The input graph is constrained to max 16 nodes. 
+
+**Core Logic (Scaled Algorithm)**:
+1. The graph is represented as an adjacency matrix `adj[16][16]`.
+2. Identify Strongly Connected Components (SCCs). In a DAG of SCCs, new edges can be added between different SCCs without creating cycles (if they don't close a loop). However, the problem simplifies because adding an edge *within* an existing SCC creates new cycles (round trips). 
+3. **Simplification**: Since creating a new cycle is the same as creating a new round trip, we must avoid closing any new loops. 
+   - If the graph is already cyclic (SCC size > 1), no new edges can be added within that component without creating *new* round trips (the problem asks for *new* round trips, implying the existing ones are 'used', but standard interpretation is 'does not create *any* new ones'. However, typically in these problems, if a cycle exists, adding edges inside it creates new simple paths/cycles. 
+   - *Correction*: The problem is usually interpreted as 'adds no new cycles that weren't there'. If an SCC has >1 node, it is strongly connected, meaning every node can reach every other. Adding an edge inside an SCC doesn't necessarily add a *new* simple cycle if every possible cycle is already covered? No, adding 1->2 in 1->3->2->1 adds a new simple cycle 1->2->1? No, 1->2 was reachable. 
+   - *Simplified Approach for 16 nodes*: 
+     - Calculate total possible edges: `n*(n-1)`.
+     - Subtract existing edges `m`.
+     - Determine edges that *cannot* be added. 
+     - An edge `u -> v` creates a new round trip if adding it creates a simple cycle that didn't exist or creates a new simple path combination. 
+     - Actually, the problem is easier: If the graph is acyclic (DAG), we can add edges `u -> v` if `u` cannot reach `v` in the current graph. If `u` *can* reach `v`, adding `u -> v` creates a cycle (specifically the path `u -> ... -> v` plus the new edge). 
+     - If the graph has cycles (SCCs), any edge within an SCC creates a new cycle (specifically a new simple cycle like `u -> v` + path `v -> u`). 
+     - Therefore: 
+       1. Compute reachability (Transitive Closure) for 16 nodes (Floyd-Warshall). 
+       2. Iterate all possible pairs (u, v) where u != v. 
+       3. If `adj[u][v]` is 0: 
+          - If `reach[u][v]` is 0 (v not reachable from u), adding edge is safe. 
+          - If `reach[u][v]` is 1, adding edge creates a cycle (new round trip). 
+     - *Wait*: If `reach[u][v]` is 1, adding `u->v` creates a cycle. 
+     - *Edge Case*: If the graph already has a cycle (e.g. `0->1`, `1->0`), `reach[0][1]` is 1. We cannot add `0->1` (already exists). We cannot add `1->0` (already exists). If we had `0->1`, `1->2`, `2->0`, `reach[0][1]` is 1, cannot add `0->1`. 
+     - *Revised Strategy*: 
+       1. Compute Transitive Closure `T` (16x16 bits). 
+       2. Count pairs `(u, v)` such that `u != v`, `adj[u][v] == 0`, and `T[u][v] == 0`. 
+       3. This count is the maximum new roads. 
+
+**Interface**:
+- Inputs: `clk`, `rst_n`, `start`.
+- `n`: 5-bit (max 16 nodes).
+- `m`: 8-bit (max edges).
+- `edges`: Array of 32 entries, each with `src` (4-bit) and `dst` (4-bit). (Supports up to 32 edges, scaled from 200k).
+- Outputs: `result` (16-bit count), `done` (1-bit).
+
+**Implementation Details**:
+1. **State Machine**: IDLE -> LOAD -> TRANSITIVE_CLOSURE -> COUNT -> DONE.
+2. **Storage**: `adj[16][16]` (2D array of bits), `reach[16][16]` (2D array of bits).
+3. **Transitive Closure**: Floyd-Warshall algorithm. 
+   - Loop `k` 0 to 15, `i` 0 to 15, `j` 0 to 15.
+   - `reach[i][j] = reach[i][j] | (reach[i][k] & reach[k][j])`.
+4. **Counting**: 
+   - Loop `u` 0 to `n-1`, `v` 0 to `n-1`.
+   - If `u != v` AND `adj[u][v] == 0` AND `reach[u][v] == 0`: Increment `result`.
+5. **Timing**: Transitive closure for 16^3 = 4096 iterations. Counting 256 iterations. Total < 5000 cycles. Timeout ~10ms.
+6. **Reset**: Clears `adj` and `reach` matrices.

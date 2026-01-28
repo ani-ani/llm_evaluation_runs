@@ -1,0 +1,51 @@
+Implement a Verilog module that solves the Absurdistan roads problem: assign each road to one of its cities such that each city builds exactly one road.
+
+**Problem Analysis:**
+- Given n roads between n cities (1-indexed, n ≤ 16 for Verilog)
+- Each road must be assigned to either endpoint city
+- Each city must build exactly 1 road
+- Solution guaranteed to exist
+
+**Hardware Adaptation:**
+- Scale to n ≤ 16 cities/roads
+- Use adjacency list representation (max 16 nodes, 32 edges max)
+- Implement iterative DFS with stack (size 16) to find valid assignment
+- Fixed-width storage for edge list and result
+
+**Module Interface:**
+- Inputs:
+  - clk: rising edge
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to begin computation
+  - n: number of cities/roads (4-bit, 1-16)
+  - edges_a[0:15]: array of 16 bits for road endpoints 'a'
+  - edges_b[0:15]: array of 16 bits for road endpoints 'b'
+- Outputs:
+  - result_city[0:15]: array of 4-bit, city that built each road (indexed by road ID)
+  - done: 1-cycle pulse when valid solution found
+- Timing: start→done within 256 cycles
+- Reset: done=0, result_city=0, min 2 cycles
+
+**Algorithm (Iterative):**
+1. For each road i from 0 to n-1:
+   - Try assigning to city edges_a[i]
+   - Recursively check if remaining roads can be assigned
+   - If conflict, try edges_b[i] instead
+2. Use stack to track: current road, assigned cities mask, solution index
+3. Backtrack when a city would get 2+ roads
+4. When all roads processed, output solution
+
+**Verilog Requirements:**
+- Use 16-bit vectors for city occupancy mask
+- Edge arrays: edges_a[15:0], edges_b[15:0] (4-bit each)
+- Result: result_city[15:0] (4-bit each)
+- Stack: 16 entries of {road_idx[3:0], city_mask[15:0]}
+- State machine: IDLE → START → TRAVEL → FOUND → DONE
+- Use 2D arrays for adjacency if needed
+- Max 16 iterations per road for worst case
+
+**Constraints:**
+- n ≤ 16 (4-bit input)
+- City numbers: 1-16 (4-bit encoded as 0-15 internally)
+- Roads: 0-15 (indexed)
+- No external memory, all state in registers

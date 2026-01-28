@@ -1,0 +1,51 @@
+Design a Verilog module that finds the smallest beautiful integer y >= x. A beautiful integer has digits b_1, b_2, ..., b_m where b_i = b_{i+k} for all 1 <= i <= m-k.
+
+Inputs:
+  clk: single-bit, rising edge clock
+  rst_n: single-bit, active-low synchronous reset (clears state and outputs)
+  start: single-bit, 1-cycle pulse to start computation
+  n[31:0]: 32-bit unsigned, number of digits in x (2 <= n <= 32)
+  k[31:0]: 32-bit unsigned, period k (1 <= k < n)
+  x_digits[0:31]: 32x4-bit array (one hot encoding for digits 0-9: only bit 0-9 set)
+    - Array index 0 corresponds to the most significant digit (a_1)
+    - Array index n-1 corresponds to the least significant digit (a_n)
+    - Values for digits 0-9: 1 << digit
+
+Outputs:
+  m[31:0]: 32-bit unsigned, number of digits in result y
+  y_digits[0:31]: 32x4-bit array (one-hot encoding, same format as x_digits)
+  done: single-bit, 1-cycle pulse indicating result is valid
+  ready: single-bit, high when module is idle and ready for new start
+
+Internal State/Algorithm:
+1. Wait for start pulse.
+2. Parse the first k digits as the base pattern 'base[0:k-1]'.
+3. Iterate through all digits i = 0 to n-1:
+   - Calculate expected digit: exp = base[i % k]
+   - Compare x_digits[i] with exp:
+     - If x_digits[i] < exp: The number formed by the base pattern is already larger (due to previous digits matching, and current digit being smaller than expected prefix digit). This means the base pattern itself is the smallest prefix that makes y >= x. No increment needed. Finish.
+     - If x_digits[i] > exp: The current prefix of x is larger than the base pattern. To make y >= x, we must increment the base pattern. Stop comparison, go to step 4.
+     - If equal: Continue to next digit.
+4. If comparison completed without finding x_digits[i] > exp, check if the number formed by base pattern equals x. If it is equal or smaller (i.e., x_digits[i] < exp never happened), the pattern is valid. If strictly smaller, we are done. If equal, it's also valid. We only need to increment if x > pattern.
+   - Actually, the logic in step 3 handles this. If we finish the loop without hitting the 'x > pattern' case, the pattern is valid or smaller. If we hit 'x < pattern' case, pattern is valid. The only case needing increment is if x > pattern.
+5. To increment the base pattern:
+   - Treat base[0:k-1] as a k-digit number.
+   - Add 1 (binary add with carry).
+   - Handle overflow: If base is all 9s, the result needs k+1 digits (e.g., 99 -> 100). Since k < n <= 32, k+1 <= 32 is possible. If k == 32 and all 9s, overflow creates 33 digits which exceeds n. However, problem constraints n <= 200k suggest this is a theoretical concern. For fixed n=32, we can assume k < 32 or that overflow wraps/throws error. Given hardware constraints, we handle k up to 31 for safe 32-bit count. If k=32, n must be >32, which violates n<=32 in our scaling. So assume k <= 31.
+6. Once base is finalized (original or incremented), generate output digits y_digits[i] = base[i % k] for i = 0 to n-1.
+7. Set m = n.
+8. Pulse 'done' high for 1 cycle.
+
+Timing:
+- reset -> ready: 2 cycles
+- start -> done: finite state machine, max ~64 cycles (k iterations + n iterations + adder latency)
+- Combinational paths: none (registered)
+
+Constraints:
+- n <= 32, k <= 31 (scaled from 200k)
+- Use finite loops (for i in 0..31).
+- Use binary addition for increment.
+- One-hot encoding for digits minimizes decoding logic.
+- All registers must reset to 0.
+
+Implement this as a single FSM module.

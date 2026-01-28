@@ -1,0 +1,40 @@
+Implement a Verilog module `phaser_max_hits` that calculates the maximum number of rooms hit by a line segment of fixed length L.
+
+**Problem Reduction**:
+- Max rooms `r` = 8.
+- Coordinates `x, y` in range [0, 63] (6 bits).
+- Beam length `L` in range [0, 127] (7 bits).
+- Use fixed-point arithmetic (Q6.8) for calculations.
+
+**Algorithm**:
+- The optimal beam must start at a room corner and pass through another room corner (or be a horizontal/vertical line at a corner).
+- Iterate through all unique corners `P_start` of all rooms.
+- For each `P_start`, iterate through all unique corners `P_target` of all rooms where `P_target != P_start`.
+- Calculate the direction vector `(dx, dy)` and distance `D = sqrt(dx^2 + dy^2)`.
+- If `D <= L` (using integer approximation or fixed point), construct a line segment from `P_start` extending length `L` in that direction (clamped to bounds).
+- Also handle vertical/horizontal cases explicitly if `dx` or `dy` is zero.
+- For each constructed segment, check intersection with all 8 rooms.
+  - A segment hits a room if it passes through the interior or touches the boundary.
+  - Optimization: Check if the segment intersects the rectangle (line segment vs axis-aligned rectangle intersection).
+- Keep track of the maximum hits.
+
+**Inputs**:
+- `clk`, `rst_n`: Standard controls.
+- `start`: 1-cycle pulse to start computation.
+- `r`: 4-bit integer (number of rooms, max 8).
+- `L`: 7-bit integer (length of beam).
+- `rooms`: 8x16-bit array. Each room uses 16 bits: `{x1[5:0], y1[5:0], x2[5:0], y2[5:0]}`.
+
+**Outputs**:
+- `max_hits`: 4-bit integer.
+- `done`: 1-cycle pulse.
+
+**Constraints**:
+- Must fit in reasonable FPGA resources (no large memories).
+- Execution time: < 10,000 cycles.
+- All arithmetic must be bounded (no floating point, use fixed-point integers).
+- Use a state machine to manage the nested loops (Start Point -> Target Point -> Room Check).
+
+**Interface Details**:
+- Data widths: Inputs up to 10 bits for coordinates (scaled), 4 bits for room count.
+- Internal fixed-point precision: Q6.2 or Q8.2 for coordinates is sufficient given small grid.

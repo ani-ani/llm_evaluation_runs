@@ -1,0 +1,25 @@
+Design a Verilog module that computes the sum of twice the areas of all possible convex quadrilaterals formed by N distinct points (no three collinear), modulo 1000003.
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  x[0:11], y[0:11]: 12x16-bit arrays (x and y coordinates of up to 12 points, Q16.0 fixed-point)
+  n: 4-bit input (number of points, 4 ≤ n ≤ 12)
+
+Outputs:
+  result: 20-bit output (result modulo 1000003, fits in 20 bits since 1000003 < 2^20)
+  done: 1-cycle pulse indicating valid result
+
+Implementation Details:
+- Scale: Use N ≤ 12 points, coordinates as 16-bit signed integers (range -32768 to 32767)
+- Algorithm: Iterate over all combinations of 4 distinct points (i,j,k,l). For each, compute twice the signed area using cross product formula: 2*Area = |(x2-x1)*(y4-y1) - (x4-x1)*(y2-y1) + (x3-x2)*(y4-y2) - (x4-x2)*(y3-y2)|. Actually, simpler: 2*Area of quadrilateral (A,B,C,D) = |(xB-xA)*(yD-yA) - (xD-xA)*(yB-yA) + (xD-xC)*(yB-yC) - (xB-xC)*(yD-yC)|. Ensure points are ordered (e.g., clockwise) to avoid double counting. Since no three collinear, quadrilaterals are non-degenerate.
+- Optimization: Pre-compute cross products for all point pairs to avoid repeated calculations. Use 32-bit temporary accumulators.
+- State Machine: IDLE → COMPUTE (iterates through combinations) → DONE. Computation takes up to C(12,4)=495 cycles plus area calculation.
+- Area Calculation: For each 4-point set, order points angularly around centroid or use convex hull property (quadrilateral is convex if points are in convex position; but input ensures no three collinear, so any 4 points form a convex quadrilateral). Compute twice area using shoelace formula for polygon: sum over edges (xi*yi+1 - xi+1*yi). Must ensure correct orientation (counter-clockwise) for positive area.
+- Modulo Operation: After summing all areas, compute modulo 1000003. Use division-less modulo with subtraction in a loop (since 1000003 is constant, can be implemented with a counter).
+- Timing: Start→Done within 1000 cycles. Reset: result=0, done=0.
+
+Example: For 4 points (2,0),(0,2),(-2,0),(0,-2), the quadrilateral is a diamond with vertices in order. Twice area = perimeter * radius? Actually, area = 8, twice area = 16. Sum of all quadrilaterals (only one possible) = 16. For 5 points, compute all C(5,4)=5 quadrilaterals, sum their twice areas.
+
+Testbench: Provide cocotb test with 2 test cases (4 and 5 points). Use fixed coordinates. Verify result matches expected output modulo 1000003.

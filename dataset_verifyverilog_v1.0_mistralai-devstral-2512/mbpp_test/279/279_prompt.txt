@@ -1,0 +1,74 @@
+## Verilog Module Specification: Decagonal Number Calculator
+
+### Overview
+Implement a sequential circuit that computes the nth decagonal number using the formula: D_n = 4*n² - 3*n. The design should handle n from 0 to 64 (output range 0 to 15872).
+
+### Interface
+
+**Inputs:**
+- `clk`: Clock signal, rising edge triggered
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate calculation
+- `n`: 8-bit unsigned integer input (0-255, but only 0-64 valid)
+
+**Outputs:**
+- `result`: 16-bit unsigned integer output
+- `done`: 1-cycle pulse indicating result is valid
+
+### Behavior Specification
+
+1. **Reset:** On reset, `done` = 0, `result` = 0, state machine returns to idle.
+
+2. **Operation:**
+   - When `start` is asserted on rising edge, begin computation
+   - Compute D_n = 4*n² - 3*n using integer arithmetic
+   - Use 3-stage pipeline: compute n*n (8x8 → 16-bit), compute 4*n² (<<2), compute 3*n (<<1 + n), subtract
+   - Total latency: 4 cycles (1 for n², 1 for 4*n², 1 for 3*n, 1 for subtraction)
+   - Assert `done` for 1 cycle when result is ready
+
+3. **Sequential Implementation:**
+   - Use a finite state machine (FSM) with states: IDLE, STAGE1, STAGE2, STAGE3, DONE
+   - Single clock domain, all operations synchronized to `clk`
+   - Non-blocking operations, no combinational paths from input to output
+   - Register all intermediate values
+
+4. **Mathematical Constraints:**
+   - n is 8-bit unsigned (0-255)
+   - n² fits in 16 bits (max 65025 for n=255)
+   - 4*n² fits in 18 bits (max 260100)
+   - 3*n fits in 10 bits (max 765)
+   - Final result D_n fits in 16 bits (max 15872 for n=64)
+   - For n > 64, clamp result to 65535 (16-bit max)
+
+5. **Timing:**
+   - Maximum 10 cycles from start to done
+   - No combinational feedback loops
+   - All outputs registered
+
+6. **Requirements:**
+   - Use synchronous reset
+   - No latches or combinatorial loops
+   - Pipeline multipliers for performance
+   - Ensure overflow protection (clamp result to 65535)
+
+### Implementation Hints
+- Use 5-state FSM: IDLE → STAGE1 (n*n) → STAGE2 (4*n²) → STAGE3 (3*n) → DONE
+- In STAGE1: compute n_squared = n * n (16-bit result)
+- In STAGE2: compute n4 = n_squared << 2 (18-bit, then clamp to 16-bit if needed)
+- In STAGE3: compute n3 = (n << 1) + n (10-bit)
+- In DONE: compute result = n4 - n3 (with overflow detection)
+- Use 16-bit registers for all intermediate values
+- Multiplication can be sequential or pipelined
+
+### Example Test Cases
+- Input n=3: Output 27 (4*9 - 9 = 36-9)
+- Input n=7: Output 175 (4*49 - 21 = 196-21)
+- Input n=10: Output 370 (4*100 - 30 = 400-30)
+- Input n=64: Output 15872
+- Input n=0: Output 0
+
+### Reset Behavior
+- On `rst_n=0`, all registers cleared
+- `result` = 0, `done` = 0
+- Min 2 cycles reset required
+- After reset, ready to accept new start pulse

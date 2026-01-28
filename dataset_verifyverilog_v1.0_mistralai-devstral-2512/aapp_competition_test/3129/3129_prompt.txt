@@ -1,0 +1,33 @@
+Implement a Verilog module to calculate the minimum operations to sort a sequence of hay bales by sorting windows of 3 consecutive bales.
+
+**Core Algorithm (Adapted for Hardware):**
+1. **Representation**: Map 'C' (clean) to 0, 'P' (infected) to 1. The sequence is a vector of 8 bits (scaled from max 500 to 8 for feasibility).
+2. **Sorting Operation**: A single operation takes 3 consecutive bits, sorts them in ascending order (0s then 1s), and writes them back.
+3. **Target**: The sorted sequence has all 0s (C) before all 1s (P).
+4. **Goal**: Count the minimum number of operations required. Since the operation is a local sorting network (3-element odd-even transposition), the system converges to the sorted state. The minimum operations is the number of steps to reach the sorted state.
+5. **Hardware Strategy**: Implement a finite state machine (FSM) that iterates through the sequence. In each cycle, identify an unsorted window of 3 consecutive bits and sort it. Repeat until the entire sequence is sorted.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low reset
+  - `start`: 1-cycle pulse to initiate the calculation
+  - `s_0` to `s_7`: 8-bit input array representing the hay bale sequence (0 for C, 1 for P).
+- Outputs:
+  - `result`: 8-bit output (Minimum number of operations). Note: Max operations for 8 bits is bounded by 
+    the number of inversions, which is small (max ~28).
+  - `done`: 1-cycle pulse asserted when calculation is finished.
+- Timing: Start to done within 256 cycles.
+- Reset: Resets state, `result` to 0, `done` to 0.
+
+**Implementation Details:**
+1. **Registers**: Maintain an 8-bit register `seq_reg` for the current sequence state.
+2. **FSM States**: IDLE, SORTING, CHECKING, DONE.
+3. **Sorting Logic**: In the SORTING state, the module should scan the 8-bit register. It can perform one sorting operation per clock cycle. To ensure minimum steps, the hardware should prioritize sorting the leftmost unsorted window (simple greedy approach works for this specific 3-sorter network on binary data).
+4. **Sorting Window**: For bits `i, i+1, i+2`:
+   - Count the number of 1s (infected).
+   - If count == 0 or 3, it's already sorted.
+   - If count == 1: The single 1 moves to position `i+2` (since 0,0,1 is sorted).
+   - If count == 2: The single 0 moves to position `i` (since 0,1,1 is sorted).
+5. **Iteration**: The FSM loops through indices 0 to 5. If a swap/move occurs, increment a counter. The loop continues until a full pass with no changes (or a fixed safe bound like 64 cycles) triggers the DONE state.
+6. **Constraints**: The input length is fixed at 8 for this module. The result fits in 8 bits.

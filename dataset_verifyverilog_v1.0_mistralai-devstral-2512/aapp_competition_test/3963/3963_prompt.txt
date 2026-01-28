@@ -1,0 +1,45 @@
+Design a Verilog module that counts the number of ways to pay exactly m tugricks using limited coin types and quantities. The denominations follow a geometric progression where each denomination divides the next, and the ratio between consecutive denominations is given. The input m can be up to 10^10000, but we will represent it in a scaled-down domain suitable for hardware.
+
+### Interface Specification:
+- **Inputs**:
+  - `clk`: Clock signal (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `b[0:9]`: Array of 10 elements, each 16-bit unsigned, representing coin counts for each type (0-100000 range)
+  - `a[0:8]`: Array of 9 elements, each 16-bit unsigned, representing ratios between denominations (1-10^9 range, scaled down)
+  - `m_scaled`: 32-bit signed integer representing the scaled target amount (scaled version of m for hardware feasibility)
+
+- **Outputs**:
+  - `result`: 32-bit unsigned integer representing the number of ways modulo 10^9+7
+  - `done`: 1-cycle pulse when computation completes and result is valid
+
+### Functional Requirements:
+1. **Denomination Scaling**: Since actual denominations can be huge (up to 10^10000), we scale them down. Assume the first denomination is 1. For subsequent types, denomination d[i] = d[i-1] * a[i-1]. Scale all denominations by dividing by common factors to fit in 16 bits.
+
+2. **Dynamic Programming**: Maintain two arrays `d` and `td` of size up to 300,001 (but we'll limit to 512 elements for hardware). Process coin types sequentially.
+
+3. **Algorithm Adaptation**:
+   - For each coin type i from 1 to n-1:
+     - If ratio a[i-1] != 1:
+       - Compute scaled remainder: t = m_scaled % a[i-1] (use modulo operation on 32-bit)
+       - If current L (max index) < t: return 0 ways
+       - Update m_scaled = m_scaled / a[i-1]
+       - Perform stride operation: for j from 0 to (L-t)/a[i-1], set d[j] = d[t + j*a[i-1]]
+     - Perform prefix sum with sliding window: compute td[j] = sum_{k=max(0,j-b[i])}^{j} d[k]
+     - Swap d and td arrays
+   - Return d[m_scaled] if m_scaled <= L else 0
+
+4. **Timing**: Complete within 256 cycles. Use pipelined processing for array operations.
+
+5. **Modulo**: Apply modulo 10^9+7 (1000000007) after each addition/subtraction. This is 30-bit, so use 32-bit math.
+
+6. **Array Sizes**: Limit to 512 elements max (2^9 index). Use separate arrays for d and td, each 32-bit wide.
+
+### Implementation Notes:
+- Use state machine: IDLE, SETUP, PROCESS_STRIDE, PROCESS_PREFIX, DONE
+- For modulo operations, use fast divider or precomputed constants
+- For sliding window prefix sum, use accumulator and subtract value at window start
+- All operations must be synchronous to clock
+- Output result holds until reset or new start
+
+The module should handle the test cases from examples: n=1,2,3 coin types with various b and a arrays, computing the correct number of ways modulo 10^9+7.

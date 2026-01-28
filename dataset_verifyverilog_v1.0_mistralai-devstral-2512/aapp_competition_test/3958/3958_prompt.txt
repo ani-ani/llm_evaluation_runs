@@ -1,0 +1,55 @@
+Implement a Verilog module that partitions a binary string into zebra subsequences. A zebra is a non-empty sequence starting and ending with '0' with alternating bits (0, 010, 01010, etc.).
+
+### Interface
+Inputs:
+  - clk: Clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start processing the input string
+  - char_in: 1-bit input character (0 or 1), valid when start or processing
+  - char_valid: 1-bit indicating valid char_in on current cycle
+  - read_done: 1-bit indicating no more input characters
+
+Outputs:
+  - ready: 1-bit, high when module can accept new input (idling or processing)
+  - done: 1-bit, high for one cycle when partitioning is complete
+  - error: 1-bit, high if partitioning is impossible
+  - k_out: 8-bit output indicating number of subsequences (valid when done=1)
+  - li_out: 4-bit output indicating length of current subsequence being output (valid during output phase)
+  - idx_out: 16-bit output indicating the day index (1-based) of the current element (valid during output phase)
+  - idx_valid: 1-bit indicating idx_out is valid
+  - subseq_done: 1-bit indicating the end of the current subsequence (valid during output phase)
+
+### Behavior
+1. **Input Phase (ready=1)**:
+   - On `start=1`, `char_in` and `char_valid` are sampled.
+   - `char_in=0`: Must extend a subsequence ending in '0' (create new if none available) or start a new subsequence. Transitions the subsequence to end in '1'.
+   - `char_in=1`: Must extend a subsequence ending in '0'. If none available, set `error=1` and halt.
+   - Use an internal storage (RAM or registers) to track indices of subsequences ending in '1' (waiting for '0') and those ending in '0' (waiting for '1').
+   - Store all indices in a flat buffer with boundary markers (start/end of subsequence).
+   - Stop when `read_done=1`.
+
+2. **Validation Phase**:
+   - If any subsequence remains ending in '1' (waiting for '0'), set `error=1`.
+   - If valid, transition to Output Phase.
+
+3. **Output Phase (ready=0)**:
+   - Stream out the subsequences.
+   - First output `k_out`.
+   - Then for each subsequence:
+     - Output `li_out` (length).
+     - Output `idx_out` for each element.
+     - Pulse `subseq_done` at the end of the subsequence.
+   - Finally, pulse `done=1` and return to idle.
+
+### Constraints
+- Maximum string length: 65536 (indices fit in 16 bits).
+- Maximum subsequences: 256 (fits in 8 bits).
+- Implementation must be purely synchronous logic (no dynamic memory allocation).
+- If impossible (string starts with '1' or ends with '1' in a subsequence), assert `error`.
+
+### Timing
+- `start` must be held high until `ready` goes low.
+- `char_in` changes only when `char_valid` is high.
+- `read_done` indicates end of input stream.
+- Processing latency: Within 1000 cycles for 256 characters.
+- Output streaming: `idx_out` and `li_out` valid for one cycle each.

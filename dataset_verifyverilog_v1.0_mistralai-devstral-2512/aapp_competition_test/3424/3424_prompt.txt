@@ -1,0 +1,56 @@
+Design a Verilog module to find the largest base b where a number y (10 to 10^18) written in base b contains only decimal digits (0-9) and is >= l when interpreted in base 10.
+
+Inputs:
+  clk: 1-bit, rising edge
+  rst_n: 1-bit, active-low synchronous reset
+  start: 1-bit, start signal, high for one cycle
+  y_lsb: 32-bit, lower 32 bits of y
+  y_msb: 32-bit, upper 32 bits of y (y = y_msb[31:0] << 32 + y_lsb)
+  l_lsb: 32-bit, lower 32 bits of l
+  l_msb: 32-bit, upper 32 bits of l (l = l_msb[31:0] << 32 + l_lsb)
+
+Outputs:
+  result_base: 32-bit, the largest valid base b
+  done: 1-bit, high for one cycle when result is valid
+
+Parameters:
+  MAX_ITERATIONS: 32 (sufficient for bases down to 2 for 64-bit numbers)
+  BASE_BITS: 24 (covers bases up to ~16 million)
+
+Timing:
+  - start pulse initiates search for largest base b starting from y (upper bound)
+  - For each candidate base b (decrementing from y down to 2):
+    1. Extract digits of y in base b (max 32 digits for b>=2, y<=2^64)
+    2. Check if all digits are 0-9
+    3. If valid, calculate decimal value of the digit string (same digits in base 10)
+    4. Check if decimal_value >= l
+    5. If both conditions met, output b as result and stop
+  - result_base is 0 if no valid base found (though problem guarantees existence)
+  - done pulses high for one cycle when search completes
+  - Search may take up to 32 * (y - 2) cycles worst case, but practically much faster
+  - Use 64-bit registers for arithmetic (split into 32-bit high/low parts for y and l)
+  - Intermediate decimal value calculation requires 32 digits * 10^max_digit = up to 10^32, scale to 64-bit
+  - Scaling: store y and l as 64-bit values split into [31:0] and [63:32]
+  - Digit extraction: repeated division using 64-bit by base division (unsigned)
+  - Decimal conversion: result = sum(digit_i * 10^i) using 64-bit arithmetic
+  - Edge case: l <= 9? (Problem says l>=10, but handle generally)
+
+Algorithm Steps (Iterative):
+1. Initialize: b = y (use upper 32 bits if y > 2^32-1, else clamp to 32-bit max)
+2. While b >= 2:
+   a. Extract digits of y in base b (store up to 32 digits in 4-bit array)
+   b. If any digit > 9, continue to next base
+   c. Convert digits to decimal value (sum digit_i * 10^i using 64-bit arithmetic)
+   d. Compare decimal value with l (64-bit comparison)
+   e. If valid (digits 0-9 and decimal >= l), output b and set done
+   f. Decrement b
+3. If no base found, output 0
+
+Interface Requirements:
+- All arithmetic on 64-bit numbers (split into 32-bit high/low)
+- Input y and l are 64-bit values split into high (MSB 32) and low (LSB 32)
+- Output base is 32-bit (fits all valid bases for y <= 10^18)
+- Clock domain: synchronous, start initiates operation
+- Reset: active-low, sync, initializes state machine
+- Done signal pulses high for one cycle when operation completes
+- Module should handle edge cases: y=10, l=10 (base 10 works, digits 1,0, decimal 10 >= 10)

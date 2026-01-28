@@ -1,0 +1,38 @@
+Design a Verilog module to solve a scaled version of the job scheduling problem. The problem is Weighted Interval Scheduling with 3 fixed duration options (20, 30, 40 time units) yielding rewards 1, 3, 4 respectively. Input is a sorted list of N≤16 job offer times (16-bit unsigned integers). The module should compute the maximum reward achievable by selecting non-overlapping jobs.
+
+Inputs:
+  - clk: clock signal
+  - rst_n: active-low synchronous reset
+  - start: single-cycle pulse to start computation
+  - offers_valid: indicates valid input data
+  - offer_times[15:0][15:0]: array of 16 16-bit offer times (packed or individual wires, depending on tool support). If individual wires, use offer_time_0 to offer_time_15.
+  - N: number of valid offers (4-bit, 1-16)
+
+Outputs:
+  - result: 16-bit unsigned integer representing maximum cookies earned
+  - done: single-cycle pulse asserted when result is valid
+
+Internal Logic:
+  1. The module must implement Dynamic Programming. Since N is small (≤16), we can iterate through sorted offers.
+  2. For each offer `i` (time `t`), we calculate `dp[i]` = max reward ending at or before time `t`.
+  3. For each offer `i`, we consider 3 choices:
+     - Skip it: `dp[i] = dp[i-1]`
+     - Take it as small (duration 20, reward 1): Find largest index `j` where `offer_times[j] + 20 <= offer_times[i]`. `reward = dp[j] + 1`.
+     - Take it as medium (duration 30, reward 3): Find largest index `j` where `offer_times[j] + 30 <= offer_times[i]`. `reward = dp[j] + 3`.
+     - Take it as large (duration 40, reward 4): Find largest index `j` where `offer_times[j] + 40 <= offer_times[i]`. `reward = dp[j] + 4`.
+  4. `dp` array size is 16 elements, 16-bit wide.
+  5. The search for index `j` must be a linear search backwards from `i-1` to `0`, checking the time condition.
+  6. All arithmetic (comparisons, additions) must fit within 16 bits. Input times are scaled down to fit 16-bit range (0-65535).
+  7. Input `offer_times` are assumed to be sorted. If not, the logic must handle unsorted data (sorting logic is too complex for Verilog synthesis, so assume sorted or handle minimal sorting).
+  8. Timing: The calculation for `N` offers should complete within `N * (3 * N) * Cycles` roughly, so `N=16` should take < 1000 cycles.
+
+Constraints:
+  - Use synchronous logic.
+  - State machine required to control DP iteration and searching.
+  - Do not use external memory; use register arrays.
+  - Output `result` updates only when `done` is high.
+
+Example:
+  Input N=4, Times=[100, 400, 500, 900] (scaled from sample).
+  Durations=[20, 30, 40], Rewards=[1, 3, 4].
+  Expected output is 12 (3 jobs * 4 cookies).

@@ -1,0 +1,34 @@
+Design a Verilog module that computes the expected number of people in a restaurant after t hours given n tables with capacities c[0:n-1], maximum group size g, and hours t. The solution uses dynamic programming with fixed-point arithmetic (Q16.16). 
+
+**Core Algorithm Adaptation**: 
+1. Sort tables by capacity (ascending). 
+2. For each hour h=0..t-1, compute DP state: probability of each table being occupied with specific group sizes. 
+3. State compression: For n tables (max 16), track occupancy via bitmask (1=occupied) and capacity usage per table (4 bits each). 
+4. Group assignment: Find smallest unoccupied table where capacity ≥ group size. 
+5. Expected occupancy: Sum over all states (occupied people * probability).
+
+**Module Interface**:
+- Inputs: 
+  - `clk`, `rst_n` (active-low)
+  - `start`: 1-cycle pulse to begin computation
+  - `g`: 8-bit max group size (1-200, scaled to 1-16)
+  - `t`: 8-bit hours (1-100, scaled to 1-16)
+  - `n`: 4-bit number of tables (1-100, scaled to 1-16)
+  - `c[0:15]`: 16x8-bit table capacities (1-200, scaled to 1-16)
+- Outputs:
+  - `result`: 32-bit fixed-point Q16.16 expected value
+  - `done`: 1-cycle pulse when computation complete
+- Timing: Compute within 256 clock cycles after start. Reset initializes all states to 0.
+
+**Scaling Requirements**: 
+- Table capacities and group sizes scaled to 1-16 range (divide by 12.5, round up).
+- DP states limited to 16 tables, 16 hours, 16 group sizes.
+- Use Q16.16 fixed-point for probabilities (1.0 = 65536).
+- Maximum states: 2^16 = 65536 (manageable in BRAM).
+
+**Implementation Details**:
+- Sort tables internally using bubble sort (n≤16).
+- Precompute: For each state (mask + group per table), determine next state for each possible group size.
+- Probability update: Multiply by 1/g (fixed-point reciprocal).
+- Use iterative processing over hours and states.
+- Output is Q16.16 fixed-point; convert to float in testbench.

@@ -1,0 +1,55 @@
+Implement a Verilog module that solves a variant of the single-source single-sink pathfinding problem with an added tax on SWERC-owned edges. You are given a graph with N nodes (1-16) and P edges (1-32). Some nodes are marked as owned by SWERC. When calculating the cheapest path from X to Y, any edge connected to a SWERC node (source or dest) incurs an additional tax T. The goal is to find the maximum integer tax T (1 to 2^30) such that the cheapest path from X to Y uses ONLY SWERC nodes (excluding X and Y? wait, X and Y are owned by SWERC). Actually, the problem states X and Y are always in the list of SWERC banks. The 'cheapest way' implies the path must consist of SWERC banks only, except possibly X and Y which are SWERC. The tax T is added to every transfer fee involving a SWERC bank.
+
+Specifically: 
+1. If a path uses only SWERC nodes, the cost is (sum of edge weights) + (number of edges * T). 
+2. If a path uses non-SWERC nodes, the cost is just (sum of edge weights).
+
+We need the largest T such that the cheapest path from X to Y is a path that uses ONLY SWERC nodes (i.e., the SWERC path is strictly cheaper than any path using non-SWERC nodes). If no such T exists (SWERC path is always more expensive), output 'Impossible'. If for all T up to max int, SWERC path is cheapest, output 'Infinity'.
+
+Inputs:
+  - `clk`, `rst_n`: Standard control signals.
+  - `start`: 1-cycle pulse to start computation.
+  - `edges_src`, `edges_dst`, `edges_wt`: Arrays of size 32 for graph edges (max 32 edges).
+  - `swerc_nodes`: Array of size 16 indicating if a node (0-15) is SWERC (1) or not (0).
+  - `num_nodes`, `num_edges`: 4-bit and 6-bit counts.
+  - `src_node`, `dst_node`: 4-bit identifiers for X and Y.
+
+Outputs:
+  - `result`: 32-bit integer representing max tax T, or special values. (0-2^30 for T, 0xFFFFFFFE for Impossible, 0xFFFFFFFF for Infinity).
+  - `done`: 1-cycle pulse when result is valid.
+
+Implementation Logic:
+1. Use Dijkstra's algorithm (or BFS with relaxation since weights are positive) to find the shortest path from X to Y. 
+   - Run Dijkstra on the full graph (edges weights as given) to find the shortest path cost `min_non_swerc`. This path can use any node.
+   - Run Dijkstra on the subgraph induced by SWERC nodes only. The cost here is `sum_edge_weights + (edge_count * T)`. Since T is variable, we need to find the path with minimum edge count and minimum total weight? Actually, we want to minimize `weight_sum + T * edge_count`. For a fixed T, the best path is the one minimizing this value. 
+   - However, we need the MAXIMUM T. This requires a binary search on T.
+   - For a given T, we can compute the best SWERC path cost: `cost_swerc(T) = min over all SWERC paths (sum(w) + count(e) * T)`. This is a standard shortest path problem where edge weight is `w + T`. We can run Dijkstra for each T in the binary search.
+
+2. Constraints: N <= 16, P <= 32. 
+   - Binary search T from 0 to 2^30 (approx 10 iterations).
+   - Each Dijkstra on 16 nodes is fast enough in hardware (sequential implementation).
+   - Total cycles: 10 * (Dijkstra cycles). Dijkstra on 16 nodes is roughly 16*16 operations = 256 cycles.
+   - Total < 3000 cycles.
+
+3. Verilog Module Structure:
+   - `FSM` for control flow (IDLE, PREPARE_GRAPH, DIJKSTRA_NON_SWERC, DIJKSTRA_SWERC, COMPARE, OUTPUT).
+   - `Dijkstra` submodule: Inputs (source, target, edges, edge count, T). Output (min_cost, path_found).
+   - Binary Search State: Tracks `low`, `high`, `best_T`.
+
+4. Edge Cases:
+   - If `min_non_swerc` is unreachable (infinity), then any T works? No, the problem implies we want the SWERC path to be the *cheapest* way. If non-SWERC path doesn't exist, SWERC path is the only way. If SWERC path exists, T can be infinity. If SWERC path doesn't exist, Impossible.
+   - If `min_non_swerc` is reachable, we check SWERC path.
+   - If SWERC path is unreachable for all T (or exists but always more expensive), output Impossible.
+   - If SWERC path is always cheaper than non-SWERC path (e.g., non-SWERC path unreachable or infinite cost), output Infinity.
+
+5. Signal Widths:
+   - Node IDs: 4 bits (0-15).
+   - Edge Weights: 32 bits (up to 10^9).
+   - T: 32 bits.
+   - Path Costs: 64 bits (to prevent overflow during addition of 10^9 * 32). Use 64-bit internal registers.
+
+6. Testbench:
+   - Parse the Python inputs into arrays.
+   - Map node IDs 1-16 to 0-15.
+   - Drive `start`, wait for `done`.
+   - Check `result` against expected output (handling 'Infinity' and 'Impossible' sentinel values).

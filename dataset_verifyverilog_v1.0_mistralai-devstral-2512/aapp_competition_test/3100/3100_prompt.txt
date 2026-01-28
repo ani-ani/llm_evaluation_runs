@@ -1,0 +1,58 @@
+Design a Verilog module to count arrangements of A apples, C cherries, M mangos (total N = A+C+M ≤ 20) such that no two adjacent boxes contain the same fruit type. The answer should be computed modulo MOD = 10^9+7.
+
+**Core Algorithm:**
+1. Use dynamic programming: dp[a][c][m][prev] = number of arrangements using 'a' apples, 'c' cherries, 'm' mangos with 'prev' being the last fruit type (0=apple, 1=cherry, 2=mango).
+2. Base case: dp[1][0][0][0] = 1, dp[0][1][0][1] = 1, dp[0][0][1][2] = 1.
+3. Transitions: For each state (a,c,m,prev), try adding each fruit type that differs from prev:
+   - If prev != 0 and a > 0: dp[a+1][c][m][0] += dp[a][c][m][prev]
+   - If prev != 1 and c > 0: dp[a][c+1][m][1] += dp[a][c][m][prev]
+   - If prev != 2 and m > 0: dp[a][c][m+1][2] += dp[a][c][m][prev]
+4. Result = sum of dp[A][C][M][prev] for prev = 0,1,2.
+
+**Module Interface:**
+- Inputs:
+  - clk: Clock signal
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate computation
+  - A_in: 5-bit input for apples (max 20)
+  - C_in: 5-bit input for cherries (max 20)
+  - M_in: 5-bit input for mangos (max 20)
+- Outputs:
+  - result: 32-bit output (modulo 10^9+7)
+  - done: 1-cycle pulse indicating valid result
+  - error: 1-bit flag indicating invalid input (any > 20 or total > 20)
+
+**Timing Requirements:**
+- Start asserted for 1 cycle, then de-asserted.
+- Module computes result within 1000 cycles after start.
+- When done=1, result is valid for 1 cycle.
+- Reset sets done=0, result=0, error=0.
+
+**Implementation Details:**
+- Use fixed-size arrays for DP table: dp[21][21][21][3] (21x21x21x3 entries)
+- Each entry is 32-bit (for modulo 10^9+7).
+- Use iterative state machine:
+  1. Wait for start signal.
+  2. Validate inputs (A_in, C_in, M_in ≤ 20, A+C+M ≤ 20).
+  3. Initialize DP table (clear to 0).
+  4. Set base cases.
+  5. Iterate over a from 0 to A-1, c from 0 to C-1, m from 0 to M-1, and prev from 0 to 2.
+  6. Apply transitions (ensure modulo operation).
+  7. Sum final states (prev=0,1,2).
+  8. Assert done for 1 cycle with result.
+- Modulo operation: Since MOD = 10^9+7 < 2^30, use 32-bit addition with conditional subtraction for overflow.
+- Constraints: Total states ~ 21x21x21x3 = 27,783, which fits in FPGA memory.
+
+**Example:**
+For A=1, C=2, M=1:
+- dp[1][2][1][0] = 2 (ending with apple)
+- dp[1][2][1][1] = 2 (ending with cherry)
+- dp[1][2][1][2] = 2 (ending with mango)
+- Total = 6 (matches sample).
+
+**Test Requirements:**
+- Test with small values (e.g., 1,2,1 → 6; 2,2,2 → 30).
+- Test edge cases: all same fruit (should be 0 if >1), invalid inputs.
+- Verify modulo correctness for large results.
+
+**Note:** The maximum total N=20 is chosen to fit hardware constraints while demonstrating the DP algorithm. The Python problem's 200,000 limit is scaled down to 20 for FPGA implementation.

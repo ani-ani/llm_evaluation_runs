@@ -1,0 +1,37 @@
+Design a Verilog module to solve the 'interesting problemset' problem.
+
+**Problem Statement:**
+Given n problems and k teams (k ≤ 4, n ≤ 16), determine if there exists a non-empty subset of problems such that for each team, the number of known problems is at most half the subset size.
+
+**Mathematical Simplification:**
+For k ≤ 4, the condition simplifies to: Find two problem types A and B (represented as 4-bit masks where bit j=1 means team j knows the problem) such that A & B == 0 (no overlapping 1-bits). If A == 0 (all zeros), a single problem is sufficient. If A != 0 and B == 0, two problems are sufficient. If A != 0 and B != 0 with A & B == 0, the pair is sufficient.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: Start signal (1-cycle pulse)
+  - `prob_type[3:0]`: 4-bit input representing current problem type (bits 3..0 = team 4..1 knowledge)
+  - `valid_in`: Input valid signal (1 when `prob_type` is valid)
+  - `finish_in`: Input finish signal (1 when all problems have been loaded)
+- **Outputs:**
+  - `result`: 1-bit output. 1 if "YES" (interesting subset exists), 0 if "NO"
+  - `done`: 1-cycle pulse indicating result is valid
+
+**Implementation Details:**
+1. **Storage:** Maintain a 16-bit register (or 16 1-bit registers) `exists[15:0]` to track which problem types (0 to 15) have been encountered. Initialize to 0.
+2. **Input Phase:** When `start` is high, enter input state. On each cycle where `valid_in` is high, set `exists[prob_type]` to 1. Continue until `finish_in` is high. Handle up to 16 unique problem types.
+3. **Calculation Phase:** After loading, check for a valid subset in a single cycle or small pipeline:
+   - Check `exists[0]` (type 0000). If 1, answer is YES.
+   - Loop `i` from 1 to 15:
+     - If `exists[i]` is 1:
+       - Loop `j` from i+1 to 15:
+         - If `exists[j]` is 1 and `(i & j) == 0`, answer is YES.
+   - If no valid pair found, answer is NO.
+4. **Optimization:** Since k ≤ 4, the 16x16 comparison grid can be unrolled or implemented as a combinational logic block. The maximum depth is small. The module should complete calculation within 50 cycles.
+5. **Reset:** On reset, `exists` is cleared to 0, `done` is 0, `result` is 0.
+
+**Constraints:**
+- Max k = 4 bits.
+- Max n = 16 types (though N can be large, unique types ≤ 16).
+- Timing: `start` to `done` ≤ 50 cycles.

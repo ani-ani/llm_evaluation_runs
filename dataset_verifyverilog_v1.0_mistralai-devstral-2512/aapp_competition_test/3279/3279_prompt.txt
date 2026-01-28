@@ -1,0 +1,38 @@
+Design a Verilog module `BarCodeSolver` that finds a valid marking for the Bar Code puzzle. The puzzle consists of an n x n grid (n ≤ 9) where edges between grid points can be marked (1) or unmarked (0). The goal is to place vertical and horizontal bars such that:
+1. Each row's vertical bars form groups matching the specification (e.g., [2, 1] means two consecutive 1s, then a 0, then one 1).
+2. Each column's horizontal bars form groups matching the specification.
+3. No two bars touch (no 2x2 subgrid where both adjacent horizontal and vertical edges are marked).
+4. Outputs are binary strings for vertical bars (n rows of n+1 length) and horizontal bars (n+1 rows of n length).
+
+**Interface**:
+- Inputs: `clk` (system clock), `rst_n` (active-low reset), `start` (1-cycle pulse to start solving).
+- Specification Inputs (loaded serially or in registers): 
+  - `row_spec [n][max_groups]`: Array of row group sizes. Use fixed width 4 bits per group (max group size 9). Max groups per row/col = n.
+  - `col_spec [n][max_groups]`: Array of column group sizes.
+  - `row_spec_len [n][4]`: Number of groups for each row.
+  - `col_spec_len [n][4]`: Number of groups for each column.
+  - `n_val [4]`: The grid size (1 to 9).
+- Outputs:
+  - `vertical_bars [n][n+1]`: 2D array of bits (n x n+1). Valid when `done=1`.
+  - `horizontal_bars [n+1][n]`: 2D array of bits (n+1 x n). Valid when `done=1`.
+  - `done` (1-cycle pulse when solution found).
+
+**Implementation Guidelines**:
+1. Use an iterative backtracking algorithm (DFS) implemented as a Finite State Machine (FSM).
+2. Represent the grid state in internal registers (max 9x9 = 81 bits).
+3. The FSM should iterate through all potential bar locations (indices 0 to n*(n+1) + n*(n+1) - 1). For each location, try '0' and '1' (checking constraints) or just '0' (if '1' violates).
+4. Constraints Check:
+   - **Touching Rule**: Before placing a '1' at (row, col) horizontal or vertical, check if it forms a 2x2 corner with existing adjacent bars. For horizontal bar at (r, c): check vertical bars at (r,c) and (r,c+1) and horizontal at (r+1, c). 
+   - **Group Specs**: Check full row/col only when the line is fully filled, or incrementally. Since constraints are local, check partial groups at line boundaries or when placing a '0'.
+   - **Bounds**: n ≤ 9, so use 4-bit counters.
+5. Output mapping: Map internal 1D state vectors to the 2D output arrays.
+6. Timing: Solve within reasonable cycles (e.g., < 50,000 cycles for worst case). If no solution found after exhaustive search, assert an error flag.
+
+**Verilog Details**:
+- Use standard synchronous logic.
+- Avoid large combinatorial paths.
+- The solver must handle variable `n` (up to 9). Use parameterized array sizes, e.g., `reg [0:9][0:9] v_state`.
+- Since n is small, a brute-force backtracking approach is feasible in hardware.
+
+**Test Interface**: 
+The testbench will load `row_spec`, `col_spec`, `n_val` into registers before asserting `start`.

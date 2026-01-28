@@ -1,0 +1,50 @@
+Implement a Verilog module for a restricted BASIC interpreter. The core logic must parse fixed-format instructions and execute them sequentially.
+
+**INPUT SPECIFICATION:**
+- The module processes a program stored in an internal instruction memory (use a 16-entry array for the benchmark).
+- Each instruction is 64 bits wide (6 bytes for command + arguments + 2 bytes label/metadata). Use ASCII encoding (7-8 bits).
+- Since reading dynamic text is unbounded, the testbench will populate the instruction memory directly.
+- `start` signal initiates execution from the lowest label (index 0).
+
+**SUPPORTED OPERATIONS (Simplified for FPGA):**
+1. **LET var = op**: Operations limited to +, -, *, /. Var is 8-bit (A-Z). Operands are 16-bit signed integers (scaled from 32-bit). Division truncates toward zero. Overflow wraps per 2's complement.
+2. **IF cond THEN GOTO label**: Compare two 16-bit values (var or literal). Condition codes: 0: =, 1: <, 2: >, 3: <>, 4: <=, 5: >=. Target label is an index (0-15).
+3. **PRINT str**: Output fixed 8-byte ASCII string (padded with spaces).
+4. **PRINTLN str**: Output fixed 8-byte ASCII string followed by newline (0x0A).
+
+**STATE MACHINE:**
+1. IDLE: Wait for `start`. Load PC with 0.
+2. FETCH: Read instruction[PC] from memory.
+3. DECODE: Parse opcode, operands, target label.
+4. EXECUTE:
+   - LET: Read vars from register file (26x16b), compute result, write back. Latency: 2 cycles for mul/div.
+   - IF: Evaluate condition. If true, set PC = target. Else, PC = PC + 1.
+   - PRINT: Stream bytes to `output_char` port (valid signal).
+5. COMPLETE: If PC reaches max or instruction is HALT (implicit end), set `done`.
+
+**INTERFACE (Exact):**
+- `clk`, `rst_n`: Standard synchronous logic.
+- `start`: 1-cycle pulse to begin execution.
+- `instruction_mem[i]`: Input port to load program (64-bit wide, i=0..15). Use this to set up the test.
+- `output_char`: 8-bit output (ASCII).
+- `output_valid`: High when `output_char` is valid.
+- `done`: High when execution finishes (PC out of bounds or explicit end).
+
+**CONSTRAINTS:**
+- Variable array `regs[25:0]`: 16-bit signed integers.
+- Instruction width: 64 bits. Bit [7:0] is opcode (0:LET, 1:IF, 2:PRINT, 3:PRINTLN). Bit [15:8] is operand/variable ID. Bits [47:16] are data (literal values or string indices). Bits [63:48] are target label for jumps.
+- Cycle budget: 512 cycles max for the test program.
+- String storage: 8 bytes per instruction embedded in the instruction word.
+
+**VERILOG MODULE DEFINITION:**
+module basic_interpreter (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [63:0] instruction_mem [0:15], // Array of instructions
+    output reg [7:0] output_char,
+    output reg output_valid,
+    output reg done
+);
+// Implement the state machine and logic described above.
+endmodule

@@ -1,0 +1,35 @@
+Design a Verilog module that implements a simplified logical deduction engine for event causality. Given a knowledge base of implications (A->B) and a set of known events (E), determine all events that must have certainly occurred based on the rule: If an event occurred, at least one of its direct causes must have occurred (transitively). The solution must work for D=8 events, M=16 implications, and N=8 known events.
+
+Interface Specification:
+- Inputs:
+  - clk: System clock (rising edge active)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate calculation
+  - known_idx [2:0]: Index of the currently loaded known event (0 to N-1)
+  - known_val [3:0]: Value of the known event (1 to D)
+  - implications_a [3:0]: Event A for implication entry
+  - implications_b [3:0]: Event B for implication entry
+  - impl_idx [3:0]: Index for loading implications (0 to M-1)
+  - load_impl: Control signal to load an implication into the knowledge base
+  - load_known: Control signal to load a known event
+- Outputs:
+  - result [7:0]: Bitmask where bit i is set if event (i+1) must have occurred
+  - done: 1-cycle pulse indicating calculation is complete
+
+Behavior:
+1. Reset: Clear all internal state, result = 0.
+2. Load Phase: When load_impl=1, store implication (implications_a, implications_b) into a lookup table indexed by impl_idx. When load_known=1, store known event known_val into a list.
+3. Calculation Phase (triggered by start):
+   - Perform backward reachability starting from the known events.
+   - Iteratively propagate: If an event B is known to have occurred, and there is an implication A->B, then A might have occurred. However, we must check the 'certain occurrence' condition:
+     - An event E is certain if it is in the initial known set.
+     - An event A is certain if all events B such that A->B are certain (because if A happened, B happened, and B is known certain).
+     - Alternatively, use a constraint satisfaction approach: Mark known events as 'certain'. Then, for any unmarked event X, if all its direct effects (events Y such that X->Y) are marked 'certain', mark X as 'certain'. Repeat until no changes.
+   - Due to hardware constraints, implement this as a fixed-loop iteration (max 16 passes) over the implication list.
+4. Result: The 'result' output is an 8-bit bitmask. Bit i (0-indexed) corresponds to event (i+1).
+5. Timing: The calculation must complete within 256 clock cycles after 'start'. The 'done' signal is asserted for exactly 1 cycle when the result is valid.
+
+Implementation Notes:
+- Use block RAMs for the implication table (16 entries x 8 bits) and known events (8 entries).
+- State Machine: IDLE -> LOADING -> CALCULATING -> DONE.
+- In CALCULATING state, use a loop counter to iterate through implications multiple times to propagate certainty.

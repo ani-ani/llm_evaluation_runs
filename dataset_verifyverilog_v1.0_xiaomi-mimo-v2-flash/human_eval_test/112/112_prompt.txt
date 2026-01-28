@@ -1,0 +1,40 @@
+Implement a Verilog module that performs character deletion and palindrome checking on fixed-width strings.
+
+**INTERFACE SPEC:**
+
+**Inputs:**
+- `clk`: clock signal, rising edge active
+- `rst_n`: active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `s_chars[0:15]`: 16x8-bit array (ASCII characters, padded with zeros if string < 16)
+- `c_chars[0:15]`: 16x8-bit array (characters to delete, padded with zeros)
+- `s_len`: 4-bit unsigned integer (actual length of string s)
+
+**Outputs:**
+- `result_chars[0:15]`: 16x8-bit array (result string after deletion, padded with zeros)
+- `result_len`: 4-bit unsigned integer (length of result string)
+- `is_palindrome`: 1-bit output (1=true, 0=false)
+- `done`: 1-cycle pulse indicating completion
+
+**FUNCTIONALITY:**
+1. **Deletion Phase**: Remove characters from `s_chars` that match any character in `c_chars`. Characters are removed by shifting subsequent characters left. The remaining characters occupy indices 0 to `result_len-1`. Unused indices are set to 0.
+2. **Palindrome Check Phase**: Check if the first `result_len` characters in `result_chars` form a palindrome. Compare `result_chars[i]` with `result_chars[result_len-1-i]` for `i` from 0 to `result_len/2 - 1`.
+3. **Output**: `result_chars` and `result_len` are valid when `done=1`. `is_palindrome` is also valid at that time.
+
+**TIMING CONSTRAINTS:**
+- `start` is asserted after `rst_n` is de-asserted and stable.
+- `done` will be asserted within 256 clock cycles after `start`.
+- On reset (`rst_n=0`), `done=0`, `is_palindrome=0`, `result_len=0`, `result_chars` are undefined.
+
+**IMPLEMENTATION HINTS:**
+- Use a finite state machine (FSM) with states: IDLE, SCAN_DELETE, CHECK_PALINDROME, FINISHED.
+- **SCAN_DELETE**: Iterate through `s_chars` up to `s_len`. For each character, compare with all characters in `c_chars` (up to 16 possible deletions). If no match, copy to `result_chars` buffer (use a temporary register array). Track `result_len`.
+- **CHECK_PALINDROME**: Iterate from `i=0` to `result_len/2 - 1`. Compare `result_chars[i]` with `result_chars[result_len-1-i]`. If any mismatch, set `is_palindrome` to 0 and break. If loop finishes, set `is_palindrome` to 1. 
+- **FINISHED**: Assert `done` for one cycle, then return to IDLE.
+- Optimization: Since `result_len` is at most 16, the palindrome check is a fixed loop with max 8 iterations.
+- Data Width: 8 bits (ASCII).
+- Address Width: 4 bits (16 elements).
+
+**CONSTRAINTS:**
+- Strings `s` and `c` are maximum 16 characters. If input strings are longer, only first 16 characters are considered (input `s_len` must be <= 16).
+- Output `result_chars` will contain the filtered string in the first `result_len` positions.

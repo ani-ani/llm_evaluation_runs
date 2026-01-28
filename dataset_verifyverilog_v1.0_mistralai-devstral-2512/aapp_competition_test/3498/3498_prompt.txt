@@ -1,0 +1,29 @@
+Implement a Verilog module `priority_ceiling_sim` simulating the Priority Ceiling Protocol execution.
+
+**Inputs:**
+- `clk`: System clock
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start execution
+- `cfg_en`: Configuration mode enable (1 for loading, 0 for execution)
+- `cfg_addr`: 8-bit address (task_id[3:0] or resource_id[3:0])
+- `cfg_data`: 16-bit data to write (see layout below)
+
+**Outputs:**
+- `result_valid`: 1-cycle pulse when all tasks complete
+- `task_done_id`: 4-bit task ID of completed task
+- `task_done_time`: 16-bit completion time
+
+**Internal Config Layout (written via cfg_data when cfg_en=1):**
+- **Resources**: Address 0-31 (Resource ID 0-31). `cfg_data[7:0]` = Ceiling priority (0-31).
+- **Tasks**: Address 32-63 (Task ID 0-31). 
+  - `cfg_data[15:8]` = Start Time (0-255, scaled to fit bit width).
+  - `cfg_data[7:0]` = Base Priority (1-20).
+- **Instructions**: Address 64-255 (Linear instruction ROM). Each address holds one instruction.
+  - Instruction Format: `OPCODE[1:0] OPERAND[5:0]` (Opcode: 0=Compute, 1=Lock, 2=Unlock). Compute operand is duration (1-63). Lock/Unlock operand is Resource ID (0-63).
+
+**Logic Requirements:**
+1. **Parser**: Parse input string description into the instruction ROM structure.
+2. **Simulator**: Implement the 3-step loop (Identify Running -> Determine Priorities/Blocking -> Execute).
+   - Handle circular dependency of Priority calculation (fixed-point iteration acceptable).
+   - Clock increments by 1 for Compute instructions, stays same for Lock/Unlock.
+3. **Output**: On `result_valid` (all tasks done), output task ID and completion time on `task_done_id` and `task_done_time`. Sequence them one per cycle.

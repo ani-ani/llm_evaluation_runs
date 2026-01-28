@@ -1,0 +1,44 @@
+Implement a Verilog module that computes the minimum squared Euclidean distance between any two distinct points in a set, where points are defined by (x, prefix_sum) coordinates derived from an input array. The algorithm should use a divide-and-conquer approach (closest pair algorithm) adapted for hardware.
+
+**Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard clock and active-low asynchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `arr_0` to `arr_7`: 8-bit signed input array elements (8 elements total)
+- **Outputs:**
+  - `result`: 24-bit unsigned result (squared distance)
+  - `done`: 1-cycle pulse indicating completion
+
+**Implementation Details:**
+1. **Point Generation:**
+   - Compute prefix sums of `arr_0` to `arr_7` to get Y coordinates (0 to 15).
+   - X coordinates are fixed indices 0 to 7.
+   - Create 8 points (x, y) where x ∈ {0..7}, y ∈ prefix_sum.
+
+2. **Algorithm:**
+   - Use iterative divide-and-conquer (min distance = 0 initially).
+   - Sort points by X coordinate (fixed order based on index).
+   - For each split point (0 to 7):
+     - Compute min distance in left half (brute force for up to 4 points)
+     - Compute min distance in right half (brute force for up to 4 points)
+     - Update global min with split results
+     - For the strip around split: check pairs where |x1-x2|^2 <= current min (max 4x4 = 16 comparisons)
+   - Use a 3-stage pipeline: Compare pairs -> Compute distance -> Min reduction
+
+3. **Memory:**
+   - Store 8 points as 8x(8-bit X, 16-bit Y) = 192 bits total
+   - Use lookup tables for squared differences: |ΔX|^2 (0-49) and |ΔY|^2 (0-255)
+
+4. **Timing:**
+   - Reset: 2 cycles
+   - Computation: ≤128 cycles (8 points, ~16 parallel comparisons per stage)
+   - Output valid when `done` pulses
+
+**Constraints:**
+- All arithmetic in unsigned format (squared values only)
+- Clamp intermediate values to prevent overflow (max 24-bit result)
+- Use fixed-latency FSM with states: IDLE, CALCULATE, FINISH
+- No recursion; use iterative loops with bounded counters (0-8 range)
+
+**Output Format:**
+Return the minimum squared distance as a 24-bit integer. For the 8-point problem, the maximum possible distance is (7^2 + 64000^2) which fits in 24 bits after clamping.

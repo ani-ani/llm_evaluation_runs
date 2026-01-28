@@ -1,0 +1,42 @@
+Design a Verilog module to identify switches that are never part of an optimal path from source 1 to destination N. The network is scaled to a maximum of 16 switches (nodes) and 32 cables (edges). 
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (rising edge triggered).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate the computation.
+  - `num_nodes`: 4-bit input (scaled from N, max 16).
+  - `src_id`: 4-bit input (source switch ID, scaled).
+  - `dest_id`: 4-bit input (destination switch ID, scaled).
+  - `edge_count`: 5-bit input (number of cables, max 32).
+  - `edge_a`, `edge_b`, `edge_len`: 10-bit arrays (or packed) for edge definitions. Since Verilog ports can't be dynamic arrays, assume a structured input mechanism or a fixed max size (e.g., 32 inputs for `edge_a`, `edge_b`, `edge_len`).
+- **Outputs:**
+  - `result`: 16-bit packed vector, where bit `i` (0-indexed) corresponds to switch `i+1`. If bit is 1, the switch is never used. If 0, it might be used.
+  - `done`: 1-cycle pulse indicating computation is finished.
+
+**Algorithm:**
+Implement a sequential Finite State Machine (FSM) performing Dijkstra's algorithm. 
+1. **State 0 (Idle):** Wait for `start`.
+2. **State 1 (Initialize):** Initialize distance array (size 16) with infinity, distance to `src_id` to 0. Initialize visited array.
+3. **State 2 (Process Node):** Select the unvisited node with the smallest tentative distance. Mark it as visited.
+4. **State 3 (Relax Edges):** Iterate through all edges (bounded by 32). If an edge connects the current node to an unvisited neighbor, calculate new distance. If new distance < old distance, update.
+5. **State 4 (Backtrace):** Once destination is reached (or all nodes processed), identify nodes on *any* shortest path. This requires a second pass: starting from destination, trace back all predecessors that contributed to the shortest path distances.
+6. **State 5 (Output):** Generate the `result` mask and assert `done`.
+
+**Constraints:**
+- Clock frequency: 100 MHz (10ns period).
+- Max cycles: 2048 cycles (to fit within 20us).
+- Use fixed-point arithmetic (Q16.16) for distances if needed, but given the simplified `l/v + c` linear model where relative ordering matters, integer arithmetic (scaled by `l`) is sufficient if we assume `v` and `c` are constants. *Correction*: The problem states `l/v + c`. Since `v` and `c` are unknown, we cannot compute absolute times. We must find edges that are *never* on a shortest path for *any* positive `v` and non-negative `c`. This reduces to checking if an edge is strictly dominated by another path in terms of length (for `c` dependence) and hop count (for `v` dependence). Specifically, an edge `(u, v)` with length `l` is used only if there is no other path from `u` to `v` that is strictly shorter in terms of length AND hop count? Actually, the problem asks for nodes that are *never* part of *any* optimal path. 
+
+*Simplified Algorithm for HW:*
+1. Compute Shortest Path Distance (in terms of Length `L`) and Hop Count (`H`) from `src` to all nodes.
+2. Compute Shortest Path Distance and Hop Count from all nodes to `dest` (reverse graph).
+3. A node `k` is on a shortest path if `dist_src[k] + dist_dest[k] == dist_src[dest]` (where distance is measured in terms of length, and tie-breaking is done on hop count). 
+4. Since `v` and `c` are unknown, we must consider the parameterized cost: `cost = L/v + H*c`. A path is optimal if no other path has strictly lower cost for any `v>0, c>=0`. 
+5. This simplifies to: A path `P` is optimal if there is no other path `P'` such that `L(P') < L(P)` and `H(P') <= H(P)`, or `L(P') <= L(P)` and `H(P') < H(P)`. 
+6. *Hardware Strategy*: Perform Dijkstra (using length as primary key, hops as secondary). Mark nodes that lie on any such Pareto-optimal path. 
+
+**Implementation Details:**
+- Use internal SRAM (registers) for `dist`, `hops`, `visited`. Width: 32-bit for distance (since `l` up to 10^9, sum up to ~2^31), 5-bit for hops.
+- Input edges will be loaded into a lookup table (32 entries).
+- Result is a 16-bit register. Initially all 1s (unused). If a node is found on an optimal path, clear its bit.

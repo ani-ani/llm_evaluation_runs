@@ -1,0 +1,45 @@
+Design a Verilog module that counts the number of valid triples (i,j,k) where i<j<k, and (a[i]+a[j]+a[k]) is divisible by 3, where a[x] = x^2 - x + 1 for x from 1 to n.
+
+Key insight: a[x] % 3 depends only on x % 3:
+- If x % 3 == 0: a[x] = 0^2 - 0 + 1 = 1 (mod 3)
+- If x % 3 == 1: a[x] = 1^2 - 1 + 1 = 1 (mod 3)
+- If x % 3 == 2: a[x] = 4 - 2 + 1 = 3 (mod 3) = 0
+
+So we only need to count numbers in [1,n] with each residue (0,1,2) and compute combinations.
+
+Interface:
+  Inputs:
+    clk: system clock
+    rst_n: active-low synchronous reset
+    start: 1-cycle pulse to start computation
+    n: input value (10 bits, max 1000)
+  
+  Outputs:
+    result: 24-bit count (max ~53K for n=100)
+    done: 1-cycle pulse when result is valid
+
+  Timing Requirements:
+    - Operation completes within 1000 clock cycles
+    - Result is valid on same cycle as done=1
+    - Result should be 0 when n < 3
+
+  Implementation Details:
+    - Use FSM with 3 states: IDLE, COUNT, COMPUTE
+    - COUNT state: Iterate from 1 to n (max 1000 cycles)
+    - Track counts of: cnt_0 (where i%3==0), cnt_1 (i%3==1), cnt_2 (i%3==2)
+    - COMPUTE state: Calculate answer using combinatorics:
+      Valid sums mod 3 = 0 when picking from:
+      - Three from residue 0: C(cnt_0, 3)
+      - Three from residue 1: C(cnt_1, 3)  [1+1+1=3 mod 3]
+      - Three from residue 2: C(cnt_2, 3)  [0+0+0=0 mod 3]
+      - One from each: cnt_0 * cnt_1 * cnt_2
+      - One from 0 and two from 1: C(cnt_0,1) * C(cnt_1,2) = cnt_0 * cnt_1*(cnt_1-1)/2
+      - One from 1 and two from 2: cnt_1 * C(cnt_2,2) = cnt_1 * cnt_2*(cnt_2-1)/2
+    - All math in COMBINE state, then output
+
+  Rules:
+    - Use combinational logic for modular arithmetic
+    - Division by 2 for combinations: use bit shift (cnt>>1)
+    - Combinatorial multiplications use 24-bit width
+    - Reset: clear all counters, set done=0, result=0
+    - No overflow: n≤1000 ensures counts ≤1000, products fit in 24 bits

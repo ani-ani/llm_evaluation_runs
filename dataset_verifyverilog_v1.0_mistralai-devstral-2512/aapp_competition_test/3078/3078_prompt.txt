@@ -1,0 +1,49 @@
+Design a Verilog module that computes the length of the longest 'interesting' subsequence starting at each position.
+
+Definition: A sequence of 2K elements is interesting if:
+1. Sum of first K elements <= S
+2. Sum of last K elements <= S
+
+Given a sequence A of length N (scaled to N=16 for this problem), find for every index i (0 to N-1) the maximum length L such that a subsequence starting at i of length 2K = L exists satisfying the condition. If no such subsequence exists, output 0.
+
+Module Interface:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate calculation
+  - A[0:15]: 16-element array of 16-bit unsigned integers (input sequence)
+  - N: 4-bit integer representing actual length of sequence (valid elements 0 to N-1)
+  - S: 16-bit unsigned integer (threshold sum)
+
+- Outputs:
+  - result_index: 4-bit index of current position being calculated (0 to N-1)
+  - result_length: 8-bit length of longest interesting subsequence starting at result_index
+  - result_valid: 1-bit flag indicating result_index/result_length are valid
+  - done: 1-cycle pulse indicating all positions processed
+
+- Timing & Behavior:
+  1. Reset (rst_n=0): All outputs 0, internal state reset
+  2. Start pulse (start=1): Module begins sequential processing
+  3. Processing: For each index i from 0 to N-1:
+     - Find maximum even length L = 2K where 2K <= N-i
+     - Check condition: sum(A[i:i+K]) <= S AND sum(A[i+K:i+2K]) <= S
+     - Output result for index i via result_index, result_length, result_valid
+  4. Done pulse: When all indices processed
+
+- Constraints:
+  - N <= 16 (hard constraint)
+  - A[i] <= 65535
+  - S <= 65535
+  - Maximum iterations: 16 positions × 8 lengths = 128 cycles
+  - Sum calculation: Use 16-bit accumulators (saturate on overflow)
+
+- Implementation Strategy:
+  Use sequential state machine:
+  - State 0: Idle
+  - State 1: Reset accumulators
+  - State 2: Calculate sums for current K (current position + current K)
+  - State 3: Compare sums with S, update max length
+  - State 4: Output result for current index, increment index
+  - State 5: Check if all indices done, else go to State 1
+
+  Note: This is a sequential hardware algorithm, not a parallel one. It processes one index and one K value at a time.

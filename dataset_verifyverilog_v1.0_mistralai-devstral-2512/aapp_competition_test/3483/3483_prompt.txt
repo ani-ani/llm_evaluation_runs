@@ -1,0 +1,25 @@
+Implement a Verilog module that computes statistics for 4-packs of figurines. Given N distinct weights (scaled to 16 bits, N ≤ 16), output:
+1. Max weight: 4 × max_input_weight
+2. Min weight: 4 × min_input_weight
+3. Distinct count: Number of distinct sums of 4 selections (with repetition) from N weights. Since N ≤ 16 and weights ≤ 60000, max sum ≤ 240000, use 32-bit output.
+4. Expected weight: Mean of all distinct 4-pack sums. Compute as sum of all weights × (4/N) since each weight appears in (N^3) sums out of N^4 total sums, so probability = 4/N. Output as fixed-point Q16.16.
+
+Interface:
+- clk, rst_n: Standard synchronous control
+- start: 1-cycle pulse to begin computation
+- N: 4-bit input (1 to 16)
+- weights[0:15]: 16x16-bit array (weights[i] valid for i < N)
+- done: 1-cycle pulse when computation complete
+- max_out: 18-bit (4 × 16-bit max)
+- min_out: 18-bit (4 × 16-bit min)
+- distinct_out: 32-bit count
+- expected_out: 32-bit Q16.16 fixed-point
+
+Implementation approach:
+1. On start, find min/max weights in first clock cycles
+2. Compute min_out = 4 × min, max_out = 4 × max
+3. Compute expected_out: sum all weights × 4/N in Q16.16
+4. Compute distinct count: Use DP over weights, tracking reachable sums (max 240000). Since N≤16, iterate through weights, maintaining a bitset of reachable sums (up to 240000 bits). Count set bits after 4 selections.
+5. Use state machine with bounded iteration (≤ 16 × 4 = 64 cycles for DP)
+
+Timing: start->done within 200 cycles

@@ -1,0 +1,42 @@
+Implement a Verilog module that parses a string of musical notes and outputs the corresponding beat durations. The input is a string of ASCII characters representing note durations: 'o' (whole note = 4 beats), 'o|' (half note = 2 beats), and '.|' (quarter note = 1 beat). Notes are separated by spaces. The string length is limited to 16 characters (max 5 notes).
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock, rising edge active
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate parsing
+  - `str_in[127:0]`: 128-bit input (16 bytes, 8-bit ASCII chars each)
+  - `str_len`: 4-bit input indicating the number of valid characters in `str_in`
+- Outputs:
+  - `result[79:0]`: 5x16-bit output array (max 5 notes, each duration fits in 4 bits)
+  - `note_count`: 3-bit output indicating number of notes parsed
+  - `done`: 1-cycle pulse when parsing is complete
+
+**Implementation Requirements:**
+- Use a state machine to parse the string byte-by-byte
+- Track index through the string (0 to 15)
+- Detect patterns: 'o', 'o|', '.|' followed by space or end of string
+- When 'o' is followed by '|', output 2; single 'o' output 4; '.|' output 1
+- Skip spaces between notes
+- Maximum 5 notes can be parsed (result array is fixed 5 entries)
+- Reset: All outputs zero, FSM idle
+- Timing: Should complete within 50 cycles for max 16 chars
+
+**State Machine:**
+- IDLE: Wait for start
+- CHECK_CHAR: Read current character
+- DECIDE: Determine note type based on current and next char
+- SKIP_SPACE: Advance past spaces
+- OUTPUT: Store duration in result array
+- DONE: Raise done signal
+
+**Signal Widths:**
+- `result[79:0]`: 5x16-bit (each 4-bit duration in lower nibble)
+- `note_count`: 3-bit (max 5)
+- `str_len`: 4-bit (0-16)
+- `char_idx`: 4-bit (0-15)
+- `temp_note`: 4-bit (duration: 1, 2, or 4)
+
+**Example:**
+Input: "o o| .|" -> ASCII: 0x6F 0x20 0x6F 0x7C 0x20 0x2E 0x7C
+Output: result[0]=4, result[1]=2, result[2]=1, note_count=3

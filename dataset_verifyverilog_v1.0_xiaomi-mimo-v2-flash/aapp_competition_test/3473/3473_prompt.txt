@@ -1,0 +1,55 @@
+Implement a Verilog module to solve the Canadian Contests scheduling problem using dynamic programming.
+
+**Problem Constraints & Adaptation:**
+- Years: 2019 to 2118 (100 years max). Iterate sequentially from 2019.
+- Days in October: 1 to 31. We only consider Fridays.
+- Forbidden dates: Provided via a lookup table (LUT) interface.
+- Penalties: Computed as (current_day - previous_day)^2.
+
+**Interface Specification:**
+
+Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low reset
+  - `start`: High for one cycle to start processing
+  - `forbidden_table`: A 100x31x5 bit memory interface (years 2019-2118 mapped to index 0-99, days 1-31 mapped to 0-30). The testbench will drive this. Bit 0 represents the 'forbidden' flag.
+  - `z_in`: Number of years (1 to 100)
+
+Outputs:
+  - `result_sum`: 32-bit total penalty (sufficient for Z=100, max penalty ~1000 per year).
+  - `done`: High for one cycle when calculation is finished.
+  - `schedule_out`: 100x32-bit packed output (year 2019 index 0, etc.). Year fits in 12 bits (2019-2118), Day fits in 6 bits (1-31).
+
+**Logic Description:**
+1. **Date Logic:**
+   - Start with base year 2018. Oct 1, 2018 is day 274.
+   - For each year Y (2019...2018+Z):
+     - Determine if Y is a leap year (Y divisible by 4, not by 100 unless Y=2400, but range is up to 2118).
+     - Calculate the day of the week for Oct 1 of year Y by accumulating days from previous years.
+     - Identify all Fridays in October (Days 1-31 where `(day_of_week_of_oct1 + day - 1) % 7 == 4` (assuming 0=Monday, 4=Friday, or adjust based on known anchor)).
+     - Filter out forbidden dates (check `forbidden_table` for year index and day index).
+
+2. **DP State:**
+   - Use a DP array `dp[32]` (previous year's best penalties for ending on day D). Initialize for 2018 (Year 0) with penalty 0 for day 12.
+   - For each new year, compute `next_dp[32]` where `next_dp[d] = min(dp[p] + (d-p)^2)` for all valid Fridays d and previous valid Fridays p.
+   - Store choices for backtracking.
+
+3. **Hardware Implementation:**
+   - FSM: IDLE -> CALC_YEAR -> WAIT_FOR_DP -> FINISHED.
+   - Iteration: Loop 0 to Z-1.
+   - Internal memory: BRAM for DP (width 12 bits for penalty, depth 32) and Choice memory (width 6 bits).
+
+4. **Timing:**
+   - Start -> Done: Within 10,000 cycles (sufficient for Z=100 * iterations).
+   - Reset: Clears DP and control logic.
+
+**Output Format:**
+- `result_sum` valid when `done` is high.
+- `schedule_out` is a packed vector. Each 32-bit slot contains {Year[11:0], Day[5:0]}.
+
+**Testbench Interaction:**
+- The testbench will populate `forbidden_table`.
+- The testbench will drive `start`.
+- The testbench will read `result_sum` and `schedule_out` after `done`.
+
+Do not provide the module code, only the spec.

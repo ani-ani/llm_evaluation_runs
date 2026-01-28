@@ -1,0 +1,48 @@
+Design a Verilog module to calculate sunlight hours for buildings on a west-to-east avenue.
+
+**Problem Adaptation:**
+- Maximum buildings N = 16 (scaled down from 200,000)
+- Coordinates X and Heights H are 16-bit integers (scaled from 10^9)
+- Output sunlight hours as a Q8.8 fixed-point number (8 integer, 8 fractional bits)
+
+**Algorithm:**
+For each building `i`, determine the minimum angle of obstruction from the West (0°) to the East (180°). 
+- West sun: Rise from 90° to 180° (horizon to zenith). 0° is West, 90° is South, 180° is East.
+- A building `j` to the West (X[j] < X[i]) obstructs building `i` if the angle tan(theta) = (H[i] - H[j]) / (X[i] - X[j]) is positive.
+- The visible sky fraction is (180 - min_obstruction_angle) / 180.
+- Since the sun traverses 180 degrees in 12 hours (0.15 degrees/minute or 0.0133 degrees/cycle), the time is proportional to the angle.
+  *Simplified Scaling:* 1 degree of visible sky = 1 unit of output. Max output is 180.
+
+**Verilog Interface:**
+
+Inputs:
+  clk: Rising edge clock
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start calculation
+  building_x [15:0]: Input X coordinate (16-bit)
+  building_h [15:0]: Input H height (16-bit)
+  input_valid: Input data valid
+  input_done: 1-cycle pulse indicating last building input
+
+Outputs:
+  result [15:0]: Fixed-point result (Q8.8). Integer part = whole hours (max 180), fractional part = minutes.
+  result_index [3:0]: Index of the building (0 to 15)
+  result_valid: 1-cycle pulse when result is ready
+  done: 1-cycle pulse when all buildings processed
+
+**Implementation Logic:**
+1. **Input Stage:** Store up to 16 buildings in arrays `x_ram` and `h_ram`.
+2. **Processing Stage:** Iterate through each building `i` (0 to N-1).
+   - For each `i`, iterate through all other buildings `j` (0 to N-1).
+   - If `x_ram[j] < x_ram[i]`: Calculate angle = (h_ram[i] - h_ram[j]) / (x_ram[i] - x_ram[j]) * 64 (fixed-point scaling).
+   - If angle > 0: Update `min_angle` for building `i`.
+   - If `x_ram[j] > x_ram[i]`: Calculate angle = (h_ram[i] - h_ram[j]) / (x_ram[j] - x_ram[i]) * 64.
+   - If angle > 0: Update `min_angle` for building `i`.
+3. **Calculation:** Result = 180 - min_angle. Saturate to 0.
+4. **Output:** Stream results with indices.
+
+**Constraints:**
+- Clock frequency: 100 MHz
+- Max cycles: 2000 (N=16, complexity ~N^2)
+- Division: Use bit-shift approximation or lookup for fixed-point reciprocal.
+- Reset: Clears RAM, resets state machine.

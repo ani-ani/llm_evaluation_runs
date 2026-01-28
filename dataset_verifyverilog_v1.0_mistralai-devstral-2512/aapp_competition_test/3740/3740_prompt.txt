@@ -1,0 +1,92 @@
+Design a Verilog module `digit_length_pairs` that counts pairs of positive integers (l, r) such that the sum of their decimal digit lengths equals a given input S.
+
+**Problem Analysis:**
+- Define f(n) as the number of decimal digits in n.
+- We need to count pairs (l, r) where l <= r and sum_{k=l}^{r} f(k) = S.
+- Let L = f(l) and R = f(r). Since f(k) is non-decreasing as k increases, and f(k) only changes at powers of 10, the sequence of digit lengths in [l, r] will be of the form: L, ..., L, L+1, ..., R-1, R, ..., R.
+- For a fixed pair (L, R), the total sum S can be decomposed into:
+  - Contribution from numbers with length L: Count_L * L
+  - Contribution from numbers with length R: Count_R * R
+  - Contribution from intermediate lengths (L+1 to R-1): These are fixed amounts.
+    - Let `MidSum(L, R)` be the sum of digit lengths for all numbers from 10^L to 10^R - 1.
+    - Actually, we need the sum for numbers of lengths strictly between L and R.
+    - Sum of lengths for all numbers with length `d` is `d * 9 * 10^(d-1)`.
+- We iterate over all valid pairs of digit lengths (L, R) where 1 <= L <= R <= 9.
+- For each (L, R), we calculate `Target` which is S minus the fixed contributions.
+- We solve for non-negative integers `cnt_L` (count of numbers of length L at the start) and `cnt_R` (count of numbers of length R at the end) such that:
+  - `L * cnt_L + R * cnt_R = Target`
+  - `1 <= cnt_L <= 9 * 10^(L-1)`
+  - `1 <= cnt_R <= 9 * 10^(R-1)` (Note: if L==R, this simplifies)
+  - If L < R, there must be at least one number of each intermediate length.
+
+**Module Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (1-bit, posedge triggered).
+- `rst_n`: Active-low synchronous reset (1-bit).
+- `start`: Start signal, 1-cycle pulse (1-bit).
+- `S_in`: The target sum S (Input is scaled to fit 32-bit integer for simulation: 0 <= S_in < 2^32). 
+
+**Outputs:**
+- `result`: The answer modulo 10^9 + 7 (32-bit unsigned).
+- `done`: Valid output flag, 1-cycle pulse (1-bit).
+
+**Internal Logic Requirements:**
+1. **State Machine:**
+   - `IDLE`: Wait for `start`. When `start` is high, initialize.
+   - `CALC_L_R`: Iterate through digit lengths L (1 to 9) and R (L to 9).
+   - For each pair (L, R), calculate the fixed middle sum `mid_sum` (sum of lengths for digits L+1 to R-1).
+   - Calculate `Target = S - mid_sum`. If `Target < 0`, skip.
+   - **Solving Linear Diophantine Equation:** `L * x + R * y = Target`.
+     - This must be solved for `x` (count of L-digit numbers) and `y` (count of R-digit numbers).
+     - Since L and R are small (<=9), we can iterate through possible values of `x` or use GCD logic.
+     - For simulation efficiency, use a loop limited to `R` iterations to find a valid `x` modulo `R`.
+   - **Range Constraints:**
+     - If L == R: `x` must be the single continuous block of numbers. `Target` must be divisible by L. `x = Target / L`. Check `1 <= x <= 9 * 10^(L-1)`.
+     - If L < R:
+       - `x` must be at least 1.
+       - `y` must be at least 1.
+       - The intermediate lengths (L+1 ... R-1) must be fully covered or partially covered? The problem structure implies a contiguous range `[l, r]`. If L < R, the range covers all numbers of length L+1, ..., R-1.
+       - Actually, the problem allows `l` and `r` to be any values. `l` could be inside the L-digit range, `r` inside R-digit range.
+       - Fixed contribution from middle: `MidFixed = sum_{d=L+1}^{R-1} d * 9 * 10^(d-1)`.
+       - `Target = S - MidFixed`.
+       - We need `L * x + R * y = Target` where `x` is count of L-digit numbers (suffix) and `y` is count of R-digit numbers (prefix).
+       - Constraints:
+         - `1 <= x <= 9 * 10^(L-1)`
+         - `1 <= y <= 9 * 10^(R-1)`
+         - If L < R, `x` and `y` can be zero? No, because if `l` has length L, `x > 0`. If `r` has length R, `y > 0`.
+       - If `Target` is exactly `MidFixed`, then `x=0, y=0` is not valid unless `L` and `R` are defined differently. The loop structure should handle the case where the range is purely inside a single digit length (handled by L=R case).
+       - For L < R, we solve `L*x + R*y = Target` with `x >= 1`, `y >= 1`, `x <= 9*10^(L-1)`, `y <= 9*10^(R-1)`.
+
+2. **Optimization:**
+   - Precompute powers of 10 (up to 10^8) and digit length sums (up to 10^8) using Look-Up Tables (LUTs) since bit widths are manageable.
+   - All calculations must be modulo 10^9 + 7 only for the final summation of counts. Intermediate calculations for ranges might exceed 32-bit, so use 64-bit logic internally (or split into high/low bits). Since max S is 10^8, intermediate sums fit within 32-bit signed if careful, but 64-bit (Verilog `longint`) is safer for accumulation.
+
+3. **Control Flow:**
+   - Use nested loops (L from 1 to 9, R from L to 9).
+   - Inside, compute `mid_sum`. If `S < mid_sum`, break inner loop (since `R` only increases).
+   - Calculate `Target = S - mid_sum`.
+   - If `L == R`:
+     - If `Target % L != 0`, continue.
+     - `x = Target / L`. Check range. Add to `total_count`.
+   - If `L < R`:
+     - Solve `L*x + R*y = Target`.
+     - Since GCD(L, R) divides Target is a check.
+     - Iterate `x` from 1 to `9*10^(L-1)`? No, too slow for HW if 9*10^7.
+     - However, note constraints: L, R <= 9.
+     - The equation `L*x = Target (mod R)` has a unique solution for `x` modulo `R/gcd(L,R)`.
+     - We can find the smallest `x >= 1` satisfying the congruence.
+     - Then check if `y = (Target - L*x)/R >= 1` and within bounds.
+     - If valid, add `floor((x_max - x) / (R/g)) + 1` to count.
+
+4. **Bit Widths:**
+   - `S_in`: 32 bits (scaled down from 10^8).
+   - Internal counters (L, R): 4 bits.
+   - Powers of 10: 32 bits (10^8 < 2^27).
+   - Intermediate `Target`: 32 bits (signed logic might be needed if negative, but we skip negatives).
+   - GCD logic: Small operands (<=9), trivial.
+   - `result`: 32 bits (mod 10^9+7).
+
+**Timing:**
+- Start -> Done: Within 10,000 cycles (sufficient for 9x9 iterations + small inner loops).
+- Reset: Standard synchronous, 2 cycles.

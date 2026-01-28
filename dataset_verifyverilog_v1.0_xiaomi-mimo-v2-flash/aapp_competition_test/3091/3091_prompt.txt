@@ -1,0 +1,37 @@
+Implement a Verilog module that counts valid assignments for a single KenKen puzzle section. 
+
+**Specification:**
+- **Inputs:**
+  - `clk, rst_n`: Standard synchronous control
+  - `start`: 1-cycle pulse to begin computation
+  - `n[7:0]`: Puzzle size (4-9)
+  - `m[7:0]`: Section size (2-10)
+  - `t[31:0]`: Target value (1 to 3e8)
+  - `op[7:0]`: Operator: ASCII '+' (0x2B), '-' (0x2D), '*' (0x2A), '/' (0x2F)
+  - `row[9:0][3:0]`: 10-element array for row coordinates (0-based, 0-8)
+  - `col[9:0][3:0]`: 10-element array for column coordinates (0-based, 0-8)
+
+- **Outputs:**
+  - `result[31:0]`: Number of valid assignments (0 to 2^31-1)
+  - `done`: 1-cycle pulse when result is valid
+
+- **Behavior:**
+  1. On `start`, reset internal state and begin search
+  2. Enumerate all permutations of numbers 1..n for the m cells (n choose m with permutations: at most 9^10 ≈ 3e9, but practically limited by constraints)
+  3. For each candidate assignment:
+     - Check row uniqueness: No duplicate row indices in section
+     - Check column uniqueness: No duplicate column indices in section
+     - Check arithmetic constraint:
+       - Addition (+): sum of all values equals t
+       - Subtraction (-): for 2 cells only, |a-b| == t
+       - Multiplication (*): product of all values equals t
+       - Division (/): for 2 cells only, max/min == t (integer division)
+  4. Increment counter for valid assignments
+  5. Set `done` when search completes (max 1000 cycles for m=10)
+
+- **Constraints:**
+  - Use 32-bit arithmetic for target comparison
+  - Implement backtracking with iterative loops (bounded depth m)
+  - Use bit vectors for row/col occupancy tracking (9 bits each)
+  - Timeout: Must complete within 10,000 cycles for worst case
+  - Reset: `done=0`, `result=0`, all internal state cleared

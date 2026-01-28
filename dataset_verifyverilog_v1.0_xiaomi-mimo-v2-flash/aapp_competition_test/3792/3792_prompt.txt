@@ -1,0 +1,42 @@
+Implement a Verilog module to solve the Fair Nut and Strings problem. Given two n-bit binary strings s and t (representing 'a'=0, 'b'=1), find maximum number of unique prefixes when selecting up to k strings between s and t inclusive.
+
+Simplified for HDL: n=16 bits max, k=256 (capped). Use 16-bit fixed-width arithmetic. Process bits sequentially.
+
+Core Algorithm:
+1. Initialize count = 1 (single empty prefix)
+2. Initialize result = 0
+3. For each bit position i from 0 to n-1:
+   - count = count * 2
+   - If s[i] == 'b': count = count - 1 (subtract strings starting with 'a')
+   - If t[i] == 'a': count = count - 1 (subtract strings starting with 'b')
+   - Cap count at k (count = min(count, k))
+   - result = result + min(count, k)
+4. Return result
+
+Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low async reset
+  start: 1-cycle pulse to start computation
+  s[15:0]: 16-bit input string (packed, LSB = bit 0)
+  t[15:0]: 16-bit input string (packed)
+  n[3:0]: number of bits to process (1-16)
+  k[8:0]: max string count (1-256, capped at 256)
+
+Outputs:
+  result[23:0]: 24-bit output sum (supports ~16M)
+  done: 1-cycle pulse when result valid
+
+Timing: start->done within 100 cycles (16-bit processing)
+Reset: done=0, result=0, internal states cleared
+
+Behavior: On start, process bits sequentially using 4-bit counters for 'i', accumulating 'count' (10-bit) and 'result' (24-bit). Use min logic to cap at k. All arithmetic modulo 2^width with truncation.
+
+Example:
+Input: n=2, k=4, s=aa(00), t=bb(11)
+Processing:
+  i=0: count=1*2=2; s[0]=0 no sub; t[0]=1 no sub; count=2; result=2
+  i=1: count=2*2=4; s[1]=0 no sub; t[1]=1 no sub; count=4; result=2+4=6
+Output: 6
+
+Note: All values are treated as unsigned. For bits beyond n, s/t inputs are ignored.

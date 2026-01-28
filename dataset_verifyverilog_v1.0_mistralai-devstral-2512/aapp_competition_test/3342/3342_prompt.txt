@@ -1,0 +1,44 @@
+Verilog HDL Module Specification for 'Onion Thief' Problem
+
+**Problem**: Given N onions (points) and M fence posts (vertices of convex polygon), select K posts to maximize onions strictly inside their convex hull.
+
+**Scaled Constraints for FPGA**:
+- M (Fence Posts) <= 16
+- N (Onions) <= 16  
+- K (Selected Posts) <= 16
+- Coordinates: 16-bit signed integers (Range: -32768 to 32767). Scale input coordinates to fit.
+- Max iterations: Combinatorial logic or bounded FSM (max 1024 cycles).
+
+**Algorithm**:
+1. Precompute Point-In-Convex-Polygon test logic using signed area (orientation) checks.
+2. Iterate through all possible subsets of K fence posts from the M available posts.
+   - Since M is small (<=16), we can use a counter to generate bitmask subsets.
+   - Valid subset must have exactly K bits set.
+3. For each valid subset, construct the convex hull of selected posts.
+   - Since original fence is convex and we select a subset of its vertices, the convex hull is simply the selected points sorted angularly (or by original polygon order).
+   - We must sort the selected points by polar angle relative to their centroid or iterate the original order to maintain convexity.
+4. Count onions strictly inside this hull.
+5. Update maximum count.
+
+**Interface**:
+- **Inputs**:
+  - `clk`: System clock.
+  - `rst_n`: Active-low reset.
+  - `start`: 1-cycle pulse to start calculation.
+  - `config_valid`: Input loading control.
+  - `onion_x`, `onion_y`: 16-bit inputs for onion coordinates.
+  - `post_x`, `post_y`: 16-bit inputs for fence post coordinates.
+- **Outputs**:
+  - `result`: 16-bit integer (max onions protected).
+  - `done`: 1-cycle pulse indicating completion.
+
+**Internal Logic**:
+- Storage: Dual-port BRAM arrays for `onions` (16x32bit) and `posts` (16x32bit).
+- State Machine: `IDLE`, `LOAD`, `ITERATE_SUBSETS`, `CHECK_POINT`, `UPDATE_MAX`, `FINISH`.
+- Subset Generation: A Gray-code or simple binary counter based approach to iterate combinations.
+- Point-in-Polygon: For a given subset (convex polygon), check if an onion is strictly inside by verifying it is on the same side of all edges (using cross product). `Cross(Edge, Point) > 0` for all edges (assuming CCW order).
+
+**Implementation Details**:
+- Use fixed-point arithmetic for cross products (32-bit result to avoid overflow from 16-bit inputs).
+- `done` signal asserts when all subsets are processed.
+- Result holds the maximum onions found.

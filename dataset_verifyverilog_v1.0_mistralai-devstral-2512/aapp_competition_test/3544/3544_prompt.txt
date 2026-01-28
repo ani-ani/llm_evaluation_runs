@@ -1,0 +1,21 @@
+Implement a Verilog module that calculates the minimum cinema row width X to seat all groups. Constraints: max groups per size = 30, max group size = 12, max X = 12, rows are triangular (X, X-1, ..., 1). Each group of size S occupies S seats. Groups must be separated by at least 1 empty seat from other groups, except at row ends.
+
+Interface:
+- Inputs: clk (rising), rst_n (active-low sync reset), start (1-cycle pulse)
+- Input registers (4-bit wide): group_count[1:12] (number of groups of size i)
+- Output: result (8-bit: X value 3..12, or 0xFF for 'impossible'), done (1-cycle pulse when valid)
+
+Algorithm: For X from 3 to 12, simulate seat assignment:
+1. Generate all rows lengths: R[0] = X, R[1] = X-1, ..., R[X-1] = 1
+2. For each row, fill left-to-right. Place groups in descending size order (or any order). Each placed group of size S occupies S seats + 1 separator (if not at row end). Skip rows when full.
+3. If all groups placed, X is valid. Return smallest valid X.
+4. If no X <= 12 works, return 0xFF.
+
+Implementation details:
+- Use FSM with states: IDLE, CALCULATE, CHECK_X, DONE
+- Use iterative approach: for each X, for each group type, try to fit into rows.
+- Row capacity tracking: track remaining seats per row. Group placement: place if S <= remaining seats, consume S+1 seats (or S if at end).
+- Signal widths: row index (4-bit), remaining seats (4-bit), group counter (6-bit, max 30), X counter (4-bit).
+- Timing: Start->Done within 256 cycles. Reset clears result to 0.
+
+Note: This is a simplified seating logic. Implement iterative trial for X=3..12. For each X, allocate seats row-by-row. Use local arrays for row seats and group counts. If simulation fits all groups, return X. If all fail, return 0xFF.

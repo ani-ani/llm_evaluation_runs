@@ -1,0 +1,70 @@
+Design a Verilog module to solve the 'Double and Triple Bids' problem. Given an array of integers, the goal is to determine if all numbers can be made equal by multiplying/dividing only by 2 and 3. The core algorithm is to normalize every number by repeatedly dividing by 2 and 3 until the remaining value is 'core' (not divisible by 2 or 3). If all normalized values are identical, output Yes.
+
+Hardware constraints:
+- Clock-based FSM implementation.
+- Supports up to 16 input numbers.
+- Input values are 32-bit unsigned integers (scaled from 10^9).
+- Iterative division process for normalization.
+
+Interface Specification:
+- Inputs:
+  - `clk`: System clock (rising edge active).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start processing. When high, the module should accept the current array data.
+  - `len`: 4-bit input (1 to 16) indicating number of valid inputs in the array.
+  - `arr_in`: 32-bit input. Since Verilog ports cannot be arrays directly in some synthesis tools, stream the input values one by one. A separate `write_index` control signal (or a handshake `data_valid`) is needed to populate the internal buffer. For simplicity, assume the testbench writes to an internal RAM-like interface: `arr[0:15]` (array of 16 registers, 32-bit each). However, since standard Verilog modules have flat ports, we will use a simplified interface where the testbench sets `arr[i]` signals externally or loads them sequentially. Let's stick to an internal array `arr` of 16 registers 32-bit wide. The module will read from this array.
+  - Alternatively, a simpler port: The testbench will drive `val_in` and `index_in` signals. The module must latch these into an internal memory.
+
+Simplified Verilog Interface for Grading:
+- `input clk, rst_n, start`
+- `input [3:0] len`
+- `input [31:0] data_in` (data to be written to internal array)
+- `input [3:0] idx_in` (index to write to)
+- `input we` (write enable for data loading)
+- `output reg [31:0] result` (Final 'core' value if match, or 0 if fail)
+- `output reg done` (Pulse when computation finishes)
+- `output reg valid` (Asserted if result is 'Yes', cleared if 'No' – or result can hold '1'/'0')
+
+Algorithm Steps (FSM):
+1. **Reset**: Clear internal array buffer (size 16x32). Set `done=0`.
+2. **Load**: If `we` is high, write `data_in` to `internal_ram[idx_in]`. (This allows the testbench to load data).
+3. **Start**: When `start` is high, begin normalization.
+   - Read first element (index 0). Normalize it (div by 2/3 until no longer divisible). Store as `ref_core`.
+   - Loop through indices 1 to `len-1`:
+     - Read element, normalize.
+     - Compare with `ref_core`.
+     - If mismatch, set `fail_flag`.
+4. **Finish**: After checking all, assert `done`. Set `valid` to 1 if no mismatch, 0 otherwise.
+
+Normalization Logic:
+- For a value `v`, check `v % 2 == 0` (using subtraction loop: `v = v / 2` if `v >= 2` and `v % 2 == 0`).
+- Since division is costly, we will simulate division by repeated subtraction or shift (for 2) or multiplication-inverse approximation if needed, but iterative subtraction is safer for exactness in this context given the bit width.
+- Actually, for 2: `v & 1 == 0` check, then `v = v >> 1`.
+- For 3: `v % 3 == 0`. Implement modulo 3 logic (sum of digits or iterative subtraction). Given 32-bit, a simple subtraction loop `while (v >= 3) v = v - 3` is too slow (2^32 cycles). We need a shift-based approach or standard divider logic.
+- To fit synthesis: Use a standard sequential divider for mod 3. Cycle count: Max 32 cycles for shift/div by 2, similar for 3.
+- Total cycles: 16 elements * ~32 cycles per element * 2 ops = ~1000 cycles. 
+- The timeout in testbench should be high enough.
+
+Simplified division logic for 3:
+- Since we only need to check divisibility and divide by 3, we can use a counter. 
+- Actually, for this specific problem, we can check `value % 3` by simply subtracting 3 repeatedly until value < 3, then checking if remainder is 0. With 32-bit numbers, this takes up to ~1.4 billion cycles max (worst case 10^9). That is impossible.
+- **Correction for Hardware**: We must use the mathematical property that we only care about the *core* value (removing all factors 2 and 3). We cannot run arbitrary division loops for large numbers in reasonable time on an FPGA without a hardware divider unit.
+- **Adaptation**: The prompt implies `a_i <= 10^9`. 10^9 is ~30 bits. A 32-bit integer. We cannot iterate subtraction for division by 3 (max iterations 333M). 
+- **Fix**: We must implement a sequential integer divider (restoring division) for `div by 2` and `div by 3`. 
+  - Div by 2: Shift register (1 cycle).
+  - Div by 3: Sequential divider (32 cycles).
+- To keep it simple: We will treat the normalization as a sub-module that iteratively removes factors 2 and 3. Since the number of factors is small (<30 for 2, <20 for 3), the loop will run <50 times.
+- **Operation**: 
+  - `is_div_by_2`: Check `value[0] == 0`. If yes, `value = value >> 1`.
+  - `is_div_by_3`: Use a modulo-3 checker (sum of bits weighted by powers of 2 mod 3) or a state machine that simulates division. A simple way: `remainder = value % 3`. If `remainder == 0`, `value = value / 3`.
+  - To compute `value / 3` and `value % 3` efficiently, we use a standard restoring division algorithm.
+
+**Final Logic**: The module will have an FSM that processes the array. It will normalize one number at a time. 
+
+Constraints for Testbench:
+- `N` <= 16.
+- `val` <= 10^9 (fits in 32 bits).
+- The 'core' value (result of removing 2s and 3s) will fit in 32 bits.
+
+Prompt Refinement:
+Implement a module `bid_checker` that loads 16 32-bit integers, normalizes them by removing factors 2 and 3, and checks if all resulting normalized values are equal. Use a sequential divider for the 'divide by 3' operation.

@@ -1,0 +1,68 @@
+Design a Verilog module that computes the next perfect square greater than a given non-negative integer N (0-65535). The module must use a fixed-point iterative algorithm (16-bit integer arithmetic, 8-bit precision for intermediate values). Implement integer square root using a simplified Newton-Raphson method with maximum 16 iterations.
+
+### Interface:
+- **Inputs:**
+  - `clk`: System clock, rising edge
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `N`: 16-bit input number (0-65535)
+
+- **Outputs:**
+  - `result`: 16-bit output (next perfect square)
+  - `done`: 1-cycle pulse when result is valid
+
+### Timing & Reset:
+- Minimum 2 cycles of reset (`rst_n=0`)
+- After `start` assertion, `done` should go high within 32 clock cycles
+- `result` is valid only when `done=1`
+- After `done`, module should be ready for next start immediately
+
+### Algorithm Specification:
+1. **Integer Square Root Calculation:**
+   - Use Newton-Raphson: `x_{n+1} = (x_n + N/x_n) / 2`
+   - Initialize `x0 = N >> 1` (or `N` if N=0)
+   - Iterate 16 times for convergence (bounded loop)
+   - Use fixed-point: represent x as 16-bit integer (Q16.0)
+   - Division: integer division `N/x_n` (floor division)
+
+2. **Next Perfect Square:**
+   - Compute `root = floor(sqrt(N))` from above
+   - If `root * root == N`, then `result = (root + 1)^2`
+   - Else `result = (root + 1)^2`
+
+3. **State Machine:**
+   - IDLE: waiting for `start`
+   - CALC_ROOT: computing integer square root (16 iterations)
+   - CALC_SQUARE: computing (root+1)^2 (1 multiplication)
+   - DONE: assert `done`
+
+### Implementation Notes:
+- **Array Handling:** None needed (scalar operations only)
+- **Arithmetic:** All operations are 16-bit integers (0-65535). Overflow: if `(root+1)^2 > 65535`, wrap to `(root+1)^2 mod 65536` (or saturate). For simplicity, assume inputs keep results within 16-bit range (N < 255 for 255^2=65025)
+- **Division:** Implement integer division with 16-bit divisor, using a simple iterative subtractor (16 cycles max)
+- **Multiplication:** 16-bit × 16-bit = 32-bit product, take lower 16 bits for result (truncate overflow)
+
+### Error Handling:
+- For N=0: sqrt(0)=0, next perfect square = 1
+- For N=1: sqrt(1)=1, next perfect square = 4
+- Do not handle N > 65535 (undefined)
+
+### State Definitions:
+```
+localparam IDLE = 2'd0;
+localparam CALC_ROOT = 2'd1;
+localparam CALC_SQUARE = 2'd2;
+localparam DONE = 2'd3;
+```
+
+### Required Ports:
+```verilog
+module next_perfect_square(
+    input clk,
+    input rst_n,
+    input start,
+    input [15:0] N,
+    output reg [15:0] result,
+    output reg done
+);
+```

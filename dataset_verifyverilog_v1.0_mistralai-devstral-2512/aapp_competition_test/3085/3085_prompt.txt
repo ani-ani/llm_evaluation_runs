@@ -1,0 +1,92 @@
+Implement a Verilog module that converts a balanced parenthesis string into an alternative bracket notation.
+
+**Core Algorithm**:
+1. **Input Parsing**: The input string is fixed-width (4000 chars) and provided as an array of 8-bit ASCII bytes. The valid length `len` (up to 4000) is provided as an input.
+2. **Stack Simulation**: Since the input is balanced, use an iterative approach with a stack. We need to track the starting index of each open parenthesis.
+3. **Index Calculation**: As we parse the string, we generate headers. The indices in the output string depend on the cumulative length of previously generated headers.
+4. **Output Generation**: Construct the output string dynamically. Since indices are decimal numbers (up to ~10 digits for length 4000), we need a method to convert integers to ASCII strings.
+5. **Shortest Representation**: By processing the string linearly and outputting headers immediately when closing brackets are found, we generate the canonical shortest representation.
+
+**Module Interface**:
+- **Inputs**:
+  - `clk`: System clock (positive edge triggered).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to begin processing.
+  - `s_in`: Input string array, `s_in[0:3999]`, 8-bit ASCII.
+  - `len`: Input length, 12-bit integer (0 to 4000).
+- **Outputs**:
+  - `result`: Output string array, `result[0:8191]`, 8-bit ASCII. (Max output length estimate: 4000 pairs * "4,4:" (5 chars) = 20k, but scaled to 8192 for HDL constraints).
+  - `out_len`: Output length, 14-bit integer.
+  - `done`: 1-cycle pulse indicating completion.
+
+**Implementation Details**:
+- **State Machine**: Use a Moore FSM with states: `IDLE`, `RESET_STACK`, `PARSE_LOOP`, `PROCESS_OPEN`, `PROCESS_CLOSE`, `GENERATE_HEADER`, `APPEND_ASCII`, `FINISH`.
+- **Memory**: Use Block RAMs for the input string and the output string.
+- **Stack**: Implement a stack using a BRAM or LUTRAM with depth up to 2000 (half of input length). Store the *start index* of the bracket pair.
+- **Decimal Conversion**: A dedicated sub-state machine or pipeline to convert integers (indices) to ASCII bytes (divide-by-10 logic).
+- **Timing**: The output string is built sequentially. `out_len` updates as bytes are appended.
+- **Constraints**: 
+  - Max input length: 4000.
+  - Max output length: 8192 bytes.
+  - Bit widths: `len` (12 bits), indices (13 bits), stack depth (11 bits).
+
+**Example Logic for (())**:
+1. Parse '(' at index 0. Push 0 to stack.
+2. Parse '(' at index 1. Push 1 to stack.
+3. Parse ')' at index 2. Pop 1. Start=1, End=2. Header "1,2:". Append to output.
+4. Parse ')' at index 3. Pop 0. Start=0, End=3. Header "0,3:". Append to output.
+Wait, the example output is `4,8:8,8:`. 
+Let's re-read the problem: "Each index takes up as many characters... are absolute indices from the beginning of the new string."
+Ah, the indices refer to the *result* string indices, not the input string indices. 
+This is a critical distinction. 
+- Input `(())` (length 4). 
+- Output `4,8:8,8:` (length 9).
+- First header `4,8:` occupies indices 0-3.
+- Second header `8,8:` occupies indices 4-7.
+- The reference `4,8` in the first header points to index 4 (start of inner header) and index 8 (end of inner header).
+
+**Revised Algorithm**:
+1. Parse the input string to build a tree structure or a list of bracket pairs `(start_input_idx, end_input_idx)`.
+2. Sort these pairs by `start_input_idx` (which effectively flattens the tree for the output).
+3. Iterate through the sorted pairs to generate headers. 
+   - Keep a running counter of `current_output_len`.
+   - For each pair, we need to know the start and end indices in the *output* string.
+   - The `start_output_idx` is the current position where the header will be written.
+   - The `end_output_idx` depends on the cumulative length of headers for nested brackets. 
+   - However, the problem states indices are absolute in the *final* string. 
+   - Since we write headers linearly, we can know the `start` index of the current header. 
+   - The `end` index is the `start` index + length of the current header + length of all headers contained inside it.
+   - This requires knowing the total length of the subtree (contained headers) before writing the parent header. 
+   - This implies a bottom-up approach or a multi-pass algorithm.
+
+**Simplification for HDL**:
+Since the input length is max 4000, the number of pairs is max 2000. We can store the pairs and process them in two passes:
+1. **Pass 1 (Parsing)**: Parse input string, store pairs in a BRAM. Count pairs (N).
+2. **Pass 2 (Bottom-Up Calculation)**: Sort pairs by start index (or use tree structure). 
+   - Iterate from innermost (highest start index) to outermost.
+   - Calculate the length of the representation for each pair.
+   - `len(pair)` = `len(start_str)` + 1 + `len(end_str)` + 1 + `sum(lengths of nested pairs)`.
+   - We need a structure to store `calculated_length` for each pair.
+3. **Pass 3 (Output Generation)**: Iterate from outermost to innermost (or sorted order) and write to output BRAM using calculated offsets.
+
+**Verilog Module Spec**:
+- **Inputs**: `clk`, `rst_n`, `start`, `s_in[3999:0][7:0]`, `len[11:0]`.
+- **Outputs**: `result[8191:0][7:0]`, `out_len[13:0]`, `done`.
+- **Internal Memories**:
+  - `input_ram` (for `s_in`).
+  - `pair_ram` (stores start/end indices of pairs, max 2000 entries, 13 bits each).
+  - `length_ram` (stores calculated length for each pair, 14 bits).
+  - `output_ram` (for `result`).
+- **FSM States**:
+  - `IDLE`: Wait for start.
+  - `PARSE`: Iterate through `s_in`. When '(', push index to stack. When ')', pop index, write pair `(popped_idx, current_idx)` to `pair_ram`.
+  - `CALCULATE_LENGTHS`: Sort pairs (or process in reverse order of finding) to compute lengths. Since pairs are found in order of closing bracket, we can process `pair_ram` in reverse write order for bottom-up calculation.
+    - For pair `i` (from N-1 down to 0): `length_ram[i] = len(start) + 1 + len(end) + 1 + sum(length_ram[j] for all j nested in i)`.
+    - Nesting check: `i` contains `j` if `pair_ram[i].start < pair_ram[j].start` and `pair_ram[j].end < pair_ram[i].end`.
+    - Since we process bottom-up, we can accumulate lengths into a temporary variable if we iterate carefully or use a stack again.
+  - `GENERATE_OUTPUT`: Iterate through pairs 0 to N-1. Calculate `start_offset` and `end_offset` based on `length_ram`. Write header to `output_ram`.
+    - `start_idx` is the current write pointer.
+    - `end_idx` is `start_idx` + `length_ram[i]`.
+    - Write decimal string of `start_idx`, comma, decimal string of `end_idx`, colon.
+  - `DONE`: Set `out_len` and pulse `done`.
+- **Helpers**: Decimal-to-ASCII converter (state machine or comb logic).

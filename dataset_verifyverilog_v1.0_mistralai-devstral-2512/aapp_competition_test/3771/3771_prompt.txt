@@ -1,0 +1,35 @@
+You are an expert Verilog designer. Design a module that implements a simplified version of the competitive programming problem 'Frog and pond' (ABC159 F). The task is to compute the minimum number of leaves to remove to disconnect leaf 'S' from leaf 'T' in a grid. The frog jumps between leaves in the same row or column. This problem can be modeled as a minimum cut problem on a bipartite graph (rows and columns). If 'S' and 'T' share a row or column, the answer is -1 (impossible). Otherwise, compute the max flow/min cut on a graph with H + W + 2 vertices.
+
+Input: Grid of H rows and W columns (H, W up to 100). Characters: '.', 'o', 'S', 'T'.
+Output: Minimum leaves to remove (integer). If impossible, -1.
+
+Constraints for Hardware Implementation:
+- Use 32-bit fixed-width integers for flow values (capacities: 1 for 'o', INF for S/T edges).
+- Maximum nodes: H + W + 2 ≤ 202. Keep H, W ≤ 16 for FPGA synthesis (if needed, scale down).
+- Implement Max Flow (Dinic or Edmonds-Karp) using a RAM-based graph structure (adjacency list) or a dense adjacency matrix (max 202x202 = ~40k entries, feasible for BRAM).
+- Use 16-bit or 20-bit indices for node IDs.
+- No recursion: Use iterative BFS/DFS for Ford-Fulkerson/Dinic.
+- Edge capacities: 1 for 'o', INF (e.g., 32'h7FFF_FFFF) for S/T connections.
+
+Module Interface:
+- Input: clk, rst_n, start
+- Output: done, result [31:0]
+- Internal: Grid stored as ROM (HxW chars).
+- Operation:
+  1. On start, parse grid to locate S (row_s, col_s) and T (row_t, col_t).
+  2. If row_s == row_t or col_s == col_t, output -1.
+  3. Build graph: Source (0) connected to row_s (1) and col_s (H+1) with INF capacity. Sink (H+W+1) connected to row_t (1) and col_t (H+1) with INF capacity. For each 'o' leaf at (r, c), add bidirectional edge between row_r (r+1) and col_c (H+c+1) with capacity 1.
+  4. Run Dinic algorithm to compute max flow from source to sink.
+  5. Output flow value if < INF, else -1 (though flow cannot exceed INF here).
+
+Design Details:
+- Use a 2D array for capacities (matrix) for simplicity, size 202x202 (16-bit entries).
+- Dinic's BFS: Level graph generation.
+- Dinic's DFS: Push flow along blocking flow.
+- Limit iterations: Set max nodes to 32 (H, W ≤ 16).
+- Clock domain: Single clock, synchronous reset.
+- Timing: Start pulse initializes state machine. Done asserted when flow computation finishes (within 10,000 cycles).
+
+Example: 3x3 grid 'S.o', '.o.', 'o.T' -> S at (0,0), T at (2,2), no shared row/col. Build graph: Source->Row0/Col0, Sink->Row2/Col2, edges for 'o's. Max flow = 2.
+
+Note: Ensure integer widths match to avoid overflow. Use Verilog-2001 compatible code. Do not generate testbench code inside the module; only specify the RTL.

@@ -1,0 +1,36 @@
+Design a Verilog module that determines if Bill can cross a 1000x1000 field avoiding snakes with strike distances. The core algorithm simplifies the 2D path finding into a 1D search for the optimal y-entry point, checking if a straight line from (0, y_start) to (1000, y_end) avoids all snake circles.
+
+**Interface Specification:**
+Inputs:
+  - clk: Clock signal
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to begin computation
+  - snake_x[i], snake_y[i], snake_d[i] for i=0..15: 16 sets of 12-bit inputs (representing 0-1000 as Q8.4 fixed point). Only the first 'snake_count' snakes are valid.
+  - snake_count: 4-bit input (0 to 16).
+
+Outputs:
+  - done: 1-cycle pulse indicating completion
+  - success: 1-bit flag (1=possible, 0=bitten)
+  - entry_y: 12-bit result (Q8.4 fixed point, y coordinate of entry)
+  - exit_y: 12-bit result (Q8.4 fixed point, y coordinate of exit)
+
+**Functional Description:**
+The module must implement the following logic:
+1.  **Input Stage**: Register all inputs on `start`.
+2.  **Feasibility Check**: If `snake_count == 0`, path is always possible.
+3.  **Search Algorithm**: Perform a binary search on the entry y-coordinate (0.0 to 1000.0) to find the maximum `y_start` such that there exists a valid `y_end`. For each candidate `y_start`:
+    *   Calculate the slope `m` to the target x=1000.
+    *   Check the vertical distance from the line `y = m * x + y_start` to each snake. The snake blocks the path if the vertical distance at `snake_x` is less than `sqrt(snake_d^2 - (horizontal_dist)^2)`.
+    *   Since the field is narrow (1000 units), approximate the clearance check by verifying if the straight line segment intersects any snake circle. Use integer arithmetic: check if `(distance_to_line < radius)`.
+    *   Use fixed-point arithmetic (12-bit integers for coordinates, 16-bit for intermediate calculations).
+4.  **Output Formatting**: Return the calculated `entry_y` and the corresponding best `exit_y`. If no path exists, `success = 0`.
+
+**Implementation Details:**
+- Use a finite state machine (FSM) with states: IDLE, CALCULATE, CHECK_SNAKES, UPDATE_SEARCH, DONE.
+- The search requires ~10-12 iterations for 12-bit precision.
+- Arithmetic: Use fixed-point Q8.4 (12 bits total). To avoid floating point, scale calculations: `value * 16`.
+- Comparator Logic: For each snake, compute the squared distance from the line. If `(distance)^2 < (radius)^2`, the snake blocks. The line equation is `y = (y_end - y_start) * x / 1000 + y_start`.
+- Constraint: The path must stay within `x=0` to `x=1000`. The check is primarily for the straight line segment.
+
+**Testbench Expectations:**
+The testbench will instantiate the module with 1-4 snakes. It will drive `start`, provide input coordinates (scaled integers), and wait for `done`. It will verify that the `success` bit and output coordinates match expected string outputs or the "bitten" condition.

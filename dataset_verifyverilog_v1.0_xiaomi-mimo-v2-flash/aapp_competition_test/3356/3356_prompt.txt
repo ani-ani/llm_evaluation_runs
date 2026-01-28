@@ -1,0 +1,30 @@
+Implement a Verilog module that approximates the minimum possible tree diameter after a single edge swap for an N-node tree (N fixed at 8). The tree is provided as an adjacency matrix (8x8 bits). The core optimization is a greedy approach: find the current diameter path (using BFS) and break the longest edge to minimize the maximum path length in the resulting forest, then reconnect the components via shortest path.
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low reset
+  start: 1-cycle start pulse
+  adj_matrix[8][8]: 8x8 bit matrix (1 if edge exists, symmetric)
+  n_nodes: 4-bit (value=8)
+
+Outputs:
+  result_distance: 5-bit (0-16, diameter)
+  edge_close_u: 4-bit
+  edge_close_v: 4-bit
+  edge_open_u: 4-bit
+  edge_open_v: 4-bit
+  done: 1-cycle pulse when calculation completes
+
+Algorithm (Hardware Implementation):
+1. Reset: done=0, all outputs=0.
+2. On start, begin computation:
+   a. Compute distances between all pairs (Floyd-Warshall on 8 nodes, max 8 steps).
+   b. Identify the pair with maximum distance (diameter).
+   c. Trace the path between diameter endpoints.
+   d. Select the edge on this path with maximum weight (1 for unweighted).
+   e. Removing this edge splits the tree into two components.
+   f. Find the pair of nodes (one from each component) with minimum distance.
+   g. The new diameter is max(dist within components) + min(dist between components).
+   h. Output the broken edge and the new edge.
+3. Timing: Must complete within 1024 cycles.
+4. Constraints: Adjacency matrix is symmetric, no self-loops. Result is scaled 0-16.

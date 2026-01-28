@@ -1,0 +1,82 @@
+Design a Verilog module that determines if a torpedo can avoid ship segments over n seconds. Adaptation: Scale 2D plane to 16-bit coordinates (x: -8 to +8), time steps to 64 cycles max, and use a grid-based approach. The torpedo starts at (0,0) and moves diagonally (x±1, y+1) or vertically (x, y+1). Ships are axis-aligned segments on integer y coordinates. The goal is to find a path of length n that avoids all ship collisions.
+
+**Core Algorithm Simplification**: 
+- Discretize x-axis to 16 positions (4-bit index: 0-15 representing x = -8 to +8)
+- Use DP with state (y, x_index) tracking reachable positions
+- For each y from 0 to n-1, propagate reachable x positions to y+1 considering ship obstructions
+- Ships act as obstacles on specific y-levels blocking specific x ranges
+- Output a path string of length n using characters '-', '0', '+' (mapped to x-1, x, x+1)
+
+**Input Interface**:
+- `clk`, `rst_n`: Standard synchronous control
+- `start`: 1-cycle pulse to initiate computation
+- `n`: 16-bit input (number of time steps, max 64 in hardware)
+- `m`: 8-bit input (number of ships, max 16 in hardware)
+- `ship_x1`, `ship_x2`, `ship_y`: 16-bit inputs for ship data (one at a time via `ship_idx`)
+- `ship_write`: 1-cycle pulse to load ship data at `ship_idx`
+- `ship_idx`: 5-bit index (0-15 for max 16 ships)
+
+**Output Interface**:
+- `result`: 64-bit packed output (8 bits per character: '-', '0', '+')
+- `possible`: 1-bit flag (1 = path exists, 0 = impossible)
+- `done`: 1-cycle pulse when computation complete
+
+**Operation Sequence**:
+1. Reset: `rst_n=0` clears all internal state, `possible=0`, `done=0`
+2. Load Ships: For each ship i (0 to m-1):
+   - Set `ship_idx = i`
+   - Set `ship_x1`, `ship_x2`, `ship_y` (clamp to 16-bit range)
+   - Pulse `ship_write = 1` on rising clock edge
+3. Start Computation: Pulse `start=1` after all ships loaded
+4. Wait: Monitor `done` signal, computation takes ≤ 100 cycles
+5. Read Result: When `done=1`, if `possible=1`, read `result[63:0]`
+   - Bits [7:0] = step 0, [15:8] = step 1, ... etc
+   - Map: '-' = 0x2D, '0' = 0x30, '+' = 0x2B
+
+**Timing Constraints**:
+- Reset: 2 cycles minimum
+- Ship loading: 1 cycle per ship
+- Computation: 10-100 cycles
+- Result valid when `done=1`
+
+**Hardware Constraints**:
+- Use 16-bit registers for coordinates and ship data
+- Implement reachability as a 16-bit bitmask (bit i = reachable at x_index i)
+- For each y-level, compute new reachability by shifting left/right for diagonal moves
+- Apply ship obstructions by masking out blocked x indices
+- Path reconstruction: Store parent pointers in a lookup table or reconstruct via greedy selection
+- Maximum n = 64 for hardware feasibility
+- Maximum m = 16 ships
+- Clock domain: Single-ended, rising edge
+
+**State Machine**:
+- IDLE: Waiting for `start`
+- SHIP_LOAD: Accepting ship data
+- COMPUTE: Running DP propagation
+- RECONSTRUCT: Building output path
+- DONE: Output valid
+
+**Key Implementation Details**:
+- Coordinate mapping: x_index = x + 8 (0..15)
+- Ship x-range conversion: Map x1, x2 to x_index ranges
+- Collision detection: Check if torpedo's x_index falls within any ship's blocked range at that y
+- Path output: For each step, record movement char
+- If no path exists: Set `possible=0`
+
+**Reset Values**:
+- `possible` = 0
+- `done` = 0
+- `result` = 0
+- Internal state: All counters cleared
+
+**Error Handling**:
+- If `start` during ship loading: Ignore (or error flag)
+- If `ship_idx` >= 16: Ignore (saturation)
+- If n > 64: Process only first 64 steps (clamping)
+
+**Testability**:
+- Internal state can be probed for debugging
+- Allow single-step execution in simulation
+- Provide `busy` signal if needed (optional)
+
+The module should be synthesizable and follow synchronous design principles with clear timing specifications.

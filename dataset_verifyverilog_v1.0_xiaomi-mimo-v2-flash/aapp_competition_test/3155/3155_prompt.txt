@@ -1,0 +1,40 @@
+Write a Verilog module `jeopardy_ai` that solves the Binomial Coefficient Jeopardy problem. Given an integer X (scaled to 32-bit, max 2^32-1), find n and k such that C(n,k) = X. Priority: minimize n, then minimize k. Constraints: 0 ≤ n ≤ 64, 0 ≤ k ≤ n/2 (symmetry C(n,k)=C(n,n-k)).
+
+**Interface Specification:**
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle high pulse to start calculation
+  X: 32-bit unsigned integer (scaled input)
+Outputs:
+  n: 6-bit unsigned (0-64)
+  k: 6-bit unsigned (0-32)
+  done: 1-cycle high pulse when result is valid
+  valid: bit, 1 if valid solution found, 0 if no solution (X > C(64,32))
+
+**Timing Requirements:**
+- Start to done: ≤ 2048 cycles
+- Reset: assert rst_n=0 for min 2 cycles, then rst_n=1
+- After reset: done=0, valid=0, n=0, k=0
+- Start pulse must be high during rising edge to begin
+- Valid result appears on done pulse; n/k remain stable for 1 cycle
+
+**Algorithm Implementation:**
+1. Search space: n from 0 to 64, k from 0 to n/2
+2. For each (n,k), compute C(n,k) = n! / (k! * (n-k)!)
+3. To avoid overflow, compute iteratively: C(n,k) = C(n,k-1) * (n-k+1) / k
+4. Stop search when:
+   a) Found C(n,k) == X: Output (n, k) with smallest n, then smallest k
+   b) n > 64 or C(n,k) > X: Set valid=0, done pulse
+5. Optimization: Since we need smallest n, iterate n=0 to 64. For each n, compute C(n,k) for k=0 to n/2, checking against X. Track best (min n, min k).
+6. Special cases: X=1 should output 0 0 (C(0,0)=1). X=0 invalid (no binomial coeff). X > C(64,32)=1.8e18 should report invalid.
+
+**Control Logic:**
+- Use FSM with states: IDLE, COMPUTE_N, COMPUTE_K, CHECK, UPDATE_BEST, DONE
+- Internal registers: best_n (6-bit), best_k (6-bit), current_n (6-bit), current_k (6-bit), current_C (64-bit for intermediate calc), found (1-bit)
+- Widths: n 6-bit, k 6-bit, X 32-bit, C(n,k) 64-bit (max C(64,32) ≈ 1.8e18 < 2^60)
+- Division by k is integer division; since C(n,k) is integer, no remainder
+- If X=1: Immediate output n=0, k=0
+- If X > C(64,32): Set valid=0
+
+**Note:** The problem assumes integer X; scale to 32-bit. Output n=0, k=0 for X=1 as per example. If no solution exists (X too large), valid=0. The search must prioritize smallest n, then smallest k.

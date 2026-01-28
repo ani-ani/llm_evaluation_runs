@@ -1,0 +1,81 @@
+Design a Verilog module to solve the Oostende Beach problem with hardware constraints. The module must handle updates to a fixed-size array of huts and find the optimal food truck position to minimize queue difference.
+
+### Core Algorithm Adaptations
+1. **Data Structure**: Use a fixed-size array of 16 elements (huts), indexed 0 to 15. Each hut stores an 16-bit population count (scaled from original 10^6 to fit in 16 bits).
+2. **Queue Split Logic**: Simplified deterministic splitting. For a selected hut `k`:
+   - Left queue = sum(huts[0:k-1]) + (huts[k] / 2)
+   - Right queue = sum(huts[k+1:15]) + (huts[k] / 2)
+   - Note: Integer division truncates. This removes randomness and makes it hardware-friendly.
+3. **Optimization**: Compute the total population S. For each position k, the Left queue is prefix_sum[k] + (huts[k] >> 1). The Right queue is (S - prefix_sum[k+1]) + (huts[k] >> 1). The difference is |Left - Right|. We seek the smallest k (index) that minimizes this difference.
+4. **Updates**: The module will update one hut's value (write port) and then recompute the optimal position.
+5. **Throughput**: Since N=16 is small, a linear scan over all 16 positions is acceptable per update (taking ~16-32 cycles).
+
+### Module Interface
+
+**Inputs:**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `update_en`: High to indicate a new update request (hut index and new value). Must be held high until `done` asserts.
+- `hut_idx`: 4-bit index (0-15) of the hut to update.
+- `new_val`: 16-bit new population count for the hut.
+
+**Outputs:**
+- `optimal_idx`: 4-bit index (0-15) of the optimal food truck position.
+- `done`: High for 1 cycle when calculation is complete and `optimal_idx` is valid.
+
+**Internal Behavior:**
+1. On reset, clear all hut values to 0 and set `optimal_idx` to 0.
+2. When `update_en` is high:
+   a. Update `huts[hut_idx]` with `new_val`.
+   b. Calculate the total sum of all huts (max value ~16 * 65535, fits in 32 bits).
+   c. Perform a sequential scan (0 to 15):
+      - Compute `left_sum` and `right_sum` for current index `k`.
+      - Calculate `diff = abs(left_sum - right_sum)`.
+      - Track the minimum diff and the corresponding index (first occurrence wins).
+   d. Update `optimal_idx` and assert `done` for 1 cycle.
+
+**Timing:**
+- Update + Calculation takes approximately 16 (scan) + 5 (overhead) = ~21 cycles.
+- `update_en` must remain high until `done` asserts.
+
+### Detailed Prompt for Implementation
+Implement a Moore-style FSM (Finite State Machine) in Verilog. 
+
+1. **State Encoding**:
+   - `IDLE`: Wait for `update_en`.
+   - `UPDATE_VAL`: Update the memory array.
+   - `CALC_TOTAL`: Iterate 0-15 to compute the total population sum.
+   - `SCAN`: Iterate 0-15 to find the optimal index. Inside this loop, compute left and right sums incrementally.
+   - `DONE`: Assert `done` signal for 1 cycle.
+
+2. **Datapath:**
+   - **Memory**: 16x16bit array `huts`.
+   - **Registers**: `total_sum` (32-bit), `min_diff` (32-bit), `best_idx` (4-bit), `current_idx` (4-bit), `left_acc` (32-bit), `right_acc` (32-bit).
+   - **Logic**: 
+     - During `SCAN`, update `left_acc` and `right_acc` incrementally.
+     - `current_left = left_acc + (huts[current_idx] >> 1)`
+     - `current_right = (total_sum - (left_acc + huts[current_idx])) + (huts[current_idx] >> 1)`
+     - Compare `diff` with `min_diff`. If strictly smaller, update `min_diff` and `best_idx`.
+
+3. **Control Signals:**
+   - Use `start_calc` pulse from `IDLE` when `update_en` is high.
+   - Loop counters for `CALC_TOTAL` and `SCAN` states.
+   - `done` is asserted in the `DONE` state, then deasserted when returning to `IDLE`.
+
+4. **Constraints:**
+   - Max array size: 16 huts.
+   - Bit widths: Indices 4 bits, Values 16 bits, Sums 32 bits.
+   - Ensure non-blocking assignments for sequential logic.
+
+**Module Definition:**
+module beach_huts (
+    input wire clk,
+    input wire rst_n,
+    input wire update_en,
+    input wire [3:0] hut_idx,
+    input wire [15:0] new_val,
+    output reg [3:0] optimal_idx,
+    output reg done
+);
+// Implementation here
+endmodule

@@ -1,0 +1,49 @@
+Design a Verilog module that computes the expected number of visitors for a restaurant table problem using dynamic programming and fixed-point arithmetic. 
+
+**Constraints:**
+- n ≤ 16 guests (scaled from 50)
+- Guest sizes a_i ≤ 16 (scaled from 50)
+- Table length p ≤ 32 (scaled from 50)
+- All internal calculations use Q8.8 fixed-point format (8 integer bits, 8 fractional bits)
+- Factorials up to 16! must be precomputed in a lookup table (requires ~20 bits)
+- DP table dimensions: 17 guests × 33 sums (max 17×33×17 entries)
+
+**Input Interface:**
+- `clk`: Clock signal (10 ns period)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `n_in`: 4-bit input for number of guests
+- `p_in`: 6-bit input for table length
+- `a_in`: Array of 16 5-bit inputs for guest sizes
+
+**Output Interface:**
+- `result`: 16-bit Q8.8 fixed-point value
+- `done`: 1-cycle pulse indicating valid result
+
+**Timing:**
+- Reset: Sets `result` to 0, `done` to 0, takes 2 cycles
+- Computation: When `start` is asserted, calculate expected value
+- Operation: Use DP to count subsets summing ≤ p, accumulate weighted contributions
+- Expected cycles: ≤ 256 cycles for n=16
+
+**Implementation Details:**
+1. **Factorial LUT**: Precompute factorials 0! to 16! in a ROM
+2. **DP Engine**: Iterate through guests, updating counts of subsets of size k and sum s
+3. **Accumulation**: For each guest i, count subsets of other guests where (subset_sum + a_i) > p, multiply by k, fact[k], fact[n-1-k]
+4. **Scaling**: All intermediate values scaled to Q8.8. Multiply intermediate results by `1 << 8` when accumulating.
+5. **Output**: Divide final sum by n! (factorial of n) using shift approximation or lookup
+
+**Algorithm Steps:**
+1. If sum(a) ≤ p, return n (all guests fit)
+2. For each guest i:
+   - Initialize DP[0][0] = 1
+   - For each other guest j: update DP[k][s] = DP[k][s] + DP[k-1][s-a_j] if s ≥ a_j
+   - Sum over k, s where (s + a_i) > p: total += k * DP[k][s] * fact[k] * fact[n-1-k]
+3. Return total / fact[n] (scaled to Q8.8)
+
+**Verification:**
+- Test with n=3, a=[1,2,3], p=3 → result ≈ 1.333 (Q8.8: 0x155)
+- Test with all guests fitting → result = n
+- Test with no guests fitting → result = 0
+
+**Note:** This is a simplified version for n≤16. The module should handle fixed-point arithmetic carefully to avoid overflow.

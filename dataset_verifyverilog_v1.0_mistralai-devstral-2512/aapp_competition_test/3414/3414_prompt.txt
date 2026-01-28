@@ -1,0 +1,45 @@
+Implement a Verilog module to solve the Top Gear Tame Racing Driver problem.
+
+**Problem Overview**: Given a graph with N nodes (3 ≤ N ≤ 10000) and M edges (N ≤ M ≤ 2N) where every node has degree 2 or 4, find the minimal turning sum for an Eulerian circuit. However, for hardware implementation, we scale this down: N ≤ 16, M ≤ 32. The graph is guaranteed to be Eulerian. The turning at a node is determined by the angle between the outgoing edges relative to the incoming edge. The goal is to select a pairing of edges at degree-4 nodes (since degree-2 nodes are forced) that minimizes the sum of turning angles (radians).
+
+**Scaling for Hardware**:
+- **N (Nodes)**: 16 maximum (5-bit index)
+- **M (Edges)**: 32 maximum (6-bit index)
+- **Coordinates**: 16-bit signed integers (Q16.0) for X and Y.
+- **Angle Calculation**: Fixed-point arithmetic (Q16.16) for trigonometric functions (atan2).
+- **Memory**: Lookup tables (LUTs) for sin/cos or atan2 approximations.
+- **Search**: The optimal Eulerian circuit choice at degree-4 nodes is a pairing problem. Since degree is max 4, the number of pairings per node is small (3 possibilities). We will traverse the graph (Depth First Search) to explore these choices. The depth is bounded by the number of degree-4 nodes (≤ 8 in scaled version).
+
+**Module Interface**:
+- **Inputs**:
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start the calculation.
+  - `node_x[0:15][15:0]`: Array of X coordinates (flattened to 2D signal or sequential load).
+  - `node_y[0:15][15:0]`: Array of Y coordinates.
+  - `edge_u[0:31][4:0]`: Array of source node indices for edges.
+  - `edge_v[0:31][4:0]`: Array of destination node indices for edges.
+  - `num_nodes[4:0]`: Actual number of nodes.
+  - `num_edges[5:0]`: Actual number of edges.
+- **Outputs**:
+  - `result[47:0]`: 48-bit fixed-point result (Q32.16) representing the minimum turning in radians.
+  - `done`: 1-cycle pulse indicating calculation is complete.
+
+**Internal Logic**:
+1. **Initialization**: Store graph topology and coordinates. Build adjacency lists for each node.
+2. **Graph Traversal**: Perform a recursive search (implemented as an iterative stack) to traverse the graph and find an Eulerian path. At nodes with degree 4, there are 3 ways to pair incoming/outgoing edges. We must explore all combinations.
+3. **Angle Calculation**: When traversing from node A to B to C, calculate the angle between vectors (B-A) and (C-B). Use `atan2` logic with fixed-point coordinates.
+4. **Summation**: Accumulate the angle sum (in Q16.16) for each valid full circuit.
+5. **Minimization**: Compare the accumulated sums and store the minimum.
+6. **Output**: Convert the minimum sum to the output format and assert `done`.
+
+**Constraints**:
+- Do not use floating-point operators. Use fixed-point arithmetic.
+- The search space is bounded (e.g., 3^8 combinations) and must finish within 10,000 cycles.
+- Angle calculation can use a coarse LUT orCORDIC-like logic for atan2.
+- Ensure no combinational loops.
+
+**Implementation Details**:
+- Use a state machine (FSM) for control.
+- Use Block RAM (BRAM) structures for storing coordinates and graph edges if needed, or registers for small sizes.
+- The output `result` should be the raw fixed-point value; the testbench will interpret it.

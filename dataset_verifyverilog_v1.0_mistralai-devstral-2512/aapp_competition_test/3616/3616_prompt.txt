@@ -1,0 +1,42 @@
+Implement a Verilog module that computes the shortest non-adaptive test schedule length for allergy testing. The problem is scaled down: maximum 8 allergens (indexed 0-7), each with duration D in range 1-7 days. The module should take the durations of up to 8 allergens and output the minimum number of days required.
+
+Interface:
+- Inputs:
+  - clk: clock signal (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - num_allergens: 4-bit input (1-8)
+  - durations[7:0][2:0]: 8x3-bit array (packed or unpacked), each entry is D for allergen i (1-7). Unused entries should be 0.
+- Outputs:
+  - result: 16-bit output, the minimum number of days
+  - done: 1-cycle pulse indicating result is valid
+
+Timing:
+- start->done within 1024 clock cycles
+- Result valid when done=1
+- Reset clears result to 0 and done to 0
+
+Algorithm:
+This is a combinatorial optimization problem. Since inputs are small (k<=8, D<=7), the solution space is manageable. The module should implement a dynamic programming approach:
+1. Generate all possible non-adaptive schedules up to a reasonable maximum length (e.g., 256 days).
+2. A schedule is an array of length T (days), where each day contains the allergen applied (0-7) or none (8).
+3. For each schedule, check if it uniquely identifies all allergens given their durations.
+4. The check: For each allergen, simulate its reaction pattern (D days of '1' after application). Combine with other allergens via OR. The combined reaction pattern must be uniquely distinguishable for each allergen.
+5. Find the minimum T where a valid schedule exists.
+
+Implementation notes:
+- Use a lookup table or iterative search for schedule length T from max_duration to max_duration + k (or up to 256).
+- For each T, check all possible schedule configurations (limited by hardware constraints).
+- Since full search space is large, implement a heuristic or fixed maximum search depth (e.g., T up to 64).
+- Output the found minimum days.
+
+Verilog module signature:
+module allergy_scheduler (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] num_allergens,
+    input wire [2:0] durations [7:0],  // or packed as input wire [23:0] durations_packed
+    output reg [15:0] result,
+    output reg done
+);

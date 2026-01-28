@@ -1,0 +1,151 @@
+Design a Verilog module that processes a string to replace spaces with underscores or dashes based on run length.
+
+**Inputs:**
+- `clk`: Clock signal (rising edge active)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `text_in[0:15]`: 16x8-bit packed array representing input string (ASCII)
+- `len_in[3:0]`: 4-bit input length (1-16 characters, max 16)
+
+**Outputs:**
+- `text_out[0:15]`: 16x8-bit packed array representing output string
+- `len_out[3:0]`: 4-bit output length (same as input length)
+- `done`: 1-cycle pulse indicating completion
+
+**Behavior:**
+1. Input string is stored internally as 16 bytes. Only first `len_in` characters are meaningful.
+2. Process sequentially from character 0 to `len_in-1`.
+3. Count consecutive spaces (ASCII 0x20). If count >= 2, replace entire run with a single dash (0x2D). If count == 1, replace with underscore (0x5F). Non-space characters are copied as-is.
+4. Output string must be written to `text_out[0:15]` where only first `len_out` characters are valid.
+5. `done` becomes 1 for one cycle when processing is complete.
+
+**Constraints:**
+- Max processing time: 256 cycles
+- Use a state machine (IDLE, READ, WRITE, UPDATE, DONE)
+- Internal buffer size: 16 bytes
+- Space detection: compare character == 8'h20
+- Underscore: 8'h5F, Dash: 8'h2D
+- `len_out` equals `len_in` (no length change in this implementation)
+- Reset: `done`=0, `text_out` cleared to 0, `len_out`=0
+
+**Note:** The output length remains equal to input length because we replace each space in the input with exactly one character (either '_' or '-'). If multiple consecutive spaces exist, we replace them with a single dash, but the function's examples show that the dash is inserted at the position of the last space, and other characters shift. Wait, re-reading: The examples show "   Exa 1 2 2 mple" -> "-Exa_1_2_2_mple". Original: 3 spaces, then 'E', then space, etc. Output: '-', 'E', 'x', 'a', '_', ... This implies the sequence of characters is preserved, but spaces are transformed. Actually, looking at "Exa   mple" -> "Exa-mple": Input length 8, Output length 8? "Exa   mple" is E x a (3 spaces) m p l e -> 8 chars. "Exa-mple" is E x a - m p l e -> 8 chars. So length is preserved.
+
+Wait, "Yellow Yellow  Dirty  Fellow" -> "Yellow_Yellow__Dirty__Fellow". Input has 2 spaces between Yellow and Dirty? "Yellow Yellow  Dirty  Fellow" -> Yellow(1)space(1)Yellow(2)space(2)Dirty(2)space(2)Fellow. Output has 2 underscores. "Yellow_Yellow__Dirty__Fellow". The count is preserved? "   Exa 1 2 2 mple" (3 spaces at start) -> "-Exa_1_2_2_mple". Input length 13? "   Exa 1 2 2 mple". Output "-Exa_1_2_2_mple" is 12 chars? Wait. 
+
+Let's re-verify the prompt logic: "replace all consecutive spaces with -". And "replace all spaces in it with underscores". The example "Exa   mple" -> "Exa-mple" implies the 3 spaces are replaced by a single dash. The example "   Exa 1 2 2 mple" -> "-Exa_1_2_2_mple" implies 3 leading spaces replaced by dash. 
+
+However, "Yellow Yellow  Dirty  Fellow" -> "Yellow_Yellow__Dirty__Fellow" has 2 spaces between Yellow and Dirty? Input: "Yellow Yellow  Dirty  Fellow". After 1st Yellow, there is 1 space (-> _). After 2nd Yellow, there are 2 spaces (-> __). So actually, single spaces become underscores, consecutive >=2 become dash? Wait, "Exa   mple" -> "Exa-mple". 3 spaces -> dash. 
+
+Wait, "Yellow Yellow  Dirty  Fellow" -> "Yellow_Yellow__Dirty__Fellow". The first gap is 1 space -> _. The second gap is 2 spaces -> __. 
+
+Let's check the prompt description again: "if a string has more than 2 consecutive spaces, then replace all consecutive spaces with -". 
+
+Wait, "Yellow Yellow  Dirty  Fellow" -> "Yellow_Yellow__Dirty__Fellow". The gap between "Yellow" and "Dirty" is 2 spaces. The output has "__". This contradicts the "more than 2" rule if it implies replacement with a single dash. 
+
+Ah, reading carefully: "replace all consecutive spaces with -". If the rule is strictly "consecutive spaces -> dash", then "Yellow Yellow  Dirty" would become "Yellow_Yellow-_Dirty". But the test case says "Yellow_Yellow__Dirty__Fellow". 
+
+Let's look at the test case: `assert candidate("Yellow Yellow  Dirty  Fellow") == "Yellow_Yellow__Dirty__Fellow"`. 
+
+Input gaps: 
+1. `Yellow` [1 space] `Yellow` -> `Yellow_Yellow` (underscore)
+2. `Yellow` [2 spaces] `Dirty` -> `Yellow__Dirty` (two underscores)
+3. `Dirty` [2 spaces] `Fellow` -> `Dirty__Fellow` (two underscores)
+
+So the rule seems to be:
+- Single space -> underscore
+- 2+ spaces -> keep them as underscores? Or maybe the prompt implies "if more than 2 consecutive spaces, replace with -", but the test cases show 2 spaces becoming "__". 
+
+Wait, the prompt says: "replace all spaces in it with underscores, and if a string has more than 2 consecutive spaces, then replace all consecutive spaces with -".
+
+Test case 4: `"Exa   mple"` -> `"Exa-mple"`. 3 spaces -> dash.
+Test case 5: `"   Exa 1 2 2 mple"` -> `"-Exa_1_2_2_mple"`. 3 spaces at start -> dash.
+
+Test case 3: `"Yellow Yellow  Dirty  Fellow"` -> `"Yellow_Yellow__Dirty__Fellow"`. 
+Gaps: 1 space, 2 spaces, 2 spaces. 
+Output: `_`, `__`, `__`.
+
+So the rule is likely:
+- 1 space -> underscore
+- 2 spaces -> two underscores (no dash)
+- >= 3 spaces -> dash
+
+But the prompt says "more than 2 consecutive spaces" -> dash. 2 is not more than 2. So 2 spaces remain underscores. 
+
+So the logic is:
+- If consecutive space count == 1: output '_'
+- If consecutive space count >= 3: output '-'
+- If consecutive space count == 2: output '__' (two underscores)
+
+Wait, "replace all consecutive spaces with -". This usually means replace the *group* with a single dash. But "Exa-mple" implies the 3 spaces became 1 dash. So output length is not necessarily equal to input length.
+
+Let's check length changes:
+Input: "Exa   mple" (8 chars). Output: "Exa-mple" (8 chars). 3 spaces -> 1 dash. Length preserved? 
+"Exa" + "   " + "mple" (3+3+4 = 10 chars?) No, "Exa   mple". E x a (space) (space) (space) m p l e. That is 7 chars? E(1)x(2)a(3) (4) (5) (6)m(7)p(8)l(9)e(10). 10 chars.
+Output: "Exa-mple". E(1)x(2)a(3)-(4)m(5)p(6)l(7)e(8). 8 chars. 
+
+So length DOES change.
+
+Let's re-read the prompt examples carefully:
+1. `fix_spaces("Example") == "Example"` (Length 7)
+2. `fix_spaces("Example 1") == "Example_1"` (Input: 8 chars? "Example 1" -> E(1)x(2)...m(7) (8)1(9). 9 chars. Output: 9 chars)
+3. `fix_spaces(" Example 2") == "_Example_2"` (Input: 11 chars? Output: 11 chars)
+4. `fix_spaces(" Example   3") == "_Example-3"` (Input: " Example   3". Let's count: (1)space, (2-8)Example, (9)space, (10)space, (11)space, (12)space? No, " Example   3". space + Example + 3 spaces + 3. That is 1 + 7 + 3 + 1 = 12 chars. Output "_Example-3". 1 + 7 + 1 + 1 = 10 chars.)
+
+So the length of the output string is strictly dependent on the space groups. 
+
+This means we cannot assume `len_out = len_in`. We must calculate the output length.
+
+**Adaptation for Hardware:**
+Since output length varies, we need a buffer large enough to hold the input (max 16 chars). 
+The output processing might overwrite the input buffer if we are not careful, or we need a separate output buffer.
+
+Given the constraint of 16 chars max, we can use a 16-byte buffer for input and a 16-byte buffer for output. 
+We iterate through the input buffer. 
+We need to track the number of consecutive spaces in the input.
+When we encounter a non-space, we flush the space count to the output:
+- Count 0: Do nothing (already processed previous chars)
+- Count 1: Write '_'
+- Count 2: Write '_' followed by '_'
+- Count >=3: Write '-'
+Then write the non-space character.
+
+At the end of the string, if the string ends with spaces, we must also flush them.
+
+Since the input length is up to 16, and we might compress spaces (e.g., 3 spaces -> 1 dash), the output length will be <= 16. We can fit it in the 16-byte output buffer.
+
+**Verilog Spec Adjustment:**
+Since length changes, `len_out` must be computed dynamically or we rely on a sentinel (like 0 terminator) or just output the whole buffer and rely on the testbench to interpret valid length based on context? 
+
+However, standard synchronous designs prefer fixed length or explicit length signals. 
+The prompt says: "Outputs: text_out[0:15], len_out[3:0]".
+So we must compute `len_out`.
+
+**Interface:**
+Inputs: `clk, rst_n, start, text_in[127:0], len_in[3:0]`
+Outputs: `text_out[127:0], len_out[3:0], done`
+
+**Algorithm (Hardware):**
+1. **IDLE**: Wait for `start`. Reset internal pointers/counters. Read `len_in`.
+2. **PROCESS**: Iterate `i` from 0 to `len_in - 1`.
+   - Read `char = text_in[i*8 +: 8]`.
+   - If `char == 0x20` (space):
+     - Increment `space_count`.
+   - Else (non-space):
+     - **Flush Spaces**: 
+       - If `space_count > 0`:
+         - If `space_count == 1`: Write 0x5F ('_') to `out_buffer[out_ptr]`, increment `out_ptr`.
+         - Else if `space_count == 2`: Write 0x5F ('_') twice.
+         - Else if `space_count >= 3`: Write 0x2D ('-') once.
+         - Reset `space_count` to 0.
+     - Write `char` to `out_buffer[out_ptr]`, increment `out_ptr`.
+3. **TERMINATE**: After loop, check if `space_count > 0` (string ended with spaces). Flush them as above.
+4. **WRITE**: Copy `out_buffer` to `text_out` and set `len_out` to `out_ptr`. 
+5. **DONE**: Signal completion.
+
+**Resource:**
+- Input Buffer: 16 bytes (128 bits).
+- Output Buffer: 16 bytes (128 bits).
+- Counters: `i` (4 bits), `out_ptr` (4 bits), `space_count` (4 bits).
+- FSM: 5-6 states.
+
+This is feasible within the limits.

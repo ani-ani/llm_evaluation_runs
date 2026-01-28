@@ -1,0 +1,54 @@
+Design a Verilog module to solve a simplified version of the Bits game.
+
+**Problem Definition:**
+Given a fixed-size array `A` of `N` non-negative integers and an integer `K`, divide the array into exactly `K` contiguous non-empty sections such that the bitwise AND of the section powers is maximized.
+- The power of a section is the bitwise OR of its elements.
+- The input array is linear, representing a slice of the circle (scaling to N=8 for feasibility).
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (rising edge active).
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle pulse to initiate processing.
+  - `A[0:7]`: 8-bit array, 8 elements (Values 0-255). Represents the sequence.
+  - `K`: 4-bit integer (1 <= K <= 8), number of sections required.
+- **Outputs:**
+  - `result`: 16-bit integer (Maximum achievable bitwise AND).
+  - `done`: 1-cycle pulse, asserted when calculation is complete.
+
+**Implementation Details:**
+1.  **Algorithm:**
+    - Since N is small (8), we can iterate through all possible bit masks for the result. The maximum answer is the OR of all inputs.
+    - Iterate from the highest possible bit down to 0. Check if it's possible to achieve a result with the current bits set.
+    - To check feasibility for a target mask `T`: 
+        - Check if each element `A[i]` contains all bits of `T` (i.e., `(A[i] & T) == T`). If any element fails, the mask is invalid.
+        - Count the number of contiguous segments where the OR of the segment covers `T`. A greedy approach works: traverse the array, accumulating an OR. If `current_OR & T == T`, increment segment count and reset `current_OR`. If the total segments >= K, the mask `T` is achievable.
+2.  **Constraints:**
+    - N = 8 fixed.
+    - K = 1 to 8.
+    - Input values: 8-bit (0-255).
+    - Result: 16-bit.
+    - Timing: Operation should complete within 1000 clock cycles.
+3.  **State Machine:**
+    - `IDLE`: Wait for `start`.
+    - `CHECK`: Verify mask validity and count segments using a loop counter.
+    - `UPDATE`: Update the best result mask.
+    - `DONE`: Assert `done` signal.
+
+**Verilog Module Header:**
+```verilog
+module bits_game #(parameter N=8, parameter WIDTH=8) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [WIDTH-1:0] A [0:N-1],
+    input wire [3:0] K,
+    output reg [15:0] result,
+    output reg done
+);
+```
+
+**Test Expectations:**
+- The module should handle circular logic implicitly or linearly (scaling constraints allow linear processing of the 8-element array).
+- Ensure `done` is high for exactly one cycle.
+- `result` is valid when `done` is high.

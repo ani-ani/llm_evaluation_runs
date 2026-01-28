@@ -1,0 +1,63 @@
+Design a Verilog module that solves the bicycle courier division problem. Given N points (x,y), partition them into two non-empty sets A and B to minimize the maximum diameter (longest distance between any two points in the set). The distance metric is Manhattan distance: |x1-x2| + |y1-y2|.
+
+Constraints:
+- N <= 16 points (scaled from original 1000)
+- Coordinates 0-1000 (fit in 10 bits, scale to 16 bits)
+- Manhattan distances fit in 16 bits (max 2000)
+- Use brute-force bitmasks: iterate all 2^N assignments (2^16 = 65536 max)
+- For each assignment, compute diameter of each set, track minimum max(diameter_A, diameter_B)
+
+Interface:
+- Inputs: 
+  - clk, rst_n: standard synchronous interface
+  - start: 1-cycle pulse to start computation
+  - N: 4-bit integer (1-16)
+  - point_x[15:0], point_y[15:0]: 16-bit vectors for x and y coordinates of points (packed format, see Note 1)
+- Outputs:
+  - result: 16-bit minimum maximum delivery time
+  - done: 1-cycle pulse when result is valid
+  - valid: remains high when done=1
+
+Note 1 (Packed coordinates):
+Since Verilog doesn't support variable-size 2D arrays cleanly in synthesis, encode points as:
+- point_x[15:0] contains x coordinates: point_x[15:12] = x0, point_x[11:8] = x1, etc.
+- point_y[15:0] contains y coordinates similarly
+- For N<16, only first N bits are valid
+
+Algorithm Steps (FSM):
+1. Reset: result=0, done=0, state=IDLE
+2. Start pulse received: load N, extract coordinates, initialize mask=0, min_result=0xFFFF
+3. For each mask from 1 to (1<<N)-2 (skip 0 and all-ones to ensure both sets non-empty):
+   a. Compute diameter of set A (bits where mask=1)
+   b. Compute diameter of set B (bits where mask=0)
+   c. Compute max_diameter = max(diameter_A, diameter_B)
+   d. Update min_result = min(min_result, max_diameter)
+4. When done iterating: result = min_result, assert done=1 for 1 cycle
+5. Return to IDLE
+
+Diameter calculation:
+- For a set of points S, diameter = max Manhattan distance between any two points in S
+- If |S| == 1: diameter = 0
+- Else: compare all pairs, compute |x_i - x_j| + |y_i - y_j|
+
+Optimization:
+- Pre-compute all pairwise distances in first cycle to avoid repeated calculations
+- Store in 16x16 matrix (256 entries, 16-bit each) using block RAM or registers
+- Distance between point i and j: dist[i][j] = |x_i - x_j| + |y_i - y_j|
+
+Resource constraints:
+- Maximum clock cycles: 65536 * 256 = ~16M cycles (approx 160ms at 100MHz) - acceptable
+- Can pipeline distance pre-computation for efficiency
+
+Test cases:
+- Example 1: N=6, points given, expected result=7
+- Example 2: N=7, points given, expected result=100
+
+Edge cases:
+- N=2: Only one valid partition (one point each), result=0
+- Points at same location: diameter=0
+
+Implement with:
+- FSM with states: IDLE, LOAD_COORDS, PREcompute_DIST, ITERATE_MASKS, CALC_DIAMETER, UPDATE_RESULT, DONE
+- Use loops for iterations (Verilog 'for' for synthesis where supported, or unroll)
+- Output result when done=1

@@ -1,0 +1,42 @@
+Design a Verilog module `kindergarten_partition` that finds the smallest T such that a valid 3-class partition exists for N kids.
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous control
+  - `start`: 1-cycle pulse to start computation
+  - `current_teacher[0:15]`: 16x2-bit array, 0/1/2 indicating current teacher of each kid (padded)
+  - `pref_list[0:15][0:15]`: 16x16x4-bit array, preference ranking of other kids (0-15, padding with 15s)
+  - `valid_kids`: 16-bit mask indicating valid kids (N<=16)
+- Outputs:
+  - `result_t`: 4-bit result (smallest T, 0-15)
+  - `done`: 1-cycle high when valid result available
+  - `found`: 1-bit flag if solution exists
+
+**Implementation Requirements:**
+1. **Scaling**: Maximum N=16 kids. Pad unused entries with dummy values.
+2. **Algorithm**:
+   - For T from 0 to 15:
+     - Check if any valid partition exists where:
+       - No kid assigned to same teacher as `current_teacher`
+       - For each valid kid, all classmates in same class have preference rank < T
+     - If found, output T and set `found=1`
+   - If no T works, output 15 and `found=0`
+3. **State Machine**: 
+   - IDLE -> SEARCH_T (loop 0-15) -> CHECK_PARTITION (iterates 3^16 states) -> DONE
+   - Use bounded loops, no recursion
+4. **Memory**: 
+   - Store input arrays as registered inputs
+   - Use internal states for partition checking
+5. **Timing**: Complete within 2^16 * 16 cycles max (~1M cycles at 100MHz = 10ms)
+6. **Reset**: All outputs to 0, state to IDLE
+
+**Notes**:
+- The `pref_list` is stored as rank position: `pref_list[i][j] = rank` where rank 0 is best
+- For a partition to be valid: if kid A and kid B are in same class, then `pref_list[A][B] < T` AND `pref_list[B][A] < T`
+- Teacher assignment 0/1/2 must differ from current_teacher
+- Only consider kids where `valid_kids[i]==1`
+
+**Edge Cases**:
+- N=1: T=0 possible if teacher assignment valid
+- No solution: return 15, found=0
+- If no valid kids, return 0, found=1

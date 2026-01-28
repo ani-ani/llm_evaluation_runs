@@ -1,0 +1,63 @@
+Implement a Verilog module that computes the output of a logical circuit and the effect of flipping each input. The circuit is a tree with up to 8 inputs (labeled 0-7). The root is output. We need to compute the output for the current inputs, and for each input, the output if that input is flipped.
+
+Simplified Model:
+- Max 8 inputs (IN), indexed 0-7.
+- Max 8 internal nodes (including root), indexed 0-7 (inputs are separate or mapped to fixed indices 8-15, but let's map inputs to indices 8-15 for 8-bit address space).
+- We will use a 2-stage pipeline:
+  Stage 1: Compute the base value of all nodes given current inputs.
+  Stage 2: Compute the sensitivity (change in output if input flips) for each input.
+
+Interface:
+- Inputs: 
+  - `clk`, `rst_n`: Standard clock and active-low reset.
+  - `start`: 1-cycle pulse to start calculation.
+  - `input_values[7:0]`: 8-bit value representing the initial states of the 8 inputs (bit i = input i).
+  - We need a configuration interface to load the circuit. Since the circuit is static, we can load it via a `config_en` and `config_addr`, `config_data` signal (simulating writing to a ROM/RAM).
+  - Or, simpler for benchmark: Fixed circuit logic. But the problem requires different circuits. We'll implement a generic logic evaluator for a fixed-size structure.
+  - **Simplification**: The circuit is fixed as defined in the testbench. We will expose the gates as ports (e.g., `gate_type`, `gate_src_a`, `gate_src_b`) and hardcode the evaluation logic.
+
+Logic:
+1.  **Storage**: 
+    - `values[0:15]`: 16 x 8-bit registers (store value for each node).
+    - `type[0:15]`: 16 x 2-bit registers (00=AND, 01=OR, 10=XOR, 11=NOT). (Inputs are type 11, but we treat them specially).
+    - `src_a[0:15]`, `src_b[0:15]`: 16 x 4-bit registers (source indices).
+    - `is_input[0:15]`: 16-bit flag.
+
+2.  **Stage 1: Base Evaluation (Top-Down or Bottom-Up)**
+    - Since it's a tree, we can compute iteratively.
+    - We will iterate `i` from 0 to 15.
+    - If `is_input[i]`: `values[i] = input_values[i]`.
+    - Else: Fetch values from `src_a` and `src_b`, compute based on `type[i]`.
+
+3.  **Stage 2: Sensitivity Propagation (Top-Down from Root)**
+    - We want to know: if input `k` flips, how does it propagate to the root?
+    - We compute a sensitivity bit `sens[k]` for each input. Initial `sens[root] = 1` (root output changes if input changes, but we want to know *when* it changes).
+    - Actually, standard approach: If input `k` flips, the root changes if and only if the sensitivity of the path from `k` to root is 1.
+    - We compute `sensitivity[0:15]` for all nodes. `sensitivity[root] = 1`.
+    - For each node `i` (topologically sorted, root first), if `sensitivity[i] == 1`:
+        - If `type[i]` is NOT: Propagate 1 to `src_a[i]`.
+        - If `type[i]` is AND: Propagate `sensitivity` to `src_a[i]` only if the *other* input is 1. Similarly for `src_b[i]`.
+        - If `type[i]` is OR: Propagate `sensitivity` to `src_a[i]` only if the *other* input is 0.
+        - If `type[i]` is XOR: Propagate `sensitivity` to both inputs (always changes output if input changes).
+    - Result for input `k`: `sensitivity[k] ^ base_output`.
+
+4.  **Configuration**:
+    - We will assume the circuit is loaded via a simple RAM interface before `start` is asserted. 
+    - `config_addr` (4 bits), `config_data` (8 bits).
+    - Addr 0-15: `src_a`, `src_b` (packed into 8 bits: `src_a[3:0], src_b[3:0]`).
+    - Addr 16-31: `type` (2 bits), `is_input` (1 bit).
+
+5.  **Output**:
+    - `result`: The base output of the circuit (1 bit).
+    - `sensitivity`: 8-bit vector indicating which inputs affect the output.
+    - `done`: Pulse when calculation is finished (after Stage 2).
+
+Timing:
+- Reset: Clear registers.
+- Load: Accept config data (40 cycles).
+- Start: Begin Stage 1 (16 cycles) -> Stage 2 (16 cycles). Total ~32 cycles.
+
+Hardware Constraints:
+- Use 8-bit data width.
+- Max 16 nodes.
+- Use iterative logic (loops in Verilog) or unrolled (since 16 is small, unrolled is cleaner).

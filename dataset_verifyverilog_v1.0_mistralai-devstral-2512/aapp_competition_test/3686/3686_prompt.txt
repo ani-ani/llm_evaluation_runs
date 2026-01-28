@@ -1,0 +1,42 @@
+Design a Verilog module 'laser_shots' that determines if 16 targets can be covered by at most 2 laser shots.
+
+INPUTS:
+- clk: System clock, rising edge
+- rst_n: Active-low synchronous reset
+- start: 1-cycle pulse to start processing
+- valid_in: 1-bit valid signal for coordinate inputs
+- x_in, y_in: 16-bit signed coordinates for current target
+- load_done: 1-cycle pulse indicating all coordinates loaded (total 16)
+
+OUTPUTS:
+- result: 1-bit, 1=success, 0=failure
+- done: 1-cycle pulse when result is valid
+- state_debug: 3-bit (for verification)
+
+CONSTRAINTS:
+- Maximum 16 points (N=16)
+- Coordinate range: -32768 to 32767 (16-bit signed)
+- Slope representation: Fixed-point Q8.8 or integer fraction
+- Algorithm: Must handle 2-shot case (N<=2 is always success)
+- For N>2: Check if all points lie on single line OR can be split into two lines
+
+INTERFACE TIMING:
+1. Reset: done=0, result=0, state=0
+2. Load phase: Wait for 16 points via x_in/y_in with valid_in=1, terminated by load_done
+3. Process phase: Compute within 100 cycles
+4. Result: Set result bit, pulse done=1 for 1 cycle
+
+ALGORITHM ADAPTATION:
+- Use 3-point verification method
+- For 2-shot check: Try all pairs of points as reference for first line
+- If remaining points (max 14) fit on second line
+- Use sorting network to compute slope order
+- Fixed-point slope comparison with tolerance for collinearity
+- FSM states: IDLE, LOAD, CHECK_SINGLE, CHECK_PAIRS, DONE
+
+IMPLEMENTATION NOTES:
+- All calculations must be 32-bit internal to avoid overflow
+- Slope comparison: (y2-y1)*(x3-x1) == (y3-y1)*(x2-x1) for collinearity
+- For 2-shot: Remove up to 2 points from consideration as outliers
+- No memory required, use state machine with bounded loops
+- State debugging output for test verification

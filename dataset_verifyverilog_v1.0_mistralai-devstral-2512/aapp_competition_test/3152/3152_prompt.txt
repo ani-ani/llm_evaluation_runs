@@ -1,0 +1,38 @@
+You are tasked with implementing a Verilog module that computes the sum of costs for all contiguous subsequences of an array. The cost of a subsequence (i, j) is defined as (min * max * length), where min is the minimum value in the subsequence, max is the maximum value, and length is (j - i + 1). The result should be the sum of these costs for all possible contiguous subsequences. To fit hardware constraints, we will limit the input size N to exactly 16 elements.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge triggered)
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to initiate calculation (1 = start, 0 = idle)
+  - `arr`: A 1D array of 16 elements, each 32-bit wide. Use `input [31:0] arr [0:15]`.
+- Outputs:
+  - `result`: 32-bit integer output (last 9 digits of the sum, modulo 1,000,000,000)
+  - `done`: 1-cycle pulse indicating valid result is available
+
+**Functional Requirements:**
+1. Upon receiving `start` pulse, the module should reset internal state and begin computation.
+2. The computation must iterate through all contiguous subsequences (i, j) where 0 <= i <= j < 16.
+3. For each subsequence (i, j), calculate:
+   - `min_val`: Minimum value in `arr[i]` to `arr[j]`
+   - `max_val`: Maximum value in `arr[i]` to `arr[j]`
+   - `length`: (j - i + 1)
+   - `cost`: (min_val * max_val * length)
+4. Accumulate the total sum of all costs. The result must be modulo 1,000,000,000 (10^9) to keep the value within 32 bits.
+5. Output `done` pulse when calculation is complete.
+
+**Timing Constraints:**
+- The calculation must complete within 4000 clock cycles for N=16 (O(N^2) loops, roughly 256 cycles per subsequence max).
+- Reset requires at least 2 clock cycles to clear `result` and `done` to 0.
+
+**Implementation Strategy:**
+- Use a Finite State Machine (FSM) with states: IDLE, CALCULATING, DONE.
+- Use nested loops (iterators `i` and `j`) implemented as counters to generate the subsequences.
+- Inside the `j` loop, maintain running `min_val` and `max_val` for the current start index `i` to avoid O(N^3) complexity. Update these values as `j` increments.
+- Use a multiplication operator for cost calculation. Use standard 32-bit arithmetic with modulo reduction on the accumulator.
+
+**HDL Specifics:**
+- Reset: Asynchronous, active low. Must clear `result` to 0 and `done` to 0 immediately on reset.
+- Start: Edge-sensitive. A high pulse on `start` while in `IDLE` starts the process. Ignore `start` pulses while busy.
+- Output: `result` is valid only when `done` is high.
+- Non-synthesizable code (like $display) should be avoided.

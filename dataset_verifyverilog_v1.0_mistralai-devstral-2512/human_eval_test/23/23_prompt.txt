@@ -1,0 +1,34 @@
+You are to implement a Verilog module that calculates the length of a null-terminated string stored in a fixed-size byte array. The string consists of ASCII characters (8-bit) and the array has a maximum capacity of 16 characters (indices 0-15). The string is guaranteed to be null-terminated (character value 0) within the array bounds. The module should scan the array from index 0 until it finds the null terminator, then output the count of characters before the terminator. For an empty string (first character is null), output 0. For a full 16-character non-null string (no terminator found), output 16.
+
+**Interface Specification:**
+- **Inputs**:
+  - `clk`: System clock (1-bit, rising edge)
+  - `rst_n`: Active-low synchronous reset (1-bit)
+  - `start`: Start signal, a single-cycle pulse to initiate computation (1-bit)
+  - `string_data[15:0]`: Array of 16 bytes (each 8 bits wide, total 128 bits). Represents the fixed-size array. You must implement this as 16 individual 8-bit input ports: `string_data_0`, `string_data_1`, ..., `string_data_15`. The value `0` represents the null terminator.
+- **Outputs**:
+  - `length`: Result length (6-bit unsigned, range 0-16). Use 6 bits to represent values 0-15, plus an extra bit for 16 (6 bits can represent 0-63).
+  - `done`: A single-cycle pulse indicating the result is valid (1-bit). It should be high for exactly one clock cycle.
+
+**Behavioral Specification**:
+1. **Reset**: On reset (`rst_n=0`), the state machine should be in an idle state. Outputs `length` and `done` should be 0. The computation should be aborted.
+2. **Idle State**: Waits for `start` pulse. When `start` is high, reset internal counters and state, and begin scanning.
+3. **Scanning State**: On each clock cycle, check one byte from the array, starting from index 0. Use a counter `i` (0-15) to track the current index.
+   - If `string_data_i` is 0, then the string length is `i`. Set `length = i`, set `done = 1` for the next cycle, and return to idle.
+   - If `string_data_i` is non-zero, increment `i` and continue to the next cycle.
+   - If `i` reaches 16 (all characters are non-null), the string length is 16. Set `length = 16`, set `done = 1` for the next cycle, and return to idle.
+4. **Timing**: The `start` pulse is a single cycle. The `done` pulse should occur after scanning is complete. The entire operation (scan + result) should complete within 20 cycles (16 max cycles for scanning + 2 cycles for state transitions).
+5. **Output Latching**: The `length` output should be held stable while `done` is high and should be available for reading when `done` is high.
+
+**Implementation Notes**:
+- Use a finite state machine (FSM) with states: IDLE, SCANNING, DONE.
+- The counter `i` should be a 4-bit register (0-15).
+- The scanning loop is sequential; you scan one byte per clock cycle.
+- Do not assume any parallelism for the scan. This is a sequential search.
+- The array is presented as 16 separate 8-bit inputs. Your module must declare 16 distinct `input [7:0]` ports.
+- Ensure the `done` signal is a single-cycle pulse generated when the state machine finishes scanning (either by finding null or reaching the end).
+
+**Edge Cases to Consider**:
+- Empty string: `string_data_0 == 0`. Length should be 0.
+- Full string (no null terminator): All 16 bytes non-zero. Length should be 16.
+- Null terminator at index 15: Length should be 15.

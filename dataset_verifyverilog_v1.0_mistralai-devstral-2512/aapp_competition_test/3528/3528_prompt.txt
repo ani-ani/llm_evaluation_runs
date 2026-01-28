@@ -1,0 +1,41 @@
+You are to design a Verilog module that computes the area of the convex hull (approximated by polygon area) of a set of points, then removes an extreme point (leftmost, rightmost, topmost, bottommost) and repeats. Since the full problem is unbounded, we scale constraints: N=8 points (3-8), coordinates 0-255 (8-bit), operations in Q8.8 fixed-point. The module must handle a sequence of up to 5 removals (N-2=6 max). 
+
+**Interface Specification:**
+Inputs:
+  clk: System clock, rising edge.
+  rst_n: Active-low synchronous reset.
+  start: 1-cycle pulse to start a new sequence of calculations.
+  points_valid: 1-bit, indicates that the current point data is valid.
+  point_idx: 3-bit index (0-7) for the current point input.
+  point_x, point_y: 8-bit coordinates for the point at point_idx.
+  op: 2-bit operation code for removal (00: L, 01: R, 10: U, 11: D).
+
+Outputs:
+  area_out: 16-bit fixed-point result (Q8.8 format). Valid when done=1.
+  done: 1-cycle pulse indicating calculation for current state is complete and area_out is valid.
+  ready: 1-cycle pulse indicating the module is ready to accept the next point (used during input phase). Not strictly required but helpful.
+
+**Functionality:**
+1. **Input Phase:** Upon `start` high, the module accepts 8 points via `points_valid` and `point_idx`. Store them in an internal RAM (8x16-bit, packed X/Y or two RAMs). Wait for all 8 points.
+2. **Calculation Phase:**
+   a. **Sort/Extreme Detection:** To find extremes (min X, max X, min Y, max Y), implement a comparator tree or iterative loop over the stored points. Since N is small (8), a simple sequential scan (8 cycles) is acceptable.
+   b. **Area Calculation:** Use the Shoelace formula for the polygon formed by the points. To simulate convex hull or simply the polygon area, we need the points in cyclic order. Since we only remove extreme points, we can sort the points by angle or simply calculate the area of the set as a polygon by connecting them in the order of indices, or better, sort them angularly (simplified to sorting by X or Y for this benchmark). Let's approximate the shape as a polygon connecting the points in the order of their input indices. Calculate Area = 0.5 * |Sum(x_i * y_{i+1} - x_{i+1} * y_i)|. Perform arithmetic in 16-bit fixed-point (multiply 8-bit gives 16-bit intermediate, sum of 8 terms gives 24-bit, clamp to 16-bit for result). Divide by 2 (shift right 1).
+   c. **Removal:** Identify the index of the extreme point based on `op`. Mark that point as removed (using a valid bit mask).
+   d. **Loop:** Repeat calculation and removal 3 times (for N=8, we output 5 areas, but the spec says N-2 outputs; for 8 inputs, output 6 areas. Let's limit to 5 removals max). Trigger `done` after each area calculation.
+3. **Reset:** On `rst_n`, clear memory and state.
+
+**Timing:**
+- Input: 8 cycles to load points.
+- Calculate/Remove: 20-50 cycles per iteration (sorting 8 items + area calc).
+- Total: < 256 cycles for full sequence.
+
+**Implementation Details:**
+- Use fixed-point arithmetic (Q8.8). To multiply 8-bit A and 8-bit B, result is 16-bit (A<<8 * B). Summation requires 24-bit accumulator, clamp to 16-bit for output.
+- Store points in 8 registers or a small SRAM.
+- State Machine: IDLE -> LOAD -> CALCULATE -> REMOVE -> DONE.
+- Output `area_out` is 16-bit Q8.8.
+
+**Constraints:**
+- No dynamic allocation.
+- Fixed iteration bounds (max 5 removals).
+- Bit widths: X/Y 8-bit, Area 16-bit, Index 3-bit.

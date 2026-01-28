@@ -1,0 +1,42 @@
+Implement a hardware module that filters dictionary entries based on a threshold value. The dictionary is represented as parallel arrays for keys and values, with a fixed maximum size of 8 entries.
+
+**Interface Specifications:**
+- **Inputs:**
+  - `clk`: Clock signal, rising edge
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start operation
+  - `threshold`: 8-bit value to compare against (0-255)
+  - `key_in[0:7][7:0]`: 8-entry array of 8-byte ASCII strings (64 bits each)
+  - `value_in[0:7][7:0]`: 8-entry array of 8-bit values
+  - `valid_in[0:7]`: 8-entry array indicating which entries are valid (1 = valid)
+
+- **Outputs:**
+  - `key_out[0:7][7:0]`: 8-entry array of 8-byte ASCII strings for filtered entries
+  - `value_out[0:7][7:0]`: 8-entry array of 8-bit values for filtered entries
+  - `valid_out[0:7]`: 8-entry array indicating filtered valid entries
+  - `count`: 4-bit count of filtered entries (0-8)
+  - `done`: 1-cycle pulse when operation completes
+
+**Functional Requirements:**
+1. On `start` pulse, read all 8 dictionary entries
+2. For each entry where `valid_in[i]` is 1 and `value_in[i] >= threshold`, output to corresponding `key_out[i]` and `value_out[i]`
+3. Output must preserve input order (stable sort)
+4. `done` signal pulses high for one cycle after filtering completes
+5. `count` indicates number of filtered entries
+
+**Timing Constraints:**
+- Operation completes within 20 cycles of `start`
+- Output values are valid when `done = 1`
+- `done` pulses for exactly one cycle
+
+**Reset Behavior:**
+- `done = 0`, `count = 0`
+- `valid_out[0:7] = 0`
+- `key_out` and `value_out` cleared to zero
+
+**Implementation Notes:**
+- Use FSM with states: IDLE, READ, FILTER, OUTPUT, COMPLETE
+- Use 8x8-bit comparator for each entry
+- Output buffer to store filtered results (8 entries max)
+- Use counter to track filtered count
+- All arrays must be accessed individually, not as vectors

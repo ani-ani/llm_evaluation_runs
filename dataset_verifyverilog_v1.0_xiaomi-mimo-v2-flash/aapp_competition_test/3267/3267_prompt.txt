@@ -1,0 +1,50 @@
+Design a Verilog module that calculates the 'player spread' for a chess king game on a 16x16 board.
+
+### Core Logic
+1. **Distance Metric**: Distance between two cells `(r1, c1)` and `(r2, c2)` for a king is the Chebyshev distance: `max(|r1-r2|, |c1-c2|)`.
+2. **Spread Calculation**: The spread is the sum of distances between all unique pairs of pieces for a player. 
+   - If a player has N pieces, sum `(distance(i, j))` for all `0 <= i < j < N`.
+   - Max pieces per player: 8 (to keep logic bounded).
+   - If a player has only 1 piece, spread is 0.
+
+### Module Interface
+- **Inputs**: 
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `board_flat[255:0]`: Packed 256-bit input. Each 2-bit chunk represents a cell (00=Empty, 01=Slavko 'S', 10=Mirko 'M'). Bit indices: `index = row * 16 + col`. 
+- **Outputs**:
+  - `mirko_spread`: 16-bit unsigned result.
+  - `slavko_spread`: 16-bit unsigned result.
+  - `done`: 1-cycle pulse indicating valid results.
+
+### Implementation Details
+1. **State Machine**: 
+   - `IDLE`: Wait for start.
+   - `SCAN`: Parse `board_flat` to extract coordinates of Mirko and Slavko pieces into two arrays (e.g., `mirko_coords[0:7]`, `slavko_coords[0:7]`). Store valid count.
+   - `CALC_M`: Compute pairwise Chebyshev distances for Mirko's pieces and accumulate sum.
+   - `CALC_S`: Compute pairwise Chebyshev distances for Slavko's pieces and accumulate sum.
+   - `DONE`: Output results and pulse `done`.
+
+2. **Resource Constraints**:
+   - Use 4-bit registers for row/col coordinates (0-15).
+   - Use 16-bit accumulators for sums.
+   - For pairwise loop: Iterate `i` from 0 to `count-2` and `j` from `i+1` to `count-1`. 
+   - Max operations: 8 pieces -> 28 pairs. 28 pairs * 2 players = 56 calculations. Each calculation involves simple subtraction and max logic.
+
+3. **Timing**:
+   - `SCAN` takes 256 cycles (one per cell).
+   - `CALC` takes < 100 cycles (fixed loops).
+   - Total latency < 400 cycles.
+
+4. **Reset**: 
+   - On `rst_n`, clear all accumulators, counts, and `done` signal.
+
+### Verification Logic (for Testbench)
+- The testbench will map a text grid (max 16x16) to the `board_flat` input.
+- For example, index `0` (row 0, col 0) corresponds to bits [1:0], index `1` (row 0, col 1) to bits [3:2], etc.
+- Expected results calculated using Python `max(abs(r1-r2), abs(c1-c2))`.
+
+### Strict Requirements
+- No external memory interfaces. All coordinates must fit in internal registers.
+- The module must handle empty boards or single-piece boards gracefully (result 0).
+- `done` signal must be high for exactly 1 cycle.

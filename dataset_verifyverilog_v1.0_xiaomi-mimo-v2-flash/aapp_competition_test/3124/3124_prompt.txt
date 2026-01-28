@@ -1,0 +1,45 @@
+Design a Verilog module that solves a circular game problem where two players take numbers adjacent to previously taken numbers.
+
+**Adaptations for hardware:**
+- Scale N from 100 to 8 (max 8 nodes)
+- Numbers scaled to 8-bit (1-1000 range -> 0-255)
+- Use bitmask DP state (8-bit mask = 256 states max)
+- Iterative loops bounded to 256 cycles
+- Count odd numbers taken by each player
+
+**Interface Specification:**
+
+Inputs:
+  - clk: system clock, rising edge
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - n[3:0]: number of elements (1-8)
+  - arr[7:0][7:0]: array of 8 elements, each 8-bit
+
+Outputs:
+  - result[7:0]: count of winning first moves (Ivana's perspective)
+  - done: 1-cycle pulse when computation complete
+
+**Implementation Requirements:**
+1. Parse N elements from input array
+2. Convert to circular adjacency: index i adjacent to (i-1)%N and (i+1)%N
+3. For each possible first move i (0 to N-1):
+   - Check if Ivana (player 0) can win against optimal play
+   - Use minimax on game tree with bitmask state
+   - Track: current mask of taken numbers, turn, odd counts
+4. Count moves where Ivana has winning strategy (strictly more odds)
+5. Return count in result when done=1
+
+**Timing:** start->done within 1000 cycles
+**Reset:** n=0, result=0, done=0
+
+**State Machine:**
+- IDLE: wait for start
+- PARSE: extract N and elements
+- GAME: for each first move, run minimax
+- DONE: assert done=1, output result
+
+**Constraints:**
+- Clock domain: single synchronous
+- Resource: 256-state DP table for game evaluation
+- Loop bounds: N<=8, 2^8=256 possible states

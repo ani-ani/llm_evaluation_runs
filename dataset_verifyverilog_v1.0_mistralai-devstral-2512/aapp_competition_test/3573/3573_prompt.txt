@@ -1,0 +1,37 @@
+Implement a Verilog module to calculate the expected number of rounds until at least one player wins a probabilistic drawing game. The module will compute the expected value based on pre-calculated transition probabilities for a Markov chain.
+
+**Constraints & Scaling:**
+- N (balls) is fixed to 50 maximum.
+- C (numbers per card) is fixed to 10 maximum. Each card is represented by a 10-bit vector where the i-th bit represents the i-th number in the input list (not the ball number itself).
+- D (balls drawn per round) is fixed to 10 maximum.
+- The solution uses a Depth-First Search (DFS) approach implemented iteratively with a stack to traverse the state space of the game.
+- Probabilities and expected values are scaled by 2^16 (fixed-point Q0.16 format).
+- The input arrays of numbers are strictly limited to 10 elements each.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start calculation
+  - `N_val`: 6-bit input (N)
+  - `D_val`: 4-bit input (D)
+  - `C_val`: 4-bit input (C)
+  - `cesar_nums[9:0]`: 10x4-bit array (ball numbers for Cesar, 1-50)
+  - `raul_nums[9:0]`: 10x4-bit array (ball numbers for Raul, 1-50)
+- Outputs:
+  - `result_int`: 32-bit integer part of expected value
+  - `result_frac`: 32-bit fractional part (scaled by 10^9)
+  - `done`: 1-cycle pulse indicating calculation complete
+
+**Algorithm:**
+1. Convert input ball numbers to 10-bit mask vectors for each player.
+2. Initialize a stack with the start state (masks 0,0) and probability 1.0.
+3. Iteratively pop states:
+   - If terminal (either mask is all 1s), add `probability * (steps + 1)` to expectation.
+   - Else, generate all possible outcomes of drawing D balls (using combination generation logic).
+   - For each outcome, compute new masks and push new state if probability > threshold.
+4. Accumulate expectation using fixed-point arithmetic (scale 2^16).
+
+**Timing:**
+- Start-to-done within 50,000 cycles for max constraints.
+- Reset sets done=0, result=0.

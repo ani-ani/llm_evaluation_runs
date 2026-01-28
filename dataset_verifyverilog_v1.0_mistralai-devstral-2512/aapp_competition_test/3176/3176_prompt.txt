@@ -1,0 +1,47 @@
+Design a Verilog module that solves the Barica frog problem.
+
+**Problem Requirements:**
+Given N plants (N <= 16) with coordinates (X, Y) and flies F, and an energy cost K per jump. Barica starts at plant 1 (index 0) with energy F[0] and must reach plant N (index N-1). She can jump only if x2 > x1 and y2 = y1 (horizontal), or y2 > y1 and x2 = x1 (vertical). She must have energy >= K before jumping (energy reduces by K per jump, increases by F at visited plants). Find the path from 1 to N with maximum final energy.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock (positive edge triggered)
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `plant_x[0:15]`: 16x16-bit input array, X coordinates of plants
+  - `plant_y[0:15]`: 16x16-bit input array, Y coordinates of plants
+  - `plant_f[0:15]`: 16x10-bit input array, Fly counts (0-1023)
+  - `num_plants`: 5-bit input (1-16)
+  - `jump_cost`: 10-bit input (K value)
+- Outputs:
+  - `result_energy`: 16-bit output (max energy at destination)
+  - `path_count`: 5-bit output (number of plants in path)
+  - `path_idx[0:15]`: 16x4-bit output array (indices of visited plants)
+  - `done`: 1-cycle pulse when computation completes
+
+**Implementation Requirements:**
+1. **Scaling**: Scale inputs to fit 16-bit widths. Use fixed-size structures for N <= 16.
+2. **Algorithm**: Use dynamic programming or BFS with state caching. Since N is small (16), store energy for each plant and each possible previous plant. Process plants in sorted order (by X then Y, or Y then X) to ensure valid jumps are processed correctly.
+3. **FSM**: Implement a multi-cycle FSM to:
+   a. Sort plants (or process in order)
+   b. Update reachable states (energy DP)
+   c. Reconstruct path by backtracking
+4. **Data Structures**:
+   - `energy_dp[0:15]`: Register array for max energy to reach each plant
+   - `prev_dp[0:15]`: Register array for previous plant index on optimal path
+   - `valid_dp[0:15]`: Register array for reachability flag
+5. **Constraints**:
+   - Max cycles: 256 cycles for N=16
+   - No dynamic memory; use bounded loops
+   - Handle energy overflow by clamping to 16-bit (sufficient for max flies=1000*16=16000)
+
+**Timing**:
+- `start` high for 1 cycle initiates processing
+- `done` pulses high 1 cycle after processing completes (within 256 cycles)
+- Sample `result_energy`, `path_count`, and `path_idx` when `done` is high
+
+**Reset Behavior**:
+- On `rst_n` low: clear all DP arrays, `done` = 0, `result_energy` = 0
+- Min 2 cycles reset required
+
+**Note**: The solution must be synthesizable and use bounded resources (no recursive calls, no unbounded loops).

@@ -1,0 +1,44 @@
+Design a Verilog module that computes the worst possible rank (1 to 16) for a specific contestant (player 0) given historical scores from previous contests, assuming they do not participate in the final contest.
+
+**Core Logic:**
+1.  **Input Scaling:** The input 'm' (number of participants) is capped at 16. 'n' (number of past contests) is capped at 8.
+2.  **Data Representation:** All scores are integers between 0 and 101.
+3.  **Aggregation:** For each participant, calculate the aggregate score (sum of the 4 highest scores). If a participant has fewer than 4 scores (because n-1 < 4), treat missing scores as 0.
+    *   Implementation: Use a small sorting network or a bubble-sort logic over a small array (size 8) to identify the 4 largest values, then sum them. Summing 4 values (max 101) fits in a 10-bit register.
+4.  **Ranking:** Compare the specific contestant's aggregate score against the aggregated scores of all other participants.
+    *   Rank = 1 + (number of participants with strictly greater aggregate score).
+5.  **Simplifications for Hardware:**
+    *   The specific points-per-rank table and the rule about 'online vs on-site' (extra point) are present in the natural language description but are explicitly handled in the input format description. The prompt states: *'The point values in the input might not correspond to actual points from a contest.'* This means the inputs `s_i` are the raw point values to be summed directly, ignoring the complex ranking rules for the final contest calculation. We must only implement the aggregation and rank comparison logic.
+    *   Worst-case rank calculation: Since we do not participate in the final contest, our score is fixed. We simply count how many other participants have a strictly higher aggregate score than us.
+
+**Interface Specification:**
+*   **Inputs:**
+    *   `clk`, `rst_n`: Standard synchronous control.
+    *   `start`: 1-cycle pulse to initiate calculation.
+    *   `my_scores[0:7]`: 8x8-bit array of my past scores (0-101). Unused indices are 0.
+    *   `other_scores[0:15][0:7]`: 16x8 array of other participants' scores. Valid data is in rows 0 to `m-2`.
+    *   `num_participants`: 4-bit integer (2-16).
+    *   `num_contests`: 3-bit integer (2-8).
+*   **Outputs:**
+    *   `worst_rank`: 5-bit integer (1-16).
+    *   `done`: 1-cycle pulse when calculation is finished.
+*   **Timing:** The module should operate as a synchronous FSM. After `start` goes high, it should iterate through the participants, compute aggregates, compare, and output the final rank within 200 cycles.
+
+**Algorithm Steps (FSM states):**
+1.  **IDLE:** Wait for `start`.
+2.  **CALC_SELF:** Compute my aggregate score.
+    *   Take `my_scores` array.
+    *   Sort or select top 4 values.
+    *   Sum them -> `self_aggregate`.
+3.  **CALC_OTHERS:** Iterate through all other participants (0 to `num_participants-2`).
+    *   For each participant `i`, load their scores.
+    *   Select top 4 scores.
+    *   Sum them -> `other_aggregate`.
+    *   Compare: If `other_aggregate > self_aggregate`, increment a counter (`beat_count`).
+4.  **FINISH:** Result is `worst_rank = 1 + beat_count`. Assert `done`.
+
+**Constraints:**
+*   Do not implement the complex points table logic; assume input scores are final values to be summed.
+*   Array access must be individual or packed as per Verilog standards (loop unrolling is acceptable).
+*   Max participants = 16, Max past contests = 8 (array size 8).
+*   Bit widths: Scores 8-bit (0-255), Sums 10-bit, Ranks 5-bit.

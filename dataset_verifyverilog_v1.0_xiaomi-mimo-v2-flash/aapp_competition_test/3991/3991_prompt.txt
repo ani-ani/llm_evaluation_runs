@@ -1,0 +1,35 @@
+Implement a Verilog module to compute the sum of maximum distances over all non-empty subsets of computer coordinates. The core insight is: for sorted coordinates x[0..n-1], the contribution of each adjacent pair (x[i], x[i+1]) is (x[i+1] - x[i]) * 2^i * 2^(n-2-i). This can be computed iteratively.
+
+Module Interface:
+- Inputs:
+  clk: global clock (rising edge)
+  rst_n: active-low synchronous reset
+  start: 1-cycle start pulse
+  coords[0:19]: 20x32-bit array of fixed-point coordinates (Q16.16 format, integer bits only)
+  n: 5-bit integer (number of active coordinates, 1-20)
+- Outputs:
+  result: 32-bit unsigned (modulo 10^9+7 result)
+  done: 1-cycle pulse when computation finishes
+
+Implementation Details:
+1. Fixed-point: Assume input coords are integers (Q16.16 with fractional part 0). All calculations are integer operations.
+2. Modulo: 10^9+7 (1000000007). Use 32-bit unsigned arithmetic with modulo operations.
+3. Power of 2: Compute 2^k mod MOD iteratively. k ranges 0 to 18 (max n-2).
+4. Algorithm:
+   - Sort coordinates (hardcoded sort network for 20 elements)
+   - Initialize accumulators
+   - Iterate i=0 to n-2:
+     - Compute diff = (coords[i+1] - coords[i]) mod MOD
+     - Compute contribution = diff * (2^i - 1) * (2^(n-2-i) - 1) mod MOD
+     - Accumulate to result
+   - Handle single-element case (result=0)
+5. Timing: start->done within 100 cycles
+6. Reset: result=0, done=0, internal state=0
+
+You must implement:
+- Sort network for 20 elements (using comparators and swaps)
+- Modular arithmetic unit (add, subtract, multiply with modulo)
+- Power of 2 computation
+- Main computation loop (state machine)
+
+Constraint: n ≤ 20 (scaled down for synthesis). All signals must be sized appropriately for 32-bit modulo arithmetic.

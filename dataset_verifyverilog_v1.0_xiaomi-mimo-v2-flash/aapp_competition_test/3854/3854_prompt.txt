@@ -1,0 +1,25 @@
+Implement a Verilog module `subset_subsets` that computes all achievable sums x (0 ≤ x ≤ k) that can be formed by a subset of a sub-subset, where the sub-subset sums to exactly k.
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low asynchronous reset
+- `start`: 1-cycle pulse to start processing
+- `n_in`: 4-bit unsigned (1-15 coins)
+- `k_in`: 9-bit unsigned (0-500 target sum)
+- `coin_i`: 9-bit unsigned coin value (valid when `i < n_in`)
+
+**Outputs:**
+- `done`: 1-cycle pulse when calculation complete
+- `result_count`: 5-bit unsigned (0-31 values)
+- `result_x[0:31]`: 32x9-bit output array, packed list of valid x values in ascending order (unused slots set to 0).
+
+**Implementation Details:**
+- Use **3-stage FSM**: IDLE → LOAD → COMPUTE → OUTPUT.
+- **Load Phase**: Accept `n_in` coins sequentially. Store coins in a ROM array (16x9-bit). After `n_in` cycles, transition.
+- **Compute Phase**: Iterate `i` from 0 to `n_in-1`. Use a dual-port RAM for DP state: `dp[sum]` is a 512-bit bitset where bit `j` indicates sub-subset sum `j` is achievable using previous coins. Initialize `dp[0] = 1` (bit 0 set).
+- Update rule for coin value `c` and sum `s` (from `k` down to `c`):
+  - `new_bits = dp[s-c]` (subsets not including coin)
+  - `shifted_bits = dp[s-c] << c` (subsets including coin)
+  - `dp[s] = dp[s] | new_bits | shifted_bits`
+- **Output Phase**: After `i == n_in-1`, scan `dp[k]` from 0 to `k`. Count set bits (max 512). Store indices of set bits in ascending order into `result_x` array.
+- **Constraints**: Use `reg [511:0] dp_reg[512]` (or equivalent block RAM). Implement shift using concatenation. Ensure `k_in` ≤ 500. Max cycles: 500 (compute) + 512 (output) < 1024.

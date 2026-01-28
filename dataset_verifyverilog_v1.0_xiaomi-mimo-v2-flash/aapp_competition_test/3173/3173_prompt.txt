@@ -1,0 +1,63 @@
+Verilog HDL module specification for 'Hunter Exam' grid traversal with conveyor belts.
+
+## Problem Analysis & Adaptation
+- **Core Concept**: Drop a ball in a grid, traverse 'R'/'L'/'?' belts, stop at obstacles, collect scores at bottom rows, exit if out of bounds or K limit.
+- **Simplification**: Since K can be up to 1e9, direct simulation of K parts is impossible. We must detect cycles. 
+  - Logic: Simulate the ball traversal. If it enters a cycle, calculate total score from the cycle loop.
+  - Scale: R, C <= 50. K <= 1e9 (fits in 32-bit). Max cells traversed before cycle is R*C (~2500) plus overhead.
+  - Adaptation: We implement a `simulate_path` controller. It iterates through the grid using a Finite State Machine (FSM). 
+  - Since K is large, we need to detect cycles. The ball's state is (row, col). We track visited states in a memory (64 entries depth, 16 bits wide: 6-bit row, 6-bit col). 
+  - If we revisit a state, we found a cycle. Calculate cycle length and score, multiply by remaining K, add tail score.
+  - **Grid Representation**: Stored in ROM. Rows = R, Cols = C. Size 50x50 = 2500 bits/chars. Fits in Block RAM.
+  - **Orientation**: 'R' increases col, 'L' decreases col.
+  - **Scoring**: Accumulate `a_i` when reaching row R (the bottom of a part).
+
+## Interface Specification
+
+### Inputs
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start the calculation.
+- `grid_char`: 8-bit ASCII character from external memory (ROM/RAM). Used to read the grid state.
+- `score_val`: 32-bit score value for the current column (read from score ROM).
+- `found_result`: Output from memory read (validity flag).
+
+### Outputs
+- `req_read`: 1-cycle pulse to request a grid character read (at address `read_addr`).
+- `req_score`: 1-cycle pulse to request a score value read (at column `read_col`).
+- `read_addr`: 16-bit address for grid ROM (Row * C + Col).
+- `read_col`: 6-bit column index for score ROM.
+- `total_score`: 32-bit maximum final score (valid when `done`).
+- `done`: 1-cycle pulse indicating completion.
+
+### Parameters (Fixed)
+- `R_MAX`: 50 (Max rows in one part)
+- `C_MAX`: 50 (Max columns)
+- `K_MAX`: 1000000000 (Max parts)
+- `MAX_STEPS`: 4096 (Max steps before cycle detection limit)
+
+### Implementation Details
+1. **FSM States**: IDLE, FETCH_GRID, EXEC_STEP, CHECK_CYCLE, CALC_SCORE, WAIT_K, DONE.
+2. **Grid Storage**: Since we cannot store 2500 chars directly in code, the module issues read requests. For simulation, external logic returns the char.
+3. **Cycle Detection**: 
+   - We store `(row, col)` pairs in a small history buffer.
+   - When a state repeats, we calculate the cycle length (steps).
+   - Cycle score is the difference in accumulated scores.
+   - Total Score = Score(Tail) + ((K - StepsSoFar) / CycleLen) * CycleScore + Score(Head).
+4. **Movement**: 
+   - If '.' or Score Cell: `row++` (fall down). If `row > R`: reset `row=1`, add `score`.
+   - If 'R': `col++`. Check bounds/obstacle.
+   - If 'L': `col--`. Check bounds/obstacle.
+   - If 'X' or Out of Bounds: Stop (FSM -> DONE).
+5. **K Limit**: The loop continues until `parts_processed >= K` or termination condition.
+
+## Protocol
+- Slave: Wait for `start`. Fetch `grid_char` via `req_read`. Fetch `score_val` via `req_score`.
+- Master: Drive `read_addr` and `read_col`.
+- State transition: Wait 1 cycle for memory latency (simulated by waiting for `found_result`).
+
+## Constraints
+- Widths: `K` (32-bit), `Score` (32-bit), `Step` (16-bit for counting up to 4096).
+- The module must handle the logic. The external testbench will provide the grid data.
+
+Write the module code.

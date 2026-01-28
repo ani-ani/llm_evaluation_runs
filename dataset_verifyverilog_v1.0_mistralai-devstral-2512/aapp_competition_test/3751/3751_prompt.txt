@@ -1,0 +1,53 @@
+Implement a Verilog module that validates if a string of lowercase letters (a-z) could result from Kostya's obfuscation process. The process replaces variable names sequentially with single letters: first variable with 'a', second distinct variable with 'b', etc. The input string represents identifiers concatenated after this process.
+
+Core Validation Logic:
+1. Track the first occurrence position of each letter (a-z) in the input string
+2. The first occurring letter must be 'a' (ASCII 97)
+3. For any subsequent letter that appears, its first occurrence must be after the first occurrence of the previous letter in alphabetical order
+4. All letters that appear must be a contiguous prefix of the alphabet starting from 'a'
+5. No gaps allowed (e.g., if 'c' appears, 'b' must have appeared earlier)
+
+Module Interface:
+- Inputs:
+  * clk: 1-bit, system clock
+  * rst_n: 1-bit, active-low synchronous reset
+  * start: 1-bit, 1-cycle pulse to start processing
+  * char_in: 8-bit ASCII character input (only 'a'-'z' expected)
+  * valid_in: 1-bit, indicates char_in is valid
+  * done_in: 1-bit, 1-cycle pulse indicating all characters have been input
+
+- Outputs:
+  * result: 1-bit, 1 if valid obfuscation, 0 otherwise
+  * ready: 1-bit, indicates module is ready for input
+  * busy: 1-bit, indicates processing in progress
+  * done: 1-bit, 1-cycle pulse when result is valid
+
+Implementation Details:
+- Maximum string length: 500 characters (use 9-bit counter)
+- Use 26 registers (7-bit each) to store first position of each letter (0-500, 9-bit value)
+- Use 26-bit flag register to track which letters have appeared
+- Use 5-bit counter for current alphabet position being checked
+- State Machine States: IDLE, RECEIVING, VALIDATING, COMPLETE, ERROR
+- Processing begins after done_in pulse
+- Validation: For each letter in order, check if its first position < next letter's first position
+- Output result should be latched until reset
+- Timeout: Processing completes within 1000 cycles
+
+Edge Cases:
+- Empty string (never happens per constraints, but handle gracefully)
+- Single character 'a': YES
+- Letters not in order of first appearance: NO
+- Skipped letters (e.g., 'ac' without 'b'): NO
+- Duplicate letters: acceptable (reuse same variable)
+- All same letter: YES
+- Full alphabet in order: YES
+
+Timing:
+- start->done: within 200 cycles
+- When done=1, result is valid
+- Reset clears all state
+
+Connectivity:
+- All inputs sampled on rising clock edge
+- Combinational outputs as specified
+- Internal state updates on clock edge

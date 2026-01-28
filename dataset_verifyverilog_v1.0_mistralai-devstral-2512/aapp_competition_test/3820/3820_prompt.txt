@@ -1,0 +1,33 @@
+Implement a Verilog module that checks if string `t` matches pattern `s` with at most one wildcard '*'. Constraints: strings are fixed-width (max 16 chars), characters are 8-bit ASCII lowercase letters. The wildcard '*' matches any sequence (including empty).
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate comparison
+- `s_char_0` to `s_char_15`: 16 inputs, each 8 bits. Contains the pattern string `s` padded with nulls (0) to length 16. The wildcard '*' is encoded as ASCII 42 (0x2A).
+- `t_char_0` to `t_char_15`: 16 inputs, each 8 bits. Contains the target string `t` padded with nulls (0) to length 16.
+- `s_len`: 5-bit input (0-16) representing the logical length of `s`.
+- `t_len`: 5-bit input (0-16) representing the logical length of `t`.
+
+**Outputs:**
+- `result`: 1-bit output. 1 if `t` matches `s`, 0 otherwise.
+- `done`: 1-cycle pulse indicating comparison is complete and `result` is valid.
+
+**Logic Requirements:**
+1. On `start` pulse, read `s` and `t`.
+2. Find the position of '*' in `s` (if any).
+3. If no '*':
+   - Match is successful only if `s_len == t_len` AND all characters in `s` equal characters in `t` at corresponding positions.
+4. If '*' exists at index `w` (0-based):
+   - Let `prefix_len = w` (number of chars before '*').
+   - Let `suffix_len = s_len - w - 1` (number of chars after '*').
+   - Match is successful only if:
+     a. `prefix_len + suffix_len <= t_len` (wildcard can match empty or non-empty sequence).
+     b. `s[0:prefix_len] == t[0:prefix_len]` (Prefix match).
+     c. `s[w+1:s_len] == t[t_len-suffix_len:t_len]` (Suffix match).
+5. The module must complete within 100 clock cycles after `start`.
+6. Reset (`rst_n=0`) clears internal state, sets `result=0`, `done=0`.
+
+**Implementation Note:** Use a Finite State Machine (FSM) to iterate through the characters for comparison. Since sizes are small (max 16 chars), a simple loop-based FSM is sufficient.

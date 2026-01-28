@@ -1,0 +1,45 @@
+Create a Verilog module that finds the minimum absolute difference between any two elements in an array.
+
+**Interface:**
+- Inputs:
+  - `clk`: Clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation (single clock cycle high)
+  - `arr[0:7]`: 8-element array of 8-bit unsigned integers (indexed from 0 to 7)
+  - `len`: 4-bit unsigned integer representing actual number of elements (1-8)
+
+- Outputs:
+  - `result`: 16-bit unsigned integer containing the minimum difference
+  - `done`: 1-cycle pulse indicating computation complete (valid when done=1)
+
+**Implementation Requirements:**
+1. **Algorithm**: Sort the array using a simple bubble sort (≤8 elements), then compute min difference between adjacent pairs.
+2. **Bit Widths**: All inputs 8-bit, difference is 9-bit (max 255-0=255 fits in 9 bits), final result 16-bit for safety.
+3. **Timing**: Start pulse triggers computation, done signal asserts when complete. Maximum 100 clock cycles for 8 elements.
+4. **State Machine**: Use FSM with states: IDLE, SORT, COMPARE, DONE.
+   - IDLE: Wait for start
+   - SORT: Perform bubble sort iterations (7 passes max)
+   - COMPARE: Find minimum difference in sorted array (8-1 comparisons max)
+   - DONE: Pulse done=1, capture result
+
+5. **Reset Behavior**: On reset, all internal state clears, result=0, done=0
+6. **Edge Cases**: 
+   - len=1: Should return 0 (no pair) or max value (255)
+   - len=0: Should return 0 (invalid)
+   - Identical elements: Difference=0
+7. **Array Access**: For len < 8, unused indices are ignored. Computation only considers first `len` elements.
+
+**Implementation Hints:**
+- Use sequential logic for all operations
+- For bubble sort: Nested loops with swap detection
+- For comparison: Single pass comparing `arr[i]` and `arr[i+1]` for i=0 to len-2
+- Use a comparator to find minimum of differences
+- All arithmetic uses unsigned comparison
+- Ensure no overflow in any calculation
+
+**Test Signal Sequence:**
+1. Reset (rst_n=0) → Wait 2 cycles → rst_n=1
+2. Apply test case to arr[0:7] and len
+3. Pulse start=1 for 1 cycle → Wait for done=1
+4. Sample result when done=1
+5. Repeat for next test case

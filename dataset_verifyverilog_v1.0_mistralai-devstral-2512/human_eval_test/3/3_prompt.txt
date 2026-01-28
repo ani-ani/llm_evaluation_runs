@@ -1,0 +1,27 @@
+Implement a Verilog module that checks if a running balance drops below zero. The module accepts a sequence of signed 8-bit integers representing deposits (positive) and withdrawals (negative) applied to a bank account starting at zero. The module must output a 'below_zero' signal that becomes high and stays high from the first cycle the balance drops below zero until the end of the operation sequence.
+
+Interface Specification:
+- Inputs:
+  - clk: System clock, rising edge active
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate processing of a new sequence
+  - ops_valid: Signal indicating current 'op' input is valid (used for sequential input streaming)
+  - op: Signed 8-bit integer representing the current deposit/withdrawal operation
+- Outputs:
+  - below_zero: High when balance has dropped below zero at any point during the current sequence (remains high until reset)
+  - done: 1-cycle pulse indicating the end of the input sequence (when ops_valid is deasserted or a fixed max length is reached)
+
+Timing and Behavior:
+1. On reset (rst_n=0): 'below_zero' and 'done' go low. Accumulator resets to 0.
+2. On start pulse: The module prepares to process a new sequence. Previous 'below_zero' state is cleared.
+3. Processing: On each rising clock edge where 'ops_valid' is high, add the signed 'op' to an internal 16-bit accumulator (to prevent overflow for 16 operations of max 8-bit values). The accumulator represents the current balance.
+4. Detection: After each addition, if the accumulator is less than 0, set 'below_zero' to high immediately.
+5. Sequence End: When 'ops_valid' goes low (or after a fixed maximum of 16 operations for safety), assert 'done' for one cycle. The 'below_zero' output retains its value.
+6. The module must handle up to 16 operations per sequence. If more operations are provided, processing continues until 'ops_valid' is low.
+
+Implementation Notes:
+- Use a 16-bit signed accumulator to handle the cumulative sum of up to 16 8-bit values.
+- Implement a simple FSM: IDLE (waiting for start), PROCESSING (adding operations), and DONE (asserting done).
+- The 'below_zero' signal is a status flag that is set once and latched until reset.
+- Ensure the logic is purely combinational for the adder and comparator, with sequential state updates.
+- Do not include any external memory or unbounded loops. All processing occurs within the clock cycles.

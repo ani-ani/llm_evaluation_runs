@@ -1,0 +1,36 @@
+Implement a Verilog module that calculates the shortest sequence of valid times to transform from a starting time (hh:mm) to a target time (hh:mm) by incrementing/decrementing individual digits with wrap-around, ensuring validity (00:00 to 23:59). Output should be a sequence of up to 16 intermediate timestamps including start and end.
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `start_hh`: 5-bit, starting hour (0-23)
+- `start_mm`: 6-bit, starting minute (0-59)
+- `target_hh`: 5-bit, target hour (0-23)
+- `target_mm`: 6-bit, target minute (0-59)
+
+**Outputs:**
+- `result_valid`: 1-bit, asserted when result is ready
+- `result_len`: 4-bit, number of timestamps in sequence (0-16)
+- `result_timestamps`: 16x11-bit array, where each timestamp is packed as {hour[4:0], minute[5:0]} (11 bits total)
+- `done`: 1-cycle pulse when computation finishes
+
+**Timing:**
+- Start pulse triggers BFS state machine
+- Computation completes within 1000 cycles
+- Result is valid when `done` is high
+- Sequence includes start and target times
+
+**Algorithm:**
+1. Convert (hh, mm) to linear index `idx = hh*60 + mm` (0-1439)
+2. Use a Breadth-First Search (BFS) FSM to find shortest path
+3. Track visited nodes with a bit array (1440 bits = 180 bytes)
+4. Use a queue of max 64 entries (6-bit index)
+5. Reconstruct path by storing parent pointers
+6. Output the sequence (max 16 steps due to max shortest path in 24h clock graph)
+
+**Constraint:**
+- Maximum output length: 16 timestamps (sufficient for any valid time transition)
+- Graph size: 1440 nodes (24h * 60min)
+- State encoding: Use 11-bit packed timestamps internally
+- Digit operations: Allow +/-1 on any of 4 digits (h1, h0, m1, m0) with wrap and validity check

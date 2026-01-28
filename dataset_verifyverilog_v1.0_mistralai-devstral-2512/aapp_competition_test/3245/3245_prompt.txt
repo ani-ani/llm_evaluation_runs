@@ -1,0 +1,43 @@
+You are to design a Verilog module that simulates a simplified shell history feature with up-key completion.
+
+**Interface:**
+Inputs:
+  clk: System clock
+  rst_n: Active-low reset
+  start: Start processing of a new command line (1-cycle pulse)
+  char_in: 8-bit ASCII character input
+  char_valid: Valid character input (1-cycle pulse)
+  char_done: End of current command line (1-cycle pulse)
+
+Outputs:
+  result_valid: Output result is valid (1-cycle pulse)
+  result_char: 8-bit ASCII character of the completed command
+  result_done: End of output result (1-cycle pulse)
+  busy: Internal processing state (optional)
+
+**Behavior:**
+- Maintain a command history buffer (array of strings).
+- For each command line input (from `start` to `char_done`):
+  - Start with an empty `current_line` string.
+  - For each incoming `char_in` (when `char_valid` is high):
+    - If `char_in` is the up-arrow character ('^' or ASCII 94):
+      - Perform prefix search in history: Find the most recent command (latest added) that starts with the current `current_line` prefix.
+      - If multiple up-arrows are pressed consecutively, step back further in history (2nd most recent, 3rd, etc.).
+      - If no match is found, the prefix remains unchanged (or history is empty).
+      - Replace the current input prefix with the matched command from history.
+      - Reset the consecutive up-arrow counter when any non-up character is typed.
+    - Else (normal character):
+      - Append `char_in` to `current_line`.
+      - Reset consecutive up-arrow counter.
+- On `char_done`:
+  - Finalize the command: `current_line` is added to the command history.
+  - Output the characters of `current_line` sequentially via `result_char`.
+  - Assert `result_valid` for each character output.
+  - Assert `result_done` at the end of the command output.
+
+**Constraints:**
+- History size: 32 commands (to fit in block RAM).
+- Maximum command length: 64 characters (to fit in FIFO/Buffer).
+- Input alphabet: [a-zA-Z0-9 .^-].
+- Processing latency: Must complete output within 256 cycles per character to meet timing.
+- Do not include the 'up' character in the output or history.

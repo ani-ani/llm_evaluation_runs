@@ -1,0 +1,38 @@
+Implement a Verilog module `check_last_char` that determines if the last non-space character of a 16-byte string is an alphabetical character and is not part of a word.
+
+**Interface:**
+Inputs:
+  - clk: clock, rising edge
+  - rst_n: active-low synchronous reset (2 cycles minimum)
+  - start: 1-cycle pulse to initiate processing
+  - char_in[15:0][7:0]: 16-byte input string (each byte is ASCII, 0-127, 7-bit).
+  - len[3:0]: actual string length (0-16)
+
+Outputs:
+  - result: 1-bit flag (1=True, 0=False)
+  - done: 1-cycle pulse when result is valid
+
+**Functionality:**
+1. On start, process the string of length 'len' from bytes 0 to len-1.
+2. Traverse the string backwards (from last character to first).
+3. Skip all trailing spaces (ASCII 0x20). Let 'i' be the index of the last non-space character.
+4. If no non-space character exists (i < 0), return False.
+5. Check if the character at index 'i' is alphabetical ('A'-'Z' or 'a'-'z').
+6. **Word Boundary Check:** If the character is alphabetical, check the character immediately before it (at index 'i-1').
+   - If 'i-1' < 0 (start of string), it is NOT part of a word -> Return True.
+   - If char at 'i-1' is a space (0x20), it is NOT part of a word -> Return True.
+   - Otherwise, it IS part of a word -> Return False.
+
+**Scaling & Constraints:**
+- Max string length: 16 bytes (len input is 4-bit).
+- Iteration time: 16 cycles max to find the last character.
+- ASCII values: 0-127 (7-bit). 'A'=65, 'Z'=90, 'a'=97, 'z'=122.
+- Space: 0x20 (32).
+- Output 'result' must be high for exactly one cycle (when 'done' is high).
+- Reset: done=0, result=0.
+
+**Implementation Strategy:**
+- Use a FSM with states: IDLE, SEARCH, CHECK_ALPHA, VERIFY_BOUNDARY, DONE.
+- Use a counter to index the string backwards.
+- Use combinational logic to detect alphabetical characters.
+- The 'result' signal is a registered flip-flop set based on the boundary check condition.

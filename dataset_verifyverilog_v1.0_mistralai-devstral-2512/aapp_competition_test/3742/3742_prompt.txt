@@ -1,0 +1,63 @@
+Design a Verilog module to solve the Garland complexity minimization problem. The problem involves filling zeros in an array with numbers 1..n (where n≤100) to minimize adjacent pairs with different parity.
+
+Simplified DP approach:
+- Pre-calculate total odd (odd_total) and even (even_total) numbers available
+- Track used odd/even counts as we process the array
+- State: [position][used_odd][prev_parity] where prev_parity is 0 (even) or 1 (odd)
+- Output minimum complexity
+
+Implementation constraints:
+- n ≤ 100, but fixed-width arrays of size 16 for DP states (scale down to q=16 for simulation)
+- Use Q8.8 fixed-point for numbers, parity is LSB
+- Maximum 256 cycles to compute
+- Use lookup tables (ROM) for DP transitions
+- 16-bit result (complexity fits in 8 bits, use 16 for safety)
+
+Interface:
+Inputs:
+  clk: clock, rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle start pulse
+  n: 7-bit input (0-100)
+  arr_parity[i]: 100-bit vector, 1 for odd, 0 for even (0 indicates removed)
+  odd_total: 6-bit (max 50)
+  even_total: 6-bit (max 50)
+
+Outputs:
+  result: 16-bit minimum complexity
+  done: 1-cycle pulse when computation complete
+
+Timing:
+- start pulse initiates computation
+- Done within 256 cycles
+- Reset: result=0, done=0
+- Sample result on rising edge when done=1
+
+Memory constraints:
+- DP table: 16x16x2 entries, each 8-bit (cost fits in 8 bits)
+- Use block RAM or registers
+- No recursion, iterative DP scan
+
+Algorithm:
+1. Initialize DP[0][0][0] = 0, DP[0][0][1] = 0
+2. For each position i=0 to n-1:
+   - If arr_parity[i] != 0 (fixed number):
+     - Cost = 1 if prev_parity != fixed_parity else 0
+     - Update next state with same odd/even count
+   - Else (position is zero):
+     - Try placing odd (if available): cost = 1 if prev_parity != 1 else 0
+     - Try placing even (if available): cost = 1 if prev_parity != 0 else 0
+3. Final answer = min(DP[n][odd_total][0], DP[n][odd_total][1])
+
+State encoding:
+- state_odd_used: 6-bit (0-50)
+- state_prev_par: 1-bit (0=even, 1=odd)
+- Next state: same odd_used, new prev_par
+
+Optimization:
+- Use two banks of registers (current/next) for DP
+- Unroll inner loops with generate statements
+- Use 8-bit cost registers
+- 16x16x2 = 512 entries, implement as 512-byte memory
+
+Note: For n=100, reduce to n=16 for HDL simulation, scale up logic

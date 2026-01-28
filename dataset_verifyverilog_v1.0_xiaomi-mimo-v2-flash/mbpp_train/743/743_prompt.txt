@@ -1,0 +1,56 @@
+Implement a Verilog module that performs right rotation on a fixed-size array of 16 elements (each 8-bit). The rotation count is specified by a 4-bit input. Use a finite state machine to sequentially shift elements to their rotated positions over multiple clock cycles.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: System clock, rising edge active
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to start rotation operation
+  - `arr_in[0:15]`: 16-element array, each element is 8-bit. Represented as 16 individual input ports `arr_in_0` through `arr_in_15`
+  - `rotation_count`: 4-bit input (0-15), number of positions to rotate right
+
+- Outputs:
+  - `arr_out[0:15]`: 16-element output array, each element 8-bit. Represented as 16 individual output ports `arr_out_0` through `arr_out_15`
+  - `done`: Single-cycle pulse indicating completion (asserted for one clock cycle when finished)
+  - `busy`: High while rotation is in progress
+
+**Behavioral Requirements:**
+1. On reset (`rst_n=0`): All outputs (`arr_out_*` and `done`) must be set to 0. The `busy` signal should be 0.
+2. On rising edge of `clk` with `rst_n=1`:
+   - If `start` is high: Begin rotation operation. Set `busy` high. Clear `done`.
+   - If `busy` is high: Process the rotation using an internal state machine.
+3. Rotation Logic: For a right rotation by `N` positions:
+   - Element at index `i` moves to index `(i + N) % 16`
+   - Example: Input [A0, A1, ..., A15], rotation=3 → Output [A13, A14, A15, A0, A1, ..., A12]
+   - The `rotation_count` must be computed modulo 16 (i.e., `rotation_count % 16`)
+4. Timing: The rotation must complete within 20 clock cycles from the `start` pulse. When finished, assert `done` for exactly one cycle and set `busy` low. The `arr_out_*` values must be valid when `done` is asserted.
+5. Constraints: Use 16-bit internal state counter. No external memory. All operations must be clock-synchronous.
+
+**Implementation Approach:**
+- Use a finite state machine (FSM) with states: IDLE, COMPUTE, OUTPUT, DONE
+- Store the input array in a register file (16x8-bit)
+- Compute destination indices using modular arithmetic: `(i + rotation_count) % 16`
+- Use a 5-bit counter (0-15) to iterate through all 16 elements
+- Output the rotated elements directly from the computed positions
+- The `done` signal should be asserted only after all 16 elements have been placed in their rotated positions
+
+**Module Declaration:**
+module rotate_array (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_in_0, arr_in_1, arr_in_2, arr_in_3,
+                     arr_in_4, arr_in_5, arr_in_6, arr_in_7,
+                     arr_in_8, arr_in_9, arr_in_10, arr_in_11,
+                     arr_in_12, arr_in_13, arr_in_14, arr_in_15,
+    input wire [3:0] rotation_count,
+    output reg [7:0] arr_out_0, arr_out_1, arr_out_2, arr_out_3,
+                     arr_out_4, arr_out_5, arr_out_6, arr_out_7,
+                     arr_out_8, arr_out_9, arr_out_10, arr_out_11,
+                     arr_out_12, arr_out_13, arr_out_14, arr_out_15,
+    output reg done,
+    output reg busy
+);
+
+// Your implementation here
+
+endmodule

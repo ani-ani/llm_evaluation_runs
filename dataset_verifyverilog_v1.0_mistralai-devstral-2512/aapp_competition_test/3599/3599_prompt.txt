@@ -1,0 +1,46 @@
+Design a Verilog module that schedules N musical breaks within a concert of length T minutes. Constraints: T <= 5000, N <= 500, break lengths b[i] between 1 and T inclusive. A solution is guaranteed to exist. The goal is to assign a start time s[i] for each break such that s[i] >= 0, s[i] + b[i] <= T, and at any time t, the number of overlapping intervals is <= 2. Output the start times s[i] in the input order.
+
+Interface:
+- Inputs:
+  - clk, rst_n: Standard synchronous control.
+  - start: 1-cycle pulse initiating the calculation.
+  - t_in: 16-bit input for concert length T (0 < T <= 5000).
+  - n_in: 10-bit input for number of musicians N (0 < N <= 500).
+  - b_in: 16-bit input for the current musician's break duration.
+  - b_valid: 1-cycle pulse when a new break duration is provided.
+- Outputs:
+  - s_out: 16-bit output for the scheduled start time of the current musician.
+  - s_valid: 1-cycle pulse when s_out is valid for the current musician.
+  - done: 1-cycle pulse when all N musicians are scheduled.
+
+Implementation Strategy:
+1. State Machine: IDLE -> LOAD -> SCHEDULE -> OUTPUT -> DONE.
+2. Storage: Use 3 arrays (size 500) to store start times, durations, and end times of already scheduled musicians.
+3. Scheduling Logic (Hardware Friendly):
+   - Iterate time t from 0 to T-1.
+   - For each t, count active breaks (start <= t < end).
+   - If count < 2 (allowing 2 overlaps max), and t + b[i] <= T, then schedule start at t.
+   - Optimization: Since T is small (5000), a sequential scan is acceptable in hardware if clocked fast enough.
+   - To avoid deep loops, process one time unit per clock cycle or a small window.
+4. Data Types:
+   - Timestamps and durations: 16-bit (covers T=5000).
+   - Counters: 10-bit for N, 13-bit for T.
+   - Active count: 2-bit (0-3).
+5. Timing:
+   - The module must process N musicians.
+   - For each musician, it scans time T.
+   - Total cycles roughly N * T (worst case 500 * 5000 = 2.5M). For benchmarking, we will constrain simulation inputs to smaller values (e.g., T=50, N=10) or assume the HDL simulator handles the scale.
+   - In the prompt, specify that the design should be iterative and optimized for area, not latency.
+
+Detailed Sequence:
+1. On 'start', reset internal state.
+2. Wait for 'b_valid' to receive duration of musician i.
+3. Start scheduling loop for musician i:
+   - Check time slots t = 0 to T-b[i].
+   - For each t, check overlap with previous intervals in the storage arrays.
+   - If t is valid, store s[i]=t, e[i]=t+b[i], and break.
+4. Assert 's_valid' for 1 cycle.
+5. Repeat for next musician.
+6. After N musicians, assert 'done'.
+
+Note: The solution must be an 'online' algorithm or a batched memory processing unit. Since the prompt asks for 'output start time for each musician', a sequential processing unit is the most hardware-efficient interpretation.

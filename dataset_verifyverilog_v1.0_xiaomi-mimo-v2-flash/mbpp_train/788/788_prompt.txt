@@ -1,0 +1,46 @@
+Implement a Verilog module that creates a fixed-length array by appending an input string to an existing list of strings.
+
+### Interface:
+- **Inputs**: 
+  - `clk, rst_n`: Standard synchronous control
+  - `start`: 1-cycle pulse to start operation
+  - `str_0` through `str_7`: 8-bit char inputs (assumed ASCII, 8-bit wide)
+  - `str_len`: 4-bit input (number of valid characters in input string, max 8)
+  - `list_0` through `list_7`: 8-bit char inputs representing the first string in the list (only list_0 to list_1 used)
+  - `list_len`: 4-bit input (length of original list)
+- **Outputs**:
+  - `result_0` through `result_7`: 8-bit char outputs for the concatenated array
+  - `result_len`: 4-bit output (total length after concatenation)
+  - `done`: 1-cycle pulse when result is valid
+
+### Functionality:
+1. On start pulse, copy `list_0` and `list_1` to result positions 0 and 1 (simulating list of 2 strings)
+2. Append the input string characters to positions 2 through (2+str_len-1)
+3. Set `result_len = 2 + str_len` (always 2 + input length, since we prepend 2 fixed strings)
+4. Produce `done` pulse after 10 cycles of processing
+5. On reset: clear all result outputs, done=0, result_len=0
+
+### Constraints:
+- Total output characters: 2 (preloaded) + max 8 input = max 10 chars
+- Input string length: 0-8 chars (str_len)
+- Fixed list: Always 2 strings: "WEB" (index 0) and "is" (index 1) stored as 3+2=5 chars, but only first char per string in result
+- Actually, simplify: Pre-load 2 bytes for first string, 2 bytes for second string = 4 bytes total before appending
+- Clarification: List represents strings "WEB" (3 chars) and "is" (2 chars), but for HDL we use fixed-width slots per string (8-bit ID per string)
+- Revised spec: Each list element is an 8-bit string ID, not raw chars. Result is array of string IDs.
+- **Revised Interface**:
+  - `list_str_id_0` (8-bit): ID for first string
+  - `list_str_id_1` (8-bit): ID for second string
+  - `input_str_id` (8-bit): ID for string to append
+  - `result_0`, `result_1`, `result_2`: 8-bit string IDs in concatenated order
+  - `result_len`: Always 3 (since list has 2 elements + 1 input)
+  - `done`: After 5 cycles
+
+### Behavior:
+- Reset: All outputs zero
+- Start: Latch inputs, start pipeline
+- Operation: Copy list_str_id_0 to result_0, list_str_id_1 to result_1, input_str_id to result_2
+- After 5 cycles: Assert done, result_len=3
+
+### Timing:
+- start → done in 5 cycles
+- Reset: 2 cycles minimum, clear all outputs

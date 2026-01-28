@@ -1,0 +1,55 @@
+Implement a Verilog module that counts occurrences of unique 2-element tuples after sorting each tuple. The input is a list of 8-bit tuples (max 16 tuples). Each tuple (a,b) is sorted so that a <= b. Then, identical tuples are counted. Output the result as a dictionary mapping sorted tuples to their counts.
+
+**Interface Requirements:**
+- **Inputs:**
+  - `clk`: Main clock, rising edge
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `tuples_in`: Packed array of 32-bit values, where each 16-bit segment contains an 8-bit a and 8-bit b (a[15:8], b[7:0]) for one tuple. Max 16 tuples.
+  - `num_tuples`: 4-bit input (1-16) indicating how many tuples to process.
+- **Outputs:**
+  - `result_valid`: 1-bit, asserted when output is ready
+  - `result_tuple`: 16-bit, the sorted tuple (a, b) with a <= b
+  - `result_count`: 8-bit, count for this tuple
+  - `done`: 1-bit, pulsed when all tuples have been processed (data transmitted via result_tuple/result_count streams)
+
+**Processing Steps:**
+1. On start, read num_tuples tuples from tuples_in.
+2. For each tuple (a,b):
+   - If a > b, swap to make (b,a). Use a comparator.
+   - Store sorted tuple in a buffer.
+3. Count occurrences of unique sorted tuples.
+   - Use a lookup table (BRAM-like) with 16 entries, each storing a 16-bit key (sorted tuple) and 8-bit count.
+   - As tuples are added, check if key exists; if yes, increment count; else, store new key with count=1.
+4. After counting, stream out each unique tuple and its count via result_tuple and result_count.
+   - result_valid should be high for each output pair.
+   - done pulses after the last pair is output.
+
+**Constraints:**
+- Clock frequency: 100 MHz. Pipeline for sorting and counting.
+- Total cycles: < 256 cycles for 16 tuples.
+- Use combinational logic for sorting (a 2-element comparator).
+- For counting: Use a finite state machine (FSM) to iterate through sorted tuples and update counts in a register file (16 entries).
+- Output streaming: FSM state to iterate through valid entries and output.
+
+**Module Declaration:**
+module tuple_counter (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] tuples_in, // Wait, 16 tuples * 16 bits = 256 bits. Specify as [255:0] tuples_in; but for 8-bit a/b per tuple, each tuple is 16 bits (8+8). So 16 tuples = 256 bits. Let's use [255:0] tuples_in.
+    input wire [3:0] num_tuples,
+    output reg result_valid,
+    output reg [15:0] result_tuple, // a[15:8], b[7:0]
+    output reg [7:0] result_count,
+    output reg done
+);
+
+**Implementation Notes:**
+- Use a parameter for MAX_TUPLES = 16.
+- Internal memory: 16 x (16+8) bits for dictionary.
+- Sorting: a[7:0], b[7:0]. If a > b, output (b,a) else (a,b).
+- Counting: Iterate i from 0 to num_tuples-1. For each, check j from 0 to current_unique_count-1. If match, increment. If no match, add new entry.
+- Output: Iterate j from 0 to current_unique_count-1, output entry.
+- Timing: start triggers FSM. Done pulses at end.
+- Reset: Reset internal counters and memory to zero.

@@ -1,0 +1,27 @@
+Implement a Verilog module that computes the maximum number of buildings that can be disarmed based on the given rules. Input is an R x C grid (R, C ≤ 8) where 'x' represents a bomb. The core algorithm converts this to a bipartite graph where nodes represent rows and columns, and edges represent buildings. The solution is derived from the Maximum Bipartite Matching algorithm (Hopcroft-Karp or DFS-based), adjusted to account for the specific disarming constraint. The result is the size of the maximum matching.
+
+Interface Specification:
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  grid_valid: 1-bit valid signal for grid inputs
+  grid_row: 3-bit index (0-7) of current row being written
+  grid_col: 3-bit index (0-7) of current column being written
+  is_bomb: 1-bit indicating if cell (grid_row, grid_col) contains a bomb ('x')
+
+Outputs:
+  result: 4-bit integer (max 8 buildings)
+  done: 1-cycle pulse indicating result is valid
+  busy: 1-bit active during computation
+
+Internal Logic:
+1. On `start`, reset internal state.
+2. Accept grid data stream via `grid_row`, `grid_col`, `is_bomb` over multiple cycles. Store in a 8x8 RAM.
+3. Construct adjacency list for bipartite graph (Rows: 0-7, Cols: 0-7). R nodes on left, C nodes on right.
+4. Implement standard DFS-based maximum bipartite matching (Hungarian algorithm variant).
+   - Use `match_right[7:0]` array to store matching row index for each column.
+   - Use `seen[7:0]` array for DFS visited tracking.
+5. Iterate through each row node (0 to R-1) to find augmenting paths.
+6. Result is the count of successful matches.
+7. Assert `done` for 1 cycle when finished. Constraint: `R`, `C` <= 8. Array sizes must be explicitly defined as 8 elements.

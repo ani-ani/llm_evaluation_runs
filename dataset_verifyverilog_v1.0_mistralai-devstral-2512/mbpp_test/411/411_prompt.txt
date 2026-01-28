@@ -1,0 +1,38 @@
+## Module Specification: Snake Case to Camel Case Converter
+
+### Description
+Convert a snake_case string to CamelCase. Input is a fixed-width ASCII string with underscores '_' as separators. Output is the converted string. Maximum string length: 16 characters. Maximum output length: 16 characters. ASCII characters only (a-z, '_', digits).
+
+### Interface
+**Inputs:**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: Start conversion (1-cycle pulse). Input data must be stable when start is high.
+- `str_in`: Array of 16 bytes (8-bit each) representing the input string. Unused positions must be 0. Characters are ASCII values. Underscore is ASCII 0x5F (95).
+- `len_in`: 4-bit integer (0-15) indicating length of valid data in `str_in`.
+
+**Outputs:**
+- `str_out`: Array of 16 bytes (8-bit each) representing the CamelCase output string. Unused positions remain 0. Output is valid when `done` is high.
+- `len_out`: 4-bit integer indicating length of valid data in `str_out`.
+- `done`: 1-cycle pulse indicating conversion is complete and results are valid.
+
+### Functionality
+1. When `start` is asserted, the module begins processing `str_in`.
+2. **Algorithm:**
+   - Iterate through characters in `str_in` (0 to `len_in`-1).
+   - Maintain an index for `str_out` (0 to 15).
+   - If the current character is '_' (ASCII 95):
+     - The next character (if any) must be capitalized (bit 5 set if lowercase 'a'-'z').
+   - Else (normal character):
+     - If the previous character was '_' (or it's the first character), capitalize it (set bit 5 if 'a'-'z').
+     - Copy the character to `str_out`.
+   - Stop when `len_in` characters are processed or output reaches 16 characters.
+3. **Timing:** Conversion completes within 64 clock cycles (16 cycles per input char max + overhead).
+4. **Reset:** On reset, `done`=0, `str_out` indices are 0, `len_out`=0.
+
+### Implementation Notes
+- Use a Finite State Machine (FSM) with states: IDLE, FETCH, PROCESS, CAPITALIZE, WRITE, DONE.
+- Use a counter for input and output indices.
+- ASCII check: 'a' (0x61) to 'z' (0x7A). To capitalize: value = value - 32 (or set bit 5 to 0).
+- Underscore detection: `char == 8'h5F`.
+- Output must be packed into `str_out[0:15]` array interface.

@@ -1,0 +1,70 @@
+Verilog HDL Specification: Digit Sum Calculator
+
+### Module: digit_sum
+
+**Problem**: Compute sum of all digits from numbers in input array. Handle negative numbers and non-numeric characters.
+
+### Interface:
+
+**Inputs (Clocked, Rising Edge):**
+- `clk`: System clock
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `arr[0:7][7:0]`: 8-element array, each 8-bit value representing:
+  - ASCII '0'-'9' (0x30-0x39): treat as digit value 0-9
+  - ASCII '+' (0x2B): skip
+  - ASCII '-' (0x2D): mark next number as negative
+  - ASCII 'a'-'z' (0x61-0x7A): skip (non-digit)
+  - ASCII 'A'-'Z' (0x41-0x5A): skip (non-digit)
+  - Any other value: skip
+
+**Outputs:**
+- `result[15:0]`: 16-bit sum of all digits (max 9×8 = 72 fits in 16 bits)
+- `done`: 1-cycle pulse when computation complete
+
+### Behavior:
+
+1. **State Machine** (FSM):
+   - `IDLE`: Wait for start
+   - `PROCESS`: Process 8 array elements
+   - `DONE`: Output result, return to IDLE
+
+2. **Processing Logic** (sequential, 1 element per cycle):
+   - For each element:
+     - If ASCII '0'-'9' (0x30-0x39): add (value - 0x30) to running sum
+     - If ASCII '-' (0x2D): set negative flag (for next numeric element)
+     - If ASCII '+' (0x2B): clear negative flag
+     - Skip non-digit letters/symbols
+   - If negative flag is set when encountering digit: subtract digit value instead of adding
+
+3. **Timing**:
+   - Start -> Process (8 cycles for 8 elements) -> Done
+   - Total max 10 cycles
+
+4. **Reset Behavior**:
+   - `done` = 0, `result` = 0
+   - Must hold `start` = 0 during reset
+
+### Constraints:
+- No floating-point, fixed 8-bit data path
+- All arithmetic in 16-bit signed/unsigned range
+- Pipeline registers may be used
+- Maximum latency: 16 cycles from start
+
+### Test Cases (for verification):
+- Input [10, 2, 56] → ASCII ['1','0','2','5','6'] → sum 1+0+2+5+6 = 14
+- Input [10,20,4,5,'b',70,'a'] → Filter 'b','a' → sum digits: 1+0+2+0+4+5+7+0 = 19
+- Input [10,20,-4,5,-70] → Negative handling: 1+0+2+0+4+5+7+0 = 19 (treat '-' as skip, sum absolute digits)
+
+**Important**: The ASCII interpretation handles the test case filtering automatically - non-digit letters are skipped, negative signs are just markers (but for simplicity in this spec, we skip them rather than negating, as the test case expects sum of absolute digits).
+
+### Implementation Notes:
+- Use 16-bit accumulator
+- Counter for 8 elements
+- ASCII range checking with case-insensitive letters
+- Output done pulse after final element
+
+### Reset Sequence:
+- Assert rst_n for minimum 2 cycles
+- All internal state resets to zero
+- Result valid only when done=1

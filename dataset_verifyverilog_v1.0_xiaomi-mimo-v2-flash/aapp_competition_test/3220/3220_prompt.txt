@@ -1,0 +1,71 @@
+Implement a Verilog module that finds the lexicographically smallest valid sequence of moves (L/R) for N wizards on a circle, where N <= 8 (scaled down from 300k). 
+
+**Problem Adaptation**:
+Given N wizards (1..N) on a circle, each wizard i must move p_i steps clockwise (R) or counterclockwise (L). This maps wizard i to target positions: (i + p_i) mod N or (i - p_i) mod N (using 0-based indices). We need to assign a direction to each wizard such that all target positions are distinct. Output 'L' for counterclockwise (i-p_i) and 'R' for clockwise (i+p_i).
+
+**Constraints**:
+- N <= 8 (hardcoded parameter).
+- p_i < N.
+- Time: solve within 1024 cycles (1 cycle per constraint check / greedy attempt).
+- Logic: Since N is small (8), we can iterate over all 2^N = 256 combinations of directions. For each combination, check if all target positions are unique. If valid, record the string. Select the lexicographically smallest valid string ('L' < 'R'). If no valid string, output 'no dance'.
+
+**Interface**:
+- Inputs:
+  - `clk`: System clock (rising edge).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start processing.
+  - `p[0:7]`: 8x4-bit array (parameters p_i). Input sequentially or static; for simplicity, treat as 8 separate 4-bit inputs `p_0` to `p_7`. Use `0` for unused indices if N < 8.
+- Outputs:
+  - `result[0:7]`: 8x8-bit array (packed or unpacked) representing the output string characters. 'L'=76 (ASCII), 'R'=82. Or output as a stream. Let's use an 8-bit output port `char_out` and a 3-bit `index_out` to indicate which character, valid when `done` is high. Alternatively, for simplicity in simulation, output a packed 64-bit value or simply latch the result in a register. Let's use a 64-bit output `result_packed` where bytes are ASCII chars.
+  - `done`: 1-cycle pulse when finished.
+  - `valid`: High if a solution exists (else low).
+
+**Implementation Logic**:
+1.  **State Machine (FSM)**:
+    -   `IDLE`: Wait for `start`.
+    -   `ITERATE`: Iterate `mask` from 0 to 255 (8-bit counter).
+        -   For each `mask`, calculate targets for all N wizards.
+        -   Check collision: Compare all pairs of targets (or use a bitmap).
+        -   If valid, update `best_result` and `best_mask` if `mask` (interpreted as string) is lexicographically smaller.
+    -   `DONE`: Output result.
+
+2.  **Collision Check**:
+    -   Calculate `pos_L[i] = (i - p[i]) mod N`.
+    -   Calculate `pos_R[i] = (i + p[i]) mod N`.
+    -   Use `mask` bits: 0 -> L, 1 -> R.
+    -   Validity: `pos[i]` must be unique for all i.
+
+3.  **Lexicographical Order**:
+    -   We iterate `mask` from 0 to 255. 
+    -   Bit 0 corresponds to Wizard 0, Bit 1 to Wizard 1, etc.
+    -   If we want Lex smallest (L=0, R=1), 0...0 (all L) is smallest.
+    -   However, standard binary counting 0..255 corresponds to bits usually (b0 is LSB). If Wizard 0 is LSB, then 0 is L, 1 is R. 
+    -   Lexicographical order compares Wizard 0 first, then 1, etc. 
+    -   If Wizard 0 is MSB of the string, then binary count 000..000 to 111..111 corresponds to (Wizard 0...N-1). 
+    -   Let's define `mask` such that bit 0 corresponds to Wizard 0. `0` is L, `1` is R. 
+    -   To get Lex smallest, we want the smallest integer `mask` that is valid? 
+    -   If Wizard 0 is MSB, then `mask` 0 (all L) is smallest. 
+    -   If Wizard 0 is LSB, then `mask` 0 is smallest. 
+    -   Let's treat `mask` bit `i` as wizard `i`. 
+    -   We iterate `mask` from 0 to 255. Since 0 = 000..0 is all L (smallest lex), finding the first valid `mask` yields the solution. 
+
+4.  **Scaling**:
+    -   N=8 fixed.
+    -   `p[i]` are 4-bit inputs.
+    -   Positions are 3-bit (0-7).
+    -   Modulo arithmetic: `(i + p[i]) % 8` uses lower 3 bits if we treat numbers as 0-7.
+
+**Verilog Interface Details**:
+- Inputs: `clk`, `rst_n`, `start`, `p_0 [3:0]` ... `p_7 [3:0]`
+- Output: `result [63:0]` (Packed ASCII string, 8 bytes).
+- Output: `valid` (1 bit, 1 if solution found).
+- Output: `done` (1 bit, pulse).
+
+**Timing**: FSM runs for at most 256 iterations. Each iteration takes a few cycles (calculation + check). Total < 1000 cycles. 
+
+**Constraints**:
+- Reset: `result`=0, `done`=0, `valid`=0.
+- Inputs valid when `start` is high.
+- `done` pulses high for 1 cycle when finished. `result` and `valid` are latched.
+
+Write the Verilog module specification.

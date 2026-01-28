@@ -1,0 +1,65 @@
+Design a Verilog module that finds the lowest grade expression to produce 24 from 4 input numbers. The module should:
+
+1. Interface:
+   - Inputs: clk, rst_n, start (1-cycle pulse), in0, in1, in2, in3 (8-bit unsigned values, 1-100)
+   - Outputs: result (8-bit, grade 0-63, or 255 if impossible), done (1-cycle pulse)
+   - Timing: start asserted for 1 cycle, done pulses within 100 cycles, result valid when done=1
+   - Reset: 2 cycles minimum, done=0, result=0, idle state
+
+2. Algorithm (simplified for hardware):
+   - Generate all 24 permutations of the 4 input numbers using a permutation FSM
+   - For each permutation, try all 4 operators (*, +, -, /) at 3 positions (64 combos)
+   - Try 5 parenthesization patterns (A+B+C+D, A+(B+C)+D, (A+B)+(C+D), (A+(B+C))+D, A+((B+C)+D))
+   - For each expression:
+     * Compute result using left-to-right evaluation with 32-bit registers
+     * Check division: must be exact integer (remainder = 0)
+     * Calculate grade: 0 + 2*(number of inversions from original order) + 2*(number of parentheses)
+   - Track minimum grade found; if 24 is achievable, output minimum grade, else output 255
+
+3. Implementation constraints:
+   - Use 32-bit signed arithmetic for intermediate calculations
+   - Division only when divisor != 0 and remainder == 0
+   - No unary minus operations
+   - Permutations: implement as a counter (0-23) with base-4 encoding
+   - Operators: 2-bit encoding (0=*, 1=+, 2=-, 3=/)
+   - Parenthesization: 3-bit mode (0-4)
+   - Inversions: compare permutation indices with original order
+   - Parentheses count: based on mode (0:0, 1:2, 2:2, 3:2, 4:2)
+   - Output grade: 8-bit (0-63 range, 255=impossible)
+
+4. State Machine:
+   - IDLE: wait for start
+   - PERM: iterate through 24 permutations
+   - OPS: iterate through 64 operator combinations
+   - PAREN: evaluate 5 parenthesization modes
+   - EVAL: compute expression value with overflow protection
+   - CHECK: validate division, update minimum grade
+   - DONE: set done=1, output result
+
+5. Edge cases:
+   - Division by zero: skip
+   - Non-integer division: skip
+   - Overflow: clamp to 32-bit saturation or detect
+   - All combinations exhausted: set result=255 (impossible)
+
+6. Timing:
+   - Total cycles: 24 × 64 × 5 × ~20 = ~153,600 cycles max
+   - Use optimization: early exit if grade 0 found
+   - Done signal: single cycle pulse after all combinations checked
+
+7. Module signature:
+   module challenge24 (
+       input wire clk,
+       input wire rst_n,
+       input wire start,
+       input wire [7:0] in0, in1, in2, in3,
+       output reg [7:0] result,
+       output reg done
+   );
+
+8. Test requirements:
+   - Test with sample inputs: (3,5,5,2) → grade 1, (1,1,1,1) → impossible
+   - Test with perfect grade cases: (3,6,2,3) → grade 0
+   - Verify all 24 permutations are considered
+   - Verify division constraint: 2/3 is invalid
+   - Verify grade calculation correctness

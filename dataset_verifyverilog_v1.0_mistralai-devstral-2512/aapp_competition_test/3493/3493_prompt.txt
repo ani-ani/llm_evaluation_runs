@@ -1,0 +1,45 @@
+Implement a Verilog module that finds the maximum number of disjoint bipartite matchings in a graph with n nodes per side (n ≤ 16). The module should repeatedly find maximum matchings until no more exist, outputting each matching.
+
+Module Interface:
+- Inputs:
+  clk: rising edge clock
+  rst_n: active-low asynchronous reset
+  start: 1-cycle pulse to start computation
+  n: 4-bit input (number of nodes, 2-16)
+  adj_matrix: 16x16 array of 1-bit inputs (bit (i,j) = 1 if person i can stand on button j)
+  - Individual signals: adj_0_0, adj_0_1, ..., adj_15_15
+
+- Outputs:
+  done: 1-cycle pulse when all matchings computed
+  k: 4-bit output (number of matchings found)
+  matching_0_0 to matching_15_15: 16x16 4-bit outputs (for each matching m, output assignment per button)
+  - For matching m, button j gets person matching_m_j (0-15, 0 means none)
+  
+- Timing: start->done within 5000 cycles for n=16
+- Reset: done=0, k=0, all matchings zeroed
+
+Algorithm (simplified for hardware):
+1. Initialize: k=0, all matchings empty
+2. While true:
+   a. Find maximum matching using iterative BFS/DFS (simplified to 4-pass greedy with backtracking)
+   b. If matching size < n: break
+   c. Store matching in matching_k
+   d. Remove matched edges from adj_matrix
+   e. Increment k
+3. Output k and all stored matchings
+
+Implementation notes:
+- Use fixed-size registers (16x16 bits) for adj matrix
+- Each matching found via simplified maximum bipartite matching (Hungarian algorithm adapted to 16-bit)
+- Store up to 16 matchings (max n=16)
+- Use 16-bit registers for intermediate state
+- Clock speed: 10ns period (100MHz)
+- Reset clears all state
+
+Provide complete Verilog module code including:
+- All input/output declarations
+- State machine for sequence: IDLE, COMPUTE_MATCHING, STORE_MATCHING, REMOVE_EDGES, DONE
+- 32-bit counter for timeout safety
+- No external memory, use internal registers only
+- Matchings stored as 16x16x4-bit memory
+- Result extraction when done=1

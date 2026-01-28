@@ -1,0 +1,48 @@
+You are to implement a Verilog module that removes characters at odd indices from a given string. The string is represented as a fixed-width byte array.
+
+### INTERFACE SPEC:
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `input_str`: Packed or unpacked array representing the input string. **Verilog Spec**: Use an array of 16 registers `input_str[0:15]`, each 8 bits wide (ASCII). If using unpacked, specify the exact bit widths. The `len` input specifies the valid length (max 16).
+- `len`: 4-bit input indicating the number of valid characters in `input_str` (1-16). If `len` is 0, result is empty.
+
+**Outputs:**
+- `result`: Packed or unpacked array representing the output string. **Verilog Spec**: Use an array of 8 registers `result[0:7]`, each 8 bits wide, representing the max output length of 8 characters.
+- `done`: 1-cycle pulse indicating processing is complete and `result` is valid.
+- `output_len`: 4-bit output indicating the number of valid characters in `result`.
+
+### ALGORITHM:
+1. **Reset**: On reset, `done` and `output_len` must be 0. `result` array should be initialized (X or Z is acceptable, but 0 preferred).
+2. **Idle State**: Wait for `start` pulse. When `start` is high, capture `input_str` and `len`.
+3. **Processing State**: Iterate through the input string indices `i` from 0 to `len-1`. For each `i`, check if `i` is even (i % 2 == 0). If true, copy `input_str[i]` to the next available position in `result`. Increment a pointer tracking the number of characters copied to `result`.
+4. **Completion**: When all valid characters are processed, assert `done` for one clock cycle. `result` and `output_len` should remain stable until the next `start` or reset.
+5. **Timing**: The module must complete processing within 200 clock cycles of `start` going high.
+
+### CONSTRAINTS:
+- Input string length: Max 16 characters (8-bit ASCII).
+- Output string length: Max 8 characters (even indices).
+- Bit widths: Characters are 8-bit (0-255).
+- State machine: Use an FSM with IDLE, PROCESSING, DONE states.
+- Implementation: Use a simple loop or a counter to traverse indices. Check `i % 2` using the LSB of the counter (since 2*cycle + 0 = even).
+
+### SPECIAL NOTE:
+Do not implement any dynamic memory allocation. Use fixed-size registers for the string buffers. The `len` input determines the valid range.
+
+### VERILOG MODULE SIGNATURE:
+```verilog
+module odd_index_filter (
+    input clk,
+    input rst_n,
+    input start,
+    input [3:0] len,
+    input [7:0] input_str [0:15], // Unpacked array, 16 elements of 8 bits
+    output reg [7:0] result [0:7],  // Unpacked array, 8 elements of 8 bits
+    output reg [3:0] output_len,
+    output reg done
+);
+```
+
+(Note: If the target system prefers packed vectors, you may adjust the interface, but the functionality must remain the same: 16 bytes in, 8 bytes out max.)

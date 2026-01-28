@@ -1,0 +1,36 @@
+Design a Verilog module that finds the largest element `d` in a set of distinct integers such that there exist three other distinct elements `a`, `b`, `c` (all distinct from each other and `d`) satisfying `a + b + c = d`. The module must handle fixed-size inputs and produce a single integer result.
+
+**Interface Specification:**
+- **Clock & Reset**: Standard synchronous design.
+  - `clk`: Main clock input (rising edge active).
+  - `rst_n`: Active-low asynchronous reset (synchronizes internally).
+- **Input Data (8 elements max)**: 
+  - `arr[0:7][15:0]`: An array of 8 elements, each a 16-bit signed integer. Values must be clamped to fit 16 bits (-32768 to +32767).
+  - `valid_in`: 1-bit input indicating the data on `arr` is valid (should be held high until processing starts).
+- **Control Signals**:
+  - `start`: 1-bit input, a single cycle pulse to initiate the search.
+- **Output Signals**:
+  - `result[15:0]`: 16-bit signed integer output. Valid when `done` is high.
+  - `done`: 1-bit output, pulsed high for one cycle when the calculation is complete and `result` is valid.
+  - `no_solution`: 1-bit output, high if no valid `d` exists (pulsed with `done`).
+
+**Functional Requirements:**
+1. **Initialization**: Upon `start` assertion (while `valid_in` is high), capture the 8 elements from `arr` into internal registers.
+2. **Algorithm (Brute Force)**: 
+   - Iterate through all combinations of 4 distinct indices (i, j, k, l) from 0 to 7.
+   - Verify distinctness: `i != j`, `i != k`, `i != l`, `j != k`, `j != l`, `k != l`.
+   - Calculate sum: `s = arr[i] + arr[j] + arr[k]`.
+   - Check equality: If `s == arr[l]` and `arr[l]` is greater than the current best result, update `result`.
+   - Since 8 elements results in only 1680 valid 4-tuples, a finite state machine (FSM) or iterative loop can complete this within 1000 clock cycles.
+3. **Tracking**: Maintain a `best_d` register initialized to a minimal value (e.g., -32768) and a `found` flag.
+4. **Output**: When all combinations are checked, set `result` to `best_d` if `found` is true, otherwise output 0 (or undefined but `no_solution` indicates absence). Pulse `done` and `no_solution` appropriately.
+
+**Constraints:**
+- Bit Widths: Inputs 16 bits, Sums/Outputs 16 bits (overflow behavior is undefined, assume inputs are scaled to prevent overflow).
+- Timing: `start` to `done` latency <= 1000 cycles.
+- Reset: Clears internal state, sets `done` and `result` to 0.
+
+**Implementation Notes:**
+- Use a nested loop structure or FSM to generate indices.
+- Use `reg` arrays to store the captured input values.
+- Ensure distinctness checks in hardware logic.

@@ -1,0 +1,49 @@
+Design a Verilog module that computes F_k(n) mod 1000000007, where F_1(n) = f(g(n)) and for k > 1: F_k(n) = g(F_{k-1}(n)) if k even, f(F_{k-1}(n)) if k odd. Here, f(n) = φ(n) (Euler's totient), and g(n) = n.
+
+Key Insight: The alternating pattern simplifies to applying φ(n) approximately (k+1)/2 times. Since φ(n) < n and reduces quickly, the number of iterations is bounded (~40 for 10^12). The function can be implemented as:
+- For k=1: result = φ(n)
+- For k>1: result = φ^m(n) where m = (k+1)/2 (integer division)
+
+Hardware Requirements:
+- Support inputs n (40-bit), k (40-bit) -> outputs result (32-bit mod 1e9+7)
+- Implement Euler's totient function φ(n) using factorization
+- Use a precomputed LUT of primes up to 1000 (enough for 10^12 factorization)
+- State machine with bounded loops (max 64 cycles per φ computation)
+- Handle termination when n=1
+
+Module Interface:
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  n_in: 40-bit input number
+  k_in: 40-bit iteration count
+Outputs:
+  result: 32-bit result (mod 1e9+7)
+  done: 1-cycle pulse when valid
+  busy: high while computing
+
+Behavior:
+1. On start rising edge, compute m = (k_in + 1) / 2 (integer division)
+2. Initialize current = n_in, iter = 0
+3. While iter < m and current > 1:
+   - Compute current = φ(current)
+   - iter = iter + 1
+4. Output result = current % 1000000007
+
+φ(n) Computation:
+- Use trial division with preloaded primes (16 primes: 2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53)
+- For each prime p: if n % p == 0, then φ(n) = φ(n) * (p-1) / p
+- After primes, if remaining > 1, multiply by (rem-1)/rem
+- Use 64-bit intermediate arithmetic, reduce mod 1e9+7 at end
+
+Timing:
+- Start to done: ≤ 256 clock cycles
+- Each φ computation: ≤ 16 cycles (one per prime)
+- Total iterations: ≤ 40, so total cycles ≤ 640
+
+Constraints:
+- All arithmetic must be modular for intermediate results
+- No division, use multiplication by modular inverse of p
+- Precompute inverses: inv[2]=500000004, inv[3]=333333336, etc.
+- State machine must terminate on n=1 or max iterations reached

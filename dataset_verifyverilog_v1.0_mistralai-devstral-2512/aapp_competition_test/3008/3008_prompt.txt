@@ -1,0 +1,70 @@
+Design a Verilog module that computes the maximum number of distinct ranks for N=16 assistants with measurements a_i and b_i (8-bit unsigned integers). Given K (8-bit), the constraint is: if a_i + K < a_j OR b_i + K < b_j, then rank_j >= rank_i.
+
+Problem Analysis:
+- The constraints define a partial order. The maximum distinct ranks equals the length of the longest path in the DAG formed by these constraints (or the size of the largest antichain in a dual view, but effectively it's a longest path in a graph where edges enforce 'must be higher or equal').
+- Simplified: Build a graph where an edge i->j exists if (a_i + K < a_j) OR (b_i + K < b_j). This graph is a DAG (since relations are strict inequalities on coordinates). The maximum distinct ranks is the length of the longest path in this DAG (counting nodes).
+- Scaled: N=16 nodes. 8-bit inputs. K is 8-bit.
+- Implementation: Use a comparator block to build the adjacency matrix (16x16 bits). Then perform dynamic programming: longest_path[u] = 1 + max(longest_path[v]) for all u->v edges. Since N=16, we can compute this iteratively or via bitmask DP. Output is the maximum value among all longest_path[u].
+
+Interface Specification:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - a_i (16 * 8-bit): Array of joke qualities. Input as packed array or individual signals. Let's use individual inputs for simplicity: `a[0], a[1], ..., a[15]` (8-bit each).
+  - b_i (16 * 8-bit): Array of compliment niceness. `b[0]...b[15]` (8-bit each).
+  - K: 8-bit difference limit.
+- Outputs:
+  - result: 5-bit (since max distinct ranks for 16 nodes is 16).
+  - done: 1-bit signal, pulsed for 1 cycle when result is valid.
+- Timing:
+  - Reset: Clears internal state, done=0. Min 2 cycles.
+  - Start: Sample inputs.
+  - Processing: Must complete within 512 cycles.
+  - Result: Valid when done=1.
+
+Algorithm Description (Internal):
+1. Comparator Logic: For every pair (i, j) where i != j, compute edge[i][j] = (a[i] + K < a[j]) | (b[i] + K < b[j]).
+   - Note: Addition must handle overflow. Since values are 8-bit and K is 8-bit, a[i] + K can be up to 511. We should compute this in 9 bits (or clamp).
+   - Logic: `edge = ((a[i] + K) < a[j]) || ((b[i] + K) < b[j])`.
+   - Storage: Store edges in a 16x16 register file or RAM (16x16 bits = 256 bits).
+2. Longest Path (DP):
+   - State: `dp[u]` (5-bit) for each node u (0 to 15), initialized to 1.
+   - Iteration: Since the graph is a DAG, we need topological order. However, with N=16, we can simply iterate 16 times using the property: `dp[u] = max(dp[u], 1 + max(dp[v] for v where edge[u][v]))`.
+   - To avoid loops in hardware (graph might not be strictly acyclic in trivial check due to wrap-around, but the logical definition implies acyclicness because the relation is transitive and irreflexive for distinct values, or creates equivalence classes). 
+   - Actually, a simpler method for N=16: Repeated relaxation. Initialize `dp[u] = 1`. Then repeat `max_path` times (16 times). In each round, update `dp[u]` based on neighbors. This works even if the graph is not a DAG as long as we handle cycles (though strictly there shouldn't be cycles in the constraint graph). 
+   - Let's use Floyd-Warshall style or simple iterative relaxation for simplicity in hardware.
+   - Loop `iter` from 0 to 15:
+     - For each node `u`: `max_next = 1`. For each `v`: if `edge[u][v]` is set, `max_next = max(max_next, dp[v] + 1)`. `new_dp[u] = max_next`.
+     - Update `dp` registers.
+3. Result: After iterations, the answer is `max(dp[u])`.
+
+Module Structure:
+- `module max_ranks_16(...)`
+- Internal: 
+  - `reg [7:0] a_reg[0:15], b_reg[0:15], k_reg;`
+  - `reg [15:0] edges[0:15];` // Adjacency matrix. `edges[i][j]` means i->j.
+  - `reg [4:0] dp[0:15], next_dp[0:15];`
+  - `reg [3:0] cnt;` // Iteration counter.
+  - `reg [4:0] max_val;` // Current maximum.
+  - `reg [2:0] state;` // FSM: IDLE, COMPARE, CALCULATE, FINALIZE.
+
+FSM States:
+1. IDLE: Wait for `start`. Load inputs to regs. Transition to COMPARE.
+2. COMPARE: Compute edges. This can be done in a loop over i (0-15) and j (0-15). 256 cycles.
+   - For each pair, calculate `a_reg[i] + k_reg` and `b_reg[i] + k_reg` (9-bit sum). Compare with `a_reg[j]` and `b_reg[j]`. Set bit `edges[i][j]`.
+   - Reset `cnt = 0`. Transition to CALCULATE.
+3. CALCULATE: Perform DP relaxation. Loop `cnt` from 0 to 15.
+   - Inside: compute `next_dp` for all nodes in parallel (requires 16 * 16 comparators). 
+   - Update `dp <= next_dp`. Increment `cnt`. If `cnt < 16`, stay. Else transition to FINALIZE.
+4. FINALIZE: Compute `max(dp[0..15])`. Set `result`. Pulse `done`. Return to IDLE.
+
+Verilog Implementation Details:
+- Use blocking assignments for combinational logic (comparators), non-blocking for registers.
+- Ensure proper width extension for addition to prevent overflow simulation issues.
+
+Testbench:
+- Verify with N=2, K=10, various inputs.
+- Check if result matches expected (2 or 1).
+- Scale up to N=16 with random values.
+- Ensure `done` pulse is exactly 1 cycle.

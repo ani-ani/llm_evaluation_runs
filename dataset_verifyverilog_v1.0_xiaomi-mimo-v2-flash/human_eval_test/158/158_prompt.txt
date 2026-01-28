@@ -1,0 +1,35 @@
+Design a Verilog module `find_max_word` that implements the string uniqueness and lexicographical selection problem. 
+
+**Inputs:**
+- `clk`: System clock
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `num_words`: 4-bit integer (1 to 16 words)
+- `words_data`: 16 packed arrays (each 64-bit) containing words. Each word is padded with spaces (ASCII 0x20) to exactly 8 characters. Max word length is 8 chars. Total input array size is 16 words.
+
+**Outputs:**
+- `result`: 64-bit packed output word (8 chars)
+- `done`: 1-cycle pulse when result is valid
+- `status`: 3-bit status code (0=Idle, 1=Processing, 2=Done, 3=Error)
+
+**Functionality:**
+1. On `start` pulse, transition from Idle to Processing.
+2. **Uniqueness Check:** For each word, count the number of unique ASCII characters (case-insensitive). 
+   - Implementation: Iterate through each character. Maintain an 8-bit `char_present` array (indexed 7:0). If char is 'A'-'Z', convert to lowercase ('a'-'z'). If char is 'a'-'z', set bit `(char - 8'd97)` in `char_present`. Count set bits.
+   - Scale: 16 words max, 8 chars per word. This fits in a 4-bit counter (max 8 unique chars).
+3. **Selection:**
+   - Maintain `best_word` (64-bit) and `best_unique_count` (4-bit).
+   - For each word:
+     - If `current_unique_count` > `best_unique_count`: Update `best_word` and `best_unique_count`.
+     - If `current_unique_count` == `best_unique_count`: Compare lexicographically. 
+       - Lexicographical compare: Iterate from index 0 to 7. If `char1 < char2`, the first word is smaller. If `char1 > char2`, the second word is smaller. If equal, continue.
+       - If current word is lexicographically smaller than best word, update `best_word`.
+4. **Output:**
+   - After processing `num_words` words, assert `done` for 1 cycle and output `result` = `best_word`. 
+   - Return to Idle.
+
+**Constraints:**
+- Maximum clock cycles to `done`: 2048 cycles.
+- ASCII characters only (7 bits valid). Pad with 0x20 (space).
+- Use iterative state machine for processing.
+- Result is the raw 64-bit packed word.

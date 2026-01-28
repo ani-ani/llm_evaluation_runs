@@ -1,0 +1,96 @@
+Verilog HDL Module Specification for Bidirectional Tuple Pair Counter
+
+=== TASK ===
+Design a sequential circuit that counts bidirectional pairs in an array of tuples. A bidirectional pair exists when:
+  tuple[j] = (a, b) and tuple[i] = (b, a) where i > j
+  Each matching pair increments the counter by 1
+
+=== INTERFACE ===
+Module name: bidirectional_counter
+
+Inputs:
+  - clk: Clock, rising edge triggered
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start processing
+  - arr_0_a, arr_0_b: 8-bit components of tuple 0
+  - arr_1_a, arr_1_b: 8-bit components of tuple 1
+  - arr_2_a, arr_2_b: 8-bit components of tuple 2
+  - arr_3_a, arr_3_b: 8-bit components of tuple 3
+  - arr_4_a, arr_4_b: 8-bit components of tuple 4
+  - arr_5_a, arr_5_b: 8-bit components of tuple 5
+  - arr_6_a, arr_6_b: 8-bit components of tuple 6
+  - arr_7_a, arr_7_b: 8-bit components of tuple 7
+  - num_tuples: 4-bit input (0-7, actual number of valid tuples)
+
+Outputs:
+  - result: 16-bit unsigned count
+  - done: 1-cycle pulse when computation completes
+
+=== REQUIREMENTS ===
+1. Array Support: Handle up to 8 tuples of (a,b) pairs
+2. Value Range: Each component a,b is 8-bit unsigned (0-255)
+3. Comparison Logic: Check if tuple[j].b == tuple[i].a AND tuple[j].a == tuple[i].b
+4. Counting: Increment counter for each valid bidirectional pair found
+5. Complexity: O(n²) nested loops, max 8 elements = 28 comparisons
+6. Timing: Process should complete within 30 clock cycles
+7. Reset: done=0, result=0 on reset
+8. Streaming: Update result while iterating, assert done when finished
+
+=== ARCHITECTURE HINTS ===
+- Use nested loop structure in FSM:
+  * Outer loop: j from 0 to num_tuples-2
+  * Inner loop: i from j+1 to num_tuples-1
+- Store input tuples in 2D registers: tuple[0..7][0..1]
+- Comparator: Two 8-bit comparisons per pair
+- Counter: 16-bit register
+- FSM states: IDLE, LOAD, OUTER_LOOP, INNER_LOOP, COMPARE, INCREMENT, DONE
+- Total cycles: Load(1) + (Outer*Inner)*Compare(1) + Done(1)
+  With 8 tuples: ~1 + 28*1 + 1 = 30 cycles
+
+=== INPUT VALIDATION ===
+- num_tuples > 0 required (minimum 2 for any comparison)
+- If num_tuples < 2, result should be 0 and done in 1 cycle
+- All input values are valid (no Z/X checking needed)
+
+=== RESET BEHAVIOR ===
+- Start in IDLE state
+- done = 0, result = 0
+- Process starts on start=1 when rst_n=1
+- Returns to IDLE after done
+
+=== OUTPUT TIMING ===
+- start must be asserted for exactly 1 clock cycle
+- After start, done will assert after computation completes
+- result is valid when done asserts
+- After done, you can assert start again for new computation
+
+=== EXAMPLE ===
+Input: [(5,6), (1,2), (6,5), (9,1), (6,5), (2,1)] (6 tuples)
+Expected: 3 bidirectional pairs:
+  1. (5,6) and (6,5)
+  2. (1,2) and (2,1)  
+  3. (6,5) and (5,6) [duplicate]
+
+=== IMPLEMENTATION NOTES ===
+- Use parameterizable widths: parameter DATA_WIDTH = 8, MAX_TUPLES = 7
+- Use blocking assignments in combinational logic
+- Use non-blocking assignments in sequential logic
+- State encoding: use binary or one-hot (your choice)
+- Ensure no timing loops
+- Combinational paths from inputs to outputs should be reasonable (< 2 gates)
+- Implement as pure combinational after loading inputs, or pure sequential
+
+=== SIGNAL WIDTHS ===
+- All tuple components: 8 bits (DATA_WIDTH)
+- Tuple index: 3 bits (0-7)
+- num_tuples: 4 bits
+- result: 16 bits (max 28 pairs with 8 tuples)
+- State: 3 bits (8 states max)
+
+=== TEST BENCHMARK ===
+Test 1: [(5,6), (1,2), (6,5), (9,1), (6,5), (2,1)] → result = 3
+Test 2: [(5,6), (1,3), (6,5), (9,1), (6,5), (2,1)] → result = 2
+Test 3: [(5,6), (1,2), (6,5), (9,2), (6,5), (2,1)] → result = 4
+
+=== FINISH ===
+Implement a complete, synthesizable Verilog module meeting these specifications. Include proper reset handling, state transitions, and output generation.

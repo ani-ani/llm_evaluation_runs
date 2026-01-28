@@ -1,0 +1,44 @@
+Implement a Verilog module that performs "strange sorting" on an array of integers.
+
+**Task Description:**
+Given an array of integers, sort them in "strange order": start with the minimum value, then the maximum of the remaining integers, then the minimum, and so on. For example, `[1, 2, 3, 4]` becomes `[1, 4, 2, 3]`.
+
+**Interface Specification:**
+
+*   **Clock/Reset:**
+    *   `clk`: System clock (rising edge trigger).
+    *   `rst_n`: Active-low asynchronous reset.
+
+*   **Input:**
+    *   `start`: 1-cycle pulse initiating the operation. The inputs `arr` must be stable while `start` is high.
+    *   `arr_valid`: 1-bit indicating valid input data. (Required for streaming logic)
+    *   `len`: 4-bit integer (0 to 15) indicating the number of elements in `arr`.
+    *   `arr_in`: 16-bit vector, where each 8-bit segment represents an element (e.g., bits [7:0] is element 0, [15:8] is element 1). Since the max array size is 16 and integers are scaled to 8 bits, a 16-bit input is used for efficiency.
+
+*   **Output:**
+    *   `result`: 16-bit vector, formatted as `arr_out[1] << 8 | arr_out[0]` (providing the first two sorted elements). *Note: For a fully streaming output, provide the sorted array one element per cycle.*
+    *   `done`: 1-cycle pulse indicating the operation is complete and `result` is valid.
+
+**Implementation Details:**
+1.  **Algorithm:**
+    *   Sort the input array (ascending order). Use a standard bubble sort or combinatorial sort for <=16 elements.
+    *   Initialize a `removed_mask` (16-bit) to 0.
+    *   Use an FSM to iterate `N` times (where `N` is `len`).
+    *   In even cycles (0, 2, 4...), scan the sorted array to find the smallest element whose `removed_mask` bit is 0. Mark it as removed.
+    *   In odd cycles (1, 3, 5...), scan the sorted array backwards to find the largest element whose `removed_mask` bit is 0. Mark it as removed.
+    *   Output the selected element.
+2.  **Scaling:** Input integers must be scaled to 8-bit values (e.g., if the Python problem uses large integers like 111111, they should be mapped or truncated to fit 8 bits in the HDL testbench).
+3.  **Timing:** The operation should complete within 256 clock cycles.
+
+**Example Test Sequence:**
+Input: `[1, 2, 3, 4]` (len=4).
+1. Sort: `[1, 2, 3, 4]`
+2. Cycle 0: Min is 1. Output 1. Mask=0001.
+3. Cycle 1: Max of remaining is 4. Output 4. Mask=0001.
+4. Cycle 2: Min of remaining is 2. Output 2. Mask=0101.
+5. Cycle 3: Max of remaining is 3. Output 3. Mask=1111.
+
+**Constraints:**
+*   Max elements: 16.
+*   Element width: 8 bits.
+*   Max cycles: 256.

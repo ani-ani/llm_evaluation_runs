@@ -1,0 +1,58 @@
+You are to implement a hardware module that finds the maximum average of any contiguous subsequence of length at least K from an array of N integers. Due to hardware constraints, we will scale the problem: N will be at most 8, K will be at least 2 and at most N, and input values will be 8-bit unsigned integers (0-255). The output should be the maximum average in fixed-point Q16.16 format (16 integer bits, 16 fractional bits) with an absolute error tolerance of ±0.001 in decimal.
+
+The algorithm to implement:
+1. Use a binary search approach on the average value (since the function f(x) = max average of subarray with length ≥ K is monotonic).
+2. The search range is [0, 255] with 32 iterations for sufficient precision (error < 2^-16 ~ 0.000015).
+3. For each candidate average 'mid', transform the array: b[i] = a[i] - mid (as fixed-point).
+4. Check if there exists any subarray of length ≥ K where the sum of b is ≥ 0.
+   - Compute prefix sums of b (using 32-bit signed accumulator).
+   - For each i ≥ K-1, check if prefix[i] - min(prefix[0..i-K]) ≥ 0.
+5. If yes, the maximum average is at least 'mid'; set low = mid, else high = mid.
+6. Return low as the final answer.
+
+Module Interface:
+- Inputs:
+  - clk: system clock (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - a[0:7]: 8x8-bit array of input integers (MSB first, e.g., a[7] is the first element, a[0] is the last for consistency if needed, but specify as array index 0 to N-1).
+  - n: 4-bit integer, the actual number of elements in the array (1-8).
+  - k: 4-bit integer, the minimum subsequence length (2-8, k ≤ n).
+- Outputs:
+  - result: 32-bit fixed-point Q16.16 value representing the maximum average.
+  - done: 1-cycle pulse indicating result is valid.
+
+Timing:
+- After start is asserted, the module should complete within 256 clock cycles.
+- On reset, done=0, result=0.
+- The binary search requires 32 iterations. For each iteration, we compute prefix sums over N (≤8) elements and scan for the condition, which should be done in a single cycle per iteration or pipelined.
+
+Implementation Notes:
+- Use fixed-point arithmetic. Input values a[i] are integers, so they can be treated as Q8.0 and converted to Q16.16 by shifting left by 16.
+- The candidate average 'mid' in binary search should be represented in Q16.16. The search range can be scaled: start low=0, high=255 << 16.
+- Each iteration, mid = (low + high) >> 1 (right shift by 1 for division by 2).
+- For the check: b[i] = a[i] - mid (both Q16.16, result Q16.16). However, to avoid large intermediate values, we can compute the condition directly: sum(a[j..i]) / (i-j+1) >= mid  <=> sum(a[j..i]) >= mid * (i-j+1). Since mid is fixed, we can precompute for each possible length L (1..N) the value mid * L. But N is small, so we can compute the check by comparing sums of a with mid * length.
+- A simpler check for 'exists subarray with avg >= mid': Let b[i] = a[i] - mid (Q16.16). Compute prefix sums P[0]=0, P[i]=P[i-1]+b[i-1] (Q20.16 maybe, but use 32-bit signed). Then for each i from K-1 to N-1, find min_prefix = min(P[0..i-K+1]). If P[i+1] - min_prefix >= 0, then condition is true.
+- Since N is small (≤8), we can unroll loops or use a small FSM for the check.
+- The final result should be low from the binary search.
+
+Verilog Module Specification:
+module max_avg_subarray(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] a [0:7],  // Array of 8 elements, each 8 bits. Use wire [7:0] a_0, a_1, ... a_7 for individual ports if needed.
+    input wire [3:0] n,         // Actual number of elements (1-8)
+    input wire [3:0] k,         // Minimum subsequence length (2-8, k <= n)
+    output reg [31:0] result,   // Q16.16 fixed-point output
+    output reg done             // 1-cycle pulse when result is valid
+);
+
+The module should implement the binary search algorithm as described. The state machine should handle:
+1. Initialization (reset or idle).
+2. Binary search iterations (32 iterations).
+3. Within each iteration, compute the check condition using prefix sums.
+4. Update low/high bounds.
+5. Set result when done.
+
+Use 32-bit signed arithmetic for intermediate calculations to avoid overflow. The inputs a[i] should be interpreted as unsigned 8-bit integers, extended to 32 bits before conversion to Q16.16.

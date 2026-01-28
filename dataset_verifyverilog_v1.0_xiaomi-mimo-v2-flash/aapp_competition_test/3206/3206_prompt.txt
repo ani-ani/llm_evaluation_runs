@@ -1,0 +1,42 @@
+Verilog HDL Module Specification:
+
+Design a module `skyline_builder` that implements a partitioning search algorithm to determine if a set of blocks can be stacked to match a set of building heights.
+
+**Constraints:**
+- N (blocks) <= 15
+- S (buildings) <= 15
+- Heights are large (up to 10^9), so use 32-bit arithmetic internally. Inputs are truncated/interpreted as 16-bit values for interface simplicity.
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard clock and active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `block_heights[0:14]`: 15 inputs of 16-bit width (index 0 to N-1 valid). Unused indices should be 0.
+  - `building_targets[0:14]`: 15 inputs of 16-bit width (index 0 to S-1 valid). Unused indices should be 0.
+  - `N_val`: 4-bit input indicating number of valid blocks.
+  - `S_val`: 4-bit input indicating number of valid buildings.
+
+- Outputs:
+  - `result_valid`: High when output is valid.
+  - `result_done`: High for one cycle when processing finishes.
+  - `current_building`: 4-bit output indicating the building index currently being processed (0 to S-1).
+  - `block_assignments`: A packed output vector containing the assignment data. Since outputting variable arrays is hard, the module should ideally signal validity and store state in internal logic, but for this spec, let's output `blocks_used_mask` (16-bit) for the current building index, and `num_blocks_used` (4-bit).
+
+**Functionality:**
+1. On `start`, reset internal state.
+2. The module must verify if the sum of all `building_targets` equals the sum of `block_heights`. If not, assert `result_done` with `result_valid` low immediately (or after a short check).
+3. If sums match, perform a search to partition the blocks. 
+   - Since N is small, a simple greedy or iterative search on bitmasks is feasible.
+   - **Algorithm:** Iterate through buildings 0 to S-1. For each building, iterate through all subsets of unused blocks (bitmasks). If a subset sums to the building's target height, mark those blocks as used and proceed to the next building.
+   - If all buildings are satisfied, assert `result_valid` and `result_done`.
+   - If no valid partition is found, assert `result_done` with `result_valid` low.
+
+**Hardware Implementation Notes:**
+- Use a Finite State Machine (FSM) with states: `IDLE`, `CHECK_SUM`, `PARTITION_START`, `FIND_SUBSET`, `UPDATE_USED`, `FINISHED`, `IMPOSSIBLE`.
+- Use combinatorial logic for subset sum checking (comparator tree) or a sequential loop (max 2^15 = 32768 iterations, which fits in a reasonable cycle budget of < 50k cycles).
+- `block_heights` and `building_targets` are treated as 16-bit unsigned integers. Use 32-bit accumulation to check sums to prevent overflow.
+- The output `blocks_used_mask` should update each time a building is successfully assigned, valid when `result_valid` is high.
+
+**Timing:**
+- `start` to `done` should be within 50,000 cycles for the worst case.
+- Reset initializes all outputs to 0 and `result_valid` to 0.

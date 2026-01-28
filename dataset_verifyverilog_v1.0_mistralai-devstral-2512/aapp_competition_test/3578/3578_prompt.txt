@@ -1,0 +1,51 @@
+Design a Verilog module that solves a simplified Steiner Traveling Salesman Problem for route planning. The module must find the minimum cost to visit all required flights (edges) and return to the start (node 1), using optional additional flights as needed.
+
+**Constraints & Scaling:**
+- N (nodes) ≤ 15 (hardcoded max). Use 4-bit node indices (0-14).
+- R (required flights) ≤ 105, but effective review edges (unique pairs) ≤ C(15,2) = 105. Map required flights to a set of undirected edges (max 28 edges for N=8, or 105 for N=15). Scale N to 8 nodes for feasibility (128 required edge masks).
+- F (additional flights) ≤ 250. Pre-compute all-pairs shortest paths using Floyd-Warshall on an 8x8 matrix (max 64 entries).
+- Costs: 1 to 10000. Scale to 16-bit unsigned (0-65535).
+- State: Use DP with bitmask representing visited required edges. For N=8, max edges = 28. Use 32-bit state for edge coverage.
+- Output: 16-bit total minimum cost.
+- Timing: Single-cycle combinational logic for preprocessing, sequential state machine for DP. Must complete within 2^16 clock cycles (65536).
+
+**Interface:**
+- Inputs (all synchronous to clk):
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `num_nodes`: 4-bit input (N, 1-8).
+  - `edge_count`: 5-bit input (R, number of required flights).
+  - `add_flight_count`: 5-bit input (F, 0-25).
+  - For i in 0 to 27: `req_edge_u[i]`, `req_edge_v[i]`, `req_cost[i]` (4-bit u/v, 16-bit cost).
+  - For i in 0 to 24: `add_edge_u[i]`, `add_edge_v[i]`, `add_cost[i]` (4-bit u/v, 16-bit cost).
+- Outputs:
+  - `result`: 16-bit output (minimum total cost). Valid when `done` is high.
+  - `done`: 1-cycle pulse indicating calculation complete.
+- Functionality:
+  1. Upon `start`, reset internal state.
+  2. Preprocess: Run Floyd-Warshall on the combined graph (nodes 0 to N-1) using `add_edge` data. Initialize dist matrix with max (16'hFFFF) except self (0). Update with direct edges.
+  3. Generate Coverage Map: For each required flight (u, v), identify which node pair it represents. Create a mapping from flight index to a unique edge ID (0 to max_edges-1). Update a 'required_edges_mask' bit for each flight.
+  4. DP Initialization: `dp[mask][node] = INF`. Set `dp[0][0] = 0` (start at node 0, Stockholm).
+  5. DP State Loop: Iterate `mask` from 0 to (1 << num_edges) - 1. For each node `u` with valid cost, iterate all required edges (i). If edge `i` connects `u` and `v`, calculate new cost `dp[mask | (1<<i)][v] = min(old, dp[mask][u] + dist[u][v])`. 
+  6. Since hardware can't do double loops dynamically easily, unroll or pipeline the edge iteration. Use a state machine: `S_IDLE`, `S_FLOYD`, `S_DP`, `S_FINAL`.
+  7. Final Answer: Check `dp[full_mask][u] + dist[u][0]` for all nodes `u` (return to Stockholm). Output min cost.
+  8. Done: Pulse `done` for 1 cycle.
+
+**Implementation Notes:**
+- Use 16-bit fixed-width for all costs and distances.
+- Use 8-bit indices for loops internally.
+- Optimization: Since N is small, store dist matrix in distributed RAM. DP table requires significant memory (states * nodes), optimize by iterating masks linearly and keeping only current/future states if possible, or use block RAM for full table.
+- For N=8, Max Edges=28. DP states = 2^28 is too large (268M). **Critical Adaptation**: Instead of edge mask, treat the problem as visiting all *required vertices* (TSP variant). Identify set of unique vertices involved in R flights. Let K = number of required vertices. If K ≤ 8, TSP on K nodes is feasible (2^8 * 8). Map flight costs to vertex distances.
+- **Final Strategy**: Identify set of required vertices. Solve TSP on required vertices + Start (Stockholm). Use Floyd-Warshall distances. DP state: `dp[mask][v]` where mask covers visited required vertices.
+
+**Exact Interface:**
+- Inputs: `clk`, `rst_n`, `start`, `num_nodes` (4), `num_req_nodes` (4), `req_nodes_mask` (8-bit, indicates which of N nodes are required).
+- Matrix Inputs: `dist_matrix[64]` (16-bit each, flattened 8x8, initialized externally or via `add_edge` inputs). For simplicity, assume inputs are pre-computed 8x8 distances.
+- DP Inputs: `req_node_list[8]` (4-bit each, list of required nodes).
+- Output: `min_cost` (16-bit), `done`.
+
+**Constraints:**
+- N <= 8 (scaled from 15).
+- Max required nodes <= 8.
+- Clock frequency: Assume 100MHz. Timeout 65536 cycles.

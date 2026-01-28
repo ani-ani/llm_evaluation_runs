@@ -1,0 +1,83 @@
+Design a Verilog module that finds a perfect matching in a translator graph. 
+
+### Problem Analysis
+- **Input**: M translators (nodes 0..M-1), each speaks 2 languages (0..N-1).
+- **Edge Creation**: Two translators are compatible if they share a language. Build an undirected graph where edges exist between compatible translators.
+- **Goal**: Find a perfect matching (pair all translators) or output "impossible".
+
+### Scaling Strategy
+- M <= 200 (too large for naive combinatorial search).
+- Use **Maximum Bipartite Matching** or **Augmenting Path** algorithm adapted for general graphs (Hopcroft-Karp style is complex, so use iterative DFS augmenting paths).
+- **Hardware Optimization**: 
+  - Since M <= 200, an 8-bit counter is sufficient (0-255).
+  - Graph edges: Use a sparse representation. Since each translator speaks 2 languages, max degree is limited. However, worst-case edges ~200.
+  - **Simplification**: Implement a serial augmenting path finder using an 8-bit state machine and BRAM for adjacency lists.
+  - **Clock Cycles**: ~1000 cycles (M * M loops).
+
+### Module Specification: `translator_matcher`
+
+#### Parameters
+- `M_MAX = 200` (max translators)
+- `N_MAX = 100` (max languages)
+- `DATA_WIDTH = 8` (for IDs 0-255)
+- `EDGE_WIDTH = 9` (max 200 edges, log2(200) ~ 8 bits, add 1 for null)
+
+#### Inputs
+- `clk`: System clock
+- `rst_n`: Active-low reset
+- `start`: Start signal (1 cycle)
+- `config_mode`: 0 = Input Languages, 1 = Run Matching
+- `data_in`: [15:0] Input data (used for language pairs)
+- `data_valid`: Input valid
+
+#### Outputs
+- `done`: 1 when matching complete
+- `result_valid`: 1 when result is ready
+- `match_out`: [15:0] Packed output (Translator A [15:8], Translator B [7:0])
+- `status`: 2-bit (00=Idle, 01=Processing, 10=Match Found, 11=Impossible)
+
+#### Internal Logic (High-Level Description)
+1. **Configuration Phase**:
+   - Receive `M` translators, each 2 languages. 
+   - Build an adjacency matrix or list. 
+   - Since M=200, an `M x M` bit matrix fits in BRAM (40k bits). 
+   - Store language-to-translator mapping to build edges.
+
+2. **Matching Phase (Augmenting Paths)**:
+   - Initialize `match[]` array (size M) to -1 (unmatched).
+   - Loop: For each unpaired node `u`, try to find an augmenting path.
+   - Use a DFS stack (implemented via FSM) to find a path from `u` to a free node `v` alternating through matched/unmatched edges.
+   - **Algorithm**: 
+     - `visited` array reset per attempt.
+     - For `u` in 0..M-1:
+       - If `match[u] == -1`:
+         - Run `dfs(u)`.
+         - If success, increment matching count.
+   - If `matching_count * 2 == M`, success. Else impossible.
+
+3. **Output Phase**:
+   - Once matching is found, stream out pairs via `match_out`.
+   - Use a pointer to iterate through `match[]` array.
+
+#### Interface Details
+- **Loading Data**: 
+  - Assert `config_mode = 0`. 
+  - Send sequence: `T0_L0`, `T0_L1`, `T1_L0`, `T1_L1`...
+  - `data_in` contains the language ID.
+  - `data_valid` pulses for each entry.
+- **Processing**:
+  - Set `config_mode = 1`, assert `start`.
+  - Module sets `status` to `01`.
+- **Output**:
+  - When `done` pulses, valid pairs appear on `match_out`.
+  - Stream output: `status` becomes `10`.
+  - If impossible, `status` becomes `11`.
+
+### Implementation Constraints
+- **Timing**: Must complete within 10,000 cycles.
+- **State Machine**: Use explicit FSM (Idle, Config, Compute, Output).
+- **Memory**: 
+  - `lang_to_t` [100][200] bits (sparse or packed).
+  - `adj_matrix` [200][200] bits.
+  - `match` [200] * 8 bits.
+- **Reset**: Clear all arrays and pointers.

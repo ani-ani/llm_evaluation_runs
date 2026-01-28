@@ -1,0 +1,39 @@
+You are to implement a Verilog module that solves the Remainders game problem using a simplified prime factorization approach. The core logic is: For the target modulus k, check if all prime power factors of k are 'covered' by the ancient numbers c_i. A prime power p^e is covered if at least one c_i is divisible by p^e.
+
+However, direct prime factorization in hardware is complex. Instead, implement a simplified GCD/LCM accumulation algorithm that is mathematically equivalent: Compute the LCM of gcd(k, c_i) for all i, and check if this accumulated LCM equals k.
+
+To avoid large numbers, we will work in a bounded domain. Since k ≤ 1,000,000 (< 2^20), we use 20-bit arithmetic for LCM calculations. Intermediate multiplication must be done carefully to avoid overflow. Since lcm(a,b) = a * b / gcd(a,b), and we know the final result must divide k, we can perform modulo k operations during accumulation to keep numbers small.
+
+**Module Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low asynchronous reset
+- `start`: 1-cycle start pulse
+- `n`: 4-bit input (1-16, number of ancient integers)
+- `k`: 20-bit input (target modulus)
+- `c_valid`: 1-bit flag indicating `c_in` is valid
+- `c_in`: 20-bit input stream for ancient integers c_i
+
+**Outputs:**
+- `result`: 1-bit output (1 for 'Yes', 0 for 'No')
+- `done`: 1-cycle pulse when computation is complete
+- `ready`: 1-bit high when module is ready to accept `c_in` stream
+
+**Internal State (FSM):**
+- `IDLE`: Wait for start
+- `LOAD`: Accept `n` values from `c_in` stream
+- `CALC`: Perform iterative GCD/LCM accumulation
+- `DONE`: Output result
+
+**Control Logic:**
+1. On `start`, initialize `lcm_acc = 1` and `counter = 0`. Enter `LOAD` state.
+2. In `LOAD` state: Wait for `c_valid`. When valid, calculate `g = gcd(k, c_in)`. Update `lcm_acc = lcm(lcm_acc, g)`. Increment `counter`. When `counter == n`, transition to `CALC`.
+3. In `CALC` state: Check if `lcm_acc == k`. Output `result = (lcm_acc == k)`. Transition to `DONE`.
+4. In `DONE` state: Assert `done` pulse for 1 cycle, return to `IDLE`.
+
+**Hardware Constraints:**
+- Use a sequential GCD algorithm (Euclidean algorithm) within the `CALC` state, requiring a separate sub-module or state within the FSM.
+- LCM calculation `lcm = (a * b) / gcd(a, b)` must handle potential overflow. Since `lcm_acc` tracks the LCM modulo `k`, you can compute `(lcm_acc * b) / gcd(lcm_acc, b)` using wide registers (e.g., 40-bit for intermediate multiplication) or perform division directly if the ratio fits 20 bits. Given the constraints, 32-bit intermediate registers are sufficient.
+- Input `c_in` is a stream; `ready` must be high only during `LOAD` state when expecting input.
+- `n` is treated as a loop counter limit (max 16).

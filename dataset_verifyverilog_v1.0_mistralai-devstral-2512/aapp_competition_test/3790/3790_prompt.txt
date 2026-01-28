@@ -1,0 +1,89 @@
+Design a Verilog module for finding the length of the longest non-decreasing sequence in a periodic array of length n × T, where n ≤ 100 and values are between 1 and 300.
+
+**Problem Analysis**:
+The array is periodic with period n. For T repetitions, we need to find the LIS length. Since n is small (≤100) but T is large (up to 10^7), we cannot simulate the full array. Instead, we use the mathematical property that the LIS length depends on:
+1. The LIS of one period (or two periods to handle overlaps)
+2. The frequency of the most frequent value in the array
+
+The key insight is that for large T, we can take (LIS of 2n elements) + (T - 2) × (max frequency of any value in n elements).
+
+**Module Specification**:
+
+**Inputs**:
+- `clk`: Clock signal (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `n_i`: Input n (number of elements in one period) - 7 bits (since n ≤ 100)
+- `T_i`: Input T (number of repetitions) - 24 bits (T ≤ 10^7 < 2^24)
+- `arr_i`: Array of n elements, each 9 bits (since values ≤ 300, needs 9 bits: 2^9=512)
+
+**Outputs**:
+- `result`: 32-bit result (maximum possible value is T × n, which for n=100, T=10^7 is 10^9, needs ~30 bits)
+- `done`: 1-cycle pulse when computation is complete
+
+**Implementation Requirements**:
+1. **Phase 1: Input Reading** (cycles: n)
+   - Accept n_i and T_i values
+   - Store array elements in a buffer of size 100 (using 9-bit registers)
+   - Compute frequency count for each value (1-300 range)
+   - Find max frequency among all values
+
+2. **Phase 2: LIS Calculation on 2n Elements** (cycles: 2n × log(n))
+   - Create a pseudo-array of 2n elements by repeating the period twice
+   - Use a Binary Indexed Tree (BIT) or Segment Tree to compute LIS
+   - BIT indices correspond to value ranks (1-300 mapped to 1-300)
+   - For each element, query max LIS ending at values ≤ current element
+   - Update BIT at current value with new LIS length
+   - Track maximum LIS found
+
+3. **Phase 3: Final Result Computation** (cycles: constant)
+   - If T ≤ 2: result = LIS of T periods (handled by Phase 2)
+   - If T > 2: result = LIS_2n + (T - 2) × max_freq
+   - Note: For T > 2, we use the property that we can extend the LIS by taking the most frequent element repeatedly
+
+4. **BIT Structure**:
+   - Use 9-bit indices (for values 1-300)
+   - Tree array of size 512 (2^9) for simplicity, or 301 if optimized
+   - Each tree node stores a 16-bit LIS value (max LIS ≤ n × T, but for 2n it's ≤ 200)
+
+**Timing Constraints**:
+- Total cycles: O(n log n) for Phase 2
+- For n=100: ~100 × 8 = 800 cycles, well within 1000 cycle limit
+- Use 1000 cycle timeout in testbench
+
+**Signal Widths**:
+- n_i: 7 bits (0-127)
+- T_i: 24 bits (0-16,777,215)
+- arr_i elements: 9 bits (0-511)
+- result: 32 bits (0-4,294,967,295)
+- LIS values: 16 bits (0-65,535)
+- Frequency counts: 24 bits (0-16,777,215)
+
+**Reset Behavior**:
+- All state machines reset to IDLE
+- Result and done signals go to 0
+- BIT tree cleared to 0
+- Frequency array cleared to 0
+
+**Edge Cases**:
+- T = 1: Compute LIS on single period
+- T = 2: Compute LIS on 2 periods
+- n = 1: Single value repeated T times
+- All values equal: LIS = T × n
+- Strictly decreasing values: LIS = n (or T × n if T > 1 and values repeat)
+
+**Implementation Notes**:
+- Use a state machine with states: IDLE, READ_INPUT, COMPUTE_FREQ, BUILD_2N_ARRAY, LIS_LOOP, RESULT_CALC, DONE
+- For the 2n array generation, use a counter modulo 2n that cycles through original array twice
+- BIT operations: query returns max value in range [1, idx], update sets tree[idx] = max(tree[idx], val)
+- Frequency counting: Use a ROM-style lookup for values 1-300, or a simple counter array
+
+**Testbench Requirements**:
+- Simulate with n=4, T=3, arr=[3,1,4,2] → expected result=5
+- Verify frequency counting logic
+- Verify BIT LIS computation on 2n array
+- Verify final formula for T>2 cases
+- Test with n=1, T=large values
+- Test with all equal values
+- Test with strictly decreasing values
+- Maximum cycle timeout: 1000 cycles

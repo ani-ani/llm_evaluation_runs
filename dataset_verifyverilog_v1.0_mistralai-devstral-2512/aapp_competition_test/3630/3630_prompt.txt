@@ -1,0 +1,37 @@
+Verilog HDL Module Specification
+
+Problem: Calculate the minimum number of operations to transform string s1 to s2. Each operation shifts a contiguous substring forward (+1) or backward (-1). The cost is the sum of absolute differences between characters at each position. This is a reduction of the original problem to a cumulative sum calculation.
+
+Module Interface:
+- Inputs:
+  - clk: Clock signal, active on rising edge
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate calculation
+  - s1_char: 8-bit input, ASCII character from s1 (sent sequentially)
+  - s2_char: 8-bit input, ASCII character from s2 (sent sequentially)
+  - char_valid: 1-bit flag indicating s1_char and s2_char are valid (toggles per character)
+  - string_end: 1-bit flag indicating the end of the input strings (last character pair)
+
+- Outputs:
+  - result: 16-bit unsigned integer representing the total cost
+  - done: 1-cycle pulse indicating calculation complete and result is valid
+
+Functional Requirements:
+1. On reset (rst_n=0), internal state (accumulator, flags) is cleared. done=0, result=0.
+2. On start pulse, the module prepares to accept character pairs.
+3. The module accepts pairs of characters sequentially (8-bit ASCII) via s1_char and s2_char inputs.
+4. For each valid pair (char_valid=1), compute the absolute difference: |s1_char - s2_char|.
+5. Accumulate these differences into a 16-bit register. (Max length 10000000, max diff 25, so max sum fits in 16 bits: 250000000 < 2^28, but we'll use 32-bit accumulator to be safe or truncate if strict 16-bit is required. Let's assume 32-bit accumulator to prevent overflow, output 16-bit is insufficient for max constraints. Output width should be 32-bit). Corrected Output: result: 32-bit unsigned integer.
+6. When string_end=1 is detected, the calculation is finalized. Set done=1 for one clock cycle and present the accumulated sum on result.
+7. The module must be able to handle sequential processing of up to 10^7 characters (logic simulation limit applies).
+8. Timing: done should assert within a bounded number of cycles after string_end (e.g., single cycle processing latency).
+
+Internal Logic:
+- State Machine: IDLE -> CALCULATING -> DONE.
+- Accumulator: 32-bit wide register to store the sum.
+- Logic: abs_diff = (s1_char > s2_char) ? (s1_char - s2_char) : (s2_char - s1_char).
+
+Testbench Constraints:
+- Input strings length should be capped at 16 for simulation.
+- Use character-by-character driving (bus interface).
+- Check cumulative sum logic.

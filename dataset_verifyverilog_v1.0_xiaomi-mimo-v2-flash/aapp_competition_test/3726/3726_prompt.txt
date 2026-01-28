@@ -1,0 +1,34 @@
+Design a Verilog module that computes the minimum number of operations to flip all cards face down. The problem is abstracted as follows:
+
+1. **Input Processing**: Given up to N=100 cards with values up to 10^7, we first compress consecutive cards into 'groups' and determine their parity (even/odd). This reduces the problem to a bipartite graph where edges exist between even and odd groups if their difference is prime (≥3). The prime check is precomputed for values up to ~1000 (since group indices are small).
+
+2. **Core Computation**: The answer follows the formula: `answer = f + 2*((e-f)//2 + (o-f)//2) + 3*((e-f)%2)` where `f` is the maximum matching size between even and odd groups, `e` is the count of even groups, and `o` is the count of odd groups. The matching is computed via maximum bipartite matching.
+
+3. **Hardware Constraints**: Since groups are at most ~50 (for 100 cards), we can bound the graph to 16 even and 16 odd nodes. The matching can be implemented using a fixed-size FSM (e.g., Edmonds-Karp or Hopcroft-Karp simplified) that iterates up to 16 times.
+
+**Interface Specification**:
+
+- **Inputs**:
+  - `clk`: Clock signal
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `group_parity`: 16-bit array indicating parity of each group (1 for even, 0 for odd). Groups are provided sequentially via a 4-bit counter `group_index`. The total number of groups `num_groups` (≤16) is provided as a 5-bit input.
+  - `adj_matrix`: 16x16 bit matrix where `adj_matrix[i][j] = 1` if there is a prime difference between group i (even) and group j (odd). This is precomputed externally and provided as input.
+
+- **Outputs**:
+  - `result`: 8-bit output (answer, max 102 for 100 cards)
+  - `done`: 1-cycle pulse when result is valid
+
+- **Timing**: After start, the module computes within 5000 cycles. Reset clears all state and sets done=0, result=0.
+
+**Algorithm Details**:
+- Step 1: Count even groups (`e_count`) and odd groups (`o_count`) from `group_parity`.
+- Step 2: Compute maximum bipartite matching `f` between even and odd groups using the adjacency matrix.
+- Step 3: Compute `remaining_even = e_count - f`, `remaining_odd = o_count - f`.
+- Step 4: Compute `answer = f + 2*((remaining_even >> 1) + (remaining_odd >> 1)) + 3*(remaining_even & 1)` (since if remaining_even is odd, remaining_odd must also be odd due to parity constraints).
+
+**Implementation Notes**:
+- Use a finite state machine (FSM) with states: IDLE, COUNT, MATCHING, COMPUTE, DONE.
+- For matching, use a simple augmenting path search (e.g., BFS/DFS) with backtracking. Since the graph is small (≤16 nodes), this is feasible in hardware.
+- All counters and registers should be sized appropriately (e.g., 5-bit for group index, 4-bit for node indices).
+- The adjacency matrix is provided as 256 separate 1-bit inputs or as a packed 256-bit input; the spec suggests individual access for simplicity.

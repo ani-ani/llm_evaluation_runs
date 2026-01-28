@@ -1,0 +1,37 @@
+Module Specification: Prime Number Conditional Selector
+
+**Interface:**
+- Inputs:
+  - `clk`: Clock signal (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle start pulse
+  - `n_i`: 16-bit input number to test for primality
+  - `x_i`: 16-bit value to return if prime
+  - `y_i`: 16-bit value to return if not prime
+- Outputs:
+  - `result_o`: 16-bit output (x_i if n is prime, else y_i)
+  - `done_o`: 1-cycle pulse when `result_o` is valid
+
+**Behavior:**
+1. On reset (`rst_n=0`), `done_o=0`, `result_o=0`. Wait for 2 cycles.
+2. On `start` pulse:
+   - If `n_i <= 1`, set `result_o = y_i` (not prime).
+   - If `n_i == 2` or `n_i == 3`, set `result_o = x_i`.
+   - For other `n_i`:
+     - Check divisibility by numbers from 2 to floor(sqrt(n_i)).
+     - If any divisor found, `result_o = y_i`.
+     - If no divisor found after all checks, `result_o = x_i`.
+   - `done_o` pulses for 1 cycle after calculation completes.
+
+**Constraints:**
+- Use 16-bit arithmetic for all values.
+- Maximum `n_i` = 65535. sqrt(65535) ≈ 255, so divisor check loop max iterations = 255.
+- Total cycles from start to done: ≤ 300.
+- Implement as a finite state machine (FSM) with states: IDLE, CHECK, DIVIDE, PRIME, NOT_PRIME, DONE.
+- Internal registers for divisor counter, remainder calculation.
+- Use modulo operation (dividend % divisor). For hardware, implement division as an iterative subtraction/shift algorithm.
+
+**Testbench Requirements:**
+- Test with provided cases: n=7 (prime), n=15 (not prime), n=2 (prime), n=1 (not prime), n=3609 (not prime).
+- Verify `result_o` matches `x_i` for prime n, `y_i` otherwise.
+- Check timing: `done_o` must pulse exactly once per `start`.

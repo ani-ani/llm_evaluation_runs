@@ -1,0 +1,319 @@
+Implement a Verilog module that determines if a floppy drive organ can play given frequencies for specified intervals. The problem reduces to checking for each frequency if the head can move between start and end positions within the given time intervals, considering a 1fs pause on direction changes.
+
+**Core Simplifications:**
+1. **Scale**: Times up to 1,000,000 (clamped to 16-bit: 0-65535, simulated via 16-bit arithmetic).
+2. **Frequencies**: Max 10, but process 1 at a time in a loop (FSM). We'll implement for 1 frequency first.
+3. **Movement**: Head moves at speed 1 unit/fs. Distance between endpoints is `t_i`. 
+4. **State**: Current position `pos` (16-bit), current time `time` (16-bit), direction `dir` (0=inward, 1=outward). 
+5. **Constraints**: 
+   - Start position can be anything.
+   - Must be moving to produce sound (during intervals).
+   - 1fs pause on direction change.
+   - Must be at endpoints to change direction (except start/stop).
+
+**Interface Specification:**
+- **Inputs**:
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start processing a frequency block.
+  - `t_i`: 16-bit input: time to traverse full axis.
+  - `n_intervals`: 4-bit input (max 100, using 7 bits). 
+  - `interval_start[k]`: 16-bit array of start times (k=0 to 127).
+  - `interval_end[k]`: 16-bit array of end times.
+  - `interval_valid`: 1-bit array indicating valid entry (since n varies).
+- **Outputs**:
+  - `result`: 1-bit. 1=possible, 0=impossible for current frequency.
+  - `done`: 1-cycle pulse when finished checking one frequency.
+  - `status`: 2-bit (0=busy, 1=possible, 2=impossible, 3=error).
+
+**Logic to Implement:**
+1. **FSM State**:
+   - `IDLE`: Wait for start.
+   - `CHECK`: Evaluate current interval.
+   - `CALC`: Compute reachable positions.
+   - `UPDATE`: Move to next interval.
+   - `DONE`: Signal completion.
+
+2. **Movement Constraints**:
+   - A valid path must connect interval `i` end to interval `i+1` start.
+   - Let `T_start` = end of interval `i`, `T_end` = start of interval `i+1`.
+   - Let `P_start` = position at `T_start` (must be where sound ended), `P_end` = position at `T_end` (where sound must begin).
+   - Available time: `delta_t = T_end - T_start`.
+   - If `delta_t < 1`, impossible (need at least 1fs for pause if changing direction, or 0 if same direction).
+   - **Movement Rule**: The head moves 1 unit/fs. 
+     - Distance `d = |P_end - P_start|`.
+     - Direct travel time = `d`.
+     - If `d == delta_t`: Direct path possible (same direction).
+     - If `d < delta_t`: Can we use the extra time? We can pause, but only at endpoints (or if we change direction, we pay 1fs pause). 
+       - *Correction*: The problem states "You can make the head stay still at any time". This simplifies it! We can wait at any position.
+       - Wait, re-read: "The read/write head must change direction when it reaches either the inner or the outer end point... but it can also change direction at any other point".
+       - AND "You can make the head stay still at any time and for as long as you wish."
+       - This means we can reach `P_start` at `T_start`, stop, and wait until `T_end - 1` (if we need to move 1 unit) or just wait until `T_end` (if `P_start == P_end`).
+       - **Wait, the "1fs pause"**: "when the head changes direction, there is a brief pause of 1fs". 
+         - If we are at `P_start` at `T_start`.
+         - We need to be at `P_end` at `T_end`.
+         - If `P_start == P_end`: Just stay still. Valid.
+         - If `P_start != P_end`: We must move.
+           - Distance `d = |P_end - P_start|`.
+           - Time required: `d` (movement) + (1 if direction changes compared to previous movement, else 0).
+           - *Initial state*: First interval start. We can choose start position arbitrarily. 
+             - For interval 0: Start at `t_start`. We must be at `pos` playing sound.
+             - We can choose start position before `t_start`. 
+             - Let's define state at start of interval `k`:
+               - Position `p_k` at time `t_{start, k}`.
+               - Direction we arrived with (if we just moved). 
+             - Actually, since we can start freely, for the first interval `start_t`, we can choose any `p_0` such that we can produce sound from `start_t` to `end_t`.
+             - Sound production: Moving continuously. 
+             - `end_t` must be reachable from `start_t`. 
+             - If interval length `L = end_t - start_t`:
+               - We can sweep `L` distance.
+               - Valid `p_start` can be anywhere on axis, but `p_end` = `p_start` + `L` (or -).
+               - Must stay within [0, `t_i`].
+             - **Simplification**: 
+               - For any interval `[s, e]`, the valid positions at time `s` are `[0, t_i]` such that the sweep of length `e-s` fits in `[0, t_i]`.
+               - Range of valid start positions: `[0, t_i - L]` (if moving outward) or `[L, t_i]` (if moving inward).
+               - Union: `[0, t_i]` intersected with constraints.
+
+**Revised Algorithm (Hardware Friendly):**
+
+1. **Interval Check (Single Frequency)**:
+   - Maintain `reachable_start_range` [min, max] of positions valid for the start of the current interval.
+   - Maintain `reachable_end_range` [min, max] of positions valid for the end of the current interval.
+   - Also track `last_dir` (0=unknown/inward, 1=outward) and `penalty` (0 or 1).
+
+   - **Start**: Interval 0. `L = end_0 - start_0`.
+     - If `L > t_i`: Impossible (cannot traverse full length in one interval? No, we can sweep back and forth? No, sound is continuous. We just move 1 unit/fs. Max distance in `L` time is `L`.)
+     - Valid start positions: `S_0 = [0, t_i - L]` (outward) U `[L, t_i]` (inward). 
+     - Actually, we can pick start position. So `S_0` is `[0, t_i]` constrained by length.
+     - `Valid_start_pos = [L, t_i - L]` ? No.
+     - If `L > t_i`: Impossible.
+     - Else: `S_0 = [L, t_i - L]` is the range of positions where we can start moving OUTWARD and stay inside. 
+     - And `S_0 = [0, t_i - L]` (outward) U `[L, t_i]` (inward).
+     - Union is `[0, t_i]` if `L <= t_i`. (Since `L` is non-negative).
+     - So any start position is valid if `L <= t_i`. 
+     - End position range: 
+       - If we go outward: `[L, t_i]`. 
+       - If inward: `[0, t_i-L]`.
+       - Union: `[0, t_i]`. 
+       - Wait, if `L` is small, union covers almost everything. 
+       - If `L = t_i`, Outward: `[t_i, t_i]`. Inward: `[0, 0]`. Union `{0, t_i}`.
+
+   - **Transition**: Interval `i` to `i+1`.
+     - `gap = start_{i+1} - end_i`.
+     - If `gap == 0`: We must be playing. Impossible unless interval `i` and `i+1` are adjacent and we are moving. But strict ascending order usually implies `t_{i, 2j} > t_{i, 2j-1}`. Input says "strictly ascending order... t_{i,1} < t_{i,2} ...". The pairs are (start, end). So `end_i < start_{i+1}`. Gap > 0.
+     - During gap, we can move or wait.
+     - At `end_i`, we are at some position `P`. 
+     - At `start_{i+1}`, we must be at some position `Q`.
+     - We must move from `P` to `Q` in `gap` time.
+     - If `gap == 1`: We can move 1 unit (distance 1) or stay put (distance 0). 
+     - If we change direction (from previous move), we pay 1fs pause. 
+       - Pause means we stop moving for 1fs. 
+       - If `gap=1` and we need to move `dist=1`: 
+         - No pause allowed. Must be same direction as arrival at `P` (or start moving immediately if we stopped).
+         - If we arrived at `P` (end of sound) moving, we can continue.
+         - If we need to reverse, we must pause. Takes 1fs. No time to move. 
+         - So `dist` must be 0 if we reverse in `gap=1`.
+
+     - **Range Propagation**:
+       - Let `Range_i` = [min_i, max_i] of valid positions at `end_i`.
+       - Let `Dir_i` = {0, 1} (possible directions we arrived with). 
+         - Wait, direction matters for penalty.
+         - Let's track `State_i` as (pos, dir).
+         - Since ranges are continuous, `Reachable_i` = { (p, d) | p in [min_i, max_i], d in {0,1} }.
+       - To compute `Reachable_{i+1}`:
+         - For each `p` in `Range_i`, `d` in `Dir_i`:
+           - We can wait or move.
+           - Target `q` must be in `Range_{i+1}` (valid start pos for interval `i+1`).
+           - `dist = |p - q|`.
+           - Time needed: `dist` + (1 if we reverse direction from `d` to `d_new`, else 0).
+           - `d_new`: 0 if `q > p`, 1 if `q < p`. If `q == p`, `d_new` can be `d` (stay) or flip (pause).
+           - If `time_needed <= gap`: Valid.
+
+   - **Hardware Constraint**: `t_i` (period) is up to 10,000. Times are up to 1,000,000. 
+     - We cannot store full ranges of integers. 
+     - However, the intervals are defined by arithmetic progressions or just bounds.
+     - Actually, the problem structure allows a greedy approach or graph reachability on events.
+     - Since `t_i` is small (10,000), we can discretize positions to `t_i+1` values (0 to 10,000). 
+     - 10,001 positions. Fits in memory (10k * 2 bits = 20k bits). 
+     - We can use a bitmask for reachable positions at each step.
+     - **State**: `reachable_mask` (10,001 bits), `prev_dir` (2 bits: 0=out, 1=in, 2=unknown).
+     - Wait, 10,001 bits is ~1.2KB. That's fine for FPGA BRAM.
+     - But we have 16-bit time counters.
+
+**Refined Logic for `t_i` up to 10,000:**
+
+1. **Data Structures**:
+   - `mask_current` (10,001 bits): Bit `j` set if position `j` is reachable at the end of the previous interval (or start of current sound).
+   - `mask_next` (10,001 bits).
+   - `direction_state`: We need to know if we arrived moving OUT or IN to apply penalty on reversal.
+     - Actually, we can simply model `mask_out` and `mask_in`.
+     - `mask_out`: Reachable ending with movement towards `t_i`.
+     - `mask_in`: Reachable ending with movement towards `0`.
+
+2. **Initialization (Interval 0)**:
+   - `L = end_0 - start_0`.
+   - If `L > t_i`: Impossible.
+   - `mask_out`: Positions `p` where we can start at `p` and go OUT to `p+L <= t_i`. 
+     - Range `[0, t_i - L]`. Set bits 0 to `t_i - L`.
+   - `mask_in`: Positions `p` where we can start at `p` and go IN to `p-L >= 0`.
+     - Range `[L, t_i]`. Set bits `L` to `t_i`.
+   - Note: At the END of interval 0, we are at `p+L` (if out) or `p-L` (if in).
+   - So we need to shift the masks.
+   - `mask_out_end`: Bits `L` to `t_i`. (Start 0..t_i-L, End L..t_i).
+   - `mask_in_end`: Bits 0 to `t_i-L`. (Start L..t_i, End 0..t_i-L).
+   - `mask_current_out = mask_out_end`, `mask_current_in = mask_in_end`.
+
+3. **Transition (Interval i to i+1)**:
+   - `gap = start_{i+1} - end_i`.
+   - `L_next = end_{i+1} - start_{i+1}`.
+   - `mask_next_out_end` = 0, `mask_next_in_end` = 0.
+   - Iterate `p` from 0 to `t_i`:
+     - If `mask_current_out[p]` or `mask_current_in[p]` is set:
+       - We are at position `p` at time `end_i`.
+       - We have `gap` time to get to a position `q` valid for the start of interval `i+1`.
+       - Valid start positions for next interval: 
+         - Outward start: `q` in `[0, t_i - L_next]`.
+         - Inward start: `q` in `[L_next, t_i]`.
+       - We need to reach `q` from `p` in `gap` time.
+       - Movement cost: `|p - q|`. 
+       - Direction change cost: 
+         - If coming from OUT (mask_current_out[p]): 
+           - Moving to `q > p` (OUT): Cost 0.
+           - Moving to `q < p` (IN): Cost 1 (pause).
+           - Moving to `q == p`: Cost 0 (wait, maintain direction) OR 1 (reverse). 
+             - Since we can wait, waiting preserves direction. Reversing requires pause.
+         - If coming from IN (mask_current_in[p]):
+           - Moving to `q < p` (IN): Cost 0.
+           - Moving to `q > p` (OUT): Cost 1.
+       - Total time: `|p - q| + direction_cost`.
+       - If `Total <= gap`:
+         - We arrive at `q` at time `start_{i+1}`.
+         - We start moving.
+         - If we move OUT (to `q + L_next`): `mask_next_out_end[q + L_next]` = 1.
+         - If we move IN (to `q - L_next`): `mask_next_in_end[q - L_next]` = 1.
+
+4. **Hardware Implementation:**
+   - **Clock Cycles**: `t_i` is 10,000. Iterating 10,000 positions for 100 intervals -> 1,000,000 iterations. 
+     - `gap` is up to 1,000,000. We don't iterate time, we check reachability.
+     - Inner loop: Check if `|p-q| + cost <= gap`.
+     - This is `O(t_i^2)` per interval. `100 * (10^4)^2 = 10^10`. Too slow.
+   - **Optimization**: 
+     - `|p-q| <= gap - cost`.
+     - `q` must be in `[p - (gap-cost), p + (gap-cost)]`.
+     - Intersect this with valid start ranges for next interval.
+     - This is a range update on `mask_next`.
+     - We can use prefix sums (Sweep line) to update the bitmasks in `O(t_i)`.
+
+   - **Algorithm per interval:**
+     1. Compute `mask_start_valid` for next interval (outward start range, inward start range).
+     2. Compute `mask_reachable_from_out`:
+        - For `p` where `mask_current_out[p]` is set:
+          - Reachable range for `q` (start pos): `[p - gap, p + gap]` (direction cost 0).
+          - `[p - gap + 1, p + gap - 1]` (direction cost 1).
+          - Wait, cost 1 means we have `gap - 1` time to move.
+          - Range 0: `|p-q| <= gap`. -> `[p-gap, p+gap]`.
+          - Range 1: `|p-q| <= gap-1`. -> `[p-gap+1, p+gap-1]`.
+        - We need `q` such that:
+          - (Cost 0 AND (Arrive OUT->OUT or IN->IN)) OR (Cost 1 AND (Arrive OUT->IN or IN->OUT)).
+        - Since we track separate masks for OUT and IN arrivals:
+          - `mask_current_out`: arrived moving OUT.
+            - To go OUT: Cost 0. Range `[p-gap, p+gap]`.
+            - To go IN: Cost 1. Range `[p-gap+1, p+gap-1]`.
+          - `mask_current_in`: arrived moving IN.
+            - To go IN: Cost 0. Range `[p-gap, p+gap]`.
+            - To go OUT: Cost 1. Range `[p-gap+1, p+gap-1]`.
+
+     3. **Bitwise Logic**:
+        - Let `M_CO = mask_current_out`, `M_CI = mask_current_in`.
+        - Let `Valid_Out_Start = [0, t_i - L_next]`, `Valid_In_Start = [L_next, t_i]`.
+        - Calculate `Reachable_Start` mask (positions `q` reachable at `start_{i+1}`).
+          - `Reachable_Start = ( (M_CO << gap) | (M_CO >> gap) ) ...` No, this is convolution.
+          - We need a sliding window of width `2*gap + 1` centered at `p`.
+          - This is computationally heavy in hardware for `gap=10^6` and `t_i=10^4`.
+          - But `gap` is a time difference, not a shift amount in the position array.
+          - The position array size is `t_i` (10k). `gap` is time (up to 1M).
+          - However, if `gap >= t_i`, then from any `p` we can reach any `q` (if we can reverse direction or wait).
+          - If `gap >= t_i`: 
+            - Can we reach all `q`?
+            - From `p`, max distance to any `q` is `t_i` (0 to t_i).
+            - If `gap > t_i`, yes (we can wait at target).
+            - If `gap == t_i`, we can go 0->t_i or t_i->0 in exactly `t_i` steps.
+            - We can reach any `q` if we can choose direction.
+            - Specifically:
+              - If we arrived OUT: 
+                - To go OUT: Can reach any `q >= p` up to `p+gap`. Since `gap >= t_i`, and `q <= t_i`, we can reach all `q >= p`.
+                - To go IN: Can reach any `q <= p` down to `p-gap`. Since `gap >= t_i`, and `q >= 0`, we can reach all `q <= p`.
+                - Union: All `q` in `[0, t_i]`.
+              - If we arrived IN: Same logic.
+            - So if `gap >= t_i`, `Reachable_Start` becomes `[0, t_i]`.
+          - If `gap < t_i` (which is 10,000), the shift amount is small.
+          - `gap` can be up to 1,000,000, but positions are only 0..10,000.
+          - If `gap > t_i`, treat as `t_i`.
+          - So `shift = min(gap, t_i)`.
+          - Shift operations on 10,001 bit vector: `M_CO << shift`, `M_CO >> shift`.
+          - `mask_current_out` shifted by `shift` gives positions reachable with cost 0 (assuming continuous movement).
+          - But we need `|p-q| <= gap`.
+          - This is `(M_CO << shift) | (M_CO >> shift)`? No, that's `|p-q| == shift`.
+          - It's `(M_CO << 0) | (M_CO << 1) | ... | (M_CO << shift)`.
+          - This is a prefix-sum like operation (histogram dilation).
+          - Can be done with `O(log t_i)` shifts and ORs if `shift` is small, or prefix sums if `shift` is large.
+          - Since `shift <= t_i = 10,000`, we can use a systolic approach or simply iterate `p` if `t_i` is small enough.
+          - 10,000 positions * 100 intervals = 1,000,000 operations. This is feasible in software. In hardware, a loop over 10k is fast.
+
+5. **Verilog Module Structure:**
+   - **Inputs**: 
+     - `clk`, `rst_n`, `start`.
+     - `t_i`, `n_intervals`.
+     - `interval_start`, `interval_end` arrays (max 100).
+   - **State Machine:**
+     - `IDLE`: Wait for `start`. Load `interval_0`.
+     - `INIT_MASK`: Compute initial `mask_out_end`, `mask_in_end` for first interval.
+     - `PROCESS_INTERVAL`: For `i` from 0 to `n-2`:
+       - Load `gap`, `L_next`.
+       - Compute `Reachable_Start` mask.
+       - Intersect with valid start ranges for next interval.
+       - Compute `mask_next_out_end`, `mask_next_in_end`.
+       - Update `mask_current`.
+     - `CHECK_LAST`: Verify that after the last interval, we don't care about the final position, just that we finished validly. (Actually, we just need to ensure the last interval itself is valid, which is covered by the transition check logic if we treat "after last" as a dummy state).
+     - `DONE`: Set `result`.
+
+   - **Helper Logic**: 
+     - `MaskGenerator`: Given `L`, generates start/end validity masks.
+     - `ReachabilitySolver`: Given `mask_in`, `gap`, `shift_limit = min(gap, t_i)`, computes `mask_reachable`.
+       - If `gap >= t_i`: `mask_reachable = (1 << (t_i+1)) - 1`.
+       - Else: 
+         - We need `OR_{k=0}^{shift} (mask << k) | (mask >> k)`.
+         - This can be done with a loop over `k` (0 to 10,000).
+         - Since `mask` is 10,000 bits, this is 100M bit operations. Heavy.
+         - **Optimization**: Use prefix sums.
+           - Compute `prefix_sum` of `mask`.
+           - `Reachable[p]` is true if `Sum[p+shift] - Sum[p-shift-1] > 0`.
+           - This requires `O(t_i)` operations.
+           - Sum is `log2(10000) ~ 14 bits`.
+           - This fits in logic.
+
+   - **Resource Usage**:
+     - `mask` registers: 10,001 bits. ~12 KB if using distributed RAM. If using BRAM, we need 2 ports (Read/Write).
+     - Or we can use `wire` logic and iterate.
+     - Given `f <= 10`, `n <= 100`. 
+     - We can implement this as a sequential processor over the bits.
+     - **Alternative**: Since `t_i` is a variable input, we can't fix the loop count at synthesis time easily without loops (generate). 
+     - We will use a `for` loop in `always_comb` or `always_ff` for the bit manipulation (supported by synthesis).
+
+   - **Bit Widths**:
+     - Time: 20 bits (to handle 1,000,000 + safety). 
+     - Positions: 14 bits (since `t_i` <= 10,000 < 2^14).
+     - Mask size: `MAX_T = 10000`. `MAX_MASK_BITS = 10001`.
+     - We will use a parameter for `MAX_MASK_BITS`.
+
+**Prompt Details:**
+- Implement a module `floppy_organ`.
+- Use an internal RAM for the mask (size 10001 bits). 
+- Use a state machine to iterate through intervals.
+- For reachability calculation, use a prefix-sum based approach on the position axis to handle the `gap` shift efficiently.
+- Inputs are streams or stored in registers. We will assume the inputs are provided via a simple interface (maybe parallel arrays for simplicity in this prompt, though in real hardware they'd be serial).
+
+**Testbench**:
+- Generate random intervals.
+- Check against Python reference.
+- Handle the bit-vector operations in Python to verify.

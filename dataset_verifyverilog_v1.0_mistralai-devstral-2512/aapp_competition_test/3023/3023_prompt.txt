@@ -1,0 +1,39 @@
+Implement a Verilog module to check if m cuts divide n candles into distinct pieces.
+
+**Problem Adaptation:**
+1. The cake is a 2D grid (16x16) representing the radius. Circles are approximated by the inscribed square. 
+2. Coordinates are scaled from [-r, r] to [0, 15] using fixed-point arithmetic (Q8.8).
+3. Candles are discrete points (x, y) where 0 <= x, y < 16.
+4. Cuts are lines defined by scaled coefficients A, B, C (integers). The line equation is Ax + By + C = 0. 
+5. A point P is in a specific region defined by the vector of signs of (A*Px + B*Py + C) for all M cuts. 
+6. The module computes the signature (tuple of signs) for each candle and counts unique signatures. 
+7. The result is valid if the number of unique signatures equals the number of candles.
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle high to start computation.
+- `n[4:0]`: Number of candles (0-31).
+- `m[3:0]`: Number of cuts (0-15).
+- `candle_x[15:0]`: 16-bit packed array of X coordinates (4 bits per candle, max 16 candles). `candle_x[15:12]` is candle 0.
+- `candle_y[15:0]`: 16-bit packed array of Y coordinates (4 bits per candle).
+- `cut_a[31:0]`: Packed 16-bit signed A coefficients for up to 2 cuts (or packed for sequence). *Simplified for max 8 cuts:* Pack 4-bit signed `a,b,c` per cut into 12-bit words.
+
+**Outputs:**
+- `result`: 1-bit high if n == unique_regions.
+- `done`: 1-cycle high when computation finishes.
+
+**Logic:**
+1. Store candles and cuts in BRAM/registers.
+2. For each candle (0 to n-1):
+   - Compute signature vector (bits) where bit i is `sign(a_i*x + b_i*y + c_i)`.
+   - Store signature in a small buffer.
+3. Compare signatures (collisions).
+4. Output 1 if no collisions and unique count == n.
+
+**Constraints:**
+- Max clock cycles: 200.
+- Bit widths: Coordinates 4 bits, Coeffs 8-16 bits, Sums 32 bits.
+- Implementation: Pure combinational logic for one candle per cycle, sequential iteration.

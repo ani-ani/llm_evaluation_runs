@@ -1,0 +1,34 @@
+Design a Verilog module to solve the 'Candidate Character' truth-teller problem with hard constraints N≤7, K≤100, and statement length ≤32 chars.
+
+**Interface:**
+- Inputs: `clk`, `rst_n` (active-low sync reset), `start` (1-cycle pulse)
+- Inputs: `stmt_count[6:0]` (0-100), `speaker_id[2:0]` (1-7)
+- Inputs: `stmt_type[3:0]` (encoded: 0=truther, 1=fabulist, 2=charlatan, 3=not, 4=and, 5=xor)
+- Inputs: `arg1[2:0]`, `arg2[2:0]` (candidate IDs for args, 0=none)
+- Inputs: `arg1_type[1:0]` (0=truther,1=fabulist,2=charlatan, used only for base propositions)
+- Outputs: `result_valid` (1-bit), `result[2:0]` (candidate ID 1-7), `result_type[1:0]` (0=truther,1=fabulist,2=charlatan)
+- Outputs: `busy` (1-bit), `done` (1-cycle when complete)
+
+**Behavior:**
+1. On `start` high, load `stmt_count` statements. Input is streamed: each cycle provide one statement's data.
+2. After loading, brute-force evaluate all 3^7 possible type assignments.
+3. For each assignment, validate all K statements against the speaker's type:
+   - Truthers: all statements true
+   - Fabulists: all statements false
+   - Charlatans: There exists a switch point P (1 ≤ P ≤ K) such that statements 1..P are true, statements P+1..K are false (or all true if P=K).
+4. When a valid assignment is found, output `result_valid=1`, `result=candidate_id`, `result_type=type`, and assert `done=1` for one cycle.
+5. If no valid assignment exists, output `done=1` with `result_valid=0`.
+
+**Constraints:**
+- State machine: LOAD (K cycles) → SEARCH (up to 3^7 * K cycles) → OUTPUT (1 cycle).
+- Max cycles: K + (2187 * 100) + 1 ≈ 220k cycles. Use `busy` to indicate ongoing computation.
+- Use memory arrays: `stmt_speaker[0:99][2:0]`, `stmt_args[0:99][5:0]` (packed arg1,arg2), `stmt_op[0:99][3:0]`.
+- Output order: For candidates 1..N, emit their type once `done` is high. Use a separate state to iterate through results.
+
+**Simplified Parsing:**
+The language is fully defined by the `stmt_type` code. 'not' operates on a single arg; 'and'/'xor' on two args. Base propositions (truther/fabulist/charlatan n) are treated as leaf nodes evaluating the type of candidate n.
+
+**Timing:**
+- `start` -> `done` within 250,000 cycles max.
+- `result` valid when `done=1` and `result_valid=1`. 
+- Reset: `busy=0`, `done=0`, `result_valid=0`.

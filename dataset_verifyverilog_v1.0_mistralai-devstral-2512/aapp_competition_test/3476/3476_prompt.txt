@@ -1,0 +1,8 @@
+Implement a Verilog module that maximizes the sum of a matrix under rotation and negation constraints. The core insight is that rotation allows aligning elements, and negation can only flip rows/columns once. For a small fixed 8x8 matrix, we can brute-force the 2^R * 2^C negation choices (max 65,536 states) and compute optimal rotations. Simplify to: 1. Accept 8x8 matrix of 16-bit signed ints. 2. Perform negations first (row/col sign flips). 3. Apply optimal rotation to align positive elements. 4. Output max sum and operation sequence. Since hardware lacks dynamic lists, operations are predetermined: for each row/col, decide negation (1-bit) and rotation (3-bit for 0-7). The module takes the matrix, computes max sum, and outputs pre-calculated operations (up to 16 rows + 16 cols = 32 ops). Since Verilog can't print strings, output will be a sequence of encoded operations (3-bit type, 4-bit index, 3-bit k) with a 'done' signal. The testbench will verify correctness against known test cases.
+
+Interface:
+- Inputs: clk, rst_n, start (1-cycle pulse). Matrix: 8 rows, 8 cols, 16-bit signed each. R_in, C_in (4-bit, ≤8).
+- Outputs: result_sum (32-bit signed), op_count (6-bit), op_type (3-bit: 0=rotR,1=rotS,2=negR,3=negS), op_index (4-bit), op_k (3-bit), done (1-cycle pulse).
+- Timing: start->done within 50,000 cycles (for brute-force), done=1 for 1 cycle, result valid then.
+- Reset: done=0, result=0, op_count=0, ops reset to 0.
+- Constraints: R,C ≤8, matrix elements ≤ 2^15 in abs, output ops ≤ 32, each op valid (k < C or R as per rules). Negation only if not previously negated (enforced by state).

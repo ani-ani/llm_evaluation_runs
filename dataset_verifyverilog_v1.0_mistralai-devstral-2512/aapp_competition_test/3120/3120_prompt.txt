@@ -1,0 +1,43 @@
+Design a Verilog module that checks equivalence of two 'Balloon' expression trees simplified to a limited instruction set: [LIST], concat(EXP1, EXP2), shuffle(EXP), sorted(EXP). Since hardware cannot handle variable-length strings or arbitrary recursion, we assume inputs are pre-parsed into a fixed structure. 
+
+**Input Constraints:**
+- Integers are 16-bit (scaled down from 10^9).
+- Maximum list length is 16 elements.
+- Expression tree depth is limited to 8 levels.
+
+**Module Interface:**
+- Inputs:
+  - `clk`, `rst_n`: System clock and active-low synchronous reset.
+  - `start`: 1-cycle pulse to begin comparison.
+  - `expr_a_type`: 2-bit encoding for root node type of Program A (00=LIST, 01=CONCAT, 10=SHUFFLE, 11=SORTED).
+  - `expr_b_type`: 2-bit encoding for Program B.
+  - `list_a_data`: Array of 16 16-bit integers (flattened to 256-bit input or separate ports).
+  - `list_b_data`: Array of 16 16-bit integers.
+  - `children_a_idx`: Indices of child nodes in a pre-allocated memory (simulated via inputs).
+  - `children_b_idx`: Indices of child nodes.
+- Outputs:
+  - `result`: 1-bit (1 = equal, 0 = not equal).
+  - `done`: 1-cycle pulse indicating result is valid.
+
+**Functional Specification:**
+1. **Reset:** On reset, `done` = 0, `result` = 0.
+2. **Execution:**
+   - Parse the expression tree recursively (depth limited to 8). Use a stack-based FSM to evaluate expressions.
+   - **[LIST]:** Return the fixed list of integers.
+   - **concat(Expr1, Expr2):** Evaluate Expr1, then Expr2, then concatenate the lists. Check total length ≤ 16.
+   - **shuffle(Expr):** Evaluate Expr to get list L. A shuffle does not change the multiset of elements. Return L (the multiset representation).
+   - **sorted(Expr):** Evaluate Expr to get list L. Return the sorted version of L.
+3. **Equivalence Check:**
+   - Evaluate both programs A and B.
+   - Compare the resulting lists.
+   - **Rule:** Two programs are equivalent if they produce the same multiset of values AND the same probability distribution over final orderings.
+     - Since `sorted` enforces a unique order, it matches only if lists are identical.
+     - `shuffle` randomizes order. Two programs with `shuffle` are equivalent if their input multisets are identical.
+     - Concatenation preserves order of sub-expressions.
+   - Simplified Logic: 
+     - If both roots are `SORTED`: Check if sorted(List A) == sorted(List B).
+     - If one is `SHUFFLE`: Check if multisets of lists are identical (ignoring order).
+     - If both are `CONCAT`: Recursively check equivalence of children.
+     - If both are `LIST`: Check if lists are identical.
+4. **Timing:** Evaluation must complete within 256 clock cycles.
+5. **Data Types:** Use 16-bit unsigned integers for values. Use 4-bit counters for list lengths.

@@ -1,0 +1,37 @@
+Implement a Verilog module that computes the maximum number of active producers in a factory network. The network consists of N junctions (1 to N) and M directed conveyor belts (edges). K producers are located at junctions 1 to K. Products are produced every minute. We need to select a subset of producers such that no two products from different selected producers ever occupy the same conveyor belt at the same time.
+
+Key Simplifications:
+1.  Graph Size: Max N=16 nodes, M=32 edges. Use adjacency lists (packed arrays).
+2.  Producers: Max K=8.
+3.  Routing: Since time is discrete (minutes) and belts take 1 minute, the arrival time at the warehouse for a product produced at time $t$ is $t + L$, where $L$ is the path length. A product occupies belt $e$ at time $t_{belt}$. If two producers $p_a$ and $p_b$ share a belt, we check if they can collide. Since production is periodic ($t = xK + j$), collisions are periodic. For a shared edge, the condition for safety is derived from the time modulo the least common multiple of periods. However, a simpler structural constraint often applies: if two paths share an edge, they must have different parities of path length from the source to that edge to desynchronize arrivals. We will assume the 'parity' heuristic: two producers can coexist if for every shared edge, the distance from their source to the edge has different parity.
+4.  Algorithm: For each subset of producers (mask from 1 to $2^K - 1$), verify if the routing is valid. Validity requires that for every pair of active producers in the subset, they do not conflict on any shared edge. Conflict is defined as having the same parity of distance to the shared edge.
+
+Interface Specification:
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `config_valid`: Indicates that configuration inputs are stable.
+  - `edge_src[31:0]`: Packed array of 32x4-bit source IDs (0-15).
+  - `edge_dst[31:0]`: Packed array of 32x4-bit destination IDs.
+  - `num_edges[4:0]`: 5-bit number of active edges (M).
+  - `num_producers[3:0]`: 4-bit number of producers (K).
+- Outputs:
+  - `result[3:0]`: 4-bit result (max active producers, 0-8).
+  - `done`: 1-cycle pulse when computation finishes.
+
+Algorithm Steps (Hardware):
+1.  Compute shortest paths from each producer (1 to K) to the destination (N) using BFS (or simple iteration since graph is small). Store distance from producer $p$ to node $v$ in `dist[p][v]`.
+2.  Iterate through all non-zero masks $M$ (1 to $2^K-1$).
+3.  For each mask, check validity:
+    - For every pair of active producers $(p_i, p_j)$ in $M$:
+    - For every edge $e = (u, v)$ in the graph:
+      - If $p_i$ reaches $u$ and $p_j$ reaches $u$ (i.e., they both use node $u$ before edge $e$):
+        - Calculate $d_i = dist[p_i][u]$, $d_j = dist[p_j][u]$.
+        - If $d_i$ and $d_j$ have the same parity (both even or both odd), collision occurs. Mark mask invalid.
+4.  Track the number of set bits (popcount) in valid masks. Return the maximum popcount.
+
+Constraints:
+- All distances initialized to a large value (e.g., 31).
+- The destination node $N$ is fixed.
+- Cycle budget: Target ~200-300 cycles for $K=8$ (256 subsets * 28 pairs * 32 edges).
+- Use iterative loops (FSM) for subset checking to avoid combinational explosion.

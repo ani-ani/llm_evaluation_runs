@@ -1,0 +1,65 @@
+Design a Verilog module that matches top-left and bottom-right corners to form properly nested rectangles. 
+
+**SCALE LIMITS:**
+- n (number of corners) ≤ 64
+- Coordinates (r, c) ≤ 65535 (16-bit)
+- All locations are distinct
+- Rectangles must be either fully nested or disjoint; borders cannot overlap
+
+**INPUT INTERFACE:**
+- `clk`: clock, rising edge
+- `rst_n`: active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `tl_r_i[63:0][15:0]`: array of 64 16-bit top-left row coordinates (indexed by corner ID 0-63)
+- `tl_c_i[63:0][15:0]`: array of 64 16-bit top-left column coordinates
+- `br_r_i[63:0][15:0]`: array of 64 16-bit bottom-right row coordinates (indexed by corner ID 0-63)
+- `br_c_i[63:0][15:0]`: array of 64 16-bit bottom-right column coordinates
+
+**OUTPUT INTERFACE:**
+- `result_valid`: 1-cycle pulse when result is ready
+- `match_index[63:0][7:0]`: array of 64 8-bit values (indexed by TL corner ID), where match_index[i] = BR corner ID (0-63) for TL corner i
+- `syntax_error`: 1-bit flag (1 = invalid nesting, 0 = valid matching found)
+
+**FUNCTIONAL REQUIREMENTS:**
+1. When `start` pulses, process the input arrays.
+2. The module must determine if a valid matching exists where:
+   - Each TL corner matches exactly one BR corner
+   - All rectangles are valid: tl_r <= br_r AND tl_c <= br_c
+   - All rectangles are either nested or disjoint (no partial overlap)
+   - If valid, output one possible matching (any valid one is acceptable)
+3. Timing: Must complete within 1000 cycles after `start`.
+4. Reset: All outputs 0, `result_valid` and `syntax_error` deasserted.
+
+**ALGORITHM (Simplified for Hardware):**
+- Since n≤64, we can use a software-style approach in RTL with iterative logic:
+  1. Read all inputs into register arrays
+  2. Sort all 128 corners (64 TL + 64 BR) by (r, then c) in ascending order
+  3. Use a stack-based nesting validation:
+     - Process corners in sorted order
+     - When encountering a TL corner, push its ID onto a stack
+     - When encountering a BR corner, it must match the most recent TL corner on the stack (LIFO) for proper nesting
+     - If stack is empty or ID mismatch, invalid nesting
+     - At end, stack must be empty
+  4. The matching pairs form the output permutation
+
+**IMPLEMENTATION NOTES:**
+- Use sequential state machine for sorting (bubble/insertion sort over 128 elements)
+- For n≤64, coordinate comparison is straightforward 16-bit operation
+- Memory: 128x48-bit registers to store (type, r, c, id) for sorting
+- Output is a permutation array where index = TL ID, value = matched BR ID
+
+**EDGE CASES:**
+- Invalid if any rectangle has tl_r > br_r or tl_c > br_c
+- Invalid if borders overlap (handled by nesting constraint)
+- If multiple valid matchings exist, any output is acceptable
+
+**HARDWARE CONSTRAINTS:**
+- All operations must be data-path friendly (comparators, multiplexers)
+- No dynamic memory allocation; use fixed-size registers
+- The sorting state machine should have < 256 states for synthesis
+
+**EXPECTED OUTPUT FORMAT:**
+The testbench will verify:
+1. `syntax_error` bit is correct (1 = error, 0 = valid)
+2. If valid, `match_index` array contains a valid permutation
+3. `result_valid` pulses once when complete

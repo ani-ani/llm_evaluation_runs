@@ -1,0 +1,56 @@
+Implement a Verilog module that finds the last occurrence of a target value in a sorted array using binary search.
+
+**Interface Specification:**
+- Inputs:
+  * clk: system clock (rising edge)
+  * rst_n: active-low synchronous reset
+  * start: 1-cycle pulse to start search
+  * arr: 8-bit elements array (8 elements total)
+  * target: 8-bit value to find
+- Outputs:
+  * result: 8-bit index of last occurrence, or 0xFF if not found
+  * done: 1-cycle pulse indicating search complete
+
+**Implementation Requirements:**
+1. Support exactly 8 elements in input array (fixed size)
+2. Binary search should find LAST occurrence, not first
+3. Return 0xFF (255) if element not found
+4. Maximum 16 clock cycles for completion
+5. Use iterative state machine (no recursion)
+6. Array is pre-sorted in non-decreasing order
+7. Handle edge cases: empty search (returns 0xFF), all elements equal
+
+**State Machine:**
+- IDLE: wait for start
+- INIT: setup low=0, high=7 (last index)
+- MID: calculate mid index
+- COMPARE: compare arr[mid] with target
+- FOUND: element found, continue search right side
+- NOT_FOUND: update low or high bounds
+- COMPLETE: set result and done
+
+**Algorithm:**
+1. Initialize low=0, high=7, result=0xFF
+2. While low <= high:
+   - mid = (low + high) >> 1
+   - if arr[mid] > target: high = mid - 1
+   - else if arr[mid] < target: low = mid + 1
+   - else: result = mid, low = mid + 1 (continue searching right)
+3. Return result
+
+**Signals:**
+- reg [2:0] low, high, mid; // 3-bit for 0-7
+- reg [7:0] result, temp_result;
+- reg [2:0] state, next_state;
+- wire [7:0] arr_next[7:0]; // 8-element array
+- Parameter: MAX_ITER = 16
+
+**Reset Behavior:**
+- rst_n=0: state <= IDLE, result <= 0xFF, done <= 0
+- At least 2 cycles of reset
+
+**Timing:**
+- start pulse should be held for 1 cycle
+- done pulse asserted 1 cycle when result is valid
+- result valid when done=1
+- Complete within 16 cycles from start

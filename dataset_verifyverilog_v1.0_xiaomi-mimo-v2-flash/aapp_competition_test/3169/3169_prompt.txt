@@ -1,0 +1,22 @@
+Implement a Verilog module that determines the order to remove sticks from a table. You are given N sticks (1 ≤ N ≤ 8) as line segments with integer coordinates (0-1000). Arthur removes sticks one by one by translating them vertically downward (decreasing y) until they fall off the table edge at y=0. A stick can only be removed if removing it would not cause it to collide with any remaining stick. Collision means the translated stick segment (translated straight down) would intersect any other stick's segment or its interior. You need to output a valid removal sequence.
+
+Simplified Algorithm: For each stick i, determine which other sticks it blocks. Stick i blocks stick j if the vertical translation of stick i downward would intersect stick j. Build a directed graph where edge i→j means i blocks j. Then perform topological sort to find a valid removal order.
+
+Intersections are simplified: Two line segments (x1,y1)-(x2,y2) and (x3,y3)-(x4,y4) intersect if their bounding boxes overlap and orientation tests pass. Use integer arithmetic. For vertical translation collision: For stick A, check if translating it straight down (keeping x coordinates same, decreasing y until 0) would cause any point of A to hit stick B. This simplifies to checking if the vertical strip defined by A's x-range overlaps B's x-range AND A's y-range intersects B's y-range when A is moved down.
+
+Module Interface:
+- Inputs: clk, rst_n, start (1-cycle pulse)
+- Inputs: N (3-bit, up to 8 sticks)
+- For each stick i (0-7): x1_i, y1_i, x2_i, y2_i (10-bit each, for coordinates 0-1000)
+- Outputs: result (32-bit, packed with 4 bits per stick index), done (1-cycle pulse)
+- Timing: start asserted for 1 cycle, done asserted after ≤256 cycles, result valid when done=1
+
+Implementation Strategy:
+1. Store stick coordinates in 8 arrays (separate signals for each coordinate)
+2. For each pair (i,j), compute if i blocks j using intersection logic
+3. Build adjacency matrix (8x8) of blocking relations
+4. Perform topological sort using Kahn's algorithm: repeatedly find a stick with no incoming edges, append to output, remove it from graph
+5. Pack the 8 stick indices (0-7) into 32-bit result (4 bits each)
+6. Output any valid sequence
+
+Constraints: Use 16-bit arithmetic for intersection calculations. Coordinate range 0-1000 fits in 10 bits. N ≤ 8. Each step takes ≤10 cycles. Total ≤256 cycles.

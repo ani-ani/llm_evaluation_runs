@@ -1,0 +1,46 @@
+Implement a Verilog module that checks if a graph with n nodes (scaled to max 32 nodes) can have exactly k nodes selected such that no two selected nodes are adjacent (independent set of size k). The module should accept k (0-15) and a fixed-size representation of the graph, and output 'possible' or 'impossible'. 
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle start pulse
+  - `k_in`: 4-bit input for number of drones (0-15)
+  - `graph_packed`: 512-bit packed representation of graph adjacency (32 nodes * 16 bits each, where each 16-bit chunk represents adjacency bitmask for that node)
+  - `num_nodes`: 6-bit input for actual graph size (1-32)
+- **Outputs:**
+  - `result`: 1-bit output (1=possible, 0=impossible)
+  - `done`: 1-cycle pulse when computation complete
+
+**Implementation Requirements:**
+1. **Graph Scaling:** Since original problem has n up to 100k but max degree 4, scale to max 32 nodes for Verilog. The testbench will provide smaller graphs.
+2. **Algorithm:** Use iterative backtracking or dynamic programming with bitmask. Since k<=15 and nodes<=32, try all combinations of k nodes (C(32,15) max ~ 565M, too large). Better approach: greedy selection with backtracking, limited to ~256 cycles.
+3. **State Machine:** Use FSM with states: IDLE, INIT, CHECK_COMBINATION, NEXT_COMBINATION, DONE
+4. **Registers:** 
+   - `selection_mask`: 32-bit register for current selection
+   - `combo_index`: 32-bit counter for combination generation
+   - `node_idx`: 6-bit counter for checking adjacency
+5. **Timing:** Complete within 1000 cycles maximum
+6. **Reset:** Initialize all registers to 0, result=0, done=0
+7. **Output:** When done=1, result indicates feasibility
+
+**Algorithm Detail:**
+- Generate combinations of k nodes from num_nodes
+- For each combination, check if any two nodes are adjacent by checking intersection of adjacency bitmasks
+- If found valid combination, set result=1 and go to DONE
+- If all combinations exhausted without valid, result=0
+- Stop early on first valid combination
+
+**Constraints:**
+- Cycle budget: ≤ 1000 cycles
+- Memory: 512-bit graph input + 32-bit selection mask + 32-bit combo counter
+- Graph degree: Max 4 (use 16 bits per node for adjacency)
+- k: 0-15
+- n: 1-32 (scaled)
+
+**Implementation Hint:**
+- Use parallel combination generation if needed
+- Check adjacency using bitwise AND operations on packed graph
+- For k=0, always possible (empty set)
+- For k=1, always possible (any single node)
+- For larger k, use backtracking with pruning

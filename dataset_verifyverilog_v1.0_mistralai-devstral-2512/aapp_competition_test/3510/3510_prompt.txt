@@ -1,0 +1,66 @@
+Implement a Verilog module that solves a two-player game on a directed graph.
+
+**Problem Interpretation:**
+We model this as a directed graph where nodes are positions (0 to n-1) and edges represent Bob's choices. For each position p (Alice's turn), she chooses an option set S (subset of nodes). Then Bob chooses an edge from p to any node in S. Alice wants to reach a target position q. We compute the minimum number of rounds to guarantee reaching q from any start p.
+
+**Algorithm:**
+1. Represent the game as a graph with nodes 0 to n-1.
+2. For each position p, Alice has multiple options (sets of nodes). Each option is a set S.
+3. Bob moves from p to some node in S.
+4. Alice wins when the piece reaches the target q.
+5. We compute the "winning distance" for each pair (start, target). This is a fixed-point iteration similar to solving a shortest path on a game graph.
+6. Use an iterative algorithm: Initialize distances for target q to 0, others to infinity. Update distances based on the game rules:
+   - If Alice is at p, she can choose an option S such that for all nodes s in S, the distance to target from s is finite (since Bob moves optimally against her, she must ensure all Bob's choices lead closer to the target). The distance from p is 1 + max_{s in S} dist[s].
+   - Since Bob wants to maximize the distance (prevent win), Alice chooses the option S that minimizes the worst-case outcome (min over options of max over s in S).
+7. Constraints: n ≤ 16 (scaled from 25), integer rounds ≤ 256, options compressed.
+
+**Module Interface:**
+Inputs:
+- clk: Clock signal
+- rst_n: Active-low synchronous reset
+- start: 1-cycle pulse to start computation
+- n_in: 4-bit input for number of nodes (1 to 16)
+- option_count_in: 4-bit input for number of options for current node
+- option_string_in: 16-bit packed input for an option set (each bit i corresponds to node i)
+- target_in: 4-bit target node ID
+
+Outputs:
+- result: 16-bit result (distance for current start-target pair)
+- done: 1-cycle pulse when computation is complete for the pair
+
+**Control Flow:**
+1. On start, reset internal state.
+2. Accept inputs for each position in alphabetical order (0 to n-1):
+   - For each position p, receive m_in options (sets).
+   - Each option is a 16-bit value where bit i set means node i is in the set.
+   - Store options in a fixed-size array (max 16 options per node, 16 nodes).
+3. For each target q (0 to n-1):
+   - Compute distances from all nodes to q using iterative fixed-point.
+   - Update distances until convergence (max 256 cycles per target).
+   - Output the distance for the current start node.
+4. The module should iterate through all start nodes and targets to fill a lookup table.
+
+**Internal Memory:**
+- Options: Array[16][16] of 16-bit values (packed sets).
+- Distances: Array[16] of 8-bit values (0-255, 255 as infinity).
+- Current state: FSM for input loading, computation, and output.
+
+**Timing:**
+- Start signal initiates the process.
+- Computation: For n=16, each target takes up to 256 iterations, each iteration processes all n nodes. Total cycles < 100,000.
+- Done signal indicates the current start-target pair result is ready.
+- Result is valid when done=1.
+
+**Reset:**
+- On reset, clear internal memory and state.
+
+**Key Implementation Details:**
+- Use iterative relaxation: Initialize dist[q]=0, others=255. Repeat: for each node p, for each option S, compute worst = max_{s in S} dist[s]. The distance for p via this option is worst+1 if worst<255. Take min over options. Update if smaller.
+- Stop when no updates occur or max iterations reached.
+- Output results sequentially: for start=0..n-1, for target=0..n-1.
+- Use combinational logic for distance update, sequential for iterations.
+
+**Assumptions:**
+- Input is provided via a sequential interface (option_count_in and option_string_in are valid when start signal is asserted for the option).
+- The testbench will drive inputs in order: for each node, send m options, then move to next node.
+- Output is produced for each (start, target) pair, one after another, via the done signal.

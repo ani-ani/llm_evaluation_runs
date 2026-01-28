@@ -1,0 +1,33 @@
+Design a Verilog module that solves the Primonimo game on a small grid. The board is at most 8x8 (64 cells). The prime modulus p is ≤ 16, represented as an unsigned 4-bit integer. The module must accept an initial board configuration and compute a sequence of moves (cell indices) to turn all cells to p, or output -1 if impossible.
+
+### Interface Specification:
+- **Inputs**:
+  - `clk`: System clock (rising edge active).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `board_flat`: 64 * 4-bit packed array representing the initial board values (1 to p). Values are row-major ordered, indexed 0-63. Each 4-bit value is the initial number (1 to p).
+  - `n`: 4-bit unsigned (1-8). Number of rows.
+  - `m`: 4-bit unsigned (1-8). Number of columns.
+  - `p_val`: 4-bit unsigned (2-16, prime). The modulus (though only 2,3,5,7,11,13 are valid primes in this range).
+
+- **Outputs**:
+  - `result`: 64-bit packed array. Contains the sequence of moves. Each 6-bit value represents a cell index (0 to 63). Sequence length is at most 64 moves. Upper bits unused if sequence is shorter.
+  - `move_count`: 6-bit unsigned. The number of valid moves in the result sequence. If 0, no solution (but use `valid` to indicate).
+  - `valid`: 1-bit. High when a solution is found. Stays high until reset.
+  - `no_solution`: 1-bit. High if no solution exists. Stays high until reset.
+  - `done`: 1-bit. High for one cycle when computation is complete (either valid or no_solution found).
+
+### Functional Requirements:
+1. **Simplification**: The problem is solved by finding a solution to a linear system Ax = b (mod p), where x is the vector of moves per cell (count modulo p). The matrix A represents the influence of moving on a cell (adds 1 to its row and column). Since p is small and grid is ≤8x8, Gaussian elimination over GF(p) is feasible in hardware with a fixed number of cycles (e.g., max 256 cycles for 64x64 matrix).
+2. **Operation**: On `start` asserted, latch inputs and begin Gaussian elimination. The module computes the solution vector x. If a solution exists, extract non-zero x values as move indices. If multiple moves exist for a cell, repeat the index x times (mod p).
+3. **Cycle Bound**: Computation must complete within 512 clock cycles after start.
+4. **Output Format**: The `result` port packs move indices. Each index is 6 bits (sufficient for 64 cells). Sequence order is arbitrary but must correspond to the solution vector.
+5. **Reset**: Resets all state, outputs low.
+
+### Implementation Notes:
+- Use a standard Gauss-Jordan elimination algorithm adapted for GF(p). All arithmetic is modulo p.
+- Since p is ≤16, arithmetic units can be small (4-bit adders/subtractors with mod p logic).
+- The matrix size is (n*m) x (n*m), which is at most 64x64. This requires significant register memory. Implement row storage as 64 registers of 64 bits (packed) or similar.
+- The output sequence is derived by iterating through the solution vector x and appending the cell index if x[i] != 0.
+- If the system is inconsistent, assert `no_solution`.
+- Do not implement dynamic memory; use fixed-size buffers.

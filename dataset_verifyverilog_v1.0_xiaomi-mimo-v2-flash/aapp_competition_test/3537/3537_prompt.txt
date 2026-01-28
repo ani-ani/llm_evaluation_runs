@@ -1,0 +1,34 @@
+Implement a Verilog module that solves a flight scheduling problem with quadratic waiting frustration. 
+
+**Problem**: Given flights with departure/arrival times and locations, find the minimum sum of squared waiting times to reach destination.
+
+**Scaling**: Limit to n=16 countries, m=32 flights, max time=1023 (10 bits). Wait time frustration is t^2, so scale time to Q8.8 fixed point if needed (but keep integers 16-bit for simplicity).
+
+**Algorithm**: Use a dynamic programming approach (similar to Dijkstra). Maintain 'min_frustration' and 'arrival_time' for each country. For each flight, calculate wait time = departure_time - arrival_time_at_source. Frustration adds wait_time^2. Update destination if new frustration is lower.
+
+**Interface**:
+- Inputs:
+  - clk, rst_n: Standard clock and active-low reset
+  - start: 1-cycle pulse to start computation
+  - m_count: 4-bit input (number of flights, max 32)
+  - flight_data: 4 parallel arrays of 32 elements each:
+    - src[31:0]: 4-bit (country 1-16)
+    - dst[31:0]: 4-bit (country 1-16)
+    - dep[31:0]: 10-bit (departure time 0-1023)
+    - arr[31:0]: 10-bit (arrival time 0-1023)
+- Outputs:
+  - result: 32-bit (minimum total frustration)
+  - done: 1-cycle pulse when result is valid
+
+**Behavior**:
+1. On reset, clear DP states (frustration=0 for country 1, infinity for others).
+2. On start, iterate through flights (brute force since m is small).
+3. For each flight, if source is reachable, calculate new frustration: old_frustration + (dep_time - arrival_time_of_source)^2.
+4. Update destination's state if new frustration is better.
+5. After processing all flights, output frustration of country n.
+6. Signaling: done=1 for one cycle when finished (within 256 cycles).
+
+**Constraints**:
+- Use combinational logic for flight processing or a simple FSM.
+- All arithmetic on 32-bit registers (max frustration ~ 32*1024^2 fits in 32 bits).
+- No external memory access; all data in registers.

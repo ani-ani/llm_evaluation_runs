@@ -1,0 +1,83 @@
+Implement a Verilog module that solves the Binary Town voting optimization problem. The problem involves finding the optimal ballot count (0-255) for a voter to maximize Yraglac's expected positions, given other voters' probabilistic ballots.
+
+**Problem Adaptation to Hardware:**
+- k positions (1-16) maps to 8-bit numbers (0-255)
+- v voters (2-100) means v-1 other voters, but we can only handle up to 10 fixed voters in hardware
+- Probabilities are scaled to 16-bit fixed-point Q8.8 format
+- We use dynamic programming to compute probability distribution of total ballots
+- Since k≤16, we only need to track sums modulo 256 (8 bits)
+- The DP result is a probability array of size 256 (256 possible sums)
+- For each candidate ballot value b_v (0-255), compute expected Yraglac positions by summing over all possible sums
+
+**Module Interface:**
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  k: 4-bit (1-16), number of positions
+  v: 7-bit (2-100), number of voters
+  prob_0 through prob_9: 16-bit each, scaled probabilities (0-255 for 0-1.0) for up to 10 voters
+  ballots_0 through ballots_9: 8-bit each, ballot counts for up to 10 voters
+  num_voters: 4-bit, actual number of other voters (v-1)
+
+Outputs:
+  optimal_ballots: 8-bit, the optimal ballot count for this voter (0-255)
+  done: 1-cycle pulse when computation complete
+
+**Implementation Requirements:**
+1. Use a state machine with states: IDLE, LOAD_PROBS, DP_COMPUTE, EVALUATE, DONE
+2. DP_COMPUTE state uses a 256-entry probability lookup table (8-bit indices, 16-bit fixed-point probabilities)
+3. For each other voter, update the probability distribution: P_new[s] = P_old[s] * (1-p) + P_old[s-b_i] * p
+   where s-b_i wraps modulo 256
+4. Since we can only handle 10 voters max, the input provides up to 10 prob/ballot pairs
+5. In EVALUATE state, for each candidate b_v from 0-255:
+   - Compute expected positions by iterating through all 256 sums
+   - For each sum s, calculate total = (s + b_v) mod 256
+   - Count bits set in (total >> j) & 1 for j=0 to k-1, average over probabilities
+6. Use parallelism: compute bit counts for 4 sums in parallel using 4 adders
+7. The probability table is implemented as 256 registers (16-bit each) - use resource sharing or compute on-demand
+8. Use fixed-point arithmetic: probabilities are 16-bit, add with saturation
+9. Output is guaranteed unique, so first maximum found is correct
+
+**Timing Constraints:**
+- Start-to-done: within 10,000 cycles (acceptable for 256x10 DP)
+- Reset: 2 cycles, clears all states
+- Clock period: 10ns (100MHz)
+
+**Verilog Module Signature:**
+module binary_town_voting(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] k,
+    input wire [6:0] v,
+    input wire [15:0] prob_0, prob_1, prob_2, prob_3, prob_4,
+    input wire [15:0] prob_5, prob_6, prob_7, prob_8, prob_9,
+    input wire [7:0] ballots_0, ballots_1, ballots_2, ballots_3, ballots_4,
+    input wire [7:0] ballots_5, ballots_6, ballots_7, ballots_8, ballots_9,
+    input wire [3:0] num_voters,
+    output reg [7:0] optimal_ballots,
+    output reg done
+);
+
+**Key Implementation Details:**
+- Use a 256x16-bit memory for probability distribution (can be implemented as 256 registers or as a dual-port RAM)
+- DP update: P_new[s] = (P_old[s] * (256 - p)) + (P_old[s - b_i] * p) >> 8 (fixed-point multiplication)
+- For the probability distribution initialization: P[0] = 256 (representing 1.0), all others 0
+- In EVALUATE state, maintain best_score (16-bit) and best_ballots (8-bit)
+- For each candidate b_v, compute score = sum_{s=0}^{255} P[s] * popcount((s + b_v) & ((1<<k)-1))
+- Since k≤16, we only count k bits
+- Use pipelining: compute popcounts for 4 sums per cycle
+- The fixed-point addition and multiplication should handle saturation
+
+**Resource Constraints:**
+- Maximum 256*16 = 4096 bits for probability table (acceptable)
+- Maximum 256 iterations for b_v evaluation (acceptable)
+- 10 voters max, each requiring one DP update cycle
+- Total cycles: ~10 (load) + 10*256 (DP) + 256*64 (evaluate) = ~18,000 cycles worst case (acceptable with 100MHz clock)
+
+**Simplification for Resource Constraints:**
+- If implementing 256x16-bit table is too large, use sequential computation where probability is computed on-the-fly for each sum
+- However, given the constraints, a full table is acceptable for this benchmark
+- For evaluation, process sums in batches of 4 to parallelize bit counting
+- Use carry-save adders for popcount accumulation

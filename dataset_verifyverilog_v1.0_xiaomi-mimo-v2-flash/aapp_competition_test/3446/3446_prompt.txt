@@ -1,0 +1,37 @@
+Implement a Verilog module that solves the assembly scheduling problem using dynamic programming (matrix chain multiplication). 
+
+**Requirements:**
+- Support up to 8 symbols (k ≤ 8) using 3-bit indices
+- Support string length up to 8 characters
+- Times are integers 0-1000000, scale to 20-bit fixed point (Q12.8)
+- Assembly table is k x k pairs of (time, result_symbol)
+- Result symbol is the preferred type based on input order priority
+- Output minimum time and resulting symbol type
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard clock/reset
+  - `start`: 1-cycle pulse to start processing
+  - `sym_count`: 3-bit number of symbols (k)
+  - `assembly_table[7:0][7:0][23:0]`: 8x8 table where each entry contains {time[19:0], result[2:0]} - packed as (time << 3) | result
+  - `string_len`: 3-bit length of input string
+  - `string_chars[7:0]`: 8x3-bit array of symbol indices
+- Outputs:
+  - `result_time`: 20-bit minimum time
+  - `result_type`: 3-bit resulting symbol index
+  - `done`: 1-cycle pulse when result is valid
+
+**Behavior:**
+- Implement DP table `dp[i][j][t]` where i,j are string positions (0-7), t is symbol type (0-7)
+- Store minimum time to reduce substring i..j to symbol type t
+- Use FSM to compute DP for all substring lengths from 1 to string_len
+- For each split point k between i..j, compute time = dp[i][k][a] + dp[k+1][j][b] + assembly_time[a][b]
+- Result type is assembly_result[a][b]
+- After full computation, find minimum time across all types for dp[0][len-1][t]
+- Tie-breaker: prefer smaller symbol index (lower priority in input order)
+- Done signal pulses when computation finishes
+
+**Timing:**
+- Processing within 256 cycles max
+- Done signal goes high 1 cycle after final result is ready
+- Reset clears all DP entries to infinity (or max value)

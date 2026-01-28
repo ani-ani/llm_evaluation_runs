@@ -1,0 +1,68 @@
+Verilog module specification for Minimum Bitcoin Spending to Win
+
+You need to compute the minimum number of bitcoins Master Yang must spend to defeat a monster, given initial attributes and shop prices.
+
+## Inputs
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `hy[7:0]`: Yang's initial HP (0-255)
+- `ay[7:0]`: Yang's initial ATK (0-255)
+- `dy[7:0]`: Yang's initial DEF (0-255)
+- `hm[7:0]`: Monster's HP (0-255)
+- `am[7:0]`: Monster's ATK (0-255)
+- `dm[7:0]`: Monster's DEF (0-255)
+- `h[7:0]`: Price per HP (0-255)
+- `a[7:0]`: Price per ATK (0-255)
+- `d[7:0]`: Price per DEF (0-255)
+
+## Outputs
+- `result[15:0]`: Minimum bitcoin cost (unsigned 16-bit)
+- `done`: 1-cycle pulse, asserted when computation complete
+
+## Algorithm Specification
+1. Iterate over possible ATK purchases `buy_a` from 0 to 100
+2. For each `buy_a`, iterate over possible DEF purchases `buy_d` from 0 to 100
+3. Calculate Yang's effective ATK: `eff_ay = ay + buy_a`
+4. Calculate Yang's effective DEF: `eff_dy = dy + buy_d`
+5. Calculate damage per turn to monster: `damage_m = max(0, eff_ay - dm)`
+6. Calculate damage per turn to Yang: `damage_y = max(0, am - eff_dy)`
+7. If `damage_m == 0`, skip this configuration (can't kill monster)
+8. Calculate turns to kill monster: `turns = ceil(hm / damage_m)`
+   - `turns = (hm + damage_m - 1) / damage_m` (integer division)
+9. Calculate Yang's HP loss: `hp_loss = turns * damage_y`
+10. Calculate HP needed: `hp_needed = max(0, hp_loss - hy + 1)`
+11. Calculate total cost: `cost = buy_a * a + buy_d * d + hp_needed * h`
+12. Track minimum cost across all valid configurations
+
+## Implementation Constraints
+- Use 16-bit arithmetic for all intermediate calculations (including products)
+- `max(0, x)` implemented as `x > 0 ? x : 0`
+- Integer division: `(numerator + denominator - 1) / denominator` for ceiling
+- Iterate `buy_a` from 0 to 100 (101 values)
+- Iterate `buy_d` from 0 to 100 (101 values)
+- Maximum cycles: 256 (sufficient for 101x101 iterations + computation)
+- Initial cost: set to a large value (e.g., 65535)
+
+## Timing
+- `start` assertion initiates computation
+- `done` asserted within 256 cycles
+- `result` valid when `done` is asserted
+
+## Reset Behavior
+- `result = 0`
+- `done = 0`
+- Internal state machine initialized
+
+## Interface Summary
+Inputs: clk, rst_n, start, hy[7:0], ay[7:0], dy[7:0], hm[7:0], am[7:0], dm[7:0], h[7:0], a[7:0], d[7:0]
+Outputs: result[15:0], done
+
+## Implementation Notes
+- Use a finite state machine with states: IDLE, INIT, LOOP_A, LOOP_D, CALCULATE, UPDATE, FINISH
+- Internal counters: `buy_a_reg[7:0]`, `buy_d_reg[7:0]`, `min_cost[15:0]`, `temp_cost[15:0]`
+- Internal registers for intermediate results: `eff_ay[7:0]`, `eff_dy[7:0]`, `damage_m[7:0]`, `damage_y[7:0]`, `turns[7:0]`, `hp_loss[15:0]`, `hp_needed[7:0]`
+- Use 16-bit multipliers for `buy_a * a`, `buy_d * d`, `hp_needed * h`
+- All calculations must fit within 16-bit (maximum cost: 100*100 + 100*100 + 255*100 = 35500 < 65535)
+
+Do not provide module code, only the detailed specification.

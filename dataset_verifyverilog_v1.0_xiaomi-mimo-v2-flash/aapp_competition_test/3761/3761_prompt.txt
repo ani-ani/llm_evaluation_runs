@@ -1,0 +1,42 @@
+Implement a Verilog module that determines if a robot can reach a target coordinate (x, y) after executing a sequence of 'F' (forward 1 unit) and 'T' (turn 90 degrees) instructions. The robot starts at (0,0) facing the positive X-axis.
+
+Key constraints for hardware mapping:
+- The input string length is max 8000, but the cumulative moves on each axis are bounded by |s| (max 8000).
+- The target coordinates |x|, |y| are also bounded by 8000.
+- We model this as two independent 1D subset-sum problems:
+  1. X-axis moves: The first move (if starting with 'F') is fixed. Subsequent moves on X-axis (occurring after even numbers of turns) form a set of lengths to be added/subtracted to reach the target X.
+  2. Y-axis moves: Moves on Y-axis (occurring after odd numbers of turns) form a set of lengths.
+- Since the range is small (-8000 to 8000), we can use dynamic programming with a bitset representing reachable sums, limited to 16001 bits (range -8000 to 8000). To fit in hardware, we will process the instruction string and extract move lengths, then use a sequential DP module for each axis.
+
+Module interface:
+- Inputs: `clk`, `rst_n`, `start`, `instruction` (8-bit ASCII char), `target_x` (16-bit signed), `target_y` (16-bit signed).
+- Outputs: `result` (1-bit), `done` (1-bit).
+- Timing: Assert `start` for 1 cycle. `done` asserts when finished. `result` is valid then.
+
+Implementation details:
+1. **Instruction Parsing**: Process the string character by character. Maintain a counter for consecutive 'F's to get move lengths. On each 'T', add the accumulated move length to the appropriate axis list (X or Y) based on turn count parity.
+2. **DP State**: Use a bitset (16001 bits) to track reachable sums. Since this is large for pure combinational logic, we will use a sequential DP where each bit is stored in a flip-flop or memory. We will use a compact representation: for each axis, we have an array `dp[0:16000]` (indexed by sum+offset), but in Verilog, we'll declare it as a 16001-bit reg.
+3. **Sequential Processing**:
+   - Wait for `start`.
+   - Parse the instruction string (embedded in the testbench; in hardware, this would be streamed in).
+   - After parsing, for X-axis: if the first move (if any) is on X, initialize the bit at index `first_move + offset` to 1. Then for each subsequent X-move `d`, shift the bitset left and right by `d` and OR to update (simulating +d and -d).
+   - Repeat for Y-axis, starting from 0.
+   - Finally, check if the target bit is set in the respective bitset (after adjusting for initial offset on X).
+4. **Hardware constraints**: The bitset is 16001 bits, which is feasible in modern FPGAs (uses ~20K LUTs). We'll use a parameter `MAX_SUM = 16000` and `OFFSET = 8000`.
+
+Note: The testbench will provide the instruction string as a sequence of characters. We assume the module processes one character per cycle when `start` is asserted. For simplicity, we will implement a top-level FSM that reads characters sequentially.
+
+Important: The module must handle the string parsing and DP computation efficiently. We will split the problem: first, parse and store moves in two small arrays (max ~4000 moves each, but bounded by 8000 total). Then, run DP on each axis.
+
+Due to space, we will focus on the DP core. The parsing can be done in the testbench, and the move lists are passed to the DP module.
+
+Module: `robot_nav` with parameters for bitset width.
+
+We'll provide a detailed spec for the DP module `subset_sum_dp`:
+- Inputs: `clk`, `rst_n`, `start`, `move_list` (array of up to 4000 moves, but we'll use a fixed-size memory), `target` (signed 16-bit), `is_first_fixed` (boolean, to know if first move is fixed).
+- Output: `reachable` (1-bit).
+- Internal: Bitset `dp` of size 16001 bits. Sequentially processes each move.
+
+We will also provide the top module that connects parsing and DP.
+
+Since the prompt asks for the Verilog spec (not code), we describe the interface and algorithm in detail for implementation.

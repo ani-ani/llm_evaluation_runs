@@ -1,0 +1,37 @@
+You are to implement a Verilog module `bracket_eval` that evaluates a bracket sequence expression modulo `MOD=1000000007`. The expression consists of tokens: integers (0 to 10^9+6) and parentheses `(` and `)`. Parentheses toggle the operation: starting with addition (+), a `(` switches to multiplication (×), and the matching `)` switches back. Evaluation is performed left-to-right. Note that `()` is invalid and will not be provided.
+
+**Interface:**
+- Inputs:
+  - `clk`: Clock signal (rising edge).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start processing a new sequence.
+  - `token_type`: 2-bit signal (0 = integer, 1 = '(' , 2 = ')' ). Valid only when `token_valid` is high.
+  - `token_val`: 32-bit integer value (valid when `token_type` == 0).
+  - `token_valid`: High when the current token is valid.
+  - `token_end`: High to indicate the last token of the sequence has been consumed.
+- Outputs:
+  - `result`: 32-bit output result (valid when `done` is high).
+  - `done`: 1-cycle pulse indicating evaluation is complete and `result` is valid.
+  - `ready`: High when the module is ready to accept the next token.
+
+**Timing & Behavior:**
+- **Reset**: Clears internal state (stack, accumulator). `ready` = 1, `done` = 0, `result` = 0 after reset.
+- **Start**: Assert `start` for 1 cycle when `ready` is high. The module sets `ready` low immediately after `start`. The first token should be presented on the next cycle.
+- **Token Processing**: 
+  - The module processes tokens sequentially on rising edges when `token_valid` is high.
+  - It must handle arbitrary sequence length, but for benchmarking, assume the sequence length is bounded such that the stack depth does not exceed 16 (or internal buffer size).
+  - Integers are accumulated into the current accumulator based on the current operation (top of stack or initial add).
+  - `(` pushes the current operation to the stack and switches to multiplication (except if the stack is full).
+  - `)` pops the operation from the stack and restores the previous operation. If `token_end` is high simultaneously with `)`, the module processes the `)` and then asserts `done`.
+  - The module asserts `ready` low while processing and waits for `token_valid`. If `token_end` is high, processing finishes and `done` is asserted after a short latency (e.g., 1-2 cycles).
+- **Constraints**:
+  - Depth: Stack depth limited to 16 levels.
+  - Values: Input integers < 2^32. Output modulo 10^9+7. Use 64-bit intermediate storage to prevent overflow during multiplication.
+  - Latency: `start` to `done` should be within 1000 cycles for sequences of length ≤ 64.
+
+**Implementation Strategy:**
+Design a finite state machine (FSM) with a stack array. The stack stores the previous operation (0 for add, 1 for mul). Maintain a 64-bit accumulator. On `start`, initialize accumulator to 0 and operation to 0 (add). Process tokens sequentially:
+1. If `token_type` is 0 (number): If operation is add, `accum = (accum + val) % MOD`. If mul, `accum = (accum * val) % MOD`.
+2. If `token_type` is 1 ('('): Push current operation to stack. Set operation to 1 (mul).
+3. If `token_type` is 2 (')'): Pop operation from stack. Set current operation to popped value.
+When `token_end` is high, finalize the accumulator (ensure modulo applied) and assert `done`.

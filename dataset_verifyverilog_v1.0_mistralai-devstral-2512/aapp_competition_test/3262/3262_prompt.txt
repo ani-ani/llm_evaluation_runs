@@ -1,0 +1,33 @@
+Implement a Verilog module that computes the minimum number of vehicles required for a delivery network. Constraints: N <= 16 junctions, M <= 64 edges, C <= 15 clients. Weights W are 16-bit unsigned integers (0-65535). The warehouse is at junction 0. Clients are distinct junctions in 1..N-1. A truck must visit clients in order of increasing shortest-path distance from warehouse to ensure arrival at time T_i. The problem reduces to finding the minimum number of paths in a DAG where an edge exists from client A to client B if shortest_path(A, B) + dist_to[A] == dist_to[B]. The answer is C - (size of maximum matching in this DAG).
+
+Interface:
+Inputs:
+  clk: 1-bit, rising edge
+  rst_n: 1-bit, active-low synchronous reset
+  start: 1-bit, 1-cycle pulse to start computation
+  N: 4-bit (0-15, number of nodes)
+  C: 4-bit (0-15, number of clients)
+  client_idx[0:14]: 15x4-bit array (indices of clients, valid up to C)
+  edge_u[0:63]: 64x4-bit array (source junction)
+  edge_v[0:63]: 64x4-bit array (dest junction)
+  edge_w[0:63]: 64x16-bit array (edge weight)
+  valid_edges: 6-bit (number of valid edges in 0-63)
+Outputs:
+  result: 4-bit (minimum trucks, 1-15)
+  done: 1-bit, 1-cycle pulse when valid
+  error: 1-bit (if invalid input or unreachable)
+
+Implementation Details:
+1. Store adjacency matrix dist[N][N] initialized to 0xFFFF (inf), dist[i][i]=0.
+2. Load edges: dist[u][v] = w (truncate if w > 65535).
+3. Compute All-Pairs Shortest Paths (APSP) using Floyd-Warshall (N<=16, 4096 cycles).
+4. Validate reachability: for each client c, dist[0][c] must not be INF (0xFFFF). If unreachable, set error=1.
+5. Extract dist_to[client]: dist_to[i] = dist[0][client_idx[i]].
+6. Build DAG adjacency: for i,j in 0..C-1, if dist[0][client_idx[i]] + dist[client_idx[i]][client_idx[j]] == dist[0][client_idx[j]], then there is a directed edge i->j in DAG.
+7. Compute Maximum Bipartite Matching (C <= 15): Left side = clients, Right side = clients. Use standard DFS augmenting path algorithm (worst-case O(C*E) ~ 15*225 = 3375 cycles). Iterate left nodes 0..C-1, try to match via DFS on adjacency matrix.
+8. Result = C - match_count.
+9. Reset: done=0, result=0, error=0. Start triggers state machine. Clock domain sync.
+
+Timing: APSP ~4096 cycles, Matching ~4000 cycles, Total < 10k cycles at 100MHz (~100us). State machine must handle pipeline stages.
+
+Note: Use 16-bit weights, 4-bit indices. Clamping: any input weight >65535 is capped to 65535. Index bounds: 0-15. Edges list length is valid_edges (0-64).

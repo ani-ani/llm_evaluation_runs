@@ -1,0 +1,55 @@
+Implement a Verilog module that transforms one graph into another using vertex rotation operations. The graph has N vertices (3 ≤ N ≤ 50) and M edges (0 ≤ M ≤ N(N-1)/2). Each vertex i has two operations: RED (rotate neighbors clockwise) and GREEN (rotate neighbors counter-clockwise). The module must output a sequence of at most 250,000 operations (R i or G i) that transforms the initial graph state to the target graph state.
+
+**Interface Specification:**
+- Inputs:
+  - clk: Clock signal (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - N: 6-bit unsigned (3-50)
+  - M: 11-bit unsigned (0-1225)
+  - current_edges[0:1224]: 1225-bit array (packed), where bit k = 1 if edge k exists (edge k = (i,j) where i*N + j, i<j)
+  - target_edges[0:1224]: 1225-bit array (packed), where bit k = 1 if edge k should exist
+- Outputs:
+  - seq_out: 8-bit output for sequence (bits 7:6=00 for R, 01 for G; bits 5:0=vertex index)
+  - seq_wr: 1-bit write strobe, indicates seq_out is valid
+  - done: 1-bit, pulses high for 1 cycle when computation is complete
+  - error: 1-bit, pulses if invalid input or timeout
+
+**Behavior Specification:**
+1. On start=1, read current and target edge bitmasks
+2. Perform computation to find transformation sequence
+3. Output operations via seq_out and seq_wr (one per cycle when valid)
+4. Set done=1 when finished
+
+**Computation Strategy:**
+- Implement a simple transformation algorithm: iterate through vertices, use RED/GREEN operations to match edges
+- For each vertex i, compare current neighbor set with target neighbor set
+- Apply RED or GREEN operations to align neighbors
+- Since each operation changes M*2 edges, limit total operations to ≤250000
+- Use a counter to ensure operation limit is not exceeded
+- Output format: seq_out[7:6] = 0 for R, 1 for G; seq_out[5:0] = vertex index
+
+**Constraints:**
+- Maximum 250,000 output operations
+- Each operation takes 1 cycle to output
+- Reset must initialize state to ready
+- Timeout detection if computation exceeds safe cycles
+- All edges are undirected; treat (i,j) and (j,i) as same edge
+
+**Implementation Notes:**
+- Use fixed-size arrays: max 50 vertices, 1225 edges
+- Encode edge existence as 1225-bit vector
+- Implement neighbor comparison logic for each vertex
+- Use bounded loops (max 250000 iterations for operation generation)
+- Handle edge cases: M=0, N=3, identical graphs
+- Output only when seq_wr=1
+
+**Testbench Expectations:**
+- Provide initial graph edges via current_edges
+- Provide target edges via target_edges
+- Provide N and M values
+- Start computation with start=1 pulse
+- Monitor seq_out when seq_wr=1
+- Verify done=1 within 100000 cycles
+- Count output operations and verify ≤250000
+- Verify final graph state matches target (via sequence simulation)

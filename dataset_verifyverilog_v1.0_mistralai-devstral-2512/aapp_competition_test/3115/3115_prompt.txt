@@ -1,0 +1,45 @@
+Implement a Verilog module that checks consistency of tournament results with equality and strict inequality constraints.
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous logic
+  - `start`: 1-cycle pulse to initiate processing
+  - `player_a`: 4-bit input (0-15) for current match
+  - `player_b`: 4-bit input (0-15) for current match
+  - `match_type`: 2-bit input (0='=', 1='>') for current match
+  - `match_valid`: 1-bit input indicating `player_a`, `player_b`, `match_type` are valid
+  - `match_end`: 1-bit input indicating end of input sequence
+- Outputs:
+  - `done`: 1-cycle pulse when processing is complete
+  - `consistent`: 1-bit output, valid when `done=1`. 1=consistent, 0=inconsistent.
+
+**Functional Requirements:**
+1. **State Storage:** Maintain a representation of the constraints for N=16 players.
+   - Use a bitmask for each player to track equality groups (16 x 16-bit registers).
+   - Use an adjacency matrix for strict inequalities (16 x 16-bit registers, directed).
+2. **Input Processing:**
+   - While `match_valid` is high, sample `player_a`, `player_b`, `match_type`.
+   - If `match_type` is '=' (0): Merge the equality groups of both players. Update all members of both groups to share the same bitmask.
+   - If `match_type` is '>' (1): Add a directed edge from `player_a` to `player_b` in the adjacency matrix.
+3. **Consistency Check:**
+   - Triggered when `match_end` goes high.
+   - **Equality Check:** Ensure no player is in an equality group with itself via a strict inequality (i.e., check for `A=B` and `A>B` or `B>A` logic violation). Specifically, if `A=B` and `A>B` exists, it's inconsistent.
+   - **Transitivity/Loop Check:** Perform a cycle detection on the directed graph formed by strict inequalities, but constrained by equality groups. If a cycle exists (e.g., `A>B`, `B>A`), it is inconsistent.
+   - **Conflict Check:** If `A=B` and `A>B` (or `B>A`) is reported, flag inconsistent.
+4. **Output:** Set `consistent` (1 if valid, 0 if any violation found) and pulse `done`.
+
+**Timing & Constraints:**
+- Max 16 players, 32 edges.
+- Throughput: Input `match_valid` can be accepted every cycle.
+- `done` should pulse within 2048 cycles of `match_end`.
+- Reset (active low `rst_n`) clears all storage and sets `consistent` to 1 (default).
+
+**Logic Description:**
+- Use a sequential state machine with states: IDLE, ACCEPT_INPUTS, CHECK_CONSISTENCY, DONE.
+- In ACCEPT_INPUTS: Update registers based on `match_type`.
+- In CHECK_CONSISTENCY: 
+  - Iterate through all pairs of players (i, j).
+  - If i and j are in the same equality group (bitmasks overlap), check if any strict path exists between them in either direction. If so, inconsistent.
+  - Check for direct loops (i > j && j > i).
+  - Check for transitive loops using a simple DFS or Floyd-Warshall logic on the 16-node graph (scaled for size).
+- In DONE: Wait for `start` to reset.

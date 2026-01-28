@@ -1,0 +1,46 @@
+Implement a Verilog module that solves the Yaroslav problem. The problem is: Given `n` (2 ≤ n ≤ 10) and an array of `2*n - 1` integers (scaled to 8-bit signed), determine the maximum possible sum after any number of operations where you flip the sign of exactly `n` elements.
+
+The logic derived from the problem analysis:
+1. The parity of the number of negative elements changes by `2*(n - 2*k)` where `k` is the number of negative elements flipped. Since `n` can be odd or even, the reachable states depend on `n`.
+2. If `n` is odd: You can always flip signs to make all numbers positive. The answer is the sum of absolute values.
+3. If `n` is even: You can flip signs of any subset of elements to change the count of negative numbers by any even number (because flipping `n` even numbers changes parity by an even number). 
+   - If the initial count of negative numbers is even, you can make all numbers positive. Answer is sum of absolute values.
+   - If the initial count of negative numbers is odd, you must leave at least one negative number. To maximize the sum, you pick the number with the smallest absolute value to be the negative one. Answer is `sum(abs) - 2 * min(abs)`.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: System clock (posedge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle start pulse
+  - `n`: 4-bit input (value 2-10)
+  - `data`: 8-bit signed array input (width 8, depth 15 for `n=10` -> `2*10-1=19` elements, but we process sequentially or have a fixed array. Let's use a fixed array of 19 elements of 8 bits each, provided in chunks or loaded sequentially. Given the constraints, let's assume a fixed input buffer. To simplify the interface for HDL generation, let's use a RAM-like interface or a fixed width input. Given the prompt asks for a module spec, let's make it a simple FSM that reads a sequence of `2*n - 1` values on a `data_in` port, with a `valid` signal. This is more scalable than a huge fixed port.
+  - `data_in`: 8-bit signed value
+  - `data_valid`: 1-cycle pulse indicating `data_in` is valid
+
+- Outputs:
+  - `result`: 32-bit signed sum
+  - `done`: 1-cycle pulse indicating calculation is complete
+
+- Internal Logic:
+  - State Machine: IDLE, LOAD, CALCULATE, OUTPUT
+  - Registers:
+    - `sum_abs`: 32-bit accumulator for sum of absolute values
+    - `min_abs`: 16-bit register for minimum absolute value found
+    - `neg_count`: 5-bit counter for number of negative inputs
+    - `idx`: 5-bit counter for current element index
+    - `n_reg`: 4-bit storage for `n`
+    - `total_elements`: 5-bit storage for `2*n - 1`
+  - Logic:
+    - During LOAD: Capture `n`. Then for `2*n - 1` cycles, capture `data_in`.
+      - If `data_in` is negative, increment `neg_count`.
+      - Calculate `abs(data_in)` (negate if MSB is 1).
+      - Add to `sum_abs`.
+      - Compare `abs(data_in)` with `min_abs` and update.
+    - During CALCULATE:
+      - If `n` is odd: Result is `sum_abs`.
+      - If `n` is even:
+        - If `neg_count` is even: Result is `sum_abs`.
+        - If `neg_count` is odd: Result is `sum_abs - 2 * min_abs`.
+    - State transitions: Start -> Load -> (wait for count) -> Calculate -> Output -> Idle.
+
+- Timing: Start high for 1 cycle. Wait for `done` high to read `result`. Reset sets all registers to 0.

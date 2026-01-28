@@ -1,0 +1,38 @@
+Implement a Verilog module that computes the average of cubes of first n natural numbers.
+
+### Interface:
+Inputs:
+  - clk: Clock signal, rising edge triggered
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - n: 8-bit input (n natural number, 1-255)
+
+Outputs:
+  - result: 32-bit output in Q16.16 fixed-point format (16 integer, 16 fractional bits)
+  - done: 1-cycle pulse indicating result is valid
+
+### Functionality:
+1. When start=1, latch n and compute: sum = Σ(i³) for i=1 to n
+2. Compute average = sum / n in Q16.16 format
+3. Round to 6 decimal places by truncating after 16 fractional bits (precision ≈ 1.5e-5)
+4. Output result on Q16.16 format when done=1
+
+### Constraints:
+- n <= 255 (8-bit, max value 255)
+- Maximum cube: 255³ = 16,581,375 (fits in 24 bits)
+- Sum of cubes: max ~17 billion (requires 35 bits, use 36-bit accumulator)
+- Division: Shift-right by n (log2(n) max 8 shifts)
+- Timing: Complete within 256 clock cycles (one iteration per number)
+- Reset: Initialize all registers to 0
+
+### Implementation Details:
+- Use iterative FSM: IDLE -> COMPUTE -> DIVIDE -> DONE
+- Compute sum iteratively in 36-bit accumulator
+- Division: result = (sum << 16) / n using repeated subtraction
+- Rounding: truncated (round to nearest by adding 0.5 and truncating)
+- Pipeline: 1 cycle latch, up to 255 compute cycles, up to 32 divide cycles
+
+### Test Expectations:
+- n=1: result = 1.0 (0x00010000)
+- n=2: result = 4.5 (0x00048000)
+- n=3: result = 12.0 (0x000C0000)

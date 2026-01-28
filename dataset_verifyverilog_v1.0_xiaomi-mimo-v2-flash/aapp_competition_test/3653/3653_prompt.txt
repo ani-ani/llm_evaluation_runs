@@ -1,0 +1,32 @@
+Implement a Verilog module `dog_chain_solver` that calculates the minimum integer chain length `R` such that the accessible area (a circle clipped by an infinite line) is at least `L` square meters. 
+
+**Constraints:**
+- `L` (16-bit unsigned)
+- Wall defined by line passing through (x1, y1) and (x2, y2). Input coordinates are 16-bit signed integers.
+- Output `R` is an integer (16-bit unsigned).
+- Area calculation must be approximated using a resolution of 0.25 square meters (fixed-point Q8.8).
+- Clock frequency: 100 MHz. Timeout: 5000 cycles.
+
+**Algorithm:**
+1. **Precompute/Cycle:** Convert input coordinates to a standard line representation (slope/intercept or normal vector) using integer arithmetic to avoid floating-point errors. Since the wall is infinite, we only need the signed distance from the origin (0,0) to the line. Let this distance be `D`. 
+2. **Binary Search:** Perform a binary search on `R` (range 1 to ~200, since L <= 10000, Pi*200^2 > 10000).
+3. **Area Check:** For a given `R` and distance `D`:
+   - If `D >= R`: The circle does not intersect the wall. Accessible area = `pi * R^2`.
+   - If `D < R`: The circle is clipped. Accessible area = `Area of Circle Segment`. Formula: `Area = R^2 * acos(D/R) - D * sqrt(R^2 - D^2)`.
+   - **Hardware Adaptation:** Since `acos` and `sqrt` are hard, implement an iterative method (Newton-Raphson) or a pre-calculated lookup table (LUT) for the calculation. Given the constraints, a direct integer calculation or small LUT is required.
+   - Simplify: Calculate `Area = 0.5 * R^2 * (theta - sin(theta))` where `theta = 2 * acos(D/R)`. 
+   - Use Q16.16 fixed-point math for intermediate steps.
+4. **Control Flow:** 
+   - `start` pulse initiates the calculation.
+   - State Machine: `IDLE` -> `CALC_DIST` -> `SEARCH_LOOP` (Binary Search) -> `CALC_AREA` (per step) -> `UPDATE_BOUNDS` -> `DONE`.
+   - `done` signal asserts when optimal `R` is found.
+
+**Interface:**
+- Inputs: `clk`, `rst_n`, `start`, `L` (16-bit), `x1`, `y1`, `x2`, `y2` (16-bit signed each).
+- Outputs: `R` (16-bit), `done` (1-bit).
+- Timing: Start-to-done within 5000 clock cycles.
+
+**Implementation Details:**
+- Use 32-bit registers for intermediate calculations (fixed-point).
+- Implement `sqrt` and `acos` approximation using a pipelined binary search or lookup (e.g., 256-entry LUT for angles). 
+- Focus on synthesizable logic; avoid loops with variable bounds.

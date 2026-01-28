@@ -1,0 +1,61 @@
+Design a Verilog module to solve the ticket purchasing problem. The problem is simplified as follows:
+
+**Problem Simplification**:
+- Zones: 0-10 (11 zones total)
+- Trips: Process up to 1000 trips (hard limit for HW)
+- Ticket Cost: 2 + |A-B| for interval [A,B]
+- Ticket Validity: 10000 seconds from purchase
+- Start Zone: Always zone 0
+- Time: Increases monotonically
+
+**Algorithm Adaptation**:
+1. Precompute ticket costs for all 11x11 zone intervals (121 combinations). Store as 16-bit LUT.
+2. State: DP table `dp[prev_zone][current_zone]` = minimum cost. 11x11 entries, 16-bit wide.
+3. Process trips sequentially:
+   - For each trip (target_zone, time), update DP table.
+   - New cost = min over all prev_zones of (dp[prev_zone][current_zone] + transition_cost).
+   - Transition cost: If previous ticket valid (time difference < 10000), cost=0. Else, buy new ticket valid for [min(prev_zone, target_zone), max(...)].
+4. Optimize: Use ping-pong buffer for DP table to avoid read-after-write hazards.
+
+**Module Interface**:
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous control
+  - `start`: 1-cycle pulse to initiate processing
+  - `trip_zone`: 4-bit input (0-10) for current trip zone
+  - `trip_time`: 32-bit input (0-10^9) for current trip time
+  - `trip_valid`: 1-bit input indicating valid trip data on bus
+  - `trip_done`: 1-bit input indicating end of trip stream
+- Outputs:
+  - `ready`: 1-bit output, high when ready for next trip
+  - `min_cost`: 16-bit output, minimum total cost after all trips
+  - `done`: 1-bit output, high for 1 cycle when computation is complete
+
+**Timing & Control**:
+- Reset: Synchronous, active low. Sets `min_cost=0`, `done=0`.
+- Processing: Accepts trips one per cycle when `ready=1` and `trip_valid=1`.
+- Computation: Pipeline the DP update. Latency ~10 cycles per trip.
+- Max Trips: 1000. Exceeding this will overwrite state (overflow behavior).
+
+**Hardware Constraints**:
+- Clock domain: Single clock, rising edge.
+- Data widths: Zones=4b, Time=32b, Cost=16b.
+- Storage: 2x 11x11x16b RAM (DP tables).
+- Logic: Combinational min finder over 11 inputs, adders.
+
+**Implementation Details**:
+1. Ticket Cost LUT: Initialize in reset. Address = {start_zone, end_zone}. Output = cost (2 + diff).
+2. DP State Machine:
+   - IDLE: Wait for start.
+   - FETCH: Load trip data.
+   - CALC: Compute new DP row.
+   - WRITE: Update DP table.
+   - DONE: Assert done.
+3. Validity Check: Compare `trip_time` with `last_ticket_time` (stored in separate register array). If diff < 10000, reuse ticket.
+
+**Testbench Requirements**:
+- Must handle up to 1000 trips.
+- Must verify ticket validity windows (10000s).
+- Must handle zone transitions correctly.
+- Use 32-bit time simulation.
+
+Do not provide the Verilog code. Provide only the detailed specification as requested.

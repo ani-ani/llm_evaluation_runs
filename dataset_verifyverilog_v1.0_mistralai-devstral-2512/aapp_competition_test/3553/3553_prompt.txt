@@ -1,0 +1,57 @@
+Design a Verilog module that processes array updates and queries for the shortest contiguous subarray containing all numbers from 1 to K.
+
+**SCALED PARAMETERS**:
+- N = 16 (maximum array length)
+- K = 8 (maximum distinct values)
+- M = 256 (maximum queries)
+- Value range: 1 to K (clamped)
+- Output: 4-bit (max length 16), or -1 as 15
+
+**INTERFACE SPECIFICATION**:
+
+Inputs:
+  clk: clock (rising edge)
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  query_type: 1-bit (0: update, 1: query)
+  pos: 4-bit position (1-based, 0-15)
+  new_val: 4-bit new value (0-15, clamp to 1-K)
+  current_val_in: 8-bit packed array read from memory (see below)
+
+Outputs:
+  result: 4-bit (0-15 for length, 15 for -1)
+  done: 1-cycle pulse when operation complete
+  addr: 4-bit address for reading array memory
+  write_en: 1-bit write enable for array memory
+  addr_wr: 4-bit address for writing array memory
+  new_val_out: 8-bit value to write to memory
+
+**MEMORY INTERFACE**:
+The array is stored externally as 8-bit values (1-8). The module reads via `current_val_in` using `addr` and writes via `new_val_out` and `addr_wr` when `write_en=1`.
+
+**FUNCTIONALITY**:
+- Reset: done=0, result=0
+- On start:
+  - If query_type=0 (update): Write new_val to position (pos-1), return done=1, result=0
+  - If query_type=1 (query): Scan array to find shortest subarray containing all numbers 1..K
+    - Use sliding window approach with O(N*K) scan
+    - If found: output length (1-16)
+    - If not found: output 15 (representing -1)
+
+**TIMING**:
+- Update: 3 cycles (address out, write, ack)
+- Query: up to 100 cycles for scan
+- Total timeout for query processing: 256 cycles
+
+**IMPLEMENTATION NOTES**:
+- Use fixed-size registers for counts: count[8] for values 1-8
+- Use FSM: IDLE -> READ (for query) -> COMPUTE -> DONE
+- Sliding window: maintain left and right pointers (0-15)
+- Track distinct count and minimum length
+- Return 15 for -1 (since 4-bit output)
+
+**CONSTRAINTS**:
+- Values outside 1-K are clamped to 1
+- If K > available distinct values in array, return 15
+- Array size is fixed at 16, but N may be smaller (use only first N elements)
+- For query, if N < K, immediately return 15

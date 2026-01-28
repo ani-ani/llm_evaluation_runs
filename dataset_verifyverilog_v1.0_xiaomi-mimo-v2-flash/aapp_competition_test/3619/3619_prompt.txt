@@ -1,0 +1,43 @@
+Implement a Verilog module that solves the employee team selection problem under constraints.
+
+**Interface Requirements:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous clock and active-low reset
+  - `start`: 1-cycle high pulse to start computation
+  - `k`: 4-bit integer (1-8)
+  - `n`: 4-bit integer (1-16)
+  - `employee_salary`[0:15]: 16-bit array, Q16.0 format
+  - `employee_productivity`[0:15]: 16-bit array, Q16.0 format
+  - `employee_recommender`[0:15]: 4-bit array
+- **Outputs:**
+  - `result`: 32-bit fixed-point number, Q16.16 format (representing max value)
+  - `done`: 1-cycle high pulse when result is valid
+- **Timing:**
+  - Reset initializes all internal state to 0
+  - `start` initiates computation
+  - Computation must finish within 1024 clock cycles
+  - `done` goes high exactly once when complete
+  - Result is valid only when `done` is high
+
+**Implementation Details:**
+1. **Data Structure:** Use a tree structure where each employee is a node. Since `r < i`, the dependency is a DAG.
+2. **Algorithm:** Implement a simplified DP approach. Iterate through potential ratios (binary search on answer or fixed steps). For each ratio, check if it's possible to pick `k` employees with Sum(Productivity) - Ratio * Sum(Salary) >= 0. This transforms to a Maximum Weight Subset problem on a tree.
+3. **Scaling:**
+   - Max nodes: 16
+   - Max k: 8
+   - Values: Use 16-bit integers for inputs, 32-bit (Q16.16) for accumulators.
+4. **Hardware Logic:**
+   - Since true floating-point division is expensive, implement a fixed-point binary search (12 iterations) to find the optimal ratio.
+   - For the internal check (feasibility), implement a tree DP using a lookup table (LUT) sized for 16 nodes and 8 selections.
+   - The DP state `dp[node][count]` tracks the max value.
+   - The check logic should be a combinational or iterative solver running per search step.
+5. **Root:** The CEO is node 0. We only select from nodes 1 to n. Node 0 acts as the root of the tree. A valid selection must form a connected subtree rooted at node 0 (or contain node 0's children).
+
+**Verilog Spec:**
+Define inputs `clk`, `rst_n`, `start`. Define fixed-point width 32. Define array inputs. Define output `result` (32-bit) and `done`.
+
+**Testbench Constraints:**
+- Create 2 test cases from examples.
+- Use `clamp_to_width` for inputs.
+- Use `fixed_to_float` for output verification.
+- Timeout 1000 cycles.

@@ -1,0 +1,58 @@
+You are to design a Verilog module that solves the "beautiful sequence" problem. The problem reduces to traversing a linear graph of 4 nodes (0-1-2-3) where edges exist only between consecutive integers. The counts of each number (a, b, c, d) represent visit counts to nodes 0, 1, 2, 3 respectively.
+
+## Interface Specification
+
+### Inputs (21 bits total)
+- `clk`: System clock (posedge triggered)
+- `rst_n`: Active-low synchronous reset (must reset for minimum 2 cycles)
+- `start`: 1-cycle pulse to initiate calculation
+- `a[15:0]`: 16-bit unsigned, count of number 0 (max 65535)
+- `b[15:0]`: 16-bit unsigned, count of number 1 (max 65535)
+- `c[15:0]`: 16-bit unsigned, count of number 2 (max 65535)
+- `d[15:0]`: 16-bit unsigned, count of number 3 (max 65535)
+
+### Outputs
+- `result_valid`: 1-bit, asserts high when `result` is valid (stays high until next start)
+- `result[7:0]`: 8-bit unsigned, contains a single element of the sequence (one of 0, 1, 2, 3)
+- `result_index[15:0]`: 16-bit unsigned, index in sequence (0 to total-1)
+- `done`: 1-cycle pulse when entire sequence is output (all numbers used)
+- `impossible`: 1-cycle pulse when no valid sequence exists
+
+## Implementation Requirements
+
+### Algorithm
+1. **State Machine**: Implement a 4-state FSM (STATE_0, STATE_1, STATE_2, STATE_3) representing current position in sequence
+2. **Transition Logic**: From each state, try transitions to adjacent nodes (e.g., from 0→1, from 1→0 or 1→2, from 2→1 or 2→3, from 3→2)
+3. **Greedy Strategy**: At each step, prioritize transitions that don't lead to dead ends:
+   - From 0: only option is 1 (if count > 0)
+   - From 1: prefer direction where adjacent node has higher count (0→2→3 vs 2→0→3)
+   - From 2: prefer direction where adjacent node has higher count (3→1→0 vs 1→3→0)
+   - From 3: only option is 2 (if count > 0)
+4. **Validation**: Check if valid sequence exists before starting (necessary condition: |a - b + c - d| ≤ 2, with special cases for endpoints)
+
+### Output Format
+- Output sequence one element per clock cycle when `result_valid` is high
+- `result_index` increments by 1 each cycle when `result_valid` is high
+- Assert `done` for 1 cycle when `result_index == (a+b+c+d)-1` and all counts consumed
+- Assert `impossible` if no valid sequence can be constructed (after validating inputs)
+
+### Timing
+- Start-to-first-result: ≤ 10 cycles
+- Clock cycles per element output: 1 cycle
+- Maximum sequence length: 100,000 elements (total counts)
+- Maximum runtime: 100,050 cycles
+
+### Reset Behavior
+- After reset: `result_valid=0`, `result_index=0`, `done=0`, `impossible=0`, state=IDLE
+
+### Design Constraints
+- All internal counters must be 16-bit
+- Must handle edge cases: single element sequences, sequences with only 0-1, only 2-3, etc.
+- Module must be synthesizable and use minimal resources
+- No external memory required - counts stored in registers
+
+### Verification Notes
+- Testbench must verify sequence validity: consecutive elements differ by exactly 1
+- Testbench must verify correct counts: exactly `a` 0s, `b` 1s, `c` 2s, `d` 3s
+- Testbench must verify `impossible` signal for invalid cases
+- Testbench must verify `done` signal timing

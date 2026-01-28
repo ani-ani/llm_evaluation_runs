@@ -1,0 +1,34 @@
+Implement a Verilog module that computes the MAD (Median of All Densities) for a fixed grid. The module processes an 8x8 grid of 8-bit unsigned integer values (statisticians per cell). The rectangle area range is constrained to [a, b] where a and b are 6-bit values (max 64). The density for each valid rectangle is calculated as the sum of statisticians in that rectangle divided by the rectangle area (number of cells). Since the output requires absolute error < 1e-3, use fixed-point arithmetic: represent numbers as 32-bit integers with 16 fractional bits (Q16.16 format). All intermediate sums and products must be computed in 32-bit registers. The module should have the following interface:
+
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to initiate computation
+  grid[8][8]: 8x8 array of 8-bit unsigned integers (indexed as grid[row][col])
+  a_min: 6-bit unsigned minimum rectangle area
+  a_max: 6-bit unsigned maximum rectangle area
+
+Outputs:
+  result: 32-bit signed Q16.16 fixed-point number representing the MAD (median density)
+  done: 1-cycle pulse indicating valid result
+
+Behavior:
+  1. On reset, internal state is cleared, done=0, result=0.
+  2. On start, the module enumerates all possible axis-aligned rectangles within the 8x8 grid whose area (width*height) is within [a_min, a_max].
+  3. For each valid rectangle, compute the total statisticians (sum of grid cells) and the area (width*height).
+  4. Compute the density: total_statisticians / area. Since division is not native in hardware, compute (total_statisticians * FIXED_POINT_SCALE) / area, where FIXED_POINT_SCALE = 65536 (2^16).
+  5. Collect all densities into an array. The maximum number of rectangles is bounded (8x8 grid, max 64 areas, approx 1000 rectangles).
+  6. Sort the array of densities (use a sorting network or bubble sort for up to 1024 elements; simplify to a priority queue or selection algorithm if needed).
+  7. Find the median: if count is odd, take the middle element; if even, take the average of the two middle elements (use fixed-point addition and division by 2).
+  8. Output the median as a 32-bit Q16.16 number, pulse done for one cycle.
+
+Timing: start->done within 10000 cycles. Internal counters must have sufficient width. Use a state machine: IDLE -> GENERATE_RECTANGLES -> COMPUTE_DENSITIES -> SORT -> MEDIAN -> DONE.
+
+Simplifications:
+  - Grid size is fixed 8x8.
+  - Maximum number of densities is fixed (e.g., 1024 depth). Implement a storage buffer (SRAM or register array) of 1024 x 32-bit.
+  - Sorting: use a simple bubble sort or a priority queue with fixed iterations.
+  - Division: use iterative subtraction (restoring division) for fixed-point.
+  - No dynamic memory; all loops bounded by constants.
+
+The module should be synthesizable.

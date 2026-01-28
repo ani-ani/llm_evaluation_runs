@@ -1,0 +1,36 @@
+Implement a Verilog module to find the maximum number of Pokemon that can be taken such that their gcd > 1.
+
+Problem Simplification:
+- Input strengths s_i are in range [1, 100000].
+- We need to find a divisor d > 1 such that the count of multiples of d in the input array is maximized.
+- Since strengths are large, we map them to a fixed range using a hash function (modulus) to fit into hardware.
+- Specifically, map each strength s to index = s % 256 (8-bit index).
+- We maintain a frequency table `freq[256]` which counts occurrences of each mapped index.
+- For each candidate divisor `d` from 2 to 255:
+  - Calculate `count = sum(freq[k] for k in [d, 2d, 3d, ... <= 255])`.
+- The answer is `max(1, max(count))`. Note: If input has only '1's, answer is 1 (though problem implies k>1, usually means take at least 1).
+
+Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  n: 8-bit integer (number of Pokemon, max 255)
+  s_i: 8-bit input data stream (values 0..255, mapping of original strengths)
+Outputs:
+  result: 8-bit maximum count
+  done: 1-cycle pulse when result is valid
+
+Timing:
+  Reset (rst_n=0): Clears all counters and state. `done` = 0.
+  Start (start=1): Latches `n`. Transitions to processing state.
+  Processing: Reads `n` values from stream `s_i`. Updates frequency table `freq[0..255]`. Calculates maximum multiples.
+  Done: Sets `result` and asserts `done` for 1 cycle. Returns to idle.
+  Limit: Processing must finish within 2000 cycles.
+
+Implementation Details:
+1. Frequency Table: `freq[0:255]` (8-bit counters, max count 255).
+2. Read State: Read `n` cycles. `freq[s_i]++`. Handle overflow by clamping to 255.
+3. Calculation State: Iterate `d` from 2 to 255. For each `d`, iterate multiples `m` = `d`, `2d`, ..., `<= 255`. Sum `freq[m]` into a temporary counter.
+4. Update `max_count` if temporary > current max.
+5. Output: `result` = max(1, max_count).

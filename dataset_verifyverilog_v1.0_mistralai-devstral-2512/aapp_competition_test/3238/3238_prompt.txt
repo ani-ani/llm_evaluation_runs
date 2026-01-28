@@ -1,0 +1,54 @@
+Design a Verilog module that detects the fold line in a digital image of gold leaf. The image is a 25x25 grid of bits (1='#', 0='.'), with dimensions n and m (2-25). The fold can be horizontal (between rows), vertical (between columns), or diagonal (45° or 135° through cells). For diagonal folds, the fold line cells are always '#'.
+
+Inputs:
+  clk: Clock
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  n, m: 4-bit unsigned integers indicating image dimensions (n rows, m columns)
+  pixel_in: 1-bit pixel data input (pumped in row-major order)
+  pixel_valid: 1-bit input indicating pixel_in is valid
+
+Outputs:
+  r1, c1, r2, c2: 5-bit unsigned coordinates (1-indexed) of fold edge points
+  done: 1-cycle pulse when valid coordinates are output
+
+Internal:
+  Memory: 25x25x1-bit array (reg) to store image
+  Processing: 
+    1. Store pixels when pixel_valid=1
+    2. Upon 'start', iterate through possible fold types and positions
+    3. For each candidate, check if folding (reflection) maps all pixels correctly
+    4. Select best match (smallest r1, c1, r2, c2 lexicographically)
+
+Timing:
+  Reset: Clears memory, done=0
+  Input: Accept pixels for n*m cycles
+  Compute: Check ~500 fold candidates (25 horiz, 25 vert, ~100 diag each), ~625 ops per candidate
+  Total: < 10,000 cycles per test case
+
+Constraints:
+  Max n,m: 25
+  Coordinates: 1 to 25
+  Diagonal cells: Always '#' when fold passes through
+  For horiz/vert: fold between grid cells
+  For diag: fold through cell centers
+
+Rule:
+  For horizontal fold between rows r and r+1: output (r,1) (r,m)
+  For vertical fold between cols c and c+1: output (1,c) (n,c)
+  For diagonal 45° (top-left to bottom-right): output edge pixels the fold line touches
+  For diagonal 135° (top-right to bottom-left): output edge pixels the fold line touches
+
+Verification:
+  Pixel on one side maps to pixel on other side via reflection
+  If mapped pixel is out of bounds, original must be '#' (stuck to itself)
+  If mapped pixel is in bounds, it must match or original must be '#' (gold sticks to itself)
+
+Implementation: 
+  Use 2D array sram[24:0][24:0] (indices 0-24 for 0-based, convert to 1-based output)
+  State machine: IDLE -> INPUT -> FIND_FOLD -> OUTPUT
+  Iterate candidates: nested loops for fold_type (0-3), pos (0-24)
+  Check function: Combinational loop over all pixels (25x25 max) for each candidate
+  Keep best candidate when match found
+
+Note: This is a brute-force search; implement with clear state transitions and bounded counters.

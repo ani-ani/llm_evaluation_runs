@@ -1,0 +1,59 @@
+Implement a Verilog module that computes the minimum transmission cost of connecting two trees. Given two trees A (N nodes) and B (M nodes), the cost is sum of squared path lengths between all pairs. Connecting a node u in A and v in B adds paths between all nodes in A and all nodes in B via the new edge, plus the internal costs of A and B. The total cost is: Cost(A) + Cost(B) + Sum_{a in A} Sum_{b in B} (dist_A(root, a) + 1 + dist_B(root, b))^2. The optimal connection minimizes the cross term. Scale N, M to max 12. Use 32-bit arithmetic. Nodes are 1-indexed in input, but map to 0-indexed internally. Assume tree structure is provided as adjacency lists.
+
+Inputs:
+  clk: Clock (rising edge)
+  rst_n: Active-low async reset
+  start: 1-cycle pulse to start computation
+  N: 4-bit input (number of nodes in tree A)
+  M: 4-bit input (number of nodes in tree B)
+  edge_u, edge_v: 4-bit inputs (u,v of edges, streamed sequentially)
+  tree_sel: 1-bit input (0 for tree A, 1 for tree B) accompanying edge inputs
+  edge_valid: 1-bit input (valid when edge data is ready)
+
+Outputs:
+  result: 32-bit output (minimum transmission cost)
+  done: 1-cycle pulse when result is valid
+  ready: 1-bit output (high when ready to accept start)
+
+Behavior:
+1. Reset: done=0, result=0, ready=1. State machine idle.
+2. On start: Assert ready=0. Wait for edge_valid inputs to fill adjacency lists. Since N, M <= 12, store edges in BRAM-like arrays (max 12 nodes, max 11 edges per tree). Use a counter to track edges received.
+3. Once both trees are defined (edges N-1 and M-1 received), trigger computation.
+4. Computation Steps (FSM):
+   a. Compute Size and Sum of Distances for Tree A from node 0 (or any root). Iterate BFS/DFS up to depth 12. Calculate size[i] and sum_dist[i].
+   b. Compute Internal Cost of A: Sum_{pairs in A} (dist)^2. Formula: 2 * sum_{(u,v) edges} size_subtree * (N - size_subtree). Iterate edges.
+   c. Similarly for Tree B.
+   d. Compute cross term: For each node a in A (0 to N-1), compute cost contribution to B. Let D_A = sum_dist[a]. Need min over b in B of (D_A + 1 + D_B)^2 summed over b. Minimizing sum of squares w.r.t D_B is done by picking median or close to median D_B. Since we need exact min, iterate all b in B (max 12). 
+   e. Accumulate total cost in 32-bit register. Clamp values to 32-bit.
+   f. Output result and assert done.
+
+Timing: Start to done within 1000 cycles. Reset takes 2 cycles. Use 10ns clock period.
+
+Constraints:
+- Node count N, M <= 12.
+- Path lengths <= 12. Squares <= 144. Sum of squares < 2^32.
+- Use iterative loops, no recursion.
+- Arrays for adjacency: max degree 11. Store as fixed size or linked list in arrays.
+
+Implementation Details:
+- Define internal memory for Tree A: adj_A[12][12] (or flat). degree_A[12].
+- Define internal memory for Tree B: adj_B[12][12]. degree_B[12].
+- Use a standard DFS stack (array-based) to compute distances and sizes.
+- Be careful with 0-index vs 1-index. Input is 1-indexed, convert to 0-index.
+- Use 32-bit arithmetic for all sums.
+
+Verilog Module Interface:
+module network_cost_minimizer (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] N,
+    input wire [3:0] M,
+    input wire [3:0] edge_u,
+    input wire [3:0] edge_v,
+    input wire tree_sel, // 0: A, 1: B
+    input wire edge_valid,
+    output reg [31:0] result,
+    output reg done,
+    output reg ready
+);

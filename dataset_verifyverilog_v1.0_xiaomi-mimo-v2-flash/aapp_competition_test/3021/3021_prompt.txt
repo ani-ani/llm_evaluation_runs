@@ -1,0 +1,24 @@
+Design a Verilog module that infers the lexicographical order of an alphabet given an ordered list of words. The alphabet characters range from 'a' to 'L', where L is the highest character appearing (mapped to nodes 0..15). The input list contains N pairs of consecutive words (N <= 16) derived from an external processor, provided as two fixed-size arrays: `word1` (16x8-bit) and `word2` (16x8-bit). The module should implement a topological sort using a state machine.
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous signals.
+  - `start`: 1-cycle pulse to initiate processing.
+  - `word1_arr`: 2D array [15:0][7:0], the first word in each pair.
+  - `word2_arr`: 2D array [15:0][7:0], the second word in each pair.
+  - `num_pairs`: 4-bit input indicating how many pairs to process (N).
+  - `max_char_idx`: 4-bit input (0-15) representing (L - 'a').
+- Outputs:
+  - `result_order`: 64-bit packed output (4 bits per character, max 16 chars).
+  - `status`: 3-bit output (0: Valid, 1: Impossible, 2: Ambiguous).
+  - `done`: 1-cycle pulse when processing finishes.
+
+**Logic:**
+1. **Edge Extraction**: For each pair (w1, w2), scan characters until a mismatch is found. If w1 is a prefix of w2, it's valid (no edge). If w2 is a prefix of w1, it's invalid (Impossible). Otherwise, record a directed edge from char(w1) to char(w2) in an adjacency matrix (16x16 bits).
+2. **Cycle Detection (Impossible)**: Use DFS or iterative Kahn's algorithm. If a cycle is detected in the graph, assert `status = 1`.
+3. **Topological Sort**: Perform Kahn's algorithm. Maintain an array of degrees. Push nodes with 0 degree to a queue. Extract nodes and append to result. If multiple nodes have 0 degree at the same step, set an ambiguity flag (`status = 2`).
+4. **Completion**: If no cycle and exactly `max_char_idx + 1` nodes are sorted, output the order (packed into `result_order`). If not all nodes are reachable, status remains 2 (Ambiguous) unless `max_char_idx` is fully covered.
+
+**Constraints:**
+- Max clock cycles: 1000.
+- Use blocking assignments for FSM state updates.

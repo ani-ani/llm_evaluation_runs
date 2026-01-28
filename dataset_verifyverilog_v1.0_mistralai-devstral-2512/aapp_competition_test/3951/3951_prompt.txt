@@ -1,0 +1,49 @@
+Design a Verilog module `gcd_table_solver` that reconstructs an array from its GCD table.
+
+**Core Algorithm**: Process GCD table entries sequentially, maintaining a counter of GCD frequencies. Iterate through values in descending order. For each candidate value, if its counter is > 0, add it to the result array and decrement counters for all pairwise GCDs with existing results.
+
+**Constraints**:
+- Maximum array size n = 16 (4-bit input)
+- Maximum GCD table size = 256 entries (16x16)
+- Input numbers: 32-bit unsigned integers
+- GCD computation: Use Euclidean algorithm (iterative, bounded)
+- Throughput: Process one GCD entry per clock cycle
+- Latency: Finish within 4096 cycles (max 256 entries * 16 processing overhead)
+
+**Interface**:
+- Inputs:
+  - `clk`: Clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `num_valid`: 1 when next GCD table entry is valid
+  - `num_in`: 32-bit input value from GCD table stream
+  - `table_len`: 8-bit (0-255) indicating total entries
+
+- Outputs:
+  - `result_valid`: 1-cycle pulse when complete array is ready
+  - `result_array[15:0][31:0]`: 16-element array of reconstructed values
+  - `result_len`: 4-bit length of array
+  - `busy`: 1 while processing
+  - `done`: 1 when result is valid (single cycle)
+
+**Control Flow**:
+1. Start pulse: Initiate processing
+2. Accumulate 256 GCD table entries into internal buffer (two-port RAM)
+3. Once full, begin reconstruction phase
+4. Sort values (descending) - use network sort for ≤16 unique values
+5. For each candidate: check counter, compute GCDs with current results, decrement counters
+6. Output result when n elements collected
+
+**Implementation Details**:
+- Use parameterized FIFO for input buffering (256x32-bit)
+- GCD unit: iterative subtraction/modulo, max 32 iterations
+- Counter table: 256-entry RAM for frequency tracking
+- Result array: 16x32-bit registers
+- State machine: IDLE → ACCUMULATE → RECONSTRUCT → COMPLETE
+
+**Timing**:
+- Start to Accumulate complete: 256 cycles
+- Reconstruct phase: ≤4096 cycles
+- Total worst-case: <5000 cycles
+
+**Reset Behavior**: All outputs (result, done, result_len) reset to zero, busy=0.

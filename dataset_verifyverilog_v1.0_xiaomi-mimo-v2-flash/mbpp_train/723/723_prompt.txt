@@ -1,0 +1,36 @@
+Design a Verilog module that counts matching elements between two arrays. The core operation is element-wise equality comparison using a combinatorial comparator tree, with a synchronous counter accumulation. The arrays contain signed 8-bit values.
+
+### Interface Specification:
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `arr1_i[0:7]`: 8x8-bit array (first input vector, signed)
+- `arr2_i[0:7]`: 8x8-bit array (second input vector, signed)
+- `len`: 4-bit unsigned integer indicating array length (1-8)
+
+**Outputs:**
+- `result`: 16-bit unsigned integer (matching count)
+- `done`: 1-cycle pulse (asserted when result is valid)
+
+### Functional Requirements:
+1. **Input**: Two arrays of signed 8-bit values, maximum length 8. The `len` input specifies actual length.
+2. **Operation**: For indices 0 to `len-1`, compare `arr1_i[i]` with `arr2_i[i]` using equality (==). Count matches.
+3. **Timing**: On `start` pulse, reset `result` to 0. Process comparisons over 1-8 clock cycles (one index per cycle). Assert `done` after last index is processed. Result should be available when `done` is high.
+4. **Reset**: On `rst_n=0`, `result` resets to 0, `done` resets to 0. Requires minimum 2 clock cycles for reset stabilization.
+5. **Data Widths**: 
+   - Inputs: 8-bit signed (range -128 to 127)
+   - Length: 4-bit (0-7, but usage 1-8)
+   - Output: 16-bit unsigned (max 8 matches)
+6. **Implementation**: Use a finite state machine (FSM) with IDLE and COMPARE states. Use a counter for index tracking. Implement a combinatorial equality comparator (wire level) for each bit position. Use an accumulator register for the count.
+7. **Constraint**: Maximum array length is 8. The module should handle any `len` <= 8.
+8. **Reset Timing**: `done` signal must be 0 during reset and during processing. It should be a single-cycle pulse.
+9. **Clock Domain**: Single synchronous design.
+10. **Output Timing**: `result` is valid only when `done` is high.
+
+### Specific Signal Details:
+- `len`: 4-bit unsigned. If `len` is 0, result should be 0 and done should pulse immediately or after one cycle (implementation specific, but must be consistent).
+- `arr1_i` and `arr2_i`: Indexable arrays `arr1_i[0]`, `arr1_i[1]`, ..., `arr1_i[7]`. Each element is 8 bits wide.
+- `result`: Accumulated count of equal pairs.
+- `done`: Pulsed for 1 cycle when comparison of all `len` elements is complete.

@@ -1,0 +1,35 @@
+Module Specification: Fog Coverage Counter
+
+Problem: Simulate fog catching nets on a 16x16 grid. Fogs are axis-aligned rectangles appearing on specific days. Nets are added daily to cover missed fogs. Count total missed fogs.
+
+Constraints:
+- Grid: 16x16 cells (coordinates 0-15).
+- Max originators: 10. Max total fogs: 50.
+- Inputs: All fogs are pre-generated and provided as a stream.
+
+Interface:
+- Inputs:
+  - clk, rst_n: Standard synchronous reset.
+  - start: 1-cycle pulse to start simulation.
+  - fog_valid: Input handshake indicating valid fog data.
+  - fog_day[7:0]: Day of fog appearance (8-bit).
+  - fog_x1[3:0], fog_x2[3:0]: X-interval (left, right inclusive, 0-15).
+  - fog_y1[3:0], fog_y2[3:0]: Y-interval (bottom, top inclusive, 0-15).
+- Outputs:
+  - result[7:0]: Total count of missed fogs.
+  - done: 1-cycle pulse when simulation finishes.
+
+Behavior:
+1. When start=1, reset internal state (net coverage grid and counter).
+2. Process fogs in order of arrival (streamed in via fog_valid).
+   - For each fog, check if the rectangle [x1,x2]x[y1,y2] is fully covered by the current net grid.
+   - If fully covered: Do nothing.
+   - If not fully covered: Increment result counter. Update the net grid by setting all cells in the rectangle to 1 (covered).
+3. When input stream ends (simulated by external testbench), assert done.
+
+Implementation details:
+- Use a 256-bit register (16x16) to store net coverage. '1' means covered.
+- Logic to check rectangle coverage: Read bits from the register based on coordinates. If any bit is 0, missed.
+- Logic to update coverage: Set bits in the rectangle to 1.
+- Day ordering: The testbench will stream fogs sorted by day.
+- Note: 'Day' in this simplified spec acts as a timestamp for sorting, but the simulation logic only relies on the order of arrival.

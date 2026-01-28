@@ -1,0 +1,33 @@
+Design a Verilog module `xorbonacci_query` that computes the XOR prefix sum of a linear recurrence sequence.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`, `rst_n`: Clock and active-low synchronous reset
+  - `start`: 1-cycle pulse to start query processing
+  - `k`: 4-bit integer (1 to 15), number of initial terms and recurrence depth
+  - `init`: 64-bit initial vector (concatenation of first K terms, 4 bits per term for K=16 max)
+  - `l`, `r`: 64-bit integers representing query range
+- **Outputs:**
+  - `result`: 64-bit XOR sum of x_l through x_r
+  - `done`: 1-cycle pulse when result is valid
+
+**Functional Requirements:**
+1. **Scaling:** K is limited to 8 for synthesis feasibility. The initial terms must fit within 8 bits each (scaled from original 64-bit input).
+2. **Algorithm:** Use binary matrix exponentiation to compute the linear transformation T^n for the recurrence. The state vector size is K (max 8). The transition matrix T is a KxK binary matrix.
+3. **Query Processing:** For each query (l, r), compute the prefix XOR sum from 1 to r, and from 1 to l-1, then XOR them: Result = Prefix(r) XOR Prefix(l-1).
+4. **Matrix Multiplication:** Implement a combinational block for 8x8 binary matrix multiplication (GF(2)).
+5. **Exponentiation:** Use a sequential shift-and-multiply approach for matrix exponentiation (up to 64 iterations for 64-bit exponents).
+6. **Fixed-point analogy:** Treat numbers as bit-vectors. No floating point used.
+7. **Timing:** The pipeline depth should handle the sequence calculation within 2000 cycles.
+8. **Reset:** Clear all internal states and counters. `done` and `result` must be 0 on reset.
+
+**Internal Architecture Hint:**
+- Use a control FSM to manage start, calculation for L-1, calculation for R, and final XOR.
+- For K=8, store the initial 8 terms in a register array.
+- Implement a combinational matrix multiplier for GF(2) (XOR gates for accumulation, AND gates for multiplication).
+- Use a 64-bit counter for the exponentiation loop.
+
+**Constraints:**
+- Max K = 8 (hardcoded parameter).
+- Input numbers scaled to 8-bit (values 0-255).
+- Cycle budget: 2000 cycles max per query.

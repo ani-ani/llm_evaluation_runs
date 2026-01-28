@@ -1,0 +1,30 @@
+Implement a Verilog module that computes the sum of all values in a dictionary-like data structure. Since Verilog doesn't support dictionaries natively, model the dictionary as two parallel arrays: one for keys (8-bit) and one for values (16-bit), with a maximum of 8 key-value pairs. The module should sequentially iterate through the arrays, summing the values corresponding to valid entries (where the key is not all zeros). The algorithm is: 1) Initialize sum to 0, 2) Loop through indices 0-7, 3) For each index, if key != 0, add the corresponding value to the sum, 4) Return the total sum.
+
+**Interface Specification:**
+- **Clock & Reset:**
+  - `clk`: Rising-edge clock input
+  - `rst_n`: Active-low synchronous reset input (clears state)
+  - `start`: 1-cycle pulse to initiate calculation (must be held until done=1)
+- **Inputs:**
+  - `keys[7:0][7:0]`: 8x8-bit array for keys (8 entries, 8 bits each). Key value of 0 indicates invalid/empty entry.
+  - `values[7:0][15:0]`: 8x16-bit array for corresponding values (unsigned).
+  - `len`: 4-bit input specifying actual number of entries (0-8). Only first `len` entries are valid.
+- **Outputs:**
+  - `result[15:0]`: 16-bit output representing the sum of all valid values.
+  - `done`: 1-cycle high pulse when calculation completes and result is valid.
+- **Timing:**
+  - After `start` pulse, `done` should assert within 20 cycles (1 cycle per iteration + overhead).
+  - `result` should be valid when `done` is high.
+  - On reset (`rst_n=0`), `done` and `result` should be 0.
+- **Implementation Details:**
+  - Use a Finite State Machine (FSM) with states: IDLE, SUM, DONE.
+  - Use a 3-bit index counter to iterate through entries (0-7).
+  - Use 16-bit accumulator for sum (supports values up to 65535, sum max 65535).
+  - In IDLE state, wait for `start`. On `start`, load sum=0, index=0, go to SUM state.
+  - In SUM state: if index < `len`, check if `keys[index] != 0`. If true, add `values[index]` to accumulator. Increment index. If index >= `len`, go to DONE state.
+  - In DONE state: assert `done` for one cycle, then return to IDLE on next clock.
+  - If `len` is 0, immediately go to DONE with result=0.
+- **Key Constraint:**
+  - Only the first `len` entries in keys/values arrays are considered valid.
+  - All arrays must be accessed sequentially by index, not in parallel.
+  - The module must handle sequential computation within 20 cycles for any input.

@@ -1,0 +1,93 @@
+You are to design a Verilog module that removes consecutive duplicates from an array of 8-bit values. The module should implement a state machine that processes the input array in sequence and outputs elements where each consecutive duplicate is removed. The module should handle arrays of up to 16 elements.
+
+## Module Specification
+
+### Interface
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate processing
+- `input_data[0:15]`: 16-element array of 8-bit unsigned values
+- `input_len`: 4-bit value (1-16) indicating actual number of elements in input_data
+
+**Outputs:**
+- `output_data[0:15]`: 16-element array of 8-bit unsigned values (padded with zeros if fewer than 16 elements in result)
+- `output_len`: 4-bit value indicating number of valid elements in output_data
+- `done`: 1-cycle pulse when processing is complete
+
+### Functionality
+
+1. **Reset:** On reset (rst_n=0), `done` should be 0, `output_len` should be 0, and `output_data` should be all zeros.
+
+2. **Processing:**
+   - When `start` is asserted, begin processing the input array.
+   - Process `input_data` from index 0 to `input_len-1`.
+   - For each element at index `i` (where `i >= 1`):
+     - Compare `input_data[i]` with `input_data[i-1]`
+     - If they are different, add `input_data[i]` to the output array
+     - If they are equal (consecutive duplicate), skip it
+   - The first element (`input_data[0]`) is always included in the output.
+
+3. **Output Format:**
+   - `output_data` should contain the deduplicated sequence starting from index 0.
+   - `output_len` should contain the count of valid elements (≤ `input_len`).
+   - Any positions in `output_data` beyond `output_len` should be zero.
+
+4. **Timing:**
+   - Processing should complete within 32 clock cycles for any input length (≤16).
+   - `done` should be high for exactly one clock cycle when processing completes.
+   - When `done` is high, `output_data` and `output_len` are valid and stable.
+
+### Implementation Notes
+
+- The module should use a simple FSM with the following states:
+  - IDLE: Waiting for `start`
+  - PROCESS: Reading and comparing input elements
+  - DONE: Processing complete
+- Use registers to store the previous element value for comparison.
+- Use a counter to track the current input index and output index.
+- The comparison should be exact 8-bit equality (no bit-width mismatches).
+- Output array indices should be bounded by the maximum output length (≤16).
+
+### Example Test Cases
+
+1. `input_data = [0, 0, 1, 2, 3, 4, 4, 5, 6, 6, 6, 7, 8, 9, 4, 4], input_len = 16`
+   Expected: `output_data = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 4, 0, 0, 0, 0, 0], output_len = 11`
+
+2. `input_data = [10, 10, 15, 19, 18, 18, 17, 26, 26, 17, 18, 10, 0, 0, 0, 0], input_len = 12`
+   Expected: `output_data = [10, 15, 19, 18, 17, 26, 17, 18, 10, 0, 0, 0, 0, 0, 0, 0], output_len = 9`
+
+3. `input_data = ['a', 'a', 'b', 'c', 'd', 'd', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], input_len = 6`
+   Expected: `output_data = ['a', 'b', 'c', 'd', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], output_len = 4`
+   (Where 'a'=97, 'b'=98, 'c'=99, 'd'=100)
+
+### Constraints
+
+- Maximum `input_len`: 16
+- Maximum `output_len`: 16
+- Maximum iterations: 32 cycles
+- All values are 8-bit unsigned integers (ASCII characters are represented as their ASCII codes)
+- No external memory required
+- No dynamic memory allocation
+
+### Required Modules
+
+- Simple finite state machine (FSM) for control
+- 8-bit comparator for equality check
+- 4-bit counters for input and output indices
+- 16x8-bit register array for input buffer (optional, but helpful for simplicity)
+- 16x8-bit register array for output buffer
+- 4-bit register for output length
+
+### Implementation Tips
+
+1. Store input array in a register bank (16x8) when processing starts
+2. Use FSM with 3 states: IDLE (0), PROCESS (1), DONE (2)
+3. In PROCESS state:
+   - Keep a `prev_value` register that stores the previous input element
+   - Compare current input element with `prev_value`
+   - If different, write to `output_data[output_index]` and increment `output_index`
+   - Update `prev_value` with current input element
+   - Increment input index until all elements processed
+4. Set `done` signal in the clock cycle when input index reaches `input_len`

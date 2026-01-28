@@ -1,0 +1,32 @@
+Design a Verilog module that computes the sum of a binary number N (0-255) using the ALU semantics described. The input N is provided via a 8-bit signal `n_in`. The module should have:
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to begin computation
+  n_in: 8-bit input number (0-255)
+
+Outputs:
+  result: 8-bit output value
+  done: 1-cycle pulse when result is valid
+
+Behavior:
+  1. On reset (`rst_n=0`), set all internal registers (A, X, Y) to 0 and clear stack. `done` = 0.
+  2. When `start` is asserted, the module must generate the minimal sequence of instructions (simulated internally) to calculate `N` using the provided instruction set (AD, PH, PL, ST, ZE, DI). For this simplified version, we will implement a binary addition algorithm. 
+  3. The instruction set is interpreted as an internal FSM:
+     - `ST <reg>`: Sets the target register (A, X, or Y) to 1.
+     - `ZE <reg>`: Sets target register to 0.
+     - `PH <reg>`: Pushes register value to internal stack (8-bit depth 16).
+     - `PL <reg>`: Pops stack to target register.
+     - `AD`: Pops two values, adds them (modulo 256), pushes result.
+     - `DI <reg>`: Latches register value to `result`, asserts `done`.
+  4. The module must generate a microcoded sequence based on `n_in`. Since `n_in` is static during computation, the control logic should decompose `N` into additions of powers of 2 (binary decomposition). For example, if N=5 (binary 101), the sequence is: ST A, ST X, PH A, PH X, AD, PL Y, PH Y, PH Y, AD, AD, PL A, DI A.
+  5. The internal stack must be 16 entries deep to handle intermediate sums.
+  6. The computation must complete within 128 clock cycles.
+  7. The module must handle all instructions (ST, PH, PL, AD, ZE) via internal control signals and datapath.
+
+Datapath Requirements:
+  - 8-bit registers: A, X, Y.
+  - Stack: 16x8 bit memory with stack pointer (4-bit).
+  - ALU: 8-bit adder.
+  - Control Unit: Finite State Machine (FSM) that translates `n_in` into instruction cycles.

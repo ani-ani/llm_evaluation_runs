@@ -1,0 +1,16 @@
+Design a Verilog module to calculate the area of a polygon intersected by a half-plane (representing Alob's land). The polygon has N≤100 vertices (x_i, y_i). The canal is a line defined by points (xa, ya) and (xb, yb). Alob's land is the side of the canal where a specific test point (e.g., the polygon centroid) lies. Output the area with fixed-point precision (Q16.16).
+
+Interface:
+- Inputs: clk, rst_n, start (1-cycle pulse)
+- Configuration: N (number of vertices, 8 bits), Canal parameters (xa, ya, xb, yb as 16-bit signed Q16.16), Vertices (arr_x[0:99], arr_y[0:99] as 16-bit signed Q16.16). Input N will be provided first.
+- Outputs: result_area (32-bit Q16.16 representing area), done (1-cycle pulse when calculation finishes).
+- Timing: Start pulse initiates computation. Done signal asserts after processing all vertices (within N+10 cycles). Result is valid when done is high.
+- Reset: Reset all registers to 0. Done=0, Result=0.
+
+Algorithm:
+1. Calculate the signed distance of a reference point (e.g., vertex 0) from the canal line.
+2. For each pair of polygon edges (vertex i to i+1), clip against the half-plane defined by the canal.
+3. Use the Sutherland-Hodgman clipping algorithm adapted for a single line: compute intersection of edge with canal line if vertices are on opposite sides.
+4. Sum the areas of the resulting clipped polygon vertices (using the shoelace formula).
+5. Use fixed-point arithmetic (Q16.16) for all calculations. Division for intersection must be approximated or scaled if exact precision is hard (use scaling by 2^16). 
+6. Since N≤100, a sequential state machine is required to iterate through vertices.

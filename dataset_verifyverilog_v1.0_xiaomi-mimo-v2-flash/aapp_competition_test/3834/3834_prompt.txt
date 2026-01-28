@@ -1,0 +1,41 @@
+Design a Verilog module that determines the minimum number of cell changes needed to make a binary table meet rectangle-connected-component requirements.
+
+### Problem Adaptation
+- Scale n,m to max 16x16 grid (N=16, M=16 max)
+- k is max changes (1..10)
+- Each row is encoded as a 16-bit integer
+- Target: Find min changes <= k where all rows follow a pattern of uniform columns (e.g., all 1s or all 0s for each column position) or are uniform across rows.
+- Algorithm: Enumerate all possible 16-bit target patterns (2^16 = 65536). For each pattern, compute changes: for each row, calculate min(popcount(row ^ target), M - popcount(row^target)). Sum across rows.
+- Output min changes if <= k, else -1.
+
+### Interface Specification
+**Inputs:**
+- clk: system clock (rising edge)
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to initiate computation
+- row_valid: 1 when new row data is available
+- row_data: 16-bit row vector (bits 0..15 represent cell values)
+- row_len: 4-bit length of valid bits (0..16)
+- k_max: 4-bit limit (1..10)
+- done_config: 1-cycle pulse when all rows are loaded
+
+**Outputs:**
+- result: 4-bit minimum changes (0..16)
+- valid: 1 when result is valid (done_config equivalent)
+- status: 2-bit (00=processing, 01=done, 10=invalid/impossible)
+
+### Functional Requirements
+1. **Row Loading:** Accept up to 16 rows of 16-bit data. Store in internal RAM (16x16 bits).
+2. **Pattern Enumeration:** Upon done_config, iterate through all 2^16 patterns (0 to 65535).
+   - For each pattern: Compute cost = sum(min(popcount(row[i] ^ pattern), row_len - popcount(row[i]^pattern))) across all rows.
+   - If cost <= k_max, update minimum.
+3. **Output:** Set result to minimum cost found. If no pattern yields cost <= k_max, set result=15 (representing -1) and status=10.
+4. **Timing:** Enumeration completes in fixed cycles (max 65536 iterations, ~70k cycles at 10ns/cycle = 700us). Use pipelined popcount (3 cycles per row).
+5. **Constraints:** All intermediate values fit 16-bit. Use combinational popcount LUT.
+
+### Implementation Notes
+- Use single-port BRAM for row storage.
+- For popcount: 16-bit inputs, output 0..16 (5 bits).
+- State machine: IDLE -> LOADING -> ENUMERATING -> DONE.
+- Clock speed: 100MHz (10ns period).
+- Reset sets all memory to 0, state to IDLE, done=0.

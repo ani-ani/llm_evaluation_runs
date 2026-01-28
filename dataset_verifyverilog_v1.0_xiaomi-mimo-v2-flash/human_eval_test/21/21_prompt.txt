@@ -1,0 +1,39 @@
+Implement a Verilog module that rescales a list of floating-point numbers to unit range [0.0, 1.0]. The input list has at least 2 elements and maximum 8 elements. Input values are represented as 8-bit fixed-point Q8.8 format (8 integer bits, 8 fractional bits). The output should also be in Q8.8 format.
+
+### Algorithm:
+1. Find minimum and maximum values in the input array
+2. Compute scale = (max - min)
+3. For each element: output = (value - min) / scale
+4. Handle division by zero: if scale=0, output 0 for all elements
+5. If max < min (reverse range), swap them and apply transform accordingly
+
+### Interface Specification:
+**Inputs:**
+- `clk`: System clock (rising edge active)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `arr_valid`: Input array valid (0 or 1)
+- `arr_in[7:0][15:0]`: Array of 8 elements, each 16-bit Q8.8 fixed-point
+  - Each 16-bit value: `arr_in[i][15:0]` where bit 15 is sign bit
+  - Q8.8 format: value / 256.0
+- `len[2:0]`: Actual number of elements (1-8, but problem states at least 2)
+
+**Outputs:**
+- `result_valid`: Output valid flag (1-cycle pulse)
+- `arr_out[7:0][15:0]`: Rescaled array of 8 elements, each 16-bit Q8.8
+- `done`: 1-cycle pulse when computation complete
+
+**Timing:**
+- Start->Done within 100 cycles
+- Sample result when `done=1` and `result_valid=1`
+- Reset: done=0, result_valid=0, all outputs 0
+
+**Implementation Notes:**
+- Use fixed-point arithmetic with Q8.8 format
+- Scale = max - min (16-bit subtraction, result may be negative)
+- For each element: (value - min) * 65536 / scale (since 1.0 = 65536 in Q8.8)
+- Division should be performed by considering that divisor is Q8.8
+- Handle overflow: clamp results to Q8.8 range
+- Minimum 2 cycles reset
+- Use combinational logic for parallel element processing
+- Pipeline stages: find min/max (8 cycles), compute scale (1 cycle), divide each element (parallel, 1-8 cycles)

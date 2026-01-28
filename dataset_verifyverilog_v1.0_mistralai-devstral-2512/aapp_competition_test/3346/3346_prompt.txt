@@ -1,0 +1,48 @@
+You are designing a Verilog module to solve the traffic management problem. Given constraints: max 20 cars, max passage time t=256, max scaled arrival time 127, max scaled irritation 63. The module calculates the minimum number of irritated drivers.
+
+## Interface Specification
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low asynchronous reset
+- `start`: 1-cycle pulse to start computation
+- `cfg_t`: 8-bit unsigned (passage time, scaled)
+- `cfg_n`: 5-bit unsigned (number of cars, max 20)
+- `cfg_car_dir`: 20x1-bit array (0=West, 1=East)
+- `cfg_car_arr`: 20x7-bit array (arrival time, scaled 0-127)
+- `cfg_car_irr`: 20x6-bit array (irritation limit, scaled 0-63)
+
+**Outputs:**
+- `result`: 6-bit unsigned (minimum irritated count)
+- `done`: 1-bit, asserts for 1 cycle when result is valid
+
+**Timing:**
+- Start asserted for 1 cycle during idle state
+- Computation completes within 1000 clock cycles
+- Result valid when `done` is high
+- After reset, `done` is low and `result` is 0
+
+**Implementation Requirements:**
+1. Use DP state machine with states: IDLE, COMPUTE, FINISHED
+2. Store DP table in Block RAM: 21x21x128x128 entries (7-bit result each)
+3. Process cars in order of arrival (input order)
+4. Track time (0-127) and counts for West/East cars processed
+5. Transitions: 
+   - If current car is West and processed < total West: schedule at max(prev_west_time+3, arrival)
+   - If current car is East and processed < total East: schedule at max(prev_east_time+3, arrival)
+   - Update irritation count if (start_time - arrival > irritation_limit)
+6. Implement parallel comparator trees for time comparisons
+7. Use bounded loop counters (max 21 iterations)
+8. Fixed-point arithmetic for times (integer only, scaled)
+
+**State Machine:**
+- IDLE: Wait for start, initialize counters
+- COMPUTE: Fill DP table iteratively
+- FINISHED: Assert done, hold result
+
+**Memory Interface:**
+- Address: {west_idx, east_idx, time_west, time_east}
+- Data: 7-bit irritation count
+- Operation: Read-Modify-Write
+
+Ensure all signals use exact bit widths as specified.

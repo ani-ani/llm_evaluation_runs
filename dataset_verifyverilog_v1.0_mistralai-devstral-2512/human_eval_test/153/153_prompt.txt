@@ -1,0 +1,46 @@
+Implement a Verilog module that finds the strongest string extension for a given class name based on a specific strength metric.
+
+## INPUTS:
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start processing signal (1-cycle pulse)
+- `class_name`: 16x8-bit array (16 characters, ASCII), packed into 128 bits
+- `num_extensions`: 4-bit integer (0-15 extensions)
+- `ext_name_i`: 16x8-bit array (current extension being processed, 16 chars), packed into 128 bits
+- `ext_index`: 4-bit index for current extension
+
+## OUTPUTS:
+- `result_name`: 32x8-bit result string (ClassName.ExtensionName), packed into 256 bits
+- `result_strength`: 8-bit signed integer (CAP - SM)
+- `result_index`: 4-bit index of strongest extension found
+- `done`: 1-cycle pulse when result is valid
+
+## ALGORITHM:
+1. On `start` assertion, reset internal state and begin processing
+2. For each extension (iterate `num_extensions` times):
+   a. Extract characters from current extension (16 max)
+   b. Count uppercase letters (ASCII 'A'-'Z') as CAP
+   c. Count lowercase letters (ASCII 'a'-'z') as SM
+   d. Compute strength = CAP - SM (signed 8-bit)
+   e. Compare with current best strength:
+      - If stronger (greater value): update best
+      - If equal strength: keep current (first in list priority)
+3. After all extensions processed, construct result:
+   - Pack class_name + '.' + best_extension into result_name
+   - Output best strength and index
+4. Assert `done` for 1 cycle
+
+## CONSTRAINTS:
+- Max 16 extensions (num_extensions ≤ 15)
+- Max 16 characters per string (fixed width)
+- Character processing: ASCII only, ignore non-letter characters
+- Strength range: -16 to +16 (fits in 8-bit signed)
+- Timing: Complete within 256 cycles max
+- Reset state: All outputs 0, done=0
+
+## IMPLEMENTATION NOTES:
+- Use state machine: IDLE → COUNTING → COMPARING → DONE
+- For string comparison: process character-by-character in parallel
+- Pack strings: Concatenate ASCII values, left-justified
+- Equality check: Compare best_strength with current_strength
+- Update only when current > best (not >=)

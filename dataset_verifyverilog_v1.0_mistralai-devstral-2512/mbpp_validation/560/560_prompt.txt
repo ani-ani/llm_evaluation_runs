@@ -1,0 +1,51 @@
+Design a Verilog module that computes the sorted union of two input arrays (tuples). The module should handle arrays of up to 8 elements each, with each element being an 8-bit unsigned integer. The output should be a sorted array of the unique elements from both input arrays.
+
+**Functional Requirements:**
+- Input: Two arrays arr1[0:7] and arr2[0:7], each containing 8-bit values
+- Input: len1[3:0] and len2[3:0] indicating actual element count (0-8) in each array
+- Output: Union array result[0:15] sorted in ascending order, with valid elements marked by valid[0:15] (1-bit each)
+- Output: len_out[4:0] indicating count of valid elements in result (0-16)
+- The module should produce correct union for all test cases within 50 clock cycles
+
+**Implementation Approach:**
+1. Combine both input arrays into a single 16-element array
+2. Remove duplicates by sorting and comparing adjacent elements
+3. Use a simple bubble sort or insertion sort network (16 stages)
+4. For deduplication: after sorting, shift elements down when duplicates are detected
+5. Use blocking assignments for sequential logic
+
+**Module Interface:**
+- Inputs:
+  - clk: clock signal (rising edge)
+  - rst_n: active-low asynchronous reset
+  - start: 1-cycle pulse to initiate computation
+  - arr1[7:0][7:0]: 8-element array of 8-bit values
+  - arr2[7:0][7:0]: 8-element array of 8-bit values  
+  - len1[3:0]: number of valid elements in arr1 (0-8)
+  - len2[3:0]: number of valid elements in arr2 (0-8)
+- Outputs:
+  - result[15:0][7:0]: 16-element output array of 8-bit sorted values
+  - valid[15:0]: 16-bit mask indicating which result positions contain valid data
+  - len_out[4:0]: count of valid elements in result (0-16)
+  - done: 1-cycle pulse indicating computation complete
+
+**Timing Constraints:**
+- Must complete within 50 clock cycles from start assertion
+- Clock frequency: 100 MHz (10ns period)
+- Reset: assert rst_n=0 for minimum 2 cycles
+
+**Test Cases:**
+1. arr1={3,4,5,6}, arr2={5,7,4,10} -> union={3,4,5,6,7,10}
+2. arr1={1,2,3,4}, arr2={3,4,5,6} -> union={1,2,3,4,5,6}
+3. arr1={11,12,13,14}, arr2={13,15,16,17} -> union={11,12,13,14,15,16,17}
+4. Edge case: empty input arrays -> empty output
+5. Edge case: all duplicate elements -> single element output
+
+**State Machine States:**
+- IDLE: waiting for start
+- COMBINE: merge arr1 and arr2 into working array
+- SORT: perform sorting network (pipelined)
+- DEDUP: remove duplicates by shifting
+- COMPLETE: latch results and assert done
+
+Note: Uninitialized or X values should be treated as 0 during synthesis. Ensure all outputs are properly defined after reset.

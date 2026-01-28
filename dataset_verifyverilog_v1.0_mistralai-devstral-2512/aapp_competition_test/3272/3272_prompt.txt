@@ -1,0 +1,53 @@
+Implement a Verilog module to solve the Gargoyle Puzzles problem scaled for hardware.
+
+**SCALED PROBLEM**:
+- Grid size: 8x8 max (n,m ≤ 8)
+- Gargoyle count: ≤16 (indexed 0..15)
+- Input: Fixed 8x8 grid characters via memory interface
+- Algorithm: Precompute light paths for each gargoyle orientation, build 2-SAT implication graph, solve via FSM
+
+**INTERFACE**:
+- Inputs:
+  - clk: Clock
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - grid_data: 64-bit packed array, 8 bytes per row, each byte is ASCII character ('.', '#', '/', '\\', 'V', 'H')
+  - n, m: 4-bit dimensions (1..8)
+- Outputs:
+  - result: 4-bit integer (minimum rotations, 0..15, or 15 for impossible)
+  - done: 1-cycle pulse when valid
+  - valid: 1-bit flag (0 = impossible)
+
+**IMPLEMENTATION DETAILS**:
+1. **Input Stage**: Unpack grid_data into 8x8 registers
+2. **Path Precomputation FSM** (256 cycles max):
+   - For each gargoyle (max 16):
+     - Simulate light path for orientation 0 (V/H default) and orientation 1 (rotated)
+     - Trace light starting from each face (top/bottom for V, left/right for H)
+     - Use reflection rules: '/': (T->L, B->R, L->T, R->B), '\\': (T->R, B->L, L->B, R->T)
+     - Stop at obstacle '#', wall (boundary), or other gargoyle (blocking)
+     - Record which gargoyle face is hit (or none) for each orientation
+3. **2-SAT Graph Construction** (16 gargoyle nodes):
+   - Each gargoyle: variable X (0=unrotated, 1=rotated)
+   - For each gargoyle face that hits nothing: Force X=0 (for V/H default) or X=1 (for rotated) to find a target
+   - For pairs of gargoyles: If face A hits face B, add implications
+   - Implication representation: (X_i = a) -> (X_j = b) means clause (¬(X_i=a) ∨ X_j=b)
+   - Store implication graph in 32x32 matrix (2x per gargoyle)
+4. **SAT Solver FSM** (500 cycles max):
+   - Check satisfiability via DFS on implication graph
+   - Try 2^n assignments (n ≤ 16, but use heuristics: check forced clauses first)
+   - Count minimum rotations for valid assignments
+   - Return minimum or 15 (impossible)
+5. **Timing**: Start -> Done within 1000 cycles
+
+**CONSTRAINTS**:
+- Use bounded loops (max 16 iterations for gargoyle loops)
+- Grid processed row-by-row to avoid memory depth issues
+- 2-SAT solved via constraint propagation (subset of 2-SAT)
+- If impossible, return 15 (since max rotations is 16, but we use 15 as error code)
+
+**RESET STATE**:
+- result = 0, done = 0, valid = 0
+- All internal registers cleared
+
+Provide only the Verilog module specification, not the implementation code.

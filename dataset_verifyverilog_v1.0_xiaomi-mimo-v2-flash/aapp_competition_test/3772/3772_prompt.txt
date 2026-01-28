@@ -1,0 +1,40 @@
+Design a Verilog module that calculates the minimum number of unit resistors (R0=1) needed to create a target resistance a/b using series and parallel combinations. The core algorithm is based on the Euclidean algorithm for GCD: repeatedly subtract the smaller from the larger, summing the quotients.
+
+**Key Insight**: The number of resistors needed for resistance a/b (a,b > 0) is equal to the sum of quotients obtained during the Euclidean algorithm process (similar to computing continued fractions).
+
+**Interface Specification**:
+- **Inputs**:
+  - `clk`: System clock (rising edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate calculation
+  - `a_in`: 64-bit unsigned integer (numerator)
+  - `b_in`: 64-bit unsigned integer (denominator)
+
+- **Outputs**:
+  - `result`: 64-bit unsigned integer (minimum resistor count)
+  - `done`: 1-cycle pulse asserted when calculation is complete
+
+**Implementation Requirements**:
+1. **Algorithm**: Implement the iterative Euclidean algorithm variant:
+   - Initialize `a = a_in`, `b = b_in`, `sum = 0`
+   - While `b != 0`:
+     - `sum = sum + (a / b)` (integer division)
+     - `temp = b`
+     - `b = a % b`
+     - `a = temp`
+   - Result is final `sum`
+
+2. **FSM States**: Define states for IDLE, CALCULATING, and DONE.
+3. **Datapath**: 
+   - Use 64-bit registers for `a`, `b`, and accumulator `sum`
+   - Division and modulo operations must be computed using sequential algorithm (e.g., repeated subtraction) or combinational division if timing allows.
+   - For FPGA synthesis, combinational division may be resource-heavy; consider sequential shift-and-subtract approach for 64-bit values.
+4. **Control Logic**:
+   - On `start` pulse, load inputs and initialize state machine.
+   - Each clock cycle of CALCULATING state performs one iteration of the Euclidean algorithm.
+   - Maximum iterations: 128 cycles (worst case for 64-bit numbers is ~64 iterations, add buffer).
+   - Assert `done` for one cycle when `b` becomes 0, with final `sum` on output.
+5. **Reset Behavior**: On reset, `result` = 0, `done` = 0, FSM returns to IDLE.
+6. **Timing**: Calculation must complete within 200 clock cycles after start.
+
+**Verification**: Use cocotb testbench with test cases covering edge cases (a=1, b=1; a=199, b=200; large numbers) and random inputs within 64-bit range.

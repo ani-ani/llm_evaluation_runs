@@ -1,0 +1,48 @@
+Design a Verilog module that simulates the PacMan Zamboni ice cleaning algorithm on a 5x5 rink with a maximum of 4 steps. 
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start the simulation
+- `row_start[4:0]`: Starting row (0-4)
+- `col_start[4:0]`: Starting column (0-4)
+
+**Outputs:**
+- `done`: 1-cycle pulse indicating calculation is complete (default to 0)
+- `grid_valid`: 1 when output grid is valid
+- `grid_data[7:0]`: ASCII character for current grid cell (A-Z, '.', '@')
+- `grid_addr[5:0]`: Address for the 5x5 grid (0-24). Use this to index the 2D array.
+
+**Behavior:**
+1. **State Machine:** Implement a controller with states: `IDLE`, `INIT_GRID`, `SIMULATE`, `OUTPUT`. 
+2. **Grid Memory:** Use a 5x5 array of 8-bit registers to store the ice state (default '.' on init).
+   - Address mapping: `addr = row * 5 + col`.
+3. **Simulation Logic (Iterative):**
+   - **Direction:** Encoded as 0=Up, 1=Right, 2=Down, 3=Left. Start at 0.
+   - **Color:** Encoded as 0='A', 1='B'... 25='Z'. Start at 0 (A).
+   - **Step Size:** Start at 1.
+   - **Loop:** Run 4 iterations (max n=4).
+     1. **Move:** Move `stepSize` steps in current direction. 
+        - Update `row` and `col`. 
+        - **Wrapping:** 
+          - If `col < 0`, add 5. If `col >= 5`, subtract 5.
+          - If `row < 0`, add 5. If `row >= 5`, subtract 5.
+        - At each step of the movement:
+          - Update the grid cell at `(row, col)` with current `color` (converted to ASCII 'A'+color).
+     2. **Rotate:** `direction = (direction + 1) % 4`.
+     3. **Increment Color:** `color = (color + 1) % 26`.
+     4. **Increment Step Size:** `stepSize = stepSize + 1` (clip to 4).
+4. **Final Mark:** After the loop finishes, overwrite the grid cell at the final `(row, col)` with `@`.
+5. **Output:** 
+   - Transition to `OUTPUT` state.
+   - Generate `grid_addr` from 0 to 24 (sequentially).
+   - Output `grid_data` from the corresponding register.
+   - Set `grid_valid` high while outputting.
+   - Finally, pulse `done`.
+
+**Constraints:**
+- Use only sequential logic (flip-flops).
+- Maximum 4 steps.
+- Max 5x5 grid.
+- All arithmetic must fit in 8-bit signed or unsigned as appropriate.
+- Do not use external RAM; use internal registers.

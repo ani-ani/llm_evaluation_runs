@@ -1,0 +1,47 @@
+Implement a Verilog module that solves the lamp lighting 2-SAT problem for a bounded grid.
+
+**Problem Simplification:**
+- Grid size n is scaled to max 8 (from n≤1000)
+- Number of lamps k is bounded to max 16 (from k≤1000)
+- Lamp reach r is scaled accordingly (max ~4)
+- Each lamp has 2 choices: light row (0) or light column (1)
+- Constraint: For any square (i,j), at most one lamp can light it in row i, and at most one in column j
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `lamp_coords`: 16 entries of {row, col} pairs. Each coordinate is 4-bit (0-7).
+  - Use individual ports: `lamp_row[0..15]`, `lamp_col[0..15]`
+- `num_lamps`: 4-bit input (0-15) indicating valid lamps
+- `grid_size`: 4-bit input (1-8) for grid dimension
+- `max_reach`: 4-bit input (0-7) for lamp reach
+
+**Outputs:**
+- `result`: 1-bit output (1=possible, 0=impossible)
+- `done`: 1-cycle pulse indicating computation complete
+
+**Behavior:**
+1. On `start` pulse, load lamp coordinates into internal registers
+2. For each lamp, generate 2 possible states: row-mode (0) or column-mode (1)
+3. Build conflict constraints:
+   - For each pair of lamps (i, j):
+     - If both can illuminate same square in a row (based on positions and reach):
+       - They cannot both choose row-mode
+       - (xOR constraint: (xi=0) ∧ (xj=0) is forbidden)
+     - Similarly for column conflicts
+4. Solve the 2-SAT problem using:
+   - Option A: Iterate through all 2^k possible assignments (k≤16, so 65536 max)
+   - Option B: Implement simplified DPLL-like backtracking with conflict checking
+5. Output result when solved
+
+**Constraints:**
+- Use 16-bit arithmetic for state encoding
+- Maximum cycles: 1000 cycles for k=16
+- All signals must be registered
+- No combinational loops
+
+**Implementation Hint:**
+Since k≤16, you can implement an iterative backtracking search. Maintain a stack of assignment choices and test validity against all constraints. If a valid assignment is found, output 1. If all possibilities exhausted, output 0.

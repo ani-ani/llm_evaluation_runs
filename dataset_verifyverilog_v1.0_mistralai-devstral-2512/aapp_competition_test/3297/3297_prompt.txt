@@ -1,0 +1,40 @@
+Implement a cryptarithmetic puzzle solver in Verilog. Input is a fixed string 'w1+w2=w3' with words up to 4 letters each (total max 16 chars, scaling down from 100). Output the solution string with digits replacing letters, or 'impossible' (implied by no valid output).
+
+## Exact Interface:
+- Inputs: 
+  - `clk`, `rst_n`: Standard clock/reset
+  - `start`: 1-cycle pulse to start solving
+  - `puzzle_str`: 16x8-bit array (max 16 chars). Each byte is ASCII. Padding with nulls if shorter.
+  - `puzzle_len`: 4-bit integer (actual length)
+- Outputs:
+  - `result_str`: 16x8-bit array. Contains the solved puzzle or original with invalid markers.
+  - `done`: 1-cycle pulse when result is valid
+  - `solved`: 1-bit flag (1=solution found, 0=impossible)
+
+## Constraints & Scaling:
+1. Only uppercase letters A-Z (ASCII 65-90) and '+' (43), '=' (61).
+2. Max unique letters = 8 (scaled from 26). Algorithm uses 8-bit digit mask.
+3. Search uses iterative backtracking with state machine.
+4. Validation: Check `w1 + w2 == w3` using 16-bit arithmetic (max 4 digits each).
+5. Leading zeros not allowed for first letter of any word.
+6. Minimization: Assign digits to letters in alphabetical order.
+
+## Algorithm Specification:
+1. Parse input to extract unique letters, sort them alphabetically (A-Z order).
+2. Assign digits 0-9 to letters sequentially (0,1,2...).
+3. Validate assignment: Check leading digits != 0, compute sum.
+4. If valid, construct output string and assert `done`, `solved=1`.
+5. If invalid, try next digit assignment.
+6. If all assignments exhausted, assert `done`, `solved=0`.
+
+## Hardware Implementation:
+- Use a lookup table `letter_to_digit[26]` (8-bit wide, 0-9 or invalid).
+- State machine: IDLE -> PARSE -> INIT_SEARCH -> ASSIGN -> VALIDATE -> OUTPUT
+- `VALIDATE` state computes word values using combinatorial adder.
+- Search depth limited to 8 unique letters. Use `iter_count` for digit assignment.
+- Output `result_str` must match input format exactly, letters replaced by ASCII digits (48-57).
+
+## Timing:
+- Reset: `done=0`, `solved=0`, `result_str` cleared.
+- Start -> Done: Within 512 cycles (max 8 letters * 10 digits * 8 cycles).
+- Sample `result_str` and `solved` when `done=1`.

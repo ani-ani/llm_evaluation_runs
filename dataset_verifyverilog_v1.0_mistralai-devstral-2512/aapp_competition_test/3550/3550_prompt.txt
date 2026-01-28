@@ -1,0 +1,38 @@
+Design a Verilog module to interpret a simplified NenScript-like language with variables and template literals. The module should parse commands and print results.
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing a new line of input
+  - `char_in`: 8-bit ASCII input character (valid when `char_valid=1`)
+  - `char_valid`: 1-cycle pulse indicating `char_in` is valid
+  - `line_end`: 1-cycle pulse indicating end of current input line
+
+- Outputs:
+  - `char_out`: 8-bit ASCII output character
+  - `char_out_valid`: 1-cycle pulse when `char_out` is valid
+  - `done`: 1-cycle pulse when the entire line is processed and result is output (or if it's a print command)
+
+**Constraints:**
+1. **Variables:** Max 16 distinct variables. Variable names: lowercase letters/underscore, length 1-10. Values: Max 16 characters. Supported characters: A-Z, a-z, 0-9, space, and `[email protected]#$%^&*()-_=+.`
+2. **Expressions:** Two types: Variable Reference (just name) and Template Literal (enclosed in backticks `` ` ``). Nested templates are allowed (max nesting depth 4).
+3. **Template Literal Format:** Starts with `` ` ``. Contains segments: Static strings (good chars) and Embedded expressions `${<expr>}`. Embedded expressions evaluate recursively to strings.
+4. **Commands:**
+   - `var <name> = <value>;` where `<value>` is an expression. Store result in variable table.
+   - `print <expr>;` Output the evaluated string to `char_out`.
+   - `end.`: Stop processing.
+5. **Memory:** Use internal BRAM/Registers for variable storage (names and values). Max 16 variables, max 16 chars per value. Use a stack for evaluating nested expressions (depth 4).
+6. **Parsing:** Simple state machine. No complex string matching algorithms; use fixed logic for keywords `var`, `print`, `end.`. Assume strictly formatted input (spaces where necessary for token separation).
+7. **Output:** Only output for `print` commands. Output characters sequentially, one per cycle, followed by a newline (0x0A). No quotes in output.
+
+**Implementation Strategy:**
+- Implement a Finite State Machine (FSM) to parse the command type.
+- Implement a lexer to identify tokens: keywords, identifiers, string literals (inside quotes), template literals (inside backticks).
+- Implement a recursive descent parser (simulated iteratively via stack) for expressions.
+- Variable Table: A memory block (array of registers) storing name (hashed or direct match) and value (string). 
+- Template Evaluation: Parse the template string sequentially. When `${` is found, recurse/evaluate the inner expression, concatenate result.
+- Buffering: Use internal buffers (max 1024 bits or 128 bytes) for intermediate strings during evaluation and output generation.
+
+**Testbench Requirements:**
+The testbench will provide a sequence of ASCII characters simulating the input lines. It must verify that `char_out` produces the expected sequence of characters for `print` commands.

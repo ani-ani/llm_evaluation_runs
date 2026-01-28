@@ -1,0 +1,32 @@
+Implement a Verilog module that validates if an 8-character ASCII string represents a valid decimal number with 1 or 2 fractional digits. The input is a fixed 8-element array of 8-bit bytes. Output 'valid' (1-bit) goes high when the entire string matches the pattern ^[0-9]+(\.[0-9]{1,2})?$ and the string is fully consumed. The module uses a Mealy FSM state machine (WAIT, INT_DIGIT, DEC_POINT, DEC_DIGIT1, DEC_DIGIT2, ERROR, VALID). It processes characters sequentially on each clock cycle when start=1. Assume the string is null-padded (spaces or zeros) for unused positions. The module must:
+- Start at WAIT state when start=1.
+- Accept 1-8 integer digits (0-9) before optional decimal point.
+- Accept exactly 1-2 fractional digits after decimal point.
+- Go to ERROR on invalid characters or wrong sequence (e.g., multiple points).
+- Assert done=1 and valid=1 only if in VALID state after consuming all 8 characters.
+- Reset to WAIT, valid=0, done=0.
+
+Interface:
+Inputs:
+  clk: main clock, rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  char_in[7:0]: current ASCII character byte
+  idx[2:0]: current character index (0-7)
+  last_char: flag indicating idx=7 (last character)
+Outputs:
+  valid: 1-bit result
+  done: 1-cycle pulse when validation complete
+  state_debug: 3-bit current FSM state
+
+Behavior:
+- On rising edge with start=1, load first char (idx=0), transition to INT_DIGIT if digit, else ERROR.
+- While in INT_DIGIT: if digit, stay; if '.' and last_char==0, go DEC_POINT; if last_char==1, go VALID; else ERROR.
+- DEC_POINT: expects digit next, go DEC_DIGIT1.
+- DEC_DIGIT1: accepts digit, if last_char==1 go VALID, else go DEC_DIGIT2.
+- DEC_DIGIT2: accepts digit, must be last_char==1 to go VALID, else ERROR.
+- If any invalid char (not 0-9 or '.' at wrong time) go ERROR.
+- ERROR stays ERROR until reset.
+- VALID asserts done and valid for one cycle, then stays VALID until reset.
+
+Timing: start->done within 8 cycles. Reset clears state.

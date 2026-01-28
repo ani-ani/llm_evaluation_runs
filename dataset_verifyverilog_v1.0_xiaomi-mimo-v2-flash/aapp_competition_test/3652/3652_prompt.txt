@@ -1,0 +1,32 @@
+Design a Verilog module to solve the 'Delete Columns to Sort' problem. The module takes N (max 1000) and three arrays of N integers (values 1 to N). The goal is to find the smallest number of columns to delete such that, after sorting the remaining columns in each row, the rows are identical.
+
+**Simplified Algorithm:**
+Since N is up to 1000 in the original, we must scale down for hardware. We will assume N is fixed at `N_MAX = 16` to allow for an iterative DP solution with manageable state size. The solution uses a 'Sorting Network' concept implicitly by treating columns as items to be selected. We look for the largest subset of columns such that the multiset of values in row 0 equals the multiset in row 1 and row 2.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low reset
+  - `start`: 1-cycle start pulse
+  - `N`: 5-bit input (valid range 1-16)
+  - `row0`, `row1`, `row2`: 16 arrays of 4-bit values (representing numbers 1-16)
+- Outputs:
+  - `min_deletions`: 5-bit output (0-16)
+  - `done`: 1-cycle high when computation finished
+
+**Implementation Details:**
+1.  **State Machine**: Use a control FSM with states IDLE, LOAD, COMPUTE, OUTPUT.
+2.  **Memory**: Store the three rows in 16x4-bit BRAMs (or register arrays).
+3.  **DP Approach**: Iterate through all possible subsets of columns (1 << N). Since N=16, this is 65536 iterations max. 
+    - Use a counter `mask` from 0 to (1<<N)-1.
+    - For each mask, calculate the count of each value (1 to N) in the selected columns for Row 0, Row 1, and Row 2.
+    - If counts match for all values, the number of selected columns (`popcount(mask)`) is a candidate.
+    - Track the maximum `popcount` found.
+4.  **Result**: `min_deletions = N - max_popcount`.
+5.  **Timing**: Expect 1000-2000 clock cycles for full sweep.
+
+**Verilog Spec Constraints:**
+- Use 4-bit data width for values (scaled to 1-16).
+- Use 5-bit counters and addresses.
+- Implement `popcount` (population count) logic using a small loop or LUT.
+- Output `min_deletions` when `done` is high.

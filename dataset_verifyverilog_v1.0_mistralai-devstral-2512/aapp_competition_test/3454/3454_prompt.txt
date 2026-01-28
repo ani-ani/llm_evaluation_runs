@@ -1,0 +1,48 @@
+Design a Verilog module to solve the Pokenom painting problem.
+
+**Problem Restatement (Simplified):**
+Given N columns (1 ≤ N ≤ 1000) and M rows (1 ≤ M ≤ 1000), and a final configuration defined by non-increasing sequence c (where c[i] is blue height in column i), count the number of valid painting sequences. The final picture has no unpainted cells (top part filled red). The rules imply a lattice path counting problem on an N x (M-c[N]) grid. 
+
+**Scaled Requirements:**
+- N and M are up to 1000.
+- The result modulo 100003 fits in 17 bits (since 100003 < 2^17).
+- We need to count paths modulo 100003.
+- The calculation requires a DP table of size roughly N x (M-c[N]+1). Since N and M are up to 1000, this requires up to 10^6 cells.
+- This is feasible in FPGA BRAM.
+- The exponent X is the number of '0' entries in the final row of the DP table (or related to zero constraints), which can be counted during the process.
+
+**Module Interface:**
+Inputs:
+  clk: Clock signal
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to initiate computation
+  N: 10-bit integer (0-1023)
+  M: 10-bit integer (0-1023)
+  c_in: 10-bit integer (input stream of sequence c, valid when index < N)
+
+Outputs:
+  result: 17-bit integer (Y mod 100003)
+  X: 10-bit integer (exponent)
+  done: 1-cycle pulse indicating completion
+
+**Implementation Details:**
+1. The problem reduces to filling a DP table `dp[i][h]` where `i` is the column (0..N) and `h` is the height (0..H_limit), where H_limit = M - c[N].
+2. Transition: `dp[i][h] = dp[i-1][h] + dp[i][h-1]` (with boundary conditions).
+3. Since we only need the previous column to compute the current column, we can use a single BRAM block or a set of registers for the current row state, reducing memory usage.
+4. For column `i`, we only compute heights up to `H_max = M - c[i]`.
+5. Sequence `c` is provided serially or stored. Since N ≤ 1000, we can store `c` in a small RAM (1000x10-bit).
+6. Algorithm:
+   - Load `c` sequence into local memory.
+   - Initialize DP state for column 0: `dp[0] = 1` at height 0, `dp[h] = 0` otherwise.
+   - Iterate `i` from 1 to N:
+     - Calculate `H_max = M - c[i]`.
+     - Compute new DP values for heights 0 to H_max using prefix sums or iterative addition.
+     - Update `dp` array.
+     - Count zeros in the updated `dp` array (contribution to X).
+   - Final result is `dp[H_limit]`.
+7. Timing: 1000 columns * 1000 heights = 1e6 cycles. Acceptable for 100ms simulation.
+
+**Constraint:**
+- Use a 2D register array or Block RAM implementation for the DP state. To save resources, use a single-port RAM for the DP table if N > 32, otherwise registers.
+- Output `done` after processing all columns.
+- Clock frequency constraint not specified, assume target > 100MHz for cycle efficiency.

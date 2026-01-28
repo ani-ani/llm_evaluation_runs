@@ -1,0 +1,48 @@
+## Verilog Module Specification: Complex-to-Polar Converter
+
+### Overview
+Implement a sequential module that converts a complex number (real, imaginary) into polar coordinates (magnitude, angle) using fixed-point arithmetic (Q16.16). The module operates in cycles: start signal initiates conversion, done signal indicates completion. Magnitude is computed via iterative square root, angle via fixed-point atan2 approximation using lookup tables or polynomial interpolation. Handle 8-bit integer inputs scaled to 16.16 fixed-point internally.
+
+### Module Interface
+- **Inputs:**
+  - `clk`: Single-phase rising-edge clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate conversion. When high, sample inputs.
+  - `real_in`: 8-bit signed integer representing real part (-128 to 127).
+  - `imag_in`: 8-bit signed integer representing imaginary part (-128 to 127).
+- **Outputs:**
+  - `magnitude`: 32-bit signed fixed-point Q16.16 (16 integer bits, 16 fractional bits).
+  - `angle`: 32-bit signed fixed-point Q16.16 (range -π to π in Q16.16, where π ≈ 0x3243F).
+  - `done`: 1-cycle pulse high when conversion completes and outputs are valid.
+
+### Functionality
+1. **Reset:** On `rst_n` low, set `magnitude=0`, `angle=0`, `done=0`. Minimum 2 cycles of reset required.
+2. **Start:** Sample `real_in` and `imag_in` when `start=1`. Convert to fixed-point Q16.16: `real_fp = real_in << 16`, `imag_fp = imag_in << 16` (sign-extended if negative).
+3. **Computation:** Sequentially compute magnitude and angle within 100 cycles max.
+   - **Magnitude:** Use iterative square root algorithm (e.g., Babylonian method) to compute sqrt(real^2 + imag^2) in Q16.16. Limit iterations to 20 cycles (fixed bound).
+   - **Angle:** Approximate atan2(imag, real) using a 4th-order polynomial or 256-entry lookup table for each quadrant (8 bits of result). Use sign of inputs to determine quadrant. Angle must be in Q16.16, representing -π to π.
+   - **Handling special cases:**
+     - If real=0 and imag=0: magnitude=0, angle=0.
+     - If real=0: angle=π/2 or -π/2 based on imag sign.
+     - If imag=0: angle=0 or π based on real sign.
+4. **Done Signal:** Assert `done=1` for one cycle when both magnitude and angle are valid. Do not accept new start until done is asserted or reset.
+5. **Timing:** From `start=1`, completion within 100 cycles. Reset cycle count to zero on `rst_n`.
+
+### Data Widths
+- Inputs: `real_in`, `imag_in` are 8-bit signed (clamp to -128..127).
+- Internal: Use 32-bit registers for intermediate Q16.16 values (1 sign bit + 15 integer + 16 fractional). Square root uses 32-bit math.
+- Outputs: `magnitude`, `angle` are 32-bit Q16.16 signed. Angle output should be in range -32768 ( -π) to 32767 ( π approx). Clamped to avoid overflow.
+
+### Behavioral Notes
+- Do not use floating-point; all math in fixed-point.
+- For atan2 approximation, precompute sine/cosine or use simple algebraic approximation (e.g., pi/2 - pi/2 * y/|x| for specific quadrants) with bounded error (±1/256).
+- No external RAM; all state within module.
+- Assume no overflows from inputs (scaled properly).
+
+### Example Conversion (for reference)
+- Input: real=1, imag=0 → magnitude=1.0 (0x10000 in Q16.16), angle=0.0 (0x00000).
+- Input: real=0, imag=1 → magnitude=1.0, angle=π/2 (0x19220 in Q16.16).
+- Input: real=1, imag=1 → magnitude≈1.414 (0x16A0B), angle=π/4 (0x0C90F).
+
+### Implementation Hint
+Use a finite state machine (FSM) with states: IDLE, SAMPLING, SQRT_ITER, ATAN_ITER, DONE. Count cycles for bounded iterations.

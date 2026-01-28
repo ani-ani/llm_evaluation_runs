@@ -1,0 +1,30 @@
+Implement a Verilog module that counts new flowers when plant stems intersect existing horizontal connections. Simplify problem: max 16 plants (days), coordinates 0-255 (8-bit), height is day number (1-16).
+
+Each plant i has: L[i], R[i], H[i]=i+1 (stem from (L,0) to (L,H) and (R,0) to (R,H), horizontal connection at y=H from x=L to x=R).
+
+New flower grows when: new plant's vertical stem (x=L_new or x=R_new) intersects EXISTING horizontal connection segment (L_old <= x <= R_old at y=H_old) AND L_old < x < R_old (strict interior, not touching endpoints).
+
+Module Interface:
+- Input: clk, rst_n (async reset), start (1-cycle pulse)
+- Input: L_new (8-bit), R_new (8-bit) - new plant coordinates
+- Input: len (4-bit) - number of existing plants (0-15)
+- Input: L_arr[15:0] (8-bit each) - existing plants' L coordinates
+- Input: R_arr[15:0] (8-bit each) - existing plants' R coordinates
+- Output: result (8-bit) - count of new flowers for this plant
+- Output: done (1-cycle pulse) - calculation complete
+
+Algorithm:
+1. On start, store L_new, R_new in registers
+2. For each existing plant j from 0 to len-1:
+   - For stem at L_new: check if L_arr[j] < L_new < R_arr[j] AND H_old (j+1) > 0
+   - For stem at R_new: check if L_arr[j] < R_new < R_arr[j] AND H_old (j+1) > 0
+   - If any condition true, increment result counter (max 32)
+3. Set done=1 for one cycle when complete
+4. Timing: start->done within 100 cycles
+
+Key Requirements:
+- Strict inequality: L_old < x < R_old (not <=)
+- Only count distinct flowers (but each intersection is distinct by position)
+- Reset: result=0, done=0
+- No arrays in ports: use individual signals L_arr_0...L_arr_15, R_arr_0...R_arr_15
+- State machine or bounded loop (max 16 plants * 2 stems = 32 iterations)

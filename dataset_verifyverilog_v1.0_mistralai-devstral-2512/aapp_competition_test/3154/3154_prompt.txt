@@ -1,0 +1,53 @@
+Implement a Verilog module that determines if a valid toy assignment exists for n kids and m toys to prevent crying. Scale down: n,m <= 16. Use 16-bit fixed-point arithmetic for playtime calculations.
+
+**Core Logic:**
+1. Parse input events into kid-toy history (max 16 events)
+2. Compute envy conditions: Kid A envies Kid B for toy T if B played with T longer than A did yesterday
+3. Preference: Kids prefer toys they played with earlier yesterday (lower start time)
+4. Unsatisfied crying condition: 
+   - Kid has no toy
+   - Kid envies B for T AND prefers T over current toy
+5. Model as bipartite matching: Left side: Kids, Right side: Toys. Edge exists if assigning toy T to kid K is 'valid' (doesn't cause envy conflicts). Validate by checking all pairs.
+
+**Interface:**
+Inputs:
+  clk: clock
+  rst_n: active-low reset
+  start: 1-cycle pulse to begin processing
+  event_data: 32-bit packed {s[15:0], k[3:0], t[3:0]} (s=16 bits, k=4 bits, t=4 bits)
+  event_valid: 1 when event_data is valid
+  event_done: 1 to signal end of input events
+
+Outputs:
+  result: 16-bit (encoded: n[7:0] assignments packed, or 0xFFFF if impossible)
+  done: 1-cycle pulse when computation complete
+  ready: 1 when ready for next input
+
+**Internal State:**
+- Event buffer: 16 slots
+- History matrix: 16x16 (kid x toy), each entry: {duration[15:0], first_start[15:0]}
+- Preference matrix: For each kid, ranking of toys by start time
+- Envy matrix: For each toy, list of kids who played with it
+- Matching: 16-bit result vector
+
+**Control Flow:**
+1. Reset: clear buffers, done=0
+2. Input phase: Shift in events until event_done=1. Store in event buffer.
+3. Compute phase: 
+   a. Process events: For each kid, update played duration and first start time per toy
+   b. Build preference order: Sort toys for each kid by first_start (ascending, 0=never)
+   c. Compute envy: For each toy T, find max duration played. Any kid A with duration < max_duration envies those with max_duration
+   d. Build validity matrix: For each kid K and toy T, check if assigning T to K creates crying:
+      - Check all other kids B: If B has toy U, does K envy B for U AND prefer U over T?
+   e. Run bipartite matching (max 16 nodes): Use greedy/DFS algorithm
+4. Output: Pack assignments into result[15:0] if found, else 0xFFFF
+5. Set done=1 for 1 cycle
+
+**Constraints:**
+- Max events: 16
+- Max kids: 16
+- Max toys: 16
+- Use 16-bit counters for durations (scaled from 10^9 to fit)
+- Fixed-point: Duration/Start time stored as 16-bit integers
+- Timing: 1000 cycles max
+- Reset: done=0, ready=1, result=0

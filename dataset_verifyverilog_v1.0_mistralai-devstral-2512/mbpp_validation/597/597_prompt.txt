@@ -1,0 +1,50 @@
+Create a Verilog module that finds the kth element from two sorted arrays using a merge approach. The module must:
+
+1. Interface:
+   - clk: clock input, rising edge
+   - rst_n: active-low synchronous reset
+   - start: 1-cycle pulse to start operation
+   - arr1_in[0:7]: 8-bit inputs for first array elements (indexed via arr1_addr)
+   - arr2_in[0:7]: 8-bit inputs for second array elements (indexed via arr2_addr)
+   - arr1_addr: 4-bit output to request element from array1 (0-15)
+   - arr2_addr: 4-bit output to request element from array2 (0-15)
+   - arr1_len: 4-bit input (max 8 elements)
+   - arr2_len: 4-bit input (max 8 elements)
+   - k: 5-bit input (1-indexed, 1-32)
+   - result: 8-bit output
+   - done: 1-cycle pulse when result is valid
+
+2. Algorithm:
+   - Implement iterative merge using two pointers (i, j)
+   - Store merged results in internal 32x8-bit register array (first 8+8=16 elements)
+   - Use FSM with states: IDLE, FETCH, COMPARE, MERGE, COMPLETE
+   - In FETCH state: output addresses arr1_addr and arr2_addr, request inputs
+   - In COMPARE state: compare arr1_in[0] and arr2_in[0]
+   - In MERGE state: store smaller element to internal array
+   - Continue until both arrays exhausted
+   - Then copy remaining elements
+   - Finally read kth element from internal array
+
+3. Timing:
+   - start pulse triggers operation
+   - Complete within 256 clock cycles
+   - done pulse coincides with valid result
+
+4. Reset:
+   - 2-cycle minimum reset
+   - done=0, result=0, addresses=0, FSM=IDLE
+
+5. Constraints:
+   - Max 8 elements per array (4-bit length)
+   - Each element is 8-bit unsigned
+   - k is 1-indexed (1-32)
+   - Internal storage: 32 x 8-bit registers (enough for 16+16 max)
+   - No external memory, all data passed via arr1_in/arr2_in with address control
+
+6. Implementation Details:
+   - Use 5-bit counters for i, j, d pointers
+   - Use 5-bit index for k-1 access
+   - State machine controls flow between fetching and merging
+   - Output arr1_addr and arr2_addr when in FETCH state
+   - Internal array allows sequential write, random read (for kth)
+   - When both arrays complete, transition to COMPLETE and output result

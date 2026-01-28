@@ -1,0 +1,45 @@
+Design a Verilog module that finds the cyclic shift of a permutation with minimum deviation.
+
+### INTERFACE
+Inputs:
+- clk: Rising edge clock
+- rst_n: Active-low synchronous reset
+- start: 1-cycle pulse to start computation
+- p[0:7]: 8-bit input array (size 8, max 8 elements)
+- n: 4-bit input (valid values 2-8)
+
+Outputs:
+- min_dev: 16-bit result (minimum deviation)
+- best_shift: 4-bit result (shift id with minimum deviation)
+- done: 1-cycle pulse when computation complete
+
+### REQUIREMENTS
+1. **Constraints**: n ≤ 8 (4-bit), values 1-8 (3-bit, index-adjusted to 0-7)
+2. **Algorithm**: Implement brute-force O(n²) calculation
+   - For shift k from 0 to n-1:
+     - Calculate deviation = Σ|p[i] - (i+k) mod n|
+     - Track minimum deviation and corresponding shift
+3. **Timing**: Start-to-done within 256 clock cycles
+4. **Reset**: done=0, min_dev=0, best_shift=0, valid for 2+ cycles
+5. **Data Path**: Use state machine with 3 states: IDLE, COMPUTE, DONE
+6. **Counters**: Use 4-bit counters for shift (0-7) and position (0-7)
+7. **Arithmetic**: 16-bit signed accumulator for deviation sum
+8. **Comparator**: Compare current deviation with minimum, update if smaller
+9. **Pipeline**: Single-cycle deviation calculation per shift (4-8 cycles per shift)
+
+### IMPLEMENTATION NOTES
+- p values are 1-indexed in problem, convert to 0-indexed internally
+- (i+k) mod n: implement with 4-bit modulo logic
+- abs(|x|): implement as (x >= 0) ? x : -x
+- Minimum is updated on-the-fly during computation
+- Output min_dev and best_shift valid when done=1
+- If multiple shifts have same min_dev, output the smallest shift index
+
+### EXAMPLE
+For n=3, p=[2,3,1] (0-indexed [1,2,0]):
+- k=0: deviation = |1-0|+|2-1|+|0-2| = 1+1+2 = 4
+- k=1: deviation = |1-2|+|2-0|+|0-1| = 1+2+1 = 4 (but 0-indexed values give 0)
+- k=2: deviation = |1-1|+|2-2|+|0-0| = 0
+- Output: min_dev=0, best_shift=1 (after 0-indexed to 1-indexed conversion)
+
+Note: The testbench handles 0-indexed values internally for comparison.

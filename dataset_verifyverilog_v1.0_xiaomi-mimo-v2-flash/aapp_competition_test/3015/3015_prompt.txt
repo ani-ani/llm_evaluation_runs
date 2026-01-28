@@ -1,0 +1,25 @@
+Implement a Verilog module to solve a 2-player shortest path problem on a directed graph with up to 16 nodes. The graph is given as an adjacency list where each edge has a weight. Player A (left hemisphere) moves first from a start node to a target node. Players alternate turns. Player A aims to maximize the total path length, Player B aims to minimize it. If the game enters a cycle or is otherwise infinite, output infinity (a special sentinel). Assume optimal play.
+
+Interface:
+- Inputs: clk, rst_n, start
+- Node indices: 4-bit (0-15)
+- Edge weights: 16-bit (0-65535)
+- Parameters: MAX_NODES=16, MAX_EDGES=32, MAX_CYCLES=256
+- Graph Input: A flat array of packed edge data. For each edge, pack: [source_node (4 bits), dest_node (4 bits), weight (16 bits)]. Provide 32 such 24-bit entries. A 'valid_edges' signal indicates how many edges are actually used (1-32).
+- Output: result (32-bit), done (1-bit)
+
+Algorithm to Implement:
+1. On start, initialize distance arrays for (node, turn) states. States: (0..15, 0..1) where turn 0=Player A, turn 1=Player B. dist[node][turn] = current best distance found.
+2. Use a Bellman-Ford-like iterative relaxation over states. Since it's a game, this is a shortest/longest path problem on a graph of states. For Player A's turn (turn=0) at node u: dist[u][0] = max over outgoing edges (u->v, weight w) of (w + dist[v][1]). For Player B's turn (turn=1) at node u: dist[u][1] = min over outgoing edges (u->v, weight w) of (w + dist[v][0]).
+3. Initialize dist[t][0] = dist[t][1] = 0 (target reached). For others, initialize to -1 (unvisited) or a large negative/positive number for max/min problems.
+4. Iterate up to MAX_CYCLES (256) times. In each iteration, update all states based on the rules above. Detect cycles by tracking changes; if no changes in an iteration, convergence reached. If max iterations reached without convergence, or if a state value exceeds a large threshold (e.g., 2^24-1), mark as infinite.
+5. The result is dist[s][0] (Player A starts). If infinite, output 0xFFFFFFFE (sentinel for infinity). Else output the 32-bit result.
+6. Timing: Operation should complete within 256 clock cycles after start.
+
+Key Constraints for Hardware:
+- Use localparam for sizes.
+- Use clocked always blocks for state updates.
+- Use dual-port Block RAMs for dist arrays (size 32x32 bits). Address: {node[3:0], turn[0]}.
+- Use a combinatorial block to compute next_dist_val for the current node/turn being processed.
+- Process one edge per cycle, or pre-compute adjacency matrix (16x16x16 bits) for faster iteration.
+- Memory: Adjacency matrix of 16x16=256 entries, each 16-bit weight + valid bit (17 bits total). If multiple edges between nodes, take the specific one relevant for the turn? No, the problem says 'decide on a tube', meaning choose among outgoing edges. For the hardware simplification, if multiple edges exist between u and v, we must consider all. To simplify, assume max 2 outgoing edges per node. The input buffer should handle this.

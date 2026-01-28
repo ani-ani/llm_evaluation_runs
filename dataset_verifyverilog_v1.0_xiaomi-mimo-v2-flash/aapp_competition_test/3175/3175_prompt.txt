@@ -1,0 +1,68 @@
+Verilog module for Maximum Polygon Area from Fence Segments
+
+Task: Given up to 16 fence segments (lengths 1-100), find the maximum area polygon that can be formed using any subset of segments. Sides must satisfy polygon inequality (largest side < sum of others). Area calculated using generalized Brahmagupta's formula for cyclic polygons (max area for given sides).
+
+Scale & Simplification:
+- Max segments N = 16 (input truncated if larger)
+- Lengths represented as 8-bit integers (max 100 fits in 8 bits)
+- Area computed as fixed-point Q8.8 (8 integer bits, 8 fractional bits)
+- Algorithm: DP over sorted segments
+  1. Sort input segments descending (bubble sort, max 16 elements)
+  2. For each subset (bitmask), check polygon inequality
+  3. Calculate semi-perimeter S = sum / 2
+  4. Area = sqrt( product( (S-a_i) * 4^N / 16^N ) ) for cyclic N-gon
+  5. Maximize over valid subsets (N >= 3)
+
+Interface:
+- Inputs:
+  clk: system clock
+  rst_n: active-low reset (synchronous)
+  start: 1-cycle start pulse
+  lengths[0:15]: 16x8-bit array of fence segment lengths (indices 0..15 valid)
+  valid_count: 4-bit integer indicating number of valid segments (3..16)
+- Outputs:
+  area: 16-bit fixed-point Q8.8 result (valid when done=1)
+  done: 1-cycle pulse indicating completion
+  ready: 1 when idle
+
+Timing:
+- Start asserted when ready=1
+- Processing: ~200-500 cycles (N=16, subsets=2^16=65536, but optimized DP)
+- Result valid on done pulse
+- Reset: area=0, done=0, ready=1 after 2 cycles
+
+Algorithm Details (Hardware Implementation):
+1. Input Stage (1 cycle): Capture lengths array and count
+2. Sorting Stage (Bubble Sort, ~256 cycles): Sort lengths descending
+3. DP Stage (Iteration): Iterate all bitmasks from 0 to (1<<N)-1
+   - Count set bits (N sides)
+   - Skip if N < 3
+   - Compute sum of lengths in subset
+   - Check inequality: max_len < sum - max_len
+   - If valid, compute cyclic area approximation:
+     S = sum/2
+     product = (S-a_1)*(S-a_2)*...*(S-a_N)
+     area = sqrt(product) * 4^N / 16^N (simplified for fixed-point)
+4. Maximization: Track max area seen
+5. Output Stage: Output max area in Q8.8
+
+Fixed-Point Considerations:
+- All calculations use 16-bit registers (Q8.8)
+- Intermediate products may need 24-32 bits, truncate to 16 bits
+- Square root: use Newton-Raphson approximation (8 iterations max)
+- Division: use shift for powers of 2
+
+Constraints:
+- 16 segments max (hard limit)
+- 8-bit length values
+- 16-bit output (Q8.8)
+- Cycle budget: 1000 cycles max for N=16
+- No recursion, all iterative loops
+
+Edge Cases:
+- No valid polygon (all invalid subsets): output 0
+- Single subset gives valid polygon: output that area
+- Minimum valid: 3 segments (triangle)
+
+State Machine States:
+IDLE, LOAD, SORT, DP_INIT, DP_LOOP, DP_CHECK, DP_AREA, DP_MAX, SQRT, FINISH

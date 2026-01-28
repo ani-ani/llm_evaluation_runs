@@ -1,0 +1,35 @@
+Design a Verilog module that computes the number of card patterns leading to Alice's victory in the Card Game for Three, scaled for hardware constraints. 
+
+**Interface Specification:**
+Inputs:
+  - clk: Clock signal (rising edge triggered)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - n_val: 4-bit input (scaled N, 0-15)
+  - m_val: 4-bit input (scaled M, 0-15)
+  - k_val: 4-bit input (scaled K, 0-15)
+  - card_a: 16-bit array (Alice's cards, 0=a, 1=b, 2=c)
+  - card_b: 16-bit array (Bob's cards, 0=a, 1=b, 2=c)
+  - card_c: 16-bit array (Charlie's cards, 0=a, 1=b, 2=c)
+Outputs:
+  - result: 32-bit unsigned (count modulo 1,000,000,007)
+  - done: 1-cycle pulse when result is valid
+
+**Implementation Details:**
+1. **State Machine:** Implement a Mealy FSM that simulates the game loop for each possible configuration of cards (scaled to 16 cards max per player).
+2. **Game Logic:** 
+   - Track current player (2-bit state: 0=Alice, 1=Bob, 2=Charlie).
+   - Track indices for each player's deck (4-bit counters).
+   - On each clock cycle, if the current player has cards remaining, read the card value.
+   - If card is 'a', next state is Alice; 'b' is Bob; 'c' is Charlie.
+   - If deck is empty, set winner flag.
+3. **Counter:** Use a 32-bit accumulator to count winning configurations. Iterate through all combinations of card assignments (brute force for small N, M, K).
+4. **Modulo:** All additions must be modulo 1,000,000,007.
+5. **Control:** The `start` signal triggers the iteration loop. The `done` signal asserts when all configurations are processed.
+6. **Constraints:** 
+   - N, M, K are limited to 0-15 (4 bits).
+   - Total configurations: 3^(N+M+K) <= 3^45, but we limit the loop to 16 cycles of state execution per configuration.
+   - Result width: 32 bits (sufficient for scaled counts).
+
+**Example Behavior:**
+- For N=1, M=1, K=1, the module should output 17.

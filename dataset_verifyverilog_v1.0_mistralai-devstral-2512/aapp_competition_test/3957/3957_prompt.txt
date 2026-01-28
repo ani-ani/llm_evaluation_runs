@@ -1,0 +1,38 @@
+Design a Verilog module that computes the maximum total distance for pairing universities in a tree. The problem reduces to: Given a rooted tree with 2k university nodes marked (1 if university, 0 otherwise), the answer is the sum over all edges of min(number of universities in the subtree below the edge, 2k - number of universities in the subtree). This works because each edge crossing between the subtree and the rest of the tree contributes to the distance for exactly min(u_sub, 2k-u_sub) pairs.
+
+**Module Specification:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `n`: 4-bit unsigned (number of nodes, 2-16)
+  - `k`: 4-bit unsigned (number of pairs, 1-8)
+  - `univ_mask[15:0]`: 16-bit bitmap where bit i (0-indexed) = 1 if town i+1 has a university
+  - `edge_src[63:0]`: 64-bit array (4 edges x 16 bits each) storing source nodes of edges (0-indexed)
+  - `edge_dst[63:0]`: 64-bit array (4 edges x 16 bits each) storing destination nodes of edges (0-indexed)
+  - `num_edges`: 4-bit unsigned (number of edges, n-1)
+- **Outputs:**
+  - `result`: 16-bit unsigned (maximum total distance)
+  - `done`: 1-cycle pulse when computation is complete (valid result available)
+
+**Implementation Details:**
+1. Build adjacency list representation from edge inputs during initialization phase.
+2. Perform iterative DFS/BFS starting from node 0 (root) to compute parent pointers and processing order.
+3. Process nodes in reverse order (post-order) to accumulate university counts per subtree.
+4. For each node (except root), compute contribution: `min(subtree_univ_count, 2*k - subtree_univ_count)` and add to total.
+5. Store intermediate states in registers: `univ_cnt[15:0]` (4-bit per node, max 16 universities), `total[15:0]` (result accumulator).
+6. Use FSM with states: IDLE, BUILD_ADJ, DFS_ORDER, POST_PROCESS, DONE.
+7. Timing: Within 256 cycles after start.
+
+**Constraints:**
+- Node indices: 0 to 15 (4 bits)
+- Maximum nodes: 16
+- Maximum edges: 15
+- Maximum universities: 16 (2k <= n, k <= 8)
+- Result fits in 16 bits (max distance: 15 edges * 8 pairs = 120)
+- Assume connected tree (n-1 edges for n nodes)
+
+**Example:**
+For n=7, k=2, univ_mask=0b0001110001000011 (nodes 1,2,5,6), edges as in test case. Expected output: 6.
+
+The module should start computation when `start` is asserted, and assert `done` when `result` is ready.

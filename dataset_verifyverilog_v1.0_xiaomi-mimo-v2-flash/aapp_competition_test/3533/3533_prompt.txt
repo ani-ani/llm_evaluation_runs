@@ -1,0 +1,35 @@
+Implement a Verilog module that computes the minimal total toll for N trucks after optimal ticket exchanges. 
+
+**Problem Analysis**: The optimal strategy is to sort all entrance numbers in ascending order and all exit numbers in ascending order, then pair the i-th entrance with the i-th exit. The total toll is the sum of absolute differences: sum(|entrance_sorted[i] - exit_sorted[i]|) for i = 0 to N-1. This works because the absolute difference function is convex and the optimal matching for sorted sequences is monotonic.
+
+**Scaling**: N ≤ 16 (scaled from 100,000). Numbers are 32-bit unsigned integers (scaled from 10^9).
+
+**Interface**:
+- Inputs: 
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `entrance_i` [15:0] [N-1:0]: Array of 16-bit entrance values (max 16 entries)
+  - `exit_i` [15:0] [N-1:0]: Array of 16-bit exit values (max 16 entries)
+  - `num_trucks`: 4-bit value (0-15)
+- Outputs:
+  - `result`: 32-bit total toll sum
+  - `done`: 1-cycle pulse indicating valid result
+
+**Implementation Requirements**:
+1. **Sorting**: Implement a small sorting network (e.g., bitonic or bubble sort) for 16 elements. Since N is variable, use a sorting unit that processes exactly 16 elements but only uses the first `num_trucks` valid inputs. Sort entrances and exits in parallel.
+2. **Computation**: After sorting, compute the sum of absolute differences in a pipelined manner. The accumulator should handle up to 16 * (max difference ~2^16) = ~2^20, so 32-bit output is safe.
+3. **Control**: State machine with states: IDLE, SORTING, COMPUTING, DONE.
+4. **Timing**: The module should complete within 200 clock cycles for worst case (16 elements).
+5. **Reset**: On reset, `done` goes low, `result` clears to 0.
+
+**Detailed Signal Definitions**:
+- `entrance_i` and `exit_i`: Packed arrays or separate wires. For Verilog, define as `input [15:0] entrance_i [0:15]` (array of 16-bit words).
+- `num_trucks`: Determines valid range for sorting (0-15).
+- Internal: Need temporary registers for sorted values, comparator logic for sorting, and an adder/subtractor for differences.
+
+**Edge Cases**: 
+- `num_trucks` = 0: Output 0 immediately.
+- Single truck (N=1): Result is |entrance - exit|.
+
+The module must be synthesizable and use only combinational logic for sorting within one clock cycle (or pipelined across multiple cycles). A feasible approach is a pipelined bubble sort or a sorting network that processes elements over multiple cycles.

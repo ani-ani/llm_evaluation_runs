@@ -1,0 +1,44 @@
+Implement a Verilog module to solve a tiling problem on an N-row, 3-column board with dominoes (2x1). Given K dominoes, maximize the sum of covered cells. 
+
+**Adaptation:**
+- Input numbers are limited to 8-bit signed (-128 to 127).
+- N is fixed to 8 rows (scaling from 1000).
+- K is scaled to max 16 dominoes.
+- We process row-by-row using DP with bitmasks. Each row has 3 cells, represented by a 3-bit mask (1 = covered in current row).
+- State: `dp[row][k][mask]` = max sum. We map this to a pipeline processing one row per cycle.
+- Dominoes can cover two adjacent cells horizontally (within row) or vertically (between rows).
+- Vertical dominoes span current row (bit set) and previous row (bit set in next cycle). 
+- We track `prev_mask` (cells covered by vertical dominoes from row-1) and `curr_mask` (cells covered by vertical dominoes starting at row).
+- Horizontal dominoes within the row must cover 2 adjacent cells (0-1, 1-2) and do not affect mask bits.
+- We iterate K (domino count) in an outer loop, but for hardware, we flatten this: `dp[k]` updates to `dp[k + added]`.
+
+**Interface:**
+- Inputs:
+  - `clk`: Clock
+  - `rst_n`: Active-low reset
+  - `start`: 1-cycle pulse to start processing
+  - `row_data[8][3][7:0]`: Input row values (8 rows, 3 cols, 8-bit signed). Pack into a wide bus or stream it.
+  - `total_K[7:0]`: Number of dominoes allowed (0-255).
+- Outputs:
+  - `max_sum[15:0]`: Maximum sum (16-bit signed).
+  - `done`: 1-cycle pulse when calculation is complete.
+
+**Logic:**
+1. Initialize `dp` array (size K+1 x 8) to -infinity (use `16'h8000` or check valid bit). Set `dp[0][0] = 0`.
+2. For each row `r` from 0 to 7:
+   - Load `row_vals[2:0]` (8-bit each).
+   - Iterate `prev_mask` from 0 to 7.
+   - Generate all valid `curr_mask` (0-7) and horizontal tile configurations.
+     - Vertical tiles: if `prev_mask` bit is 1, cell is already covered. If `prev_mask` bit is 0, we can place vertical tile (set bit in `curr_mask`). Cost added.
+     - Horizontal tiles: Cover adjacent free cells in current row. Bits in `prev_mask` are fixed. We generate all subsets of horizontal tiles on free cells.
+     - Calculate `added_tiles` (verticals + horizontals) and `added_sum`.
+   - Update `dp` for next row: `new_dp[k + added_tiles][curr_mask] = max(old_dp[k][prev_mask] + added_sum)`.
+3. After 8 rows, find max value in `dp[k <= total_K]`.
+
+**Testbench:**
+- Simulate 8 rows of 3 integers.
+- Use `clamp_to_width` for 8-bit inputs.
+- Check result against expected max sum.
+- Timeout: 10,000 cycles.
+- Arrays: `row_data` is a 2D array of signals. Assign individual elements.
+- Note: To fit in hardware, we simplify state: iterate K in a loop (software style) inside the module or use a larger lookup table. Given the prompt, describe the DP logic clearly.

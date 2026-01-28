@@ -1,0 +1,35 @@
+Implement a Verilog module that determines if a circular necklace with n beads can be split among k friends into k segments of equal weight. Each segment must contain whole beads only and sum to the target weight. The algorithm uses prefix sums modulo the total weight.
+
+Adaptations:
+- n ≤ 16 beads (array size 16)
+- k ≤ 4 friends (4-bit)
+- bead weights: 8-bit values (0-255)
+- total weight ≤ 4095 (12-bit)
+- Uses linear scan with hash-like set for O(n*k) worst-case, but n small so O(n*k) acceptable
+- Prefix sums modulo target, check if (target, 2*target, ..., k*target) exist in prefix sums
+
+Module Interface:
+- Input: clk, rst_n (active-low), start (1-cycle pulse)
+- Input: n (4-bit), k (4-bit)
+- Input: beads[15:0] (16 x 8-bit array, beads[0] to beads[15])
+- Output: result (1-bit: 1=YES, 0=NO)
+- Output: done (1-cycle when valid)
+
+Behavior:
+1. On start, compute total sum of all beads (mod 4096 to prevent overflow)
+2. If total_sum % k != 0, output NO
+3. Else compute target = total_sum / k
+4. Build prefix sums array: prefix[i] = sum of beads[0:i] (i from 0 to n)
+5. For each required segment weight s = target, 2*target, ..., (k-1)*target:
+   - Check if s exists in prefix array (linear scan)
+   - If any missing, output NO
+6. If all found, output YES
+7. Signal done=1 when complete
+
+Timing:
+- start → done within 256 cycles
+- Reset: n=0, k=0, result=0, done=0
+- All operations use unsigned arithmetic
+- Overflow handling: sums clamp to 4095 (12-bit)
+
+Note: This is a feasibility implementation; actual large-scale versions require more sophisticated algorithms (FFT, etc.) but are constrained here.

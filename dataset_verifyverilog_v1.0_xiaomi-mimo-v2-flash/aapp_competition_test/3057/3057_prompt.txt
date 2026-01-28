@@ -1,0 +1,56 @@
+Implement a Verilog module that determines if a set of equivalence/not-equivalence statements is consistent, taking into account rhyming rules.
+
+## Core Problem
+- Given N statements of form "X is Y" or "X not Y"
+- Words rhyme if last min(3, |X|, |Y|) characters match
+- If two words rhyme AND appear in statements, they are equivalent
+- Output 'yes' if consistent, 'wait what?' if contradictory
+
+## Hardware Adaptation
+- **Word Mapping**: Each unique word maps to a 5-bit ID (0-31 max)
+- **Words Limit**: Max 16 unique words (5-bit index)
+- **Word Length**: Max 20 chars, stored as ASCII bytes
+- **Rhyme Check**: Compare last 3 characters of each word
+- **Union-Find**: Use path compression for 16 nodes
+- **Input Buffer**: Store all statements in registers
+
+## Interface
+**Inputs**:
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `N`: 4-bit (0-15 statements)
+- For each statement `i` (0-14):
+  - `word_a[i][19:0]`: 20-bit ASCII string (5 chars x 4-bit)
+  - `word_b[i][19:0]`: 20-bit ASCII string
+  - `is_eq[i]`: 1-bit (1='is', 0='not')
+
+**Outputs**:
+- `done`: 1-cycle pulse when complete
+- `result`: 2-bit (0=wait what?, 1=yes)
+- `status`: 4-bit debug state
+
+## Processing Phases (FSM)
+1. **IDLE**: Wait for start
+2. **COLLECT**: Map unique words to IDs (0-15)
+3. **RHYME**: For each pair of words, check if they rhyme (last 3 chars match) and add equivalence
+4. **UNION**: Apply all statements to Union-Find structure
+5. **CHECK**: Verify no contradictions (same component with 'not')
+6. **DONE**: Output result
+
+## Algorithm Details
+- **Word Storage**: 16 x 20-bit registers for words
+- **Rhyme Check**: Compare bits [3:0] (last char), [7:4], [11:8] for both words
+- **Union-Find**: Parent array [15:0], each 4-bit
+- **Contradiction**: If 'not' statement connects two nodes already in same component
+
+## Constraints
+- Max 16 unique words
+- Max 15 statements
+- Processing within 1000 cycles
+- 20-bit word encoding: 5 chars x 4-bit (a-z mapped to 0-25)
+
+## Reset Behavior
+- All arrays cleared to 0
+- `done` = 0, `result` = 0
+- Minimum 2 cycles reset

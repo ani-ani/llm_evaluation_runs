@@ -1,0 +1,55 @@
+Implement a Verilog module that computes the minimum number of steps to make all n guests friends, where each step selects a guest A and makes all friends of A become friends with each other. Given n ≤ 22 and graph is connected.
+
+Module Specification:
+- Inputs: clk, rst_n, start, n[4:0] (max 22), m[5:0] (max edges), adjacency inputs for m edges (u[4:0], v[4:0])
+- Outputs: step_count[5:0] (0-22 steps), steps[21:0] (packed array of 22 × 5-bit selections, ordered by step)
+- Timing: start->done within 2000 cycles for n=22
+- Reset: step_count=0, steps=0
+
+Algorithm (Hardware-friendly DP):
+1. Store adjacency masks for each node: adj[i] = bitmask of friends
+2. State: current_mask = bitmask of nodes already fully connected (clique)
+3. DP recurrence: dp[mask] = minimum steps to reach mask
+4. Transitions: from state mask, try adding node i:
+   - new_mask = mask | (mask ⊗ adj[i]) where ⊗ means taking union with friends of friends
+   - Actually: select node i, then its friends (adj[i]) become connected to each other
+   - The closure operation: new_mask = mask | adj[i] | (adj[i] & mask) ... wait
+
+Simplified hardware version:
+- Keep array of 22 × 22-bit adjacency matrix
+- Each step: pick node i, then for all j where j is friend of i: add edges between all pairs of friends of i
+- In hardware: maintain a bitmask of connected nodes (clique). When selecting node i:
+  - Add i to clique if not present
+  - Add all friends of i to clique
+  - The graph becomes: clique ∪ {i} ∪ friends(i)
+  - But we need to track pairwise connectivity
+
+Better approach:
+- Represent graph as adjacency matrix (22×22 bits)
+- Each step: select node A, take all neighbors of A (degree(A) neighbors), make them a clique
+- In bit operations: let friends = adj[A]; then for all pairs (i,j) where both in friends, set edge (i,j)
+- Hardware: maintain 22×22 adjacency matrix as 22 × 22-bit registers
+- Each step: read adj[A], compute new edges as combination
+- Goal: all n×(n-1)/2 edges set
+
+Since n≤22 and we need ≤22 steps:
+- State space: 2^(22×22) is too large for full DP
+- Use greedy or BFS over smaller state
+- For Verilog, implement iterative greedy: at each step, pick node that maximizes new connections
+- Or use iterative deepening search with bounded depth
+
+Simpler Verilog spec for benchmark:
+- Input: adjacency matrix A[21:0][21:0] (each row is bitmask of friends)
+- Output: sequence of step indices (0-21)
+- Method: Greedy heuristic - at each step, compute for each node i: number of new edges created if we select i
+- Select node with maximum new edges
+- Repeat until all edges exist
+- Track visited to avoid cycles
+- Output the sequence
+
+Interface:
+- Inputs: clk, rst_n, start, n[4:0], adj_matrix[21:0][21:0] (passed as 22 × 22-bit inputs)
+- Output: step_count[4:0], steps[0:21][4:0] (packed or individual)
+- Done signal when complete or max steps reached
+
+Note: Due to 22×22 matrix = 484 bits, interface may need multiple cycles to load. Use a single-cycle interface for simplicity.

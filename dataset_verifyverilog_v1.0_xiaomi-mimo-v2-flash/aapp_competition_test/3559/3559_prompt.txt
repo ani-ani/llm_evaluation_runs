@@ -1,0 +1,48 @@
+Implement a Verilog module that simulates the Zergling rush game logic with strict hardware constraints.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: Clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start simulation
+  - `config_addr`: 4-bit address (0-5) for configuration data:
+    - 0: N (grid size)
+    - 1: P1 Attack Upg
+    - 2: P1 Armor Upg
+    - 3: P2 Attack Upg
+    - 4: P2 Armor Upg
+    - 5: Turns (t)
+  - `config_data`: 8-bit data for configuration
+  - `map_data`: 8-bit (ASCII char) input for map initialization. Reads N*N chars sequentially.
+- Outputs:
+  - `ready`: High when accepting map data
+  - `done`: High when simulation complete
+  - `result_addr`: Address for output readback (0 to N*N-1)
+  - `result_data`: 8-bit ASCII char at `result_addr`
+
+**Implementation Requirements:**
+1. **Storage**: Use 2 banks of registers for the grid (max 8x8 = 64 cells). Each cell stores: {owner (1 bit), hp (6 bits), occupied flag (1 bit)}. Use 8-bit width for simplicity.
+2. **Configuration**: Accept config values (N=2..8) via `config_addr`/`config_data` before map loading.
+3. **Map Loading**: When `ready` is high, accept `map_data`. Increment address internally. Stop when N*N chars received.
+4. **Simulation Engine**: Implement a Finite State Machine (FSM) for the simulation loop (0 to `t` turns). Within each turn:
+   - **Phase 1 (Decision)**: Iterate through all cells. Determine action (Attack N, Attack NE, Move N, etc.) for each Zergling using Manhattan distance calculation (Q8.8 fixed point) and tie-breaking (North -> Clockwise).
+   - **Phase 2 (Attack Resolution)**: Apply simultaneous damage. Update HP. Remove dead (HP<=0).
+   - **Phase 3 (Movement)**: Resolve conflicts (Northern priority). Update positions.
+   - **Phase 4 (Regeneration)**: Increment HP for HP < 35.
+5. **Constraint**: Max 16 Zerglings. Max 256 simulation cycles.
+6. **Output**: When `done` is high, output the final map via `result_addr` and `result_data`.
+
+**Algorithm Details:**
+- **Distance**: Calculate dx = x1 - x2, dy = y1 - y2. Abs(dx) + Abs(dy). Use fixed point (int x 256) to avoid float.
+- **Movement**: Target is adjacent cell (8 dirs) minimizing distance to closest enemy.
+- **Conflict Resolution**: 
+  - Moving to occupied cell? Stay.
+  - Multiple to same cell? North-most row wins, then West-most column wins.
+- **Tie Breaking**: Direction index 0=N, 1=NE, ... 7=NW. Choose lowest index.
+
+**Verilog Code Structure:**
+- Define parameters for Max N=8, Max Zerglings=16.
+- State definitions: IDLE, LOAD_MAP, SIM_START, SIM_TURN_DECISION, SIM_TURN_ATTACK, SIM_TURN_MOVE, SIM_TURN_REGEN, SIM_DONE, OUTPUT_READ.
+- Internal logic to iterate through grid indices.
+- Use 32-bit integer math for distance calculations.
+- Avoid dynamic memory; use fixed loops up to 64 iterations.

@@ -1,0 +1,40 @@
+Implement a Verilog module to find the center of a black square in an n x m grid. The grid is initially white, and a single black square of odd side length exists.
+
+**Core Algorithm (Simplified):**
+1. Scan the input grid to find the minimum and maximum row indices (row_min, row_max) where black cells exist.
+2. Scan the input grid to find the minimum and maximum column indices (col_min, col_max) where black cells exist.
+3. The center row is (row_min + row_max) / 2.
+4. The center column is (col_min + col_max) / 2.
+5. Since the problem uses 1-based indexing for output, add 1 to the calculated indices.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (Rising Edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate operation
+  - `grid`: An array of `N` inputs, each 8 bits wide, representing a row of the table (8 columns max). Since N is variable (1-115) but HDL requires fixed sizes, we assume a maximum of 16 rows. Input ports are `grid_0` through `grid_15`. Unused rows will be masked.
+  - `valid_rows`: 4-bit integer indicating the number of valid rows (1-16).
+
+- **Outputs:**
+  - `center_row`: 8-bit output (1-based index)
+  - `center_col`: 8-bit output (1-based index)
+  - `done`: 1-cycle pulse indicating valid output on the cycle it is high.
+
+**Implementation Details:**
+- **Data Width:** 8 bits are sufficient for values up to 115.
+- **Row Indices:** Use 0-based indexing internally. Min is initialized to 15, Max to 0.
+- **Column Indices:** Since each row is an 8-bit vector, we can scan bits 0-7. Min initialized to 8, Max to 0.
+- **Pipelining/Comb Logic:**
+  - Step 1: Iterate 16 times (once per possible row). If `i < valid_rows`, check `grid_i`.
+    - If `grid_i` is not zero (has any black cell), update `row_min` and `row_max`.
+    - While checking `grid_i`, scan bits 0-7 to update `col_min` and `col_max`.
+  - Step 2: Calculate `(row_min + row_max) >> 1` and `(col_min + col_max) >> 1`.
+  - Step 3: Add 1 to both results.
+- **Control:** An FSM with states: IDLE, SCAN, CALC, DONE.
+  - SCAN state lasts 16 cycles to process all potential rows.
+  - CALC takes 1-2 cycles.
+- **Reset:** Outputs default to 0. `done` is 0.
+
+**Constraints:**
+- Max grid size: 16 rows x 8 columns.
+- Timing: Must finish within 100 cycles from `start`.

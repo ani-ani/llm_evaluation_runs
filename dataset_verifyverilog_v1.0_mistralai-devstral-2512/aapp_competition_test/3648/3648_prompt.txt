@@ -1,0 +1,39 @@
+Implement a Verilog module that solves the secure telephone network problem with scaled constraints.
+
+**Problem Adaptation:**
+- Input: n (number of buildings, 4 bits, 1-16), m (edges, 6 bits, 0-32), p (insecure buildings, 4 bits, 0-4).
+- Insecure buildings (p) are given as a bitmask (since p≤4, bitmask fits in 4 bits).
+- Edge list: max 32 edges, each with (u: 4 bits, v: 4 bits, weight: 12 bits).
+- Security Rule: Insecure buildings cannot be intermediate nodes in any path between two other buildings. This means insecure buildings must be leaf nodes (degree ≤ 1) in the final network, OR isolated if p>1 and n>2 (unless they are the only buildings).
+- Algorithm: Use Kruskal's Minimum Spanning Tree (MST) algorithm, but with a constraint check after selection: any insecure building must have degree ≤ 1. If adding an edge violates this (degree becomes >1), skip it or the MST is invalid.
+- Simplification: We assume the optimal solution is an MST (or modified MST) where insecure nodes are leaves. We iterate over edges sorted by weight, build the graph incrementally, and check degrees.
+- Output: Total cost (16-bit) or "impossible" flag.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: Clock signal (rising edge)
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to begin computation
+  - `n`: 4-bit input (number of buildings, 1-16)
+  - `p_mask`: 4-bit input (bitmask of insecure buildings, bits 0-3 correspond to buildings 1-4, etc.)
+  - `edge_valid`: 1-bit input (valid signal for edge input)
+  - `edge_u`: 4-bit input (source node)
+  - `edge_v`: 4-bit input (dest node)
+  - `edge_w`: 12-bit input (weight)
+  - `edge_end`: 1-cycle pulse indicating end of edge list (after m edges)
+- Outputs:
+  - `result`: 16-bit output (total cost)
+  - `done`: 1-cycle pulse when computation is finished
+  - `impossible`: 1-bit flag (asserted if no valid network exists)
+- Timing: The module should read edges sequentially while `edge_valid` is high. Once `edge_end` is received, it processes the MST. Computation should finish within 5000 cycles.
+- Internal: Maintain Disjoint Set Union (DSU) for connectivity and degree counters for each node (4-bit counters for up to 16 nodes).
+- Sorting: Since edges are small (≤32), use a bubble sort or insertion sort FSM to sort edges by weight in hardware.
+
+**State Machine:**
+1. `IDLE`: Wait for `start`.
+2. `READ_EDGES`: Accumulate edges into a buffer.
+3. `SORT_EDGES`: Sort edges by weight ascending.
+4. `INIT_MST`: Initialize DSU and degree counters.
+5. `PROCESS_EDGES`: Iterate through sorted edges, check if adding edge connects two components. If yes, check degree constraints for insecure nodes. If valid, add edge, update degree and cost.
+6. `CHECK_CONNECTIVITY`: After processing all edges, verify all nodes 0 to n-1 are connected (single set in DSU). If not, assert `impossible`.
+7. `DONE`: Assert `done` and output `result` or `impossible` flag.

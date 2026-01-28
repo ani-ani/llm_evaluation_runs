@@ -1,0 +1,32 @@
+Implement a Verilog module to compute the sum of shortest distances from each node to all other nodes in a graph with at most 2 paths between any two nodes (a cactus graph). Scale N=8 nodes, edge lengths up to 255 (8-bit). Use fixed-size arrays for adjacency and distances. Compute all-pairs shortest paths using Floyd-Warshall (N^3) or iterative BFS for small N. Output modulo 1000000007 (scaled to 16-bit for simulation). Interface:
+
+Inputs:
+  clk: 1-bit rising edge
+  rst_n: 1-bit active-low sync reset
+  start: 1-bit 1-cycle pulse
+  node_count: 4-bit (N, 2-8)
+  edges[0:15]: 16x24-bit packed array (each 24-bit: src[3:0], dst[3:0], len[7:0])
+  edge_valid[0:15]: 16-bit mask indicating valid edges
+
+Outputs:
+  result[0:7]: 8x16-bit array (danger levels mod 1000000007, scaled to 16-bit)
+  done: 1-cycle pulse when valid
+
+Algorithm:
+1. Reset: done=0, result=0
+2. Start: Load edges, initialize distance matrix to INF (16-bit)
+3. Compute: Floyd-Warshall in O(N^3) cycles (N=8 => 512 cycles max)
+   For k in 0..N-1:
+     For i in 0..N-1:
+       For j in 0..N-1:
+         dist[i][j] = min(dist[i][j], dist[i][k] + dist[k][j])
+4. Sum: For each node i, sum distances[i][*] mod 1000000007 (use 32-bit accumulator, truncate to 16-bit)
+5. Done: Assert done=1 for 1 cycle when finished
+
+Constraints:
+- INF = 65535 (16-bit max)
+- Clamp all values to width
+- Assume valid edges only (no duplicate check needed for small N)
+- Use combinational logic for min/sum where possible, sequential for loops
+- Timing: Within 1000 cycles from start
+- Reset: 2 cycles min, set done=0, result=0

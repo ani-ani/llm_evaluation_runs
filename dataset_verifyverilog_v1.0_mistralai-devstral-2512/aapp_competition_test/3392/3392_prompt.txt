@@ -1,0 +1,40 @@
+Implement a Verilog module that finds the maximum size of a connected component of trees that can have equal heights at some time t >= 0.
+
+**Problem Simplification for Hardware:**
+- Grid size: 16x16 (256 nodes max)
+- Heights (h): 8-bit unsigned (0-255)
+- Speeds (v): 8-bit unsigned (0-255)
+- Time (t): Iterated from 0 to 255 (covers cases where h[i] + v[i]*t overflow 8-bit)
+- Connectivity: 4-neighbor (up, down, left, right)
+- Algorithm: For each time step t (0..255), calculate height_at_t = h + v*t (clamp to 8-bit), build adjacency graph for cells with identical heights, find connected components (BFS/DFS), track max component size.
+
+**Inputs:**
+- `clk`: Clock signal (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `h[0:255]`: 256-element array of 8-bit unsigned heights (indexed row-major)
+- `v[0:255]`: 256-element array of 8-bit unsigned speeds
+
+**Outputs:**
+- `result`: 8-bit unsigned (max component size, max 256)
+- `done`: 1-cycle pulse indicating computation complete
+
+**Timing:**
+- Start asserted for 1 cycle
+- Within 50,000 cycles: start->done
+- Result valid when done=1
+- Reset: done=0, result=0 (min 2 cycles)
+
+**Implementation Details:**
+1. State Machine: IDLE -> COMPUTE
+2. In COMPUTE state, iterate t from 0 to 255
+3. For each t: compute heights = h + v*t (overflow treated as wrap)
+4. Build adjacency matrix for 16x16 grid (4 neighbors only)
+5. Perform connected component labeling (16x16 max)
+6. Track max component size across all t
+7. Output result when t loop completes
+
+**Constraints:**
+- Maximum cycles: 50,000
+- No dynamic memory - use fixed-size buffers
+- Clock frequency: 100 MHz (10ns period)

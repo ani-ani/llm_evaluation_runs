@@ -1,0 +1,34 @@
+Implement a Verilog module that calculates the minimum number of '#' nubs on a stamp that could produce a given binary grid pattern by stamping exactly twice. 
+
+**Constraints & Scaling:**
+- Input grid is scaled to max 16x16 for hardware implementation.
+- Grid cells are single bits (0 for '.', 1 for '#').
+- The algorithm must search for valid offsets (dx, dy) between the two stamps.
+- A valid offset means that for every cell (r,c) in the result grid: 
+  - If result[r][c] is 1, it must be covered by at least one of the two stamps.
+  - If result[r][c] is 0, it must be covered by neither stamp (implicit since stamp is smaller).
+- The stamp shape is the intersection of the two stamp instances shifted by (0,0) and (dx,dy).
+- The minimal nub count is the popcount (number of 1s) of the valid stamp shape.
+- Optimization: The stamp must be fully contained within the visible area of the result when considering the offset. Effectively, we iterate offsets where the second stamp is fully inside the result grid.
+
+**Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard clock and active-low async reset.
+  - `start`: 1-cycle pulse to start calculation.
+  - `grid_in`: 256-bit vector (packed 16x16 grid). Row-major order (Row 0: bits [255:240], Row 1: [239:224]...). 1 represents '#'.
+  - `height`: 4-bit input (1-16).
+  - `width`: 4-bit input (1-16).
+- **Outputs:**
+  - `result`: 8-bit output (minimum nub count, max 256).
+  - `done`: 1-cycle pulse indicating result is valid.
+
+**Behavior:**
+1. On `start`, load `grid_in`, `height`, `width`.
+2. Iterate through all possible vertical offsets `dy` from -(height-1) to (height-1) and horizontal offsets `dx` from -(width-1) to (width-1).
+3. For each offset, check if the resulting stamp shape (intersection of grid and shifted grid) is valid.
+   - A shape is valid if the union of the shape shifted by (0,0) and shifted by (dx,dy) exactly covers all '#' in the input grid and covers no '.' in the input grid.
+   - Actually, simpler check: The stamp is defined as the set of points `S`. The result is `S U (S shifted by (dx,dy))`. We need to find `S` such that `S` is contained in the grid, `S shifted` is contained in the grid, and their union equals the input grid. To minimize `|S|`.
+   - Algorithmically: For a fixed offset `(dx, dy)`, the stamp `S` must be exactly `Grid AND (Grid shifted by (-dx, -dy))`. 
+   - Check if `S` OR `(S shifted by (dx, dy))` equals `Grid`.
+4. Calculate popcount of `S` for valid offsets and keep minimum.
+5. Output result and `done`.

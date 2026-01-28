@@ -1,0 +1,44 @@
+Implement a Verilog module to solve the Equestria Games media company coverage problem. The problem is: given a ring of N sectors, find the maximum number of non-overlapping ranges of at least length K containing at least C distinct colors. 
+
+Adaptations for hardware:
+1. Scale N to 16 sectors (max 16 bits for indices)
+2. Colors are represented by 4-bit integers (max 16 distinct colors)
+3. K and C are 4-bit inputs (1-16)
+4. The ring structure is handled by doubling the array (to simulate wrap-around)
+5. Use a greedy algorithm: find the earliest valid range, mark sectors as used, and repeat. Since N is small (16), this is efficient.
+6. A valid range is defined by length >= K and distinct colors >= C. Distinct colors can be tracked using a bitmask (4-bit wide, but effectively need 16 bits for 16 colors).
+
+Interface Specification:
+Inputs:
+  clk: System clock (rising edge)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  sectors[0:15]: 16x4-bit array of sector colors (values 1-16)
+  K_in: 4-bit input, minimum length (1-16)
+  C_in: 4-bit input, minimum distinct colors (1-16)
+
+Outputs:
+  result: 4-bit output, maximum number of companies (0-16)
+  done: 1-cycle pulse, asserted when calculation is complete
+
+Behavior:
+- On reset (rst_n=0), state resets, done=0, result=0.
+- When start=1, the module begins processing.
+- The module must compute the maximum number of non-overlapping valid ranges in the circular array.
+- Use a greedy approach:
+  1. Iterate through all possible starting positions i (0 to N-1).
+  2. For each start, iterate through lengths j from K to N-i (bounded by N).
+  3. Check if the range [i, i+j-1] has >= C distinct colors. This can be done by building a bitmask of colors in the range.
+  4. If valid, mark sectors i to i+j-1 as used (using a bitmask of used sectors).
+  5. Continue scanning from the next unused sector.
+- Since N <= 16, the maximum number of iterations is small. The module should complete within 1024 cycles.
+- Timing: start->done within 1000 cycles.
+- Reset behavior: done=0, result=0, state machine idle.
+
+Implementation Notes:
+- Use a state machine with states: IDLE, SCAN, CHECK, UPDATE, DONE.
+- Use an index counter for the current starting sector.
+- Use a temporary bitmask for distinct colors in the current range.
+- Use a bitmask for used sectors (16 bits).
+- Use a counter for the number of companies found.
+- Output result should be the final count.

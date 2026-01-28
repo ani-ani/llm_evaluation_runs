@@ -1,0 +1,42 @@
+Implement a Verilog module that solves the shipment partitioning problem for small n (<=16). Given a distance matrix d(n,n), partition into two groups A and B to minimize D(A) + D(B) where D(S) is the maximum distance in subset S.
+
+## Interface Specification:
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start signal (1-cycle pulse)
+- `dist_matrix[0:255]`: 256-bit packed distance matrix for n<=4 (4x4=16 distances)
+- `n`: Number of shipments (4-bit, valid values 1-16)
+
+**Outputs:**
+- `result`: Minimum sum of disparities (16-bit)
+- `done`: Operation complete signal (1-cycle high when result valid)
+
+**Constraints:**
+- Maximum n = 16 (fixed design constraint)
+- Distances scaled to 12-bit (max 4095) for hardware implementation
+- Operation must complete within 1000 clock cycles
+- Memory: 2^16 states for DP, but optimized to 2^10 for n<=10
+
+**Algorithm:**
+1. Precompute all subset distances D(S) for S ⊆ {1...n}
+2. Use dynamic programming: dp[mask] = min sum of disparities for partitioning first k shipments
+3. For each mask representing subset A, compute complement B
+4. Output min(D(A) + D(B))
+
+**Implementation Details:**
+- Use 12-bit fixed-point for distances (Q12.0)
+- Store distance matrix in 2D register array
+- DP table: 2^10 entries for n<=10 (use bit reduction for larger n)
+- Parallel computation of subset maximums
+- Optimized lookup: precompute edge values
+
+**Reset Behavior:**
+- `done` = 0, `result` = 0
+- Internal state cleared
+
+**Timing:**
+- Start pulse triggers computation
+- Done pulse indicates completion
+- Sample result on rising edge when done=1

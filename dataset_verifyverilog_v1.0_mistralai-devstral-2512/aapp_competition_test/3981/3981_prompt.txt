@@ -1,0 +1,39 @@
+Implement a Verilog module to check if two sets of 2D points (transformed arbitrarily by rotation/translation) generate the same power field. 
+
+Key Constraints:
+- Inputs: n, m (3 to 16 points max)
+- Coordinates: 0 to 1e8 -> Scale to 16-bit integers (Q16.0)
+- Output: 1 bit (1 if safe, 0 if not)
+- Algorithm: 
+  1. Compute Convex Hull for both sets (done outside or simplified FSM).
+  2. Compare hulls: They must have same number of points.
+  3. For each hull, extract edge vectors (dx, dy).
+  4. Compare shapes: Check if sequence of edge vectors (length, cross product, dot product) matches cyclically.
+  5. Since Verilog is rigid, implement a simple comparator: 
+     - Normalize direction of Hull A.
+     - Check if Hull B, when rotated in 360/16 steps (4 bits), matches A.
+     - Or simpler: Check if sorted edge lengths and sorted angles match (allowing rotation).
+  
+Simplified Verilog Spec:
+Inputs:
+  clk, rst_n
+  start: 1-cycle pulse
+  n_a[3:0], n_b[3:0]: Number of points (max 16)
+  arr_a_x[0:15][15:0]: Point X coordinates for A
+  arr_a_y[0:15][15:0]: Point Y coordinates for A
+  arr_b_x[0:15][15:0]: Point X coordinates for B
+  arr_b_y[0:15][15:0]: Point Y coordinates for B
+Outputs:
+  result: 1-bit (1 if congruent)
+  done: 1-bit (valid when done)
+
+Implementation Strategy:
+1. On start, wait for inputs.
+2. Compute Convex Hulls using a hardware-friendly monotone chain (bounded iterations).
+3. If hull sizes differ, result = 0.
+4. Extract edge vectors for both hulls.
+5. Normalize Hull A edges to start from (0,0) and rotate so the first edge is horizontal.
+6. Compare sequence of edge vectors from Hull B (rotated appropriately) against Hull A.
+7. Output result when comparison finishes.
+
+Timing: < 1000 cycles for n,m <= 16.

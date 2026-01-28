@@ -1,0 +1,43 @@
+Create a Verilog module that selects optimal teams based on programming (a) and sports (b) skills. Simplified algorithm: 1) Compute conversion gain = b - a for each student, 2) Sort students by a descending, 3) Iterate through possible split points k (p ≤ k ≤ p+s), 4) For each k: sum top k a's + sum of conversion gains for (k-p) students + sum of remaining b's for s-(k-p) students, 5) Choose k with maximum total. Implementation constraints: n ≤ 20, p ≤ 10, s ≤ 10. Use fixed-size arrays and iterative sorting. Outputs are student indices (1-based).
+
+Interface Specification:
+Inputs:
+  clk: clock (active rising edge)
+  rst_n: active-low reset
+  start: start signal (1-cycle pulse)
+  n: 5-bit input (2-20)
+  p: 4-bit input (1-10)
+  s: 4-bit input (1-10)
+  a[0:19]: 20x12-bit array (skills 1-3000)
+  b[0:19]: 20x12-bit array (skills 1-3000)
+Outputs:
+  result: 16-bit maximum strength
+  team_p[0:9]: 10x5-bit array (indices of programming team)
+  team_s[0:9]: 10x5-bit array (indices of sports team)
+  done: 1-cycle pulse when computation complete
+  valid: 1 if outputs are valid (stays high)
+
+Timing:
+  After start, asserts done within 1000 cycles
+  Reset: 2 cycles minimum, done=0, result=0, valid=0
+  Indices are 1-based (range 1-20)
+  Unused slots in team arrays should be 0
+
+Algorithm Details:
+  1. Sort students by 'a' skill descending (use bubble sort for n≤20)
+  2. Compute prefix sums of 'a' for first k students
+  3. For each split point k (p to p+s inclusive):
+     - sum_a = prefix_sum_a[k-1]
+     - convert_gain = sum of (b-a) for (k-p) best converters among first k
+     - remaining_b = sum of b for last (s-(k-p)) students from sorted list
+     - total = sum_a + convert_gain + remaining_b
+  4. Track maximum total and best k
+  5. Assign teams: top (k-p) converters to programming (using a), rest to programming, remaining to sports
+  6. Output teams as 1-based indices
+
+Simplifications:
+  - Fixed n=20 maximum
+  - Use iterative sorting (no recursion)
+  - Use local parameter arrays for sorted data
+  - Conversion gain selection uses fixed loop (max 10 iterations)
+  - Result uses 16 bits (max strength: 20*3000 = 60,000)

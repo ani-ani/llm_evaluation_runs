@@ -1,0 +1,52 @@
+Design a Verilog module to solve the group trip problem. Given a directed graph where each node has exactly one outgoing edge (representing the dependency 'i requires x_i'), find the size of the largest subset of nodes S such that:
+1. S is closed under dependencies: for every node i in S, the node x_i is also in S.
+2. The size of S (|S|) is ≤ k (bus capacity).
+
+### Inputs
+- `clk`, `rst_n`: Standard synchronous clock and active-low reset.
+- `start`: Single-cycle pulse to initiate calculation.
+- `n` [3:0]: Number of participants (1 to 16).
+- `k` [3:0]: Bus capacity (1 to 16).
+- `edges_flat` [63:0]: Flattened array of dependencies. `edges_flat[i*4 +: 4]` stores the 0-indexed dependency for participant i (i from 0 to 15). Input values are 1-based, so the hardware must subtract 1 to convert to 0-indexed internal representation.
+
+### Outputs
+- `result` [3:0]: The maximum number of participants that can join.
+- `done`: Asserted for one cycle when the result is valid.
+
+### Implementation Specification
+1. **Algorithm**: Use an exhaustive search over all non-empty subsets of participants.
+   - Iterate a `mask` register from 1 to `(1 << n) - 1`.
+   - For each `mask`:
+     a. Calculate the population count (number of set bits). If this exceeds `k`, discard the mask.
+     b. Check validity: For every participant `i` (0 to n-1) present in the mask (`mask[i] == 1`), verify that their dependency `edges_flat[i*4 +: 4]` is also present in the mask.
+     c. If valid and the population count is greater than the current maximum, update the maximum.
+
+2. **State Machine**:
+   - `IDLE`: Wait for `start`. On start, latch `n`, `k`, and `edges`. Initialize `mask` to 1 and `max_count` to 0.
+   - `CHECK`: Evaluate the current `mask`.
+     - First, compute population count (loop 0-15).
+     - If `popcount <= k`, proceed to validity check.
+     - Validity check: Loop `i` from 0 to `n-1`. If `mask[i]` is high and `mask[dependency_of_i]` is low, mark invalid.
+     - If valid and `popcount > max_count`, update `max_count`.
+   - `INCREMENT`: Increment `mask`. If `mask` reaches `(1 << n)`, transition to `DONE`. Otherwise, return to `CHECK`.
+   - `DONE`: Assert `done` and return to `IDLE`.
+
+3. **Constraints**:
+   - Use 16-bit registers for `mask` and `edges_flat` access.
+   - All counters should be 4-bit or 16-bit as appropriate.
+   - Timing: The calculation may take up to 65,535 cycles for n=16. Simulation timeout should be generous (e.g., 100ms).
+
+4. **Edge Cases**:
+   - Self-loops (i depends on i) are valid.
+   - Cycles of length > 1 are valid only if all nodes in the cycle are included.
+   - `n` controls the iteration limit; bits above `n-1` in `mask` are ignored but must be 0 in `max_mask` calculation to avoid overflow.
+
+### Interface Summary
+Module Name: `max_participants`
+Ports: `clk, rst_n, start, n[3:0], k[3:0], edges_flat[63:0], result[3:0], done`.
+Reset Behavior: `result` and `done` go to 0. State resets to `IDLE`.
+
+### Testbench Requirements
+- The testbench must pack the dependency list into the 64-bit `edges_flat` vector.
+- For n < 16, ensure unused upper bits of `edges_flat` are zero.
+- Verify outputs for the provided examples (4,4 -> 4; 12,3 -> 2; 5,4 -> 3).

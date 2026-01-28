@@ -1,0 +1,17 @@
+Implement a Verilog module that computes the longest exploration sequence in an array given constraints: n (array length) ≤ 16, D (max jump) ≤ 7, M (max value difference) scaled to Q8.8 format, array values 16-bit signed. The solution uses a Moore FSM with state machine for path search: states IDLE, INIT, SEARCH, DONE. The core is a DP approach with bitmask representation for visited positions (max 16 bits) and storing max path lengths in a lookup table (16 x 2^16 entries too large, so use iterative depth-first search with memoization using a 256-entry cache). The interface:
+
+Inputs:
+  clk: system clock, rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle high to start computation
+  n: 4-bit unsigned (1-16)
+  D: 4-bit unsigned (1-7)
+  M: 16-bit signed (max difference, Q8.8 format: int(M*256))
+  arr[0:15]: 16x16-bit signed values
+
+Outputs:
+  result: 16-bit unsigned length
+  done: 1-cycle high when result valid
+  busy: high during computation
+
+Timing: Start to done within 1000 cycles. Reset clears all states. The algorithm explores all paths via iterative DP: maintain current position, visited mask, path length. Use a stack (FIFO) of size 256 to track unexplored states. For each state, consider jumps of ±1 to ±D within array bounds, check value difference |new_val - current_val| ≤ M, and unvisited. Update global max. When stack empty, transition to DONE. Ensure clock domain synchronous design.

@@ -1,0 +1,37 @@
+Design a Verilog module for counting Hill Numbers up to 10^18. A Hill Number's digits never fall then rise (they can rise then fall, rise only, or fall only). Input is given as a 64-bit integer (scaled representation). Output count of valid hill numbers <= input. If input isn't a hill number, output -1 (encoded as 32'hFFFFFFFF).
+
+Implementation Strategy:
+1. Accept input as 64-bit scaled integer (Q32.32 fixed-point, where whole part is 19-digit decimal)
+2. Extract digits using repeated modulo 10 operations in a loop (max 19 iterations)
+3. Validate Hill property: Store state machine states: 0=rising, 1=falling, 2=strictly_falling
+4. Use DP with 5 dimensions (pos, prev_digit, state, tight, started) - compile to combinational LUTs
+5. Output 64-bit result count (clamped to 32-bit for hardware)
+
+Interface:
+  input clk, rst_n, start
+  input [63:0] n_scaled    // Q32.32, where n_scaled[63:32] = decimal value
+  input [3:0] digits_len    // Number of decimal digits (1-19)
+  output reg [63:0] result
+  output reg done
+  output reg is_hill       // 1=input is valid hill number
+
+Constraints:
+- Max iterations: 19 digits * 10 cycles = 190 cycles
+- State encoding: 00=rise, 01=fall, 10=none
+- Digit extraction: Use BCD lookup table for mod 10
+- DP table: 19 positions * 10 prev * 3 states * 2 tight * 2 started = 2280 entries
+- Each entry: 16-bit count, 1-bit valid
+- Total cycles: ≤ 300 for complete calculation
+- Reset: Clears all counters, sets result=0, done=0
+
+Operation:
+1. Start pulse triggers input validation
+2. Extract digits into array arr[18:0] (4 bits each)
+3. Validate if input is hill number using state machine
+4. Run DP to count valid hill numbers ≤ n
+5. If not hill, result = 32'hFFFFFFFF, is_hill = 0
+6. If hill, result = count, is_hill = 1
+7. done pulses high for 1 cycle when complete
+
+Timing: start->done within 300 cycles
+Reset: Active-low synchronous, min 2 cycles

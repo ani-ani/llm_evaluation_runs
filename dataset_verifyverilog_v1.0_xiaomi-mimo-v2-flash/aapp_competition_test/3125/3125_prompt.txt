@@ -1,0 +1,51 @@
+Implement a Verilog module to solve a string encoding problem where '+' and '-' are placeholders for unknown substrings.
+
+**Problem Logic**:
+Given input string `I` and output string `O`, find all possible substrings that '+' and '-' could represent such that when replacing every '+' and '-' in `I` with their respective substrings, the result matches `O`.
+
+**Scaling & Constraints**:
+- Strings are limited to max 16 characters (a-z, 0-9, +, -)
+- Output substrings are limited to max 16 characters
+- Use fixed-width 8-bit ASCII for characters
+- Implement a finite state machine (FSM) to iterate through possible substring lengths (0 to 16)
+- Use embedded block RAM (BRAM) to store input strings `I` and `O`
+- Output results via a streaming interface or output registers
+
+**Interface Specification**:
+- `clk`, `rst_n`: Standard synchronous clock and active-low reset
+- `start`: 1-cycle pulse to initiate processing
+- `done`: Asserted when processing is complete
+- `status`: 2-bit output (0: idle, 1: processing, 2: found, 3: corrupted)
+- `result_plus`: 128-bit output (16 chars * 8 bits) - current candidate for '+' substring
+- `result_minus`: 128-bit output (16 chars * 8 bits) - current candidate for '-' substring
+- `valid_out`: Asserted when `result_plus` and `result_minus` contain a valid encoding pair
+
+**Implementation Details**:
+1. **Input Buffering**: Load `I` and `O` into two 16x8 BRAMs (initialized via initialization logic or external write interface). Since Verilog testbenches can't pass strings directly, assume the string data is provided as bytes to input registers `i_reg` and `o_reg` over multiple cycles.
+2. **FSM States**: IDLE -> LOAD_STRINGS -> FIND_LENGTHS -> CHECK_ENCODING -> OUTPUT_RESULTS -> DONE. The CHECK_ENCODING state iterates through possible lengths for `len_plus` (0-16) and `len_minus` (0-16). Total iterations ≤ 256 (16x16).
+3. **Matching Logic**: For each combination of lengths, simulate the replacement. Count the expected output length: `L_out = L_i - count('+') - count('-') + len_plus + len_minus`. If `L_out` matches `|O|`, perform a character-by-character comparison.
+4. **Bounded Loop**: Use a `for` loop (0 to 255) inside a combinational block or a sequential counter to explore the parameter space. This avoids unbounded recursion.
+5. **Output Handling**: If a valid pair is found, store it and set `valid_out` high. If the loop finishes without finding any valid encoding, set `status` to 3 (corrupted). If `<any>` or `<empty>` conditions are met, special bit patterns (e.g., all zeros for empty, specific flag for any) can be used on `result_plus/minus`.
+
+**Verilog Module Signature**:
+```verilog
+module encoding_solver (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    // String inputs (simplified interface: 16 bytes per string)
+    input wire [7:0] i_str [0:15],
+    input wire [7:0] o_str [0:15],
+    input wire [7:0] i_len,
+    input wire [7:0] o_len,
+    // Status and Results
+    output reg [1:0] status,
+    output reg [127:0] result_plus,
+    output reg [127:0] result_minus,
+    output reg valid_out,
+    output reg done
+);
+// Internal logic and FSM implementation
+endmodule
+```
+**Testbench Note**: The testbench must populate the `i_str` and `o_str` arrays element-by-element, respecting the 8-bit ASCII width and 16-element size limit.

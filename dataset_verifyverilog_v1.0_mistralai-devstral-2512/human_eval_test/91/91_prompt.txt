@@ -1,0 +1,27 @@
+Implement a Verilog module that counts sentences starting with 'I' in a fixed-length byte array. The input is a string of 128 ASCII characters stored as 8-bit bytes in a packed array (1024-bit total). Sentences are delimited by '.', '?', or '!'. The counter should increment when a delimiter is found and the character immediately after it is 'I' (ASCII 73). The module should be purely combinational or use a single cycle to scan the entire array.
+
+**Interface:**
+- Input: `str_input[1023:0]` - Packed 128-byte ASCII string (byte i is `str_input[(i*8)+7 : (i*8)]`)
+- Input: `start` - 1-cycle pulse to initiate computation
+- Input: `clk` - System clock (for FSM sequencing)
+- Input: `rst_n` - Active-low synchronous reset
+- Output: `result[7:0]` - 8-bit count of boredom sentences (0-127)
+- Output: `done` - 1-cycle pulse when computation is complete
+
+**Algorithm:**
+1. Upon `start` pulse, reset a 7-bit index counter and a 7-bit boredom counter.
+2. Use a 4-state FSM: IDLE, SCAN, CHECK_CHAR, COMPLETE.
+   - IDLE: Wait for start.
+   - SCAN: Iterate through each character of the array (0 to 127).
+   - CHECK_CHAR: After a delimiter ('.', '?', '!') is found, check the next character (if within bounds). If it's 'I' (73), increment boredom counter.
+   - COMPLETE: After scanning all 128 characters, assert done and present result.
+3. On each clock cycle in SCAN state, read one byte from `str_input`. If it's a delimiter, transition to CHECK_CHAR state on the next cycle. If not, continue scanning.
+4. In CHECK_CHAR state, read the next byte. If it's 'I', increment the boredom counter. Always return to SCAN state to continue scanning.
+5. After 128 iterations, transition to COMPLETE, assert `done` for one cycle, and hold `result`.
+
+**Constraints:**
+- Maximum 128 characters. No need to handle longer strings.
+- ASCII only. 'I' is 0x49 (73). Delimiters are 0x2E ('.'), 0x3F ('?'), 0x21 ('!').
+- The input string is padded with null bytes (0x00) if shorter than 128 chars. Null bytes should be treated as non-delimiters.
+- Timing: `start` to `done` within 200 cycles.
+- Reset: All counters and FSM state reset to IDLE, `result` and `done` set to 0.

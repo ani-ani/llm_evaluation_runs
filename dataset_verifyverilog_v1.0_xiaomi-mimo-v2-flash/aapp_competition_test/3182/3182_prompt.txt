@@ -1,0 +1,25 @@
+You are to implement a right triangle counter for a set of 2D points in Verilog. The algorithm must work for N up to 16 points with 8-bit signed coordinates (range -128 to 127). The core logic is to iterate through all unique triplets of points (i, j, k), calculate the vectors (pj-pi) and (pk-pi), and check if the dot product is zero (right angle at pi). To avoid floating point, use integer arithmetic: dot_product = (xj-xi)*(xk-xi) + (yj-yi)*(yk-yi). A right triangle exists if dot_product == 0 for any permutation of the three points forming a vertex at the right angle. Since N is small, a simple O(N^3) sequential check is acceptable, but it must be pipelined or unrolled for hardware efficiency.
+
+Interface Specification:
+- Inputs:
+  - `clk`: System clock, rising edge active.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `points_x[0:15]`: 16x8-bit array of x-coordinates.
+  - `points_y[0:15]`: 16x8-bit array of y-coordinates.
+  - `num_points`: 5-bit integer (value 3 to 16).
+- Outputs:
+  - `result`: 16-bit unsigned integer (max triangles = C(16,3) = 560 < 65536).
+  - `done`: 1-cycle pulse asserted when calculation is complete and `result` is valid.
+- Timing: 
+  - `start` must be asserted for 1 cycle when system is idle.
+  - `done` will be asserted after at most 16^3 * 10 cycles (~2560 cycles).
+  - When `done` is high, read `result`.
+- Reset: Assert `rst_n=0` for at least 2 cycles. On reset, `done=0` and `result=0`.
+- Implementation Notes:
+  - Use three nested loops (for i=0 to N-3, for j=i+1 to N-2, for k=j+1 to N-1).
+  - Inside innermost loop, calculate vectors for three vertices (i, j, k).
+  - Check dot products: (pj-pi)·(pk-pi) == 0, (pi-pj)·(pk-pj) == 0, (pi-pk)·(pj-pk) == 0.
+  - If any is zero, increment counter.
+  - Use signed 16-bit arithmetic for differences and 32-bit for products (intermediate) before comparing to 0.
+  - Optimize for area: reuse arithmetic units (subtractors, multipliers) by time-multiplexing.

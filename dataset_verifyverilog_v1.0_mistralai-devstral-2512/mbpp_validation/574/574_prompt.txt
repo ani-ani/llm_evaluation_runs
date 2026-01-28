@@ -1,0 +1,55 @@
+Design a Verilog module that computes the surface area of a cylinder using fixed-point arithmetic.
+
+### Interface Specification:
+
+**Inputs:**
+- `r[15:0]`: 16-bit unsigned integer representing radius (scaled by 256)
+- `h[15:0]`: 16-bit unsigned integer representing height (scaled by 256)
+- `start`: 1-cycle active-high pulse to initiate calculation
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+
+**Outputs:**
+- `result[31:0]`: 32-bit unsigned integer representing surface area (scaled by 256² = 65536)
+- `done`: 1-cycle pulse indicating valid result on `result`
+
+### Fixed-Point Constants (Q16.16 format):
+- Pi approximation: 3.1415926535 ≈ 0x3243F (scaled as 3.1416 * 65536 = 205887)
+- Use 32-bit intermediate values for calculations
+
+### Implementation Requirements:
+1. **Combinational Calculation** (recommended for simplicity):
+   - Compute as: `surface = 2 * pi * r * (r + h)`
+   - Use sequential stages if combinational is too deep
+   - Clock cycles: 10-20 max for sequential pipeline
+
+2. **Operation Stages (for sequential implementation):**
+n   - Stage 1: Compute r + h (16-bit add)
+   - Stage 2: Compute pi * r (32-bit multiplication)
+   - Stage 3: Compute 2 * (result from Stage 2) (left shift by 1)
+   - Stage 4: Compute final result (32-bit multiplication)
+
+3. **Data Widths:**
+   - Input values: r, h ∈ [0, 255] (8-bit unsigned before scaling)
+   - Scaled inputs: r, h ∈ [0, 65280] (16-bit unsigned with 8 fractional bits)
+   - Output: surface area ∈ [0, 255² * 4 * π] ≈ 0x40000000 (32-bit)
+
+4. **Timing:**
+   - Sequential: start→done within 10-20 cycles
+   - Combinational: result available in 1-2 cycles after start
+   - No timeout requirements
+
+5. **Reset Behavior:**
+   - done = 0, result = 0 when rst_n = 0
+   - ready state when rst_n = 1 and no start
+
+### Test Coverage:
+- r=10, h=5 → ≈942.45 (scaled: 942.45 * 65536 ≈ 0x00170A00)
+- r=4, h=5 → ≈226.19 (scaled: 226.19 * 65536 ≈ 0x003A1E00)
+- r=4, h=10 → ≈351.85 (scaled: 351.85 * 65536 ≈ 0x0058A600)
+
+### Key Considerations:
+- Use Q16.16 fixed-point for all calculations
+- Handle overflow: max expected result ~0x00600000 (32-bit sufficient)
+- For combinational implementation, ensure all multiplications complete within clock period
+- For sequential, pipeline stages to fit timing constraints

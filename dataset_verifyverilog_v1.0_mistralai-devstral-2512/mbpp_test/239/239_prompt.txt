@@ -1,0 +1,44 @@
+Design a Verilog module to compute the number of sequences of length n where each element is a positive integer between 1 and m, and each element is >= twice the previous element.
+
+Interface Specification:
+Inputs:
+  - clk: System clock, rising edge active
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate computation
+  - m: 4-bit unsigned input (1-16)
+  - n: 4-bit unsigned input (1-16)
+
+Outputs:
+  - result: 16-bit unsigned result
+  - done: 1-cycle pulse indicating computation complete and result valid
+
+Implementation Requirements:
+1. Use dynamic programming approach with (m+1) x (n+1) lookup table.
+2. Table dimensions: Max m=16, max n=16 (17x17 table).
+3. Storage: Use block RAM or distributed RAM for T[m+1][n+1].
+4. Initialize all entries to 0 on reset.
+5. Compute iteratively: First compute for i=1..m and j=1..n.
+6. Key recurrence: T[i][j] = T[i-1][j] + T[i//2][j-1] for j>=2.
+7. Boundary conditions:
+   - T[0][*] = 0
+   - T[*][0] = 0
+   - T[i][1] = i (for i>=1)
+   - T[i][j] = 0 if i < j (sequence length > available values)
+8. Division i//2: Use simple right shift (divide by 2).
+9. Timing: Complete within 256 clock cycles for any input.
+10. Pipelining: Compute row-by-row or column-by-column with state machine.
+11. When done=1, result should equal T[m][n].
+12. During computation, result is undefined.
+
+State Machine (suggested):
+- IDLE: Wait for start=1
+- INIT: Initialize table entries to 0
+- COMPUTE: Iterate through i=1..m and j=1..n, applying recurrence
+- COMPLETE: Set done=1, output result
+
+Reset Behavior:
+- On rst_n=0, all state registers reset
+- result=0, done=0
+- Minimum 2 cycles reset asserted
+
+Note: Values in table can exceed 16-bit for large inputs, but for m,n ≤16, maximum value fits in 16-bit (verified by test case 3: m=16,n=3 gives 84). Use 16-bit for result and table entries.

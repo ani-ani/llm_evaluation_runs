@@ -1,0 +1,50 @@
+Write a Verilog module to compute the sum of all odd-length subarrays using the mathematical formula.
+
+**Problem Statement:**
+Given an array of integers, compute the sum of all possible subarrays with odd lengths. The formula is: Sum = Σ(arr[i] * (((i+1)*(n-i) + 1) // 2)) for i from 0 to n-1, where n is the array length.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: 1-bit, rising edge clock
+  - `rst_n`: 1-bit, active-low synchronous reset
+  - `start`: 1-bit, 1-cycle pulse to start computation
+  - `arr`: 8-element array of 8-bit signed integers (arr[0] to arr[7])
+  - `len`: 4-bit unsigned integer (1-8, number of valid elements in arr)
+
+- Outputs:
+  - `result`: 16-bit signed integer (sum of all odd-length subarrays)
+  - `done`: 1-bit, 1-cycle pulse indicating result is valid
+
+**Implementation Requirements:**
+1. **Timing:** Computation must complete within 10-20 clock cycles after `start` assertion
+2. **Algorithm:** Implement the closed-form formula using iterative or pipelined arithmetic:
+   - For each index i from 0 to len-1:
+     - Compute `term = (((i+1)*(len-i) + 1) >> 1)` using integer division
+     - Multiply `term` by `arr[i]` (8-bit signed)
+     - Accumulate into 16-bit signed sum
+3. **Data Widths:**
+   - `arr[i]`: 8-bit signed (range -128 to 127)
+   - `i+1` and `len-i`: max 9 bits (8+1 = 9 bits unsigned)
+   - `product = (i+1)*(len-i)`: max 18 bits unsigned
+   - `term = ((product + 1) >> 1)`: max 17 bits unsigned
+   - `term * arr[i]`: max 25 bits signed, clamp to 16-bit for final sum
+   - `result`: 16-bit signed (range -32768 to 32767)
+4. **Reset:** When `rst_n=0`, `result=0`, `done=0`, state machine to idle
+5. **Done Signal:** Assert `done=1` for exactly 1 cycle when result is ready
+6. **Constraints:** 
+   - Array size: 8 elements maximum
+   - Input values: 8-bit signed integers
+   - Output range: 16-bit signed (clamp overflow)
+   - Clock frequency: 100 MHz (10ns period)
+
+**Design Notes:**
+- Use a finite state machine (FSM) with states: IDLE, COMPUTE, DONE
+- In COMPUTE state, iterate through indices 0 to len-1
+- Use sequential logic for accumulation to avoid combinational loops
+- All arithmetic operations should use signed arithmetic operators
+- Handle the closed-form calculation carefully: ((i+1)*(len-i) + 1) // 2
+
+**Test Cases:**
+1. Input: arr=[1,2,4], len=3 → Output: 14
+2. Input: arr=[1,2,1,2], len=4 → Output: 15
+3. Input: arr=[1,7], len=2 → Output: 8

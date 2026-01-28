@@ -1,0 +1,64 @@
+Implement a Verilog module that validates file names against specific criteria. The module processes one character per clock cycle and returns a valid/invalid result after processing the entire string.
+
+### Module Requirements:
+
+**Interface:**
+- `clk`: Clock input (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to begin validation
+- `char_in`: 8-bit ASCII character input (one character per cycle)
+- `char_valid`: 1-cycle pulse indicating char_in is valid
+- `char_done`: 1-cycle pulse indicating end of string
+
+**Outputs:**
+- `result`: 1-bit output (1=valid, 0=invalid)
+- `done`: 1-cycle pulse when validation complete
+- `err_type`: 3-bit error code for debugging (0=none, 1=no_dot, 2=bad_extension, 3=too_many_digits, 4=bad_start, 5=bad_length, 6=multiple_dots, 7=empty_name)
+
+**Behavior:**
+1. When start=1, reset internal state
+2. For each character:
+   - Count total characters (max 32, stop if exceeded)
+   - Count digits (0-9) - invalid if >3
+   - Track position relative to dot
+   - Ensure exactly one dot exists
+3. Validation rules:
+   - Must have exactly one dot
+   - Dot cannot be at start or end
+   - Must start with Latin letter (a-z, A-Z)
+   - Extension after dot must be exactly 'txt', 'exe', or 'dll'
+   - Only valid characters: letters, digits, dot, underscore, hyphen
+4. Output 'result' when done=1
+
+**Timing:**
+- Input: stream characters with char_valid=1 for each
+- Process: O(n) cycles, max 32 cycles
+- Output: done=1, result valid 1 cycle after char_done
+- Reset: clears all counters and state
+
+**Implementation Notes:**
+- Use state machine: IDLE, READING_NAME, READING_EXT, VALIDATING
+- Counters: digit_count (3 bits), pos (6 bits), dot_pos (6 bits)
+- Extension check: compare 3 chars after dot
+- Character validation: ASCII range checks
+- Invalid cases: reject immediately
+
+**Test Cases:**
+- 'example.txt' → valid (starts with letter, 3+ chars, txt extension)
+- '1example.dll' → invalid (starts with digit)
+- 'K.dll' → valid (single letter, dll extension)
+- 'MY16FILE3.exe' → valid (letters+digits, exe extension)
+- 'His12FILE94.exe' → invalid (>3 digits)
+- '_Y.txt' → invalid (starts with underscore)
+- 'final..txt' → invalid (multiple dots)
+- '.txt' → invalid (empty name)
+- 's.' → invalid (empty extension)
+- 'this_is_valid.wow' → invalid (bad extension)
+
+**Edge Cases:**
+- Max 32 characters total
+- Stop processing if more than 3 digits
+- Stop if multiple dots detected
+- Stop if invalid start character
+- Required exactly one dot
+- Extension must match exactly (case-insensitive)

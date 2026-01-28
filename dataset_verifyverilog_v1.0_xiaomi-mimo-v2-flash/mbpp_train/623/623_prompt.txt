@@ -1,0 +1,100 @@
+Implement a Verilog module that computes element-wise exponentiation of an array of numbers.
+
+**Constraints:**
+- Input array length: 10 elements (max)
+- Input number width: 8 bits (0-255)
+- Output number width: 16 bits
+- Exponents: 2, 3, or 5 (from test cases)
+- Output size: same as input (10 elements)
+- Timing: Pipeline or combinatorial logic; complete within 200 cycles for pipeline
+- Reset: Active-low, sync reset, sets all outputs to 0
+
+**Interface Specification:**
+
+Inputs:
+  clk: clock (rising edge)
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to begin computation
+  exponents[1:0]: 2-bit selector (00=2, 01=3, 10=5)
+  nums[0:9]: 10 input numbers, each 8-bit
+  valid_in: 10-bit mask, high for valid elements
+
+Outputs:
+  results[0:9]: 10 output numbers, each 16-bit
+  valid_out: 10-bit mask, high for valid results
+  done: 1-cycle pulse when computation complete
+
+**Implementation Guidelines:**
+- For x^2: Use shift-add (x << 1) + x, or multiply
+- For x^3: x * x * x (use sequential multiply or combinatorial)
+- For x^5: (x^2) * (x^2) * x (combinatorial)
+- Option A: Sequential (FSM-based) - process one element per clock cycle
+- Option B: Combinatorial - parallel units for all 10 elements
+- Since 10 is small and exponents are small, combinatorial is acceptable
+- For x^5: Max 255^5 = 107,374,182,375 (37-bit) - but constraint says 16-bit output, so input must be smaller. From test cases: max input is 30 (from 30^3=27000). 16-bit max is 65535, so inputs must be <= 255 but output clipped to 16 bits.
+- Use multiplexers for exponent selection
+- For pipeline: Process one element per clock, sequential
+
+**Module Definition:**
+module pow_array (
+  input wire clk,
+  input wire rst_n,
+  input wire start,
+  input wire [1:0] exponents,
+  input wire [7:0] nums [0:9],
+  input wire [9:0] valid_in,
+  output reg [15:0] results [0:9],
+  output reg [9:0] valid_out,
+  output reg done
+);
+
+**Verilog Code Requirements:**
+- Use non-blocking assignments for sequential logic
+- Implement FSM for sequential pipeline
+- For combinatorial: Use always @(*) with proper constraints
+- Include reset logic that clears all results and valid_out
+- The 'done' signal should pulse exactly once per computation
+- 'valid_out' should mirror 'valid_in' after computation
+
+**Timing:**
+- Sequential: Start to done within 20 cycles
+- Combinatorial: As soon as input stable
+- If using pipeline: 'done' signals last element processed
+
+**Test Case Validation:**
+- Input 1-10 with exponents=00 => expect [1,4,9,16,25,36,49,64,81,100]
+- Input 10,20,30 with exponents=01 => expect [1000,8000,27000] (others 0)
+- Input 12,15 with exponents=10 => expect [248832,759375] (others 0)
+- Output clipped to 16 bits if overflow (though test cases fit)
+
+**Edge Cases:**
+- zero inputs
+- multiple valid inputs
+- all inputs valid
+- some inputs invalid (keep result 0)
+- overflow handling: saturate to 65535
+
+**Implementation Strategy:**
+Use sequential pipeline for simplicity. FSM states: IDLE, COMPUTE, DONE.
+- IDLE: Wait for start
+- COMPUTE: Process elements 0-9 sequentially, compute power based on exponent
+- DONE: Set done=1, latch results
+
+For each element, compute:
+- If exponents==00: result = x * x
+- If exponents==01: result = x * x * x
+- If exponents==10: result = (x*x) * (x*x) * x
+
+Clamp output to 16 bits: if result > 65535, set to 65535
+
+**Signal Widths:**
+- nums: 8-bit each
+- results: 16-bit each
+- exponents: 2-bit
+- valid_in/valid_out: 10-bit
+- internal multiplier: 16-bit * 16-bit = 32-bit, then saturate to 16-bit
+- For x^5 intermediate: x^4 * x, x^4 may be 32-bit, x^4*x may be 48-bit, then saturate
+
+Simplify: Since inputs are small (max 30 from test cases), we can use 32-bit internal computations and saturate to 16-bit.
+
+Provide complete module implementation.

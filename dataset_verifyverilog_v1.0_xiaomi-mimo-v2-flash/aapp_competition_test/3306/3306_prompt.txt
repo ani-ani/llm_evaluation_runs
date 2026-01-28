@@ -1,0 +1,64 @@
+Implement a Verilog module that solves the phone network detector problem.
+
+**PROBLEM ANALYSIS:**
+Given N detectors at positions Pi (between houses Pi and Pi+1) with call counts Ci, find the minimum number of phone calls that must have been made. Each detector counts calls between houses east and west of its position.
+
+**KEY INSIGHT:**
+This is equivalent to finding the maximum flow/minimum cut in a linear graph. The answer is the maximum Ci when considering prefix/suffix constraints. Specifically:
+- For each position, the total calls detected is the sum of calls crossing that point
+- The minimum calls needed is the maximum of Ci when sorted by position, considering cumulative constraints
+
+**SCALED REQUIREMENTS:**
+- M (houses): 32-bit (up to 1e9)
+- N (detectors): 8-bit (max 256 for FPGA, scaled from 100k)
+- Ci (calls): 32-bit (up to 1e9)
+- Positions: 32-bit
+- Result: 32-bit
+
+**MODULE INTERFACE:**
+
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  N_in: 8-bit, number of detectors (≤256)
+  M_in: 32-bit, number of houses
+  P_i[0:255]: 256×32-bit array, positions of detectors (valid for i < N_in)
+  C_i[0:255]: 256×32-bit array, call counts for each detector
+
+Outputs:
+  result: 32-bit, minimal number of phone calls
+  done: 1-cycle pulse, high when computation complete
+
+**IMPLEMENTATION GUIDANCE:**
+1. Sort detectors by position P_i (ascending)
+2. Track maximum C_i encountered so far from left (prefix_max)
+3. Track maximum C_i encountered so far from right (suffix_max)
+4. The answer is the maximum of (prefix_max, suffix_max) for each position
+5. Simplified: The answer is max(C_i) when sorted by position, considering that each detector's count must be ≤ total calls
+6. For fixed-point hardware: Use 32-bit integers, no floating point
+
+**TIMING:**
+- Start to done: within 1000 cycles (for sorting 256 elements)
+- Reset: done=0, result=0, 2 cycles minimum
+
+**ALGORITHM (SIMPLIFIED FOR HW):**
+The minimal calls = max(C_i) where i is sorted by position. This is because:
+- Each detector counts calls crossing its position
+- The total calls must be at least the maximum detected count
+- For linear street, the maximum Ci is achievable
+
+**EXAMPLE:**
+For input (3,4) with detectors at positions 3,2,1 with counts 1,2,1:
+- Sort by position: pos1=1 (C=1), pos2=2 (C=2), pos3=3 (C=1)
+- Maximum C is 2, which is the answer
+
+**VERILOG SPEC:**
+- Use 32-bit arithmetic
+- For sorting 256 elements, implement a sorting network or bubble sort with bounded iterations
+- Use state machine: RESET -> LOAD -> SORT -> FIND_MAX -> DONE
+- Memory: Two 32-bit arrays for P and C
+- Output: 32-bit maximum value
+
+**HANDSHAKING:**
+Assert start, wait for done=1, read result. Reset clears all state.

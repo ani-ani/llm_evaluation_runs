@@ -1,0 +1,71 @@
+Verilog HDL Module Specification: Minimum K Records
+
+TASK: Find K records with smallest numeric values from a list of tuples. Each tuple contains (name, value).
+
+ADAPTATIONS:
+1. Names: Fixed 8-character ASCII strings (64 bits total)
+2. Values: 8-bit unsigned integers (0-255)
+3. List size: Maximum 8 records
+4. K: 1-8 (4-bit input)
+5. Sorting: Bubble sort network (combinational, O(N^2) comparators)
+6. Output: Always return K records in sorted order
+
+MODULE INTERFACE:
+
+Inputs:
+  clk          : System clock (rising edge)
+  rst_n        : Active-low synchronous reset
+  start        : 1-cycle pulse to start operation
+  K            : 4-bit unsigned (1-8, number of records to return)
+  names_in[0:7]: 8x64-bit array (packed) - names (ASCII strings, 8 chars each)
+  values_in[0:7]: 8x8-bit array - numeric values (0-255)
+  valid_in[0:7]: 8-bit array - which records are valid (1=valid, 0=ignore)
+
+Outputs:
+  names_out[0:7]: 8x64-bit array (packed) - output names in sorted order
+  values_out[0:7]: 8x8-bit array - output values in sorted order (smallest first)
+  done         : 1-cycle pulse when result is ready
+  valid_count  : 4-bit output - number of valid outputs (min(K, valid_count_in))
+
+Internal Timing:
+  - Combinational sort + optional pipelining for timing closure
+  - Max 64 clock cycles from start to done
+  - Pipeline registers can be inserted between stages
+
+DATA FORMATTING:
+- Names: Each name is 8 ASCII characters, packed into 64 bits
+  - Character 0: bits [7:0], Character 1: bits [15:8], etc.
+  - 'A' = 0x41, ' ' = 0x20
+- Values: 8-bit unsigned, use 0-255 range
+- Sorting: Ascending by value (smallest first)
+- Tie-breaking: Preserve original order (stable sort behavior)
+
+ALGORITHM:
+1. Filter valid records (valid_in[i]==1)
+2. Sort valid records by values_in[i] (ascending)
+3. Take first K records
+4. Output sorted list
+
+IMPLEMENTATION APPROACH:
+- Use bubble sort for simplicity (swap comparator network)
+- Can implement as combinational logic or sequential FSM
+- For sequential: iterate through N passes, compare adjacent pairs
+- Must handle variable K (1 to 8)
+- Must handle variable valid_count
+
+EXAMPLE:
+Input: K=2, Records: [('A', 10), ('B', 4), ('C', 2), ('D', 8)], all valid
+Output: names[0]=0x2020434320204242 (C), values[0]=2
+        names[1]=0x2020424220204242 (B), values[1]=4
+        valid_count=2
+
+RESET BEHAVIOR:
+- rst_n: Clear all outputs to 0
+- done: 0
+- valid_count: 0
+
+PARAMETERS (optional):
+- NUM_RECORDS = 8
+- NAME_WIDTH = 64
+- VALUE_WIDTH = 8
+- MAX_K = 8

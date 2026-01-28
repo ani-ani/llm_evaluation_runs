@@ -1,0 +1,64 @@
+## Task: Maximum Fruit Slicing (Circle-Line Intersection)
+
+Given up to 16 circle centers (unit radius), find the maximum number of circles intersected by a single infinite line using a fixed-point hardware implementation.
+
+### Core Algorithm (HW Adaptation)
+1. **Input**: Up to 16 (x, y) coordinates in Q16.16 format (16-bit int, 16-bit frac)
+2. **Geometry**: Circle radius = 1.0 (fixed)
+3. **Line Representation**: Use dual-slope approach. For every pair of points (i, j), consider the line that is exactly tangent to both circles (offset by ±radius). Check line between i and j, and two parallel lines offset by 1.0 unit in perpendicular direction.
+4. **Intersection Test**: For a line defined by Ax + By + C = 0 (normalized), a circle (x₀, y₀) is intersected if |A*x₀ + B*y₀ + C| ≤ 1.0
+5. **Normalization**: Scale line coefficients to minimize overflow; use 32-bit accumulators
+
+### Exact Interface Specification
+
+**Parameters:**
+- `MAX_POINTS = 16` (hard limit)
+- `COORD_WIDTH = 32` (16.16 fixed-point)
+- `ACCUM_WIDTH = 64` (for intermediate calculations)
+- `MAX_CYCLES = 4000` (max time for result)
+
+**Inputs (all synchronous to clk, sampled on start pulse):**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low async reset
+- `start`: 1-cycle pulse to start processing
+- `num_points`: 4-bit input (actual count, 1-16)
+- `x[0:15]`: 16x32-bit array (Q16.16, signed)
+- `y[0:15]`: 16x32-bit array (Q16.16, signed)
+
+**Outputs:**
+- `result`: 5-bit output (maximum intersected count, 0-16)
+- `done`: 1-cycle pulse when result is valid
+- `busy`: High while processing (optional debug)
+
+**Functionality:**
+1. On `start` pulse, capture `num_points` and array data
+2. Compute all possible candidate lines:
+   - For each pair of circles (i, j):
+     - Consider the line through circle centers (i.e., offset = 0)
+     - Consider the line parallel to (i,j) offset by +1.0 unit (tangent on one side)
+     - Consider the line parallel to (i,j) offset by -1.0 unit (tangent on other side)
+   - Also consider degenerate case: vertical/horizontal lines through single points
+3. For each candidate line, count how many circles satisfy |distance| ≤ 1.0
+4. Update maximum count
+5. When done, assert `done` for 1 cycle with `result` valid
+
+**Critical Constraints:**
+- Fixed-point arithmetic: Use Q16.16 (1 sign bit + 15 int + 16 frac)
+- Distance calculation must be accurate to ~1/65536
+- 32-bit internal registers for numerator/denominator
+- Skip duplicate points (optional optimization)
+- Maximum 4000 cycles to complete
+- Reset: `result` = 0, `done` = 0, `busy` = 0
+
+**Implementation Notes:**
+- Use combinational logic for distance comparisons when denominator is small
+- Implement saturation arithmetic to prevent overflow
+- For vertical lines (x = const), special case using x-distance
+- For horizontal lines (y = const), special case using y-distance
+- The geometric insight: For unit circles, optimal line is often a tangent line between two circles or passes through centers
+
+**Testing Notes:**
+- Inputs are sampled when `start` is high (single cycle)
+- `result` is valid only when `done` is high
+- `busy` signal indicates processing state (optional)
+- After `done`, module should be ready for next `start` pulse

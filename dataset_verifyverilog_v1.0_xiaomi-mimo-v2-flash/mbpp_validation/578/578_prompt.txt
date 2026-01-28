@@ -1,0 +1,35 @@
+You must design a Verilog module that interleave three lists of the same length into a single flat list. The lists contain 8-bit unsigned integers, and each list has a maximum length of 8 elements. The module should operate in a sequential, pipelined manner with a start/stop handshake interface.
+
+**Specifications:**
+- **Clock and Reset:**
+  - `clk`: System clock, active on rising edge.
+  - `rst_n`: Active-low synchronous reset.
+- **Input Interfaces:**
+  - `start`: 1-cycle pulse to initiate the interleaving operation.
+  - `list1[0:7]`: Array of 8 elements, each 8-bit wide (8x8-bit total).
+  - `list2[0:7]`: Array of 8 elements, each 8-bit wide (8x8-bit total).
+  - `list3[0:7]`: Array of 8 elements, each 8-bit wide (8x8-bit total).
+  - `length`: 4-bit input indicating the actual number of elements in each list (valid range 1-8). It is the same for all three lists.
+- **Output Interfaces:**
+  - `result`: 8-bit output data. Valid when `done` is high. The result is serialized: first comes element 0 from list1, then element 0 from list2, then element 0 from list3, then element 1 from list1, and so on.
+  - `done`: 1-cycle pulse indicating the operation is complete and the final result is valid. This signal must pulse exactly once per operation.
+  - `ready`: High when the module is idle and ready to accept a `start` pulse. Low while processing.
+- **Timing and Control:**
+  1. When `ready` is high, a `start` pulse triggers the operation.
+  2. After `start`, `ready` goes low immediately and stays low until `done` pulses high.
+  3. The operation is processed in a deterministic number of cycles. `done` should pulse high after the last result (from the last index of the last list) is placed on the `result` output.
+  4. The module must handle the valid `length` (1-8) correctly. For unused elements in the arrays (indices >= length), the values should be ignored.
+  5. On `rst_n` low, `ready` should be high, `done` low, and `result` should be 0.
+- **Data Flow:**
+  - For index `i` from 0 to `length-1`:
+    - Output `list1[i]` on `result`.
+    - Output `list2[i]` on `result`.
+    - Output `list3[i]` on `result`.
+- **Implementation Note:**
+  - The module should be purely combinational for the logic *between* registers (data path), controlled by a finite state machine (FSM) to generate the sequence.
+  - Do not initialize arrays inside the module; assume inputs are provided via the interface.
+  - Ensure the module synthesizable. State machine states: IDLE, FETCH_LIST1, FETCH_LIST2, FETCH_LIST3, DONE.
+
+**Interface Summary:**
+Inputs: `clk`, `rst_n`, `start`, `list1[0:7]`, `list2[0:7]`, `list3[0:7]`, `length[3:0]`
+Outputs: `result[7:0]`, `done`, `ready`

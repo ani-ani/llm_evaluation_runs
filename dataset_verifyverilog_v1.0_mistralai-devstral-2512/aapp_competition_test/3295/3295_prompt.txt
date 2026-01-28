@@ -1,0 +1,45 @@
+Design a Verilog module that solves the Mirko and Slavko happy numbers problem.
+
+**Problem Constraints (Scaled for Hardware):**
+- Maximum number of queries: 100
+- Maximum number to check: 10,000 (scaled down from 10,000,000)
+- Maximum K (array length): 150
+- Maximum M: 150
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: Input valid signal (1-cycle pulse) to start processing a new query
+  - `k_in`: 8-bit input for K (array length)
+  - `l_in`: 8-bit input for L (required happy numbers)
+  - `m_in`: 8-bit input for M (threshold for small numbers)
+
+- Outputs:
+  - `result`: 24-bit output representing the starting number of Mirko's array. Return -1 (0xFFFFFF in 24-bit) if not found.
+  - `done`: 1-cycle pulse indicating valid result.
+
+**Internal Architecture Requirements:**
+1. **Prime Lookup Table**: Implement a ROM (Read-Only Memory) containing a pre-calculated bit array of primality for numbers 0 to 10,000. Use `reg [7:0] prime_rom [0:1249]` (1250 bytes * 8 bits = 10,000 bits). A number `n` is prime if `prime_rom[n/8][n%8]` is set.
+
+2. **Happy Status Logic**: 
+   - Define a number `n` as happy if `(n <= m_in)` OR `(n is prime)`.
+   - Pre-compute the prefix sum array `H` where `H[i]` is the count of happy numbers in the range [0, i]. Store `H` in a 16-bit ROM (10,001 entries).
+
+3. **Processing Logic (FSM)**:
+   - **IDLE**: Wait for `start` pulse. On active start, register inputs `K`, `L`, `M`. Proceed to SEARCH.
+   - **SEARCH**: Iterate `start_num` from 1 to `MAX_START` (where `MAX_START` = 10000 - K + 1). 
+     - For each `start_num`, calculate `end_num` = `start_num + K - 1`.
+     - Calculate happy count in range: `count = H[end_num] - H[start_num - 1]`.
+     - If `count == L`, latch `start_num` to result and transition to DONE.
+     - If loop finishes without finding a match, latch `-1` to result.
+   - **DONE**: Assert `done` signal for one cycle, then return to IDLE.
+
+**Timing & Throughput:**
+- The search loop requires up to 10,000 iterations per query.
+- Each iteration takes a fixed number of cycles (e.g., 2 cycles to fetch H values, 1 cycle to subtract/compare).
+- Throughput: One query processed every ~30,000 cycles. Acceptable for 100 queries within simulation limits.
+
+**Output Specification:**
+- `result`: Valid when `done` is high. 24-bit unsigned integer. -1 represented as 0xFFFFFF.
+- `done`: Single cycle pulse.

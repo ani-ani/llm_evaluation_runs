@@ -1,0 +1,53 @@
+Implement a Verilog module to compute the alternating sum with periodic coefficients modulo 1,000,000,009.
+
+**Problem Constraints Scaling**:
+- `n` (exponent): Scaled to 32-bit unsigned integer.
+- `a`, `b` (bases): Scaled to 32-bit unsigned integers.
+- `k` (period length): Scaled to 8-bit unsigned integer (max 255).
+- Sequence `s`: 8-bit packed vector or `k` individual inputs (max 255).
+- Modulo `M = 1,000,000,009` fits in 32 bits.
+- Result: 32-bit unsigned integer.
+
+**Algorithm (Simplified for Hardware)**:
+1.  **Precompute Geometric Series Factor**:
+    - Calculate ratio `Q = b^k * (a^{-1})^k mod M`.
+    - The number of full periods is `T = floor((n + 1) / k)`.
+    - If `Q == 1`, the series sum factor `D` is simply `T`.
+    - If `Q != 1`, `D = (Q^T - 1) * (Q - 1)^{-1} mod M`.
+    
+2.  **Precompute Period Sum**:
+    - Calculate base term `Base = a^n mod M`.
+    - Calculate the ratio `C_ratio = b * a^{-1} mod M`.
+    - Iterate `i` from `0` to `k-1`:
+      - If `s[i] == '+'`, add `Base` to `Period_Sum`.
+      - Else subtract `Base` from `Period_Sum` (mod M).
+      - Update `Base = Base * C_ratio mod M`.
+
+3.  **Final Result**:
+    - `Result = Base * Period_Sum * D mod M` (Note: `Base` here is actually `a^n` carried over from step 2).
+
+**Interface Specification**:
+- **Inputs**:
+  - `clk`, `rst_n`: Standard clock and active-low reset.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `n`, `a`, `b`: 32-bit unsigned integers.
+  - `k`: 8-bit unsigned integer.
+  - `seq`: 8-bit packed vector representing the sequence `s`. Bit 0 corresponds to index 0. 1 = '+', 0 = '-'.
+
+- **Outputs**:
+  - `result`: 32-bit unsigned integer.
+  - `done`: 1-cycle pulse, asserted when result is valid.
+
+- **Timing**: 
+  - Cycle 0: Assert `start`.
+  - Cycle 1-150: Compute modular inverses and powers (binary exponentiation). Assume single-cycle multiplication for simplicity in this spec, or pipeline as needed.
+  - Cycle 151-160: Iterate over `k` (max 255) to compute `Period_Sum`.
+  - Cycle 161: Calculate final product and assert `done`.
+  - Total latency ~200 cycles.
+
+- **Reset**: Initialize all internal registers (exponentiation state, counters) to 0. `done` must be 0, `result` 0.
+
+**Implementation Notes**:
+- Use a State Machine (FSM) to sequence through: `IDLE`, `INV_A`, `EXP_B_K`, `EXP_A_K`, `CALC_Q`, `CALC_T`, `EXP_Q_T`, `CALC_D`, `PERIOD_SUM`, `FINAL_MULT`.
+- Modular multiplication must handle 32-bit products (intermediate 64-bit) and reduce by `M`.
+- `a^{-1}` mod `M` requires Fermat's Little Theorem exponentiation `a^(M-2)`.

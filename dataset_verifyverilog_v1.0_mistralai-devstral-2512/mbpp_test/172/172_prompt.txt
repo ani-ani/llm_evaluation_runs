@@ -1,0 +1,27 @@
+Design a Verilog module to count occurrences of the substring 'std' in a string stored as a fixed-length array of ASCII bytes. Scale requirements: string length max 16 characters, result fits in 4 bits.
+
+Interface Specification:
+- Inputs:
+  - clk: system clock (rising edge active)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to initiate processing
+  - char_valid: 1-bit indicating input char is valid (used for streaming, but here we will preload)
+  - char_in: 8-bit ASCII character input
+  - len: 4-bit unsigned integer indicating actual string length (0 to 16)
+- Outputs:
+  - result: 4-bit unsigned count of 'std' occurrences
+  - done: 1-cycle pulse asserted when processing is complete and result is valid
+- Internal Storage: A 16-byte buffer to hold the input string (arr[0:15] of 8-bit)
+- Algorithm:
+  1. On start, load characters into internal buffer. Since this is a co-simulation benchmark, we will assume the testbench will write to the internal buffer directly. For the hardware implementation, you must create an internal buffer array (reg [7:0] buffer [0:15]).
+  2. After loading (or assuming buffer is pre-filled by testbench), perform a sequential scan.
+  3. Use a 3-cycle comparison pipeline: 
+     - Cycle 1: Read buffer[i], compare to 's' (0x73).
+     - Cycle 2: Read buffer[i+1], compare to 't' (0x74).
+     - Cycle 3: Read buffer[i+2], compare to 'd' (0x64).
+     - If all match in a window, increment counter.
+  4. Iterate i from 0 to len-3. If len < 3, result is 0.
+  5. Set done=1 for one cycle when finished.
+- Timing: Start asserted for one cycle. Processing should take roughly len cycles. Must complete within 128 cycles.
+- Reset: Clears buffer and internal counters, done=0, result=0.
+- Implementation Note: The buffer is write-only from the testbench in this scenario, but declare it as a register array to hold the data.

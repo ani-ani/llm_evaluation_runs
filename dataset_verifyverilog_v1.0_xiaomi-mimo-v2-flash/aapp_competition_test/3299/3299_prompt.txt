@@ -1,0 +1,48 @@
+Implement a Verilog module that solves a scaled-down Magic Checkerboard problem.
+
+**Problem Definition (Scaled):**
+- Grid size: $4 \times 4$ (fixed)
+- Values: 16-bit signed integers (range -32768 to 32767).
+- Input Grid: Provided as 16 fixed 16-bit values.
+- Constraints:
+  1. Rows and Columns must be strictly increasing.
+  2. Cells sharing a corner (diagonal neighbors) must have different parity (one even, one odd).
+  3. Initial values must be respected (0 indicates empty).
+
+**Module Interface:**
+```verilog
+module magic_checkerboard (
+    input wire clk,              // Clock
+    input wire rst_n,            // Active-low reset
+    input wire start,            // Start calculation
+    input wire [15:0] grid_in [0:15], // Input grid values (0 = empty)
+    output reg [15:0] result,    // Minimum sum
+    output reg done              // Calculation complete
+);
+```
+
+**Implementation Details:**
+1. **State Machine:** Implement a finite state machine with states `IDLE`, `CHECK_CONFLICTS`, `PROPAGATE_BOUNDS`, `CALCULATE_SUM`, `FINISHED`.
+2. **Bounds Propagation:** 
+   - Maintain a local buffer `grid_val` for current values (16-bit).
+   - Initialize `grid_val` with inputs. Treat 0 as -1 (unconstrained lower bound).
+   - Iterate (max 16 cycles) to enforce increasing constraints:
+     - For each cell (i,j), update based on top (i-1,j) and left (i,j-1): `val >= max(top+1, left+1)`.
+     - Update based on bottom (i+1,j) and right (i,j+1) in a reverse pass (or forward pass from bottom-right).
+   - Use a loop counter (0 to 15) to sweep the grid.
+3. **Parity Correction:**
+   - After bounds, check diagonal neighbors (e.g., (i,j) vs (i+1,j+1)).
+   - If parity matches and values are equal (or close), increment the right/bottom value to fix parity. This might require re-running bounds propagation if it breaks increasing constraints (simplified: handle in the same pass or accept local increment).
+4. **Sum Calculation:**
+   - Once stable, calculate sum of `grid_val`.
+   - If any cell remains 0 (unassigned) or constraints violated (e.g., value > 65535 or decreasing sequence detected), signal error (return -1).
+
+**Timing:**
+- Start pulse initiates calculation.
+- Done goes high after approx 100-200 cycles (allowing for iterative sweeps).
+- Result is valid when Done is high.
+
+**Constraints:**
+- Use 16-bit arithmetic.
+- No dynamic memory allocation.
+- Max iterations: 64.

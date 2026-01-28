@@ -1,0 +1,41 @@
+Implement a Verilog module to compute optimal cheerleading scores given a rival team's schedule.
+
+**Problem Adaptation:**
+- Game duration: 0 to 89 minutes (90 minutes total).
+- Opponent schedule: Input as a bitmask of 90 bits (1 if active, 0 if not). Since m <= 1000, we precompute the opponent schedule in Python/C and pass it as a 90-bit vector. In Verilog, we treat it as 90 1-bit inputs or 3 segments (32-bit chunks).
+- Cheerleaders: n <= 20. We need to assign 't' minutes of cheering to each of 'n' cheerleaders. This is a resource allocation problem. 
+- **Simplification**: We will optimize the *total* cheer advantage. Instead of tracking individual cheerleaders, we track total available cheer minutes (n * t). Since cheerleaders are indistinguishable and the goal depends only on the *difference* in cheer volume (Sportify vs Spoilify) per minute, we can aggregate them. However, the constraint is that no single cheerleader can cheer for more than 't' minutes. This limits the maximum *consecutive* minutes or specific patterns. 
+- **Hardware Optimization**: We will use a dynamic programming approach on the 90-minute timeline. The state tracks the current minute, the accumulated advantage, the current consecutive advantage streak length, and the remaining 't' quota for the current cheerleader (conceptually). 
+- **Simplification 2**: To make this fit in hardware, we treat 't' as a global limit on the number of cheerleaders that can be active *at once* (this is a known simplification for such problems in hardware contexts, effectively assuming we can share time). Actually, the problem states each cheerleader cheers for 't' minutes. The optimal strategy is to concentrate cheers. 
+- **Verilog Implementation**: 
+  - **Inputs**: `clk`, `rst_n`, `start`. `opponent_schedule` (90 bits, split into 3 32-bit chunks). `n` (5 bits), `t` (7 bits). 
+  - **Processing**: We will simulate the 90 minutes. At each minute, we decide how many of our 'n' cheerleaders to activate. The cost is the total minutes cheered. We want to maximize (A - B). 
+  - **Constraints**: Max total minutes = n * t. 
+  - **Output**: `score_sportify` (5 bits), `score_spoilify` (5 bits). 
+  - **Algorithm**: A brute-force search over all possible assignments of 90 bits for 'n' cheerleaders is impossible ($2^{8100}$). We use DP. State: `minute` (0-89), `total_cheers_used` (0-n*t), `current_streak` (0-4), `streak_owner` (0: none, 1: us, 2: them). 
+  - **Cycle Count**: 90 minutes * State space size. We will implement a sequential FSM that iterates through minutes and computes the best outcome. We will pre-calculate the opponent's advantage per minute (1 if active, 0 else). Our output per minute is variable (0 to n). 
+  - **Fix**: Since n*t can be up to 20*90 = 1800, tracking `total_cheers_used` exactly is large. We will cap `t` at 16 for the hardware model to keep registers manageable (total 20*16=320 cycles max, or use a greedy heuristic). 
+  - **Revised Strategy**: We will implement a greedy-like FSM. For each minute, we check if we can flip the advantage. We have a budget of `n*t` cheers. We simulate 90 minutes. At each minute, if we have budget, we choose to cheer or not to maximize the score. This is a knapsack-style optimization on a timeline. 
+  - **Hardware Module**: `football_cheer_top`. 
+    - Inputs: `opponent_active [89:0]` (split into 3x32 inputs). `n [4:0]`, `t [6:0]`. 
+    - Outputs: `score_a [4:0]`, `score_b [4:0]`. 
+    - Logic: 90-stage pipeline or sequential loop. We will use a sequential FSM to save space. 
+
+**Verilog Interface Specification:**
+- **Clock/Reset**: `clk` (posedge), `rst_n` (active low).
+- **Inputs**: 
+  - `start`: 1 bit, starts the calculation.
+  - `n`: 5 bits (0-20). Number of cheerleaders.
+  - `t`: 7 bits (0-90). Minutes per cheerleader.
+  - `opponent_low [31:0]`: Minutes 0-31.
+  - `opponent_mid [31:0]`: Minutes 32-63.
+  - `opponent_high [25:0]`: Minutes 64-89.
+- **Outputs**:
+  - `sportify_score`: 5 bits.
+  - `spoilify_score`: 5 bits.
+  - `done`: 1 bit, pulsed when calculation complete (after ~100 cycles).
+- **Timing**: Starts on `start`. Takes approximately 90 cycles to compute (one cycle per minute). 
+- **Constraint**: We will implement a heuristic: at each minute, if `opponent` is active, we spend 1 cheer to match/exceed them if we have budget. Since we want to maximize A-B, we cheer aggressively. To strictly solve the optimization (max A-B then max A), we need DP. Given hardware limits, we will implement a simplified DP with state `minute` and `budget`. The state dimension is `90 x (n*t)`. Since `n*t` is max 1800, this is too large. We will cap `n` at 4 and `t` at 16 for the demo, or implement a binary search on the target score. 
+- **Final Strategy**: We will implement a sequential process that iterates minute by minute. At each minute, we decide to cheer or not based on a greedy evaluation of future needs (lookahead is hard in HDL without RAM). We will simply calculate the *maximum possible* score assuming unlimited cheers (to set a bound) and then apply a greedy heuristic: Cheer if it prevents a Spoilify goal or helps create a Sportify goal. Since we need exact output, we will implement a BFS in Python (as reference) and the HDL will implement the logic derived from the Python logic: i.e., iterate through time, maintain a state of current streak and budget, and make optimal local decisions. 
+
+**Simplification for HDL**: We will fix `n=1` and `t=31` for the test case to match the example, and the module will be parameterized. The logic will be: `cnt` accumulates (my_cheer - opponent_cheer). If `cnt > 0` for 5 consecutive minutes, score A++. If `cnt < 0` for 5 consecutive minutes, score B++. We have a total budget of `n*t` cheers to distribute. This is a linear optimization problem. We will implement a sequential loop that tries to spend budget at minutes where it gives the most 'point value' (preventing opponent goal or creating our goal).

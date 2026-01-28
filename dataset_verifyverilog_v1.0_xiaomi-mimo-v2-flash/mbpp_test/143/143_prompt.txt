@@ -1,0 +1,45 @@
+Design a Verilog module that counts the number of sub-arrays (lists) present in a fixed-size input representation. The Python function `find_lists` counts tuples/lists in a tuple. We adapt this to hardware by representing the input as an array of 8-bit sub-arrays, where the count of sub-arrays is explicitly provided by a `length` input.
+
+The module processes a `length` signal (representing the number of sub-arrays) and outputs this value. While the `data_in` is provided for completeness, the core logic is to latch and output the length.
+
+### Inputs:
+- `clk`: System clock, rising edge
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle start pulse
+- `data_in`: 64-bit input (8 x 8-bit sub-arrays), representing the content
+- `length`: 4-bit input (0-8), representing the count of valid sub-arrays
+
+### Outputs:
+- `result`: 4-bit count of valid sub-arrays
+- `done`: 1-cycle pulse indicating completion
+
+### Timing & Reset:
+- **Latency**: Max 10 cycles from start to done
+- **Reset**: Clears `result` to 0, `done` to 0 (minimum 2 cycles)
+- **Done**: Single cycle pulse when result is valid
+
+### Algorithm (FSM):
+1. **IDLE**: Wait for `start` pulse
+2. **LOAD**: Latch `length` value into `result` register
+3. **DONE**: Assert `done` for 1 cycle, maintain `result`
+4. Return to **IDLE** immediately after `done`
+
+### Verilog Module Interface:
+```verilog
+module list_counter (
+    input wire clk,           // System clock
+    input wire rst_n,         // Active-low sync reset
+    input wire start,         // 1-cycle start pulse
+    input wire [63:0] data_in,// 8 x 8-bit sub-arrays (unused in logic but part of interface)
+    input wire [3:0] length,  // Count of valid sub-arrays (0-8)
+    output reg [3:0] result,  // Output count
+    output reg done           // 1-cycle completion pulse
+);
+```
+
+### Implementation Notes:
+- Use a 3-state FSM: `IDLE`, `PROCESS`, `DONE`
+- `result` is a 4-bit register
+- `done` is asserted only in the `DONE` state for one cycle
+- The `data_in` is not used for the counting logic since the count is explicitly given by `length`, but it must be present in the interface to match the problem constraints (where data structure defines the count)
+- Ensure `done` is de-asserted during reset and idle

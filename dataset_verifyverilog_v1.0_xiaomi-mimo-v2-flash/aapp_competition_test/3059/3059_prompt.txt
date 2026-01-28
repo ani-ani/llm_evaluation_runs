@@ -1,0 +1,47 @@
+Implement a Verilog module that computes the minimal expected time to beat a speedrun record given m tricks.
+
+**Adaptation to Hardware:**
+1. **Time Scaling**: Integer cycles scaled by factor `SCALE = 2^16` (Q16.16). All inputs and outputs are fixed-point.
+2. **Tricks**: m ≤ 50. Each trick has t (cycle), p (success probability Q16.16), d (delay cycles).
+3. **DP Algorithm**: Compute expected time E[i] for suffix starting at trick i (0-based). Use iterative backward recurrence:
+   - Let `remaining = n - t[i]` (cycles to finish).
+   - Let `p = p_i`, `d = d_i`.
+   - Expected time `E[i] = p * (remaining + E[i+1]) + (1-p) * (d + t[i] + E[0])` (if continuing) or `E[i] = 1/p * t[i]` (if resetting).
+   - Reset threshold: `T_reset = d + t[i]`. Compare with `T_cont = (remaining + E[i+1]) / p`.
+   - Choose minimal. Base case: `E[m] = n`.
+4. **Implementation**: 
+   - Input: `m`, `n`, `r`, arrays `t[0:49]`, `p[0:49]`, `d[0:49]`.
+   - Output: `result` (Q16.16), `done` pulse.
+   - Interface: `clk`, `rst_n`, `start`, `m_in`, `n_in`, `r_in`, `t_in[49]`, `p_in[49]`, `d_in[49]`, `result`, `done`.
+   - Logic: Reset → Idle. Start → Compute DP iteratively from i=m-1 downto 0. Use `case` statements for fixed-point operations. Signal `busy` during computation. `done` high for 1 cycle when result ready.
+
+**Exact Port Definitions:**
+- Inputs:
+  - clk: clock
+  - rst_n: active-low async reset
+  - start: 1-cycle pulse to start computation
+  - m_in: 6-bit (max 50)
+  - n_in: 13-bit (max 5000)
+  - r_in: 13-bit (max 5000)
+  - t_in[49:0]: 50 x 13-bit
+  - p_in[49:0]: 50 x 32-bit (Q16.16)
+  - d_in[49:0]: 50 x 11-bit (max 1000)
+- Outputs:
+  - result: 32-bit (Q16.16)
+  - done: 1-cycle pulse when result valid
+
+**Behavior:**
+- On reset, `result=0`, `done=0`.
+- On `start`, assert `busy`. Compute E[i] for i from m-1 to 0.
+- For each i, compute `remaining = n_in - t_in[i]`.
+- Compute `T_cont = (remaining + E[i+1]) / p_in[i]` (using 64-bit intermediate for division).
+- Compute `T_reset = d_in[i] + t_in[i]`.
+- If `T_cont <= T_reset`, then `E[i] = T_cont` else `E[i] = T_reset`.
+- After processing all tricks, `result = E[0]`. Assert `done` for 1 cycle. Return to idle.
+- Timing: expect ≤1000 cycles for m=50.
+
+**Constraints:**
+- Fixed-point math: Use Q16.16. Multiplications: 32x32→64. Divisions: Newton-Raphson or LUT for 1/p.
+- No floating-point; use integer arithmetic.
+- Clock domain: synchronous.
+- No memory; use registers for E values.

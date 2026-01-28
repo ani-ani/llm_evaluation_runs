@@ -1,0 +1,41 @@
+Implement a Verilog module that checks if a string of brackets ('<' as opening, '>' as closing) is correctly bracketed. The module processes one character at a time from a fixed-width byte array input.
+
+**Interface:**
+- **Inputs:**
+  - `clk`: Clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to begin processing
+  - `str_valid`: 1-bit, indicates current character is valid
+  - `str_data`: 8-bit ASCII character
+  - `str_last`: 1-bit, indicates last character of string
+- **Outputs:**
+  - `result`: 1-bit, valid when `done=1` (1=correctly bracketed, 0=incorrect)
+  - `done`: 1-cycle pulse indicating result is valid
+- **Timing:**
+  - Accept characters sequentially via `str_data` over multiple cycles
+  - `start` initiates processing, clears any previous state
+  - `str_valid` must be high for each valid character, low for gaps
+  - `str_last` high on final character; `done` asserted after last character processed
+  - `done` should be asserted within 20 cycles after `str_last`
+
+**Implementation Requirements:**
+- Use a stack with max depth of 16 (for 16-char strings)
+- Each stack entry: 1-bit flag (1=matching '<' expected, 0=matched or empty)
+- Stack pointer: 4-bit counter (0-15)
+- Algorithm:
+  1. On `start`, reset stack pointer to 0, clear done/result
+  2. When `str_valid` high and `str_last` low:
+     - If `str_data == "<"` ASCII (0x3C), push: stack[sp] = 1, increment sp
+     - If `str_data == ">"` ASCII (0x3E), pop: if sp>0 and top=1, decrement sp; else error
+     - If other char: ignore (valid but doesn't affect bracketing)
+  3. When `str_last` high:
+     - Wait for current char processing
+     - If stack empty (sp==0): result=1, else result=0
+     - Assert `done` for 1 cycle
+  4. If sp >= 16: error (overflow, treat as invalid)
+
+**Constraints:**
+- Strings up to 16 characters
+- Fixed-state FSM: 3 states (IDLE, PROCESSING, DONE)
+- Clock domain: single clock, synchronous reset
+- Assume input characters arrive one per cycle (or can be stretched)

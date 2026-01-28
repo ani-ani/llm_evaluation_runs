@@ -1,0 +1,29 @@
+Implement a Verilog module that calculates the minimum number of planes required for a flight schedule. The problem is modeled as a Minimum Path Cover in a Directed Acyclic Graph (DAG), solvable via Maximum Flow (Dinic's algorithm).
+
+**Scaling & Constraints:**
+- n (airports) <= 4 (scaled from 500)
+- m (flights) <= 4 (scaled from 500)
+- Time values: Clamp to 16-bit integers (0-65535). Use Q16.0 fixed-point.
+- **Network Construction:**
+  1.  **Nodes:** `2*m + 2`. Source (0), Sink (2*m + 1). Flight nodes: `1..m` (left partition), `m+1..2*m` (right partition).
+  2.  **Edges:**
+      - Source to every left node (Flight i): Capacity 1.
+      - Every right node (Flight i) to Sink: Capacity 1.
+      - Left node (Flight u) to Right node (Flight v) if `Flight v` can follow `Flight u`:
+        Condition: `time(u.end) + inspection(u.end) + flight(u.end, v.start) <= time(v.start)`
+        Capacity: 1 (1 plane reuse).
+- **Algorithm:** Dinic's Algorithm.
+- **Output:** Result = `m - max_flow`.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous logic.
+  - `start`: 1-cycle pulse to begin calculation.
+  - `flight_params [0:31]`: Array of 4 flights * 4 params (s, f, t, id). Packed as 32-bit words: {s[3:0], f[3:0], t[15:0], id[7:0]}.
+  - `flight_times [0:15]`: 16-bit inspection times for 4 airports.
+  - `dist_matrix [0:15]`: 16-bit flight times (4x4). Packed as 16-bit words.
+- **Outputs:**
+  - `result`: 8-bit integer (min planes).
+  - `done`: 1-cycle pulse when calculation complete.
+- **Timing:** Start->Done within 5000 cycles.
+- **Reset:** Synchronous active-low. Output zero on reset.

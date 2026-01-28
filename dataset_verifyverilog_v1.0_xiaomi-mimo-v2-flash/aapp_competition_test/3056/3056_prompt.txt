@@ -1,0 +1,32 @@
+Implement a Verilog module to calculate the sum of all node labels for a pattern of binary tree walks (L=left/2x, R=right/2x+1, P=pause/x, *=any). Constraints: Input pattern length <= 16 characters. Use fixed-width 64-bit arithmetic for result (big enough for 16 char patterns). State machine processes input pattern.
+
+Interface:
+Inputs:
+  clk: Clock (rising edge)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start processing (1=active)
+  pattern_data: 16x8-bit array (ASCII chars 'L','R','P','*') packed into one 128-bit signal
+  pattern_len: 4-bit integer (1 to 16)
+Outputs:
+  result: 64-bit unsigned integer (sum of final node labels)
+  done: 1-cycle pulse (1=valid result ready)
+
+Operation:
+1. On start=1, load pattern from pattern_data (first pattern_len bytes).
+2. Process characters sequentially using DP: maintain current state (sum, count).
+   - For 'L': left_val = 2*parent_val
+   - For 'R': right_val = 2*parent_val + 1
+   - For 'P': pause_val = parent_val
+   - For '*': sum = 2*sum + count, count = 3*count (aggregates L, R, P)
+3. Output sum when processing complete (pattern_len cycles).
+4. Reset state: done=0, result=0, counts=0.
+
+Timing: start->done within 20 cycles (pipeline processing).
+Reset: done=0, result=0.
+
+Example test cases:
+- Pattern "P*P" (len=3): Result = 6
+- Pattern "L*R" (len=3): Result = 25
+- Pattern "**" (len=2): Result = 33
+
+Note: Process characters in fixed cycles, handle '*' using combinatorial sum/count updates to avoid recursion.

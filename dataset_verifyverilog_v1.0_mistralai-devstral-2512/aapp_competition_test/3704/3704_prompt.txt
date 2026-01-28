@@ -1,0 +1,77 @@
+Implement a Verilog module that processes IPv4 blacklist and whitelist subnets to produce an optimized blacklist. The core concept is to convert IP subnets into a binary trie representation where each node tracks whether addresses in its subtree are required to be blocked (blacklist) or allowed (whitelist).
+
+**Problem Transformation:**
+1. **Input Parsing**: Parse n subnets (1-200k) where each subnet is formatted as `a.b.c.d/x`. The prefix `a.b.c.d` is a 32-bit integer where the first 8 bits are from octet a, next 8 from b, etc. The `/x` indicates the prefix length (0-32).
+2. **Conflict Detection**: If any address belongs to both a whitelist and blacklist subnet, output -1.
+3. **Optimization**: Generate minimal subnets covering all blacklisted addresses without including any whitelisted addresses. This corresponds to finding maximal valid subnets in the trie where the subtree is entirely blacklisted.
+
+**Hardware Implementation Strategy:**
+- Use a binary tree (trie) with nodes representing IP prefixes.
+- Each node tracks `color`: 1 for blacklisted, 2 for whitelisted, 3 for conflict (error).
+- Use a 32-bit counter for IP address traversal (bits 31 to 0).
+- Process subnets sequentially: for each subnet, traverse the trie for its prefix length, setting the node color and propagating to subtree.
+- After processing all inputs, traverse the trie to find maximal subtrees that are entirely blacklisted (color=1) and output them as `/x` subnets.
+
+**Simplified Scale:**
+- Max subnets: 200k (requires efficient processing, but trie depth is fixed at 32).
+- Trie size: Up to 200k * 32 nodes worst-case, but we can implement a compact representation or use iterative traversal with limited memory.
+- For hardware, we can process inputs in a pipeline: read each subnet, compute its path, update node colors, and then traverse to output.
+
+**Verilog Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous reset.
+  - `start`: 1-cycle pulse to begin processing.
+  - `subnet_valid`: Indicates valid input subnet data.
+  - `subnet_str`: 64-bit packed representation of subnet (bits 63:0: subnet string, but we'll use fixed-width fields).
+  - Actually, better: `ip_prefix [31:0]`: 32-bit IP address (from parsing). `prefix_len [5:0]`: 6-bit prefix length (0-32). `is_black [0:0]`: 1-bit flag (1=black, 0=white).
+- **Outputs:**
+  - `result_valid`: 1-bit, indicates valid output subnet.
+  - `result_ip [31:0]`: 32-bit IP address for subnet.
+  - `result_len [5:0]`: 6-bit prefix length.
+  - `done`: 1-bit, indicates processing complete.
+  - `error`: 1-bit, indicates conflict detected.
+
+**Implementation Details:**
+- **Parsing**: In a real system, the Python frontend would parse the subnet strings into 32-bit IP and prefix length. For Verilog, assume inputs are already parsed into `ip_prefix` and `prefix_len`. The testbench will provide these parsed values.
+- **Trie Node**: Each node needs to store `color` (2 bits) and `subtree_color` (2 bits). Since the trie can be large, we implement it as an iterative process: we don't store the entire trie explicitly. Instead, we process all subnets to mark conflicts, then do a second pass to generate output.
+- **Conflict Check**: For each subnet, we traverse from root (depth 0) to depth = prefix_len. At each node, if the node's color is 1 (black) and we are adding a white (or vice versa), or if node's color is 3 (conflict), set error. Update node color: if current node color is 0, set to new color; if existing color != new color, set to 3 (conflict). Also, we need to propagate to subtree: if we set a node to black/white, all descendants inherit that color unless overridden by a more specific subnet. This is complex; instead, we can use a greedy approach: first collect all black and white subnets, sort them by prefix length (descending), and then mark conflicts and valid blocks.
+
+**Simpler Algorithm for Hardware:**
+1. Collect all black subnets into a list, all white subnets into another list.
+2. Sort both lists by prefix length (longest first).
+3. Check for conflicts: For each white subnet, check if any black subnet covers it (i.e., black prefix is shorter or equal, and IP matches). If so, conflict.
+4. For optimization: Start with the full list of black subnets. While possible, merge adjacent subnets of same prefix length that don't contain any whitelisted addresses. This is complex; instead, we can output the black subnets directly if no conflicts, or simplify by merging only if they form a larger block without whitelist.
+
+**Final Verilog Spec:**
+- **Module Name**: `IPv4BlacklistOptimizer`
+- **Inputs**:
+  - `clk`, `rst_n`: System clock and active-low reset.
+  - `start`: 1-cycle pulse to start processing a new set of subnets.
+  - `input_valid`: 1-bit, indicates current cycle has a valid subnet input.
+  - `input_ip [31:0]`: 32-bit IP address (from parsing).
+  - `input_len [5:0]`: 6-bit prefix length (0-32).
+  - `input_is_black [0:0]`: 1-bit, 1 for blacklist, 0 for whitelist.
+  - `input_last`: 1-bit, indicates last subnet in current input set.
+- **Outputs**:
+  - `output_valid`: 1-bit, indicates valid output subnet.
+  - `output_ip [31:0]`: 32-bit IP address for the output subnet.
+  - `output_len [5:0]`: 6-bit prefix length for the output subnet.
+  - `error`: 1-bit, high if conflict detected.
+  - `done`: 1-bit, high after processing all subnets and outputting results.
+- **Internal Logic**:
+  - Use a state machine with states: IDLE, READ_INPUTS, CHECK_CONFLICTS, GENERATE_OUTPUTS, FINISHED.
+  - Since storing all subnets (200k) in hardware is large, we'll implement a streaming approach. However, for the benchmark, we'll assume a smaller scale (e.g., 32 subnets, 8-bit IPs, 4-bit lengths) for feasibility. The testbench will provide inputs in cycles.
+  - For the actual Verilog, we'll implement a simplified version that handles up to 16 subnets with 8-bit IPs and 4-bit lengths. The core algorithm: collect inputs, then compute.
+
+**Adapted Spec (for benchmark)**:
+- Max subnets: 16
+- IP width: 8 bits (simulating a/8 octet, but full IP in hardware would be 32 bits; we scale to 8 bits for array size).
+- Prefix length: 4 bits (0-15).
+- Storage: Two arrays for black and white subnets (each 16 entries of 12 bits: 8-bit IP + 4-bit len).
+- Algorithm:
+  1. Read all subnets into arrays.
+  2. Check conflicts: For each white subnet, see if any black subnet covers it (i.e., black IP with same prefix or shorter).
+  3. If conflict, set error.
+  4. If no conflict, output all black subnets (or merge adjacent ones if possible, but for simplicity, output all black subnets).
+
+**Testbench**: The testbench will generate parsed inputs (ip, len, is_black) in sequential cycles and verify the output subnets match expected results.

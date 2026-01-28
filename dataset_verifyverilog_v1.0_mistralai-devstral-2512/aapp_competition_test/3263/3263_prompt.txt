@@ -1,0 +1,35 @@
+Design a Verilog module that simulates Fluttershy's optimal customer service strategy within bounded hardware constraints. 
+
+**Adaptation:**
+- Scale N to maximum 16 customers (indexed 0-15).
+- Scale time values to 16-bit unsigned integers (0-65535).
+- Scale P_i and R_i values similarly (1-65535).
+- M is fixed to 4 types (1-4).
+- The algorithm uses a greedy selection: for each customer arrival, if Fluttershy is not wearing the correct type, she must perform a state transition (change costume). The goal is to minimize time spent changing and maximize served customers.
+- The module implements a sequential Finite State Machine (FSM) that processes customers one by one in order of increasing time.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to begin processing.
+  - `P_i [3:0]`: 4-bit vector for P values (Type 1, 2, 3, 4).
+  - `R_i [3:0]`: 4-bit vector for R values (Type 1, 2, 3, 4).
+  - `cust_type [0:15]`: 16x4-bit array of customer clothing types (valid indices 0 to `num_cust-1`).
+  - `cust_time [0:15]`: 16x16-bit array of arrival times.
+  - `num_cust`: 4-bit input indicating number of valid customers (1 to 16).
+- Outputs:
+  - `result`: 16-bit output counting maximum number of customers served.
+  - `done`: 1-cycle pulse indicating completion.
+- Logic:
+  - Start with `current_time = 0`, `current_clothing = 0` (none), `served = 0`.
+  - Iterate `i` from 0 to `num_cust-1`:
+    - If `cust_time[i] >= current_time`:
+      - If `cust_type[i] != current_clothing`:
+        - If `current_clothing != 0`: Add `R[current_clothing]` to `current_time` (remove).
+        - Add `P[cust_type[i]]` to `current_time` (put on new).
+      - If `current_time <= cust_time[i]`:
+        - Set `current_time = cust_time[i]`
+        - Increment `served`.
+  - Output `served`.
+- Timing: Processing requires 2-3 cycles per customer + sequential FSM states for time accumulation. Total cycles < 256. Reset clears all registers to 0.

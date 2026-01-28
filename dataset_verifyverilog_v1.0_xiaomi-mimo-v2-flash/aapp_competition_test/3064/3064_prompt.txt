@@ -1,0 +1,34 @@
+Implement a Verilog module that computes the longest path in a graph with special constraints: the graph is connected, each edge belongs to at most one cycle (so it's a cactus graph). The path must start anywhere and end at node 1, traversing each edge at most once.
+
+Adaptation: Since N <= 16 in hardware, use an adjacency matrix approach. The longest path in a cactus can be found by considering tree distances and cycle contributions. Simplify to: For each node, compute the maximum distance to node 1 via a tree traversal, and for each cycle, consider the alternative path around the cycle.
+
+Interface:
+- Inputs:
+  - clk: rising edge clock
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - N[3:0]: number of nodes (4-bit, 1-16)
+  - M[5:0]: number of edges (6-bit, 0-63)
+  - edge_A[0:15]: array of 16 4-bit values (source node for each edge)
+  - edge_B[0:15]: array of 16 4-bit values (destination node for each edge)
+- Outputs:
+  - result[7:0]: 8-bit result (max path length in edges, 0-255)
+  - done: 1-cycle pulse when computation complete
+
+Algorithm (simplified for hardware):
+1. Build adjacency matrix adj[16][16] from edge lists
+2. Perform BFS from node 1 to compute distances dist[16] (tree distances)
+3. For each edge not in BFS tree, it forms a cycle. For each such edge (u,v):
+   - Alternative path length = dist[u] + dist[v] + 1 (path u->v)
+   - Compare with current max
+4. The longest path ending at 1 is the maximum over all nodes of dist[node] (direct path) or alternative cycle paths.
+5. Output the maximum value.
+
+Timing: start->done within 256 clock cycles. Reset sets result=0, done=0.
+
+Implementation details:
+- Use registers for dist array (16x4 bits)
+- Use a state machine: IDLE -> LOAD_EDGES -> BUILD_MATRIX -> BFS -> CYCLE_CHECK -> OUTPUT
+- BFS: use queue of max 16 nodes
+- All calculations fit in 8 bits, clamp to 255 if overflow
+- Arrays: assign individual elements, not whole arrays

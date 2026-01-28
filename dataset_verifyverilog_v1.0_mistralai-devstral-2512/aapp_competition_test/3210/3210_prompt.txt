@@ -1,0 +1,54 @@
+Implement a Verilog module that calculates the maximum number of moves before a point is guaranteed in a Dots and Boxes game. Input constraints: N ≤ 8, grid size 15x15 ASCII max.
+
+Interface Specification:
+- Inputs: clk, rst_n, start (1-cycle pulse)
+- Input: grid[224:0] - 225-bit packed representation of ASCII grid (15x15).
+  Format: row-major, flattened 2D array. Bit mapping: index = row*15 + col. 
+  ASCII chars: '*' (00), '-' (01), '|' (10), '.' (11) encoded as 2 bits per cell.
+  Actual ASCII values: '*', '-', '|', '.' -> 2-bit codes for compactness.
+- Output: result[7:0] - maximum moves remaining (0-255)
+- Output: done (1-cycle high when calculation complete)
+
+Algorithm Requirements:
+1. Parse 15x15 grid into internal representation of horizontal and vertical edges.
+   Horizontal edges (between dots): positions (2i, 2j-1) for i=0..N-1, j=0..N-2
+   Vertical edges (between dots): positions (2i-1, 2j) for i=0..N-2, j=0..N-1
+   Dots at (2i, 2j) for i,j=0..N-1 (but don't need to store dots)
+
+2. Model the game state as an undirected graph where:
+   - Vertices: N*N dots
+   - Edges: drawn line segments (horizontal/vertical)
+   - Boxes: unit squares formed by 4 edges
+
+3. Critical constraint: No box has 3 edges (otherwise next move forces a point).
+   The "worst case" means players avoid completing boxes as long as possible.
+
+4. Calculate maximum safe moves:
+   - Each safe move adds an edge without completing a box.
+   - The process ends when any remaining move would complete a box (i.e., all empty edges have at least 2 adjacent boxes with 3 edges).
+   - Equivalent to: maximum matching in the box-edge dependency graph, or simply count edges that can be added while maintaining no 3-edge boxes.
+
+5. Simplification for hardware (N≤8):
+   - Store state of all N² boxes (64 max) and (N*(N+1)*2) edges (272 max).
+   - Use iterative simulation: try all edges in sequence, skip those that would create 3-edge boxes.
+   - Result: count of edges that can be added.
+
+6. Timing: Start->done within 5000 cycles. Use simple state machine.
+
+7. Reset: Clear all counters and flags. done=0, result=0.
+
+Implementation notes:
+- Use 2D arrays for horizontal_edges[N][N-1] and vertical_edges[N-1][N].
+- Use 2D array for boxes[N-1][N-1] counting edges (0-4).
+- Loop over all possible edges (horizontal and vertical) once, checking if adding creates 3-edge boxes.
+- Count safe edges. Return count.
+
+Interface in Verilog:
+module dots_and_boxes (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [224:0] grid_packed,
+    output reg [7:0] result,
+    output reg done
+);

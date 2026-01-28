@@ -1,0 +1,43 @@
+Design a Verilog module that finds a delete pattern matching a set of filenames using '?' wildcard. The module should:
+
+1. Accept n filenames (1-8 files) as fixed 16-byte arrays (ASCII characters)
+2. Accept m indices (1-4) of files to delete
+3. Generate a pattern string of length L (1-16 chars) where:
+   - For each position j, if all delete files have same char, pattern[j] = that char
+   - Else pattern[j] = '?'
+4. Verify that no non-delete file of same length matches the pattern
+5. Output pattern or 'No'
+
+Interface:
+  Inputs:
+    clk: rising edge
+    rst_n: active-low sync reset
+    start: 1-cycle start pulse
+    files[0:7][0:15][7:0]: 8x16x8-bit arrays (ASCII chars)
+    delete_idx[0:3]: 4x4-bit indices (0-7)
+    num_files: 3-bit (1-8)
+    num_delete: 2-bit (1-4)
+    lengths[0:7]: 8x4-bit file lengths (1-16)
+  
+  Outputs:
+    result[0:15][7:0]: 16x8-bit pattern output
+    result_len: 4-bit pattern length
+    valid: 1-bit (1=pattern exists, 0=no pattern)
+    done: 1-cycle pulse when complete
+  
+  Operation:
+    - Wait for start pulse
+    - Check all delete files have same length (L)
+    - Build pattern: for each position 0..L-1, set '?' if delete files differ
+    - Check all non-delete files: if same length L and matches pattern (ignoring '?'), fail
+    - Output pattern and valid flag
+    - Set done=1 for 1 cycle
+
+  Timing: start->done within 256 cycles (8 files * 16 positions * 2 checks)
+  Reset: done=0, result=0, valid=0, result_len=0, min 2 cycles
+
+  Constraints:
+    - ASCII values only (33-126)
+    - Pattern '?' is ASCII 63
+    - Fixed arrays: files[8][16][8]
+    - Indices: 0-based (subtract 1 from input)

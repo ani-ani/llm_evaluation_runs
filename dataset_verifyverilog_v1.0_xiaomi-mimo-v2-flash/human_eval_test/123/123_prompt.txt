@@ -1,0 +1,44 @@
+Implement a Verilog module that computes the sorted list of odd numbers in the Collatz sequence for a given input n.
+
+### Core Algorithm (Hardware-Friendly Adaptation):
+1. **Input**: 16-bit unsigned integer `n` (range 1..65535)
+2. **Sequence Generation**: Iterate up to `MAX_STEPS=256` cycles
+   - If `n` is odd, store it in a result array
+   - Update `n`:
+     - If `n` is even: `n = n >> 1`
+     - If `n` is odd: `n = 3*n + 1`
+   - Stop if `n == 1` or step limit reached
+3. **Sorting**: After collection, sort the array (max 16 elements) using a simple bubble sort network.
+4. **Output**: Return first `result_len` elements of the sorted array.
+
+### Interface Specification:
+**Inputs (Synchronous, rising edge on `clk`):
+- `clk`: System clock
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation (sampled on rising edge)
+- `n_in`: 16-bit unsigned input
+
+**Outputs (Valid when `done` is asserted):
+- `result_0` to `result_15`: 16-bit odd numbers in sorted order
+- `result_len`: 4-bit count of valid numbers (0 to 16)
+- `done`: 1-cycle pulse when computation completes
+
+### Timing & Constraints:
+- **Max Cycles**: Computation must complete within 2048 cycles after `start` (including sorting).
+- **Reset**: On `rst_n=0`, assert for minimum 2 cycles; `done=0`, `result_len=0`, outputs remain undefined.
+- **Depth**: Max 16 odd numbers stored (Collatz sequence often exceeds this but we truncate after 16).
+- **Widths**: All internal values 16-bit; overflow in `3*n+1` is handled by modulo 2^16 (approximation for large n).
+- **Sorting**: Use combinational or sequential bubble sort; must produce strictly increasing order.
+
+### Implementation Hints:
+- Use a Finite State Machine (FSM) with states: IDLE, CALCULATE, SORT, FINISH.
+- Maintain a counter for steps and an index for array storage.
+- For sorting, compare pairs sequentially and swap if needed.
+- Output array must be packed or indexed (e.g., `result[0]`, `result[1]`, ...).
+
+### Test Expectations:
+- Example: n=5 → sequence [5,16,8,4,2,1] → odd numbers [1,5] → sorted [1,5] → `result_len=2`
+- Example: n=14 → should yield [1,5,7,11,13,17] (check with provided testbench)
+- Edge: n=1 → [1]
+
+Ensure the module is synthesizable and uses minimal resources (registers for state, counters, and array).

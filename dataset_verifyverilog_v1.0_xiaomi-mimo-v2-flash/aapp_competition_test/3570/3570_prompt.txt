@@ -1,0 +1,80 @@
+Verilog HDL Module Specification for Event/Dream/Scenario Checker
+
+Design a synchronous digital circuit to process a stream of events, dream rollbacks, and consistency scenarios.
+
+### 1. Interface
+
+**Inputs (Synchronous):**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low asynchronous reset.
+- `start`: 1-cycle pulse initiating processing of the current operation.
+- `op_type`: 2-bit opcode (00=E, 01=D, 10=S).
+- `arg1`: 20-bit value (Event ID for E, Depth r for D, Count k for S).
+- `arg2`: 20-bit value (used for S: packed event/negation bits, 1 bit per event).
+- `arg3`: 20-bit value (used for S: second packed bit vector).
+- `arg4`: 20-bit value (used for S: third packed bit vector).
+
+**Outputs (Synchronous):**
+- `done`: 1-cycle pulse indicating operation complete.
+- `status`: 2-bit result (00=Yes, 01=Just A Dream, 10=Plot Error). Valid when `done` is high.
+- `dream_depth`: 16-bit value representing `r` when status is 01 (Just A Dream).
+
+### 2. Internal Architecture
+
+**A. Event Storage (RAM):**
+- Capacity: 256 events (8-bit address).
+- Width: 20 bits (stores hash/index of the event string).
+- Content: Valid bit + Hash/ID. Used to check existence of events in the current timeline.
+
+**B. History Stack:**
+- Depth: 512 entries (max 50,000 ops but sized for simulation).
+- Width: 16 bits (stores Event ID pushed at step `i`).
+- Pointers: `sp` (current stack pointer), `saved_sp` (for dream rollback scenarios).
+
+**C. Scenario Buffer:**
+- Size: 16 entries (max k=30 adapted to 16 for HW feasibility).
+- Width: 21 bits (1 bit negation flag + 20 bit event ID).
+- Filling logic: Accepts packed arguments `arg2`...`arg4` and unpacks them into the buffer over multiple cycles if k > 0.
+
+**D. Control FSM:**
+- States: `IDLE`, `OP_READ`, `OP_DREAM`, `OP_SCENARIO_START`, `OP_SCENARIO_CHECK`, `OP_SCENARIO_DREAM`, `DONE`.
+
+### 3. Operation Logic
+
+**1. Event (E $e$):**
+- Compute hash of string $e$ (simple XOR/sum of chars) -> `event_id`.
+- Write `event_id` to `history_stack[sp]`.
+- Update `sp`.
+- Update `event_ram[event_id]` (mark as active).
+- Output: `done`, status=Yes.
+
+**2. Dream (D $r$):**
+- Decrement `sp` by `r`.
+- Mark the `r` events popped from stack as inactive in `event_ram`.
+- Output: `done`, status=Yes.
+
+**3. Scenario (S $k$ events...):**
+- Save current `sp` to `saved_sp`.
+- **Check Phase:**
+  - For each of the $k$ events in buffer:
+    - Check `event_ram`. 
+    - If `negated` flag is 0 (event must happen): Error if not in RAM.
+    - If `negated` flag is 1 (event !happened): Error if in RAM.
+  - If Error: Output "Plot Error" immediately.
+  - If OK: Output "Yes" immediately.
+- **Dream-Fallback Phase (If "Plot Error")**:
+  - Iterate `r` from 1 to current `sp`:
+    - Hypothetically set `sp' = sp - r`.
+    - Check if events exist in `event_ram` excluding indices in range `(sp' to sp-1)`.
+    - If all constraints satisfied: Output "Just A Dream" with depth `r` and stop.
+  - If no `r` found: Output "Plot Error".
+
+### 4. Constraints
+- **String Handling:** Since full string storage is heavy, use a 20-bit hash computed on the fly (e.g., `hash = (c1 << 16) ^ (c2 << 12) ...`) or simply map strings to 8-bit IDs based on input order (simplified for HDL). The spec implies fixed string length (e.g., 16 chars) for hardware hashing.
+- **Timing:** Processing should complete within 2048 clock cycles for the worst case (Scenario with Dream fallback check).
+- **Data Widths:** Event IDs 8-bit (0-255). Packed bits split across `arg2`, `arg3`, `arg4` (e.g., `arg2` holds bits 0-19, `arg3` holds 20-39, etc. for k=30).
+
+### 5. Implementation Details
+- Use `reg` arrays for `event_ram` and `history_stack`.
+- FSM controls unpacking of `arg2`-`arg4` into the Scenario Buffer.
+- Logic must handle the "Dream Fallback" by iterating `r` and re-verifying constraints against the RAM state excluding the last `r` entries.

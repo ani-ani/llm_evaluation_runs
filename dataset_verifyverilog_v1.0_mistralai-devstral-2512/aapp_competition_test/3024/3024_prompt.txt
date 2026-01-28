@@ -1,0 +1,33 @@
+Implement a Verilog module that solves the maximum palindrome partition problem for a fixed-length string of up to 32 characters.
+
+**Problem Specification:**
+Given a string of digits, find the maximum number of partitions `k` such that the sequence of partitioned strings forms a palindrome (i.e., `s[i] == s[k-1-i]` for all partition segments).
+
+**Interface:**
+- **Inputs:**
+  - `clk`: System clock (rising edge triggered).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `s`: Input string packed as 32 consecutive 4-bit nibbles (representing digits '0'-'9'). Total width = 128 bits.
+  - `len`: Input string length (4 bits, max value 32).
+- **Outputs:**
+  - `result`: The maximum `k` (5 bits, as max k for N=32 is 32).
+  - `done`: 1-cycle pulse indicating completion and valid result.
+
+**Implementation Details:**
+1.  **Memory**: Store the input string in a 32x4-bit register array or BRAM.
+2.  **Algorithm**: Use an iterative Left-Right (LR) dynamic programming approach to save area.
+    - Maintain two pointers, `l` (left index) and `r` (right index), initialized to 0 and `len-1`.
+    - Maintain a `current_count` (number of partitions found so far) and `status` (Idle, Processing, Done).
+    - In the processing state:
+        - Compare the substring starting at `l` with the substring starting at `r` (backwards).
+        - If a match is found (i.e., `s[l..l+width] == s[r-width..r]`):
+            - Increment `current_count` by 2 (one for left, one for right).
+            - Update `l = l + width + 1`.
+            - Update `r = r - width - 1`.
+            - Reset the match check logic to search for the next width.
+        - If no match is found for the current width, increment the width counter (up to `r-l+1`).
+        - If `l > r`: The entire string is partitioned. If `l == r+1`, result is `current_count`. If `l == r+2` (single char center), result is `current_count + 1`. Transition to Done.
+        - If `width` exceeds remaining length and no match: Result is 1 (the whole string is one partition). Transition to Done.
+3.  **Timing**: The loop runs for a fixed maximum number of iterations (bounded by N^2 for N=32, ~1024 cycles) to ensure the done signal is asserted within a reasonable time.
+4.  **Reset**: Clears registers, sets `result` to 0, `done` to 0.

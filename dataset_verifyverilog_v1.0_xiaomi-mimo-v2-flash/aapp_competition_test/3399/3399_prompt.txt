@@ -1,0 +1,44 @@
+Design a Verilog module that solves a simplified 2D grid partitioning problem. The goal is to divide a 16x16 grid into exactly three non-empty connected regions (A, B, C) satisfying local constraints: each cell is either '1' (must be in exactly one region) or '2' (must be in at least two regions).
+
+**Interface Specification:**
+
+Inputs:
+- `clk`: System clock, rising edge active.
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start processing.
+- `grid_valid`: High when input data is valid.
+- `cell_data`: 4-bit input. Bit 0: '1' constraint (1 if exactly one language, 0 otherwise). Bit 1: '2' constraint (1 if at least two languages, 0 otherwise). Bits 2-3: unused (set to 0). Note: Input is provided row-by-row, cell-by-cell.
+- `cell_idx`: 8-bit index (0 to 255) indicating the current cell position.
+
+Outputs:
+- `result_a`: 16-bit output vector. Bit `i` is 1 if cell `i` belongs to region A.
+- `result_b`: 16-bit output vector. Bit `i` is 1 if cell `i` belongs to region B.
+- `result_c`: 16-bit output vector. Bit `i` is 1 if cell `i` belongs to region C.
+- `done`: 1-cycle pulse indicating calculation complete.
+- `possible`: 1-bit flag. 1 if a valid partition exists, 0 otherwise.
+
+**Functional Behavior:**
+1. **Reset**: On `rst_n`, clear all internal registers and outputs. `done` and `possible` are 0.
+2. **Load Phase**: When `start` is high, the module prepares to load the grid. Data is streamed in via `cell_data` and `cell_idx`. `grid_valid` must be held high during the load phase. The module expects 256 inputs (for 16x16 grid). The module should store the constraints internally (e.g., in a 256-bit register for '1' cells and '2' cells).
+3. **Compute Phase**: After loading, the module initiates a calculation. The algorithm must ensure:
+   - Every cell is assigned to at least one region (A, B, or C).
+   - Cells with '1' constraint are assigned to exactly one region.
+   - Cells with '2' constraint are assigned to at least two regions.
+   - The set of cells for A, B, and C must each be non-empty and connected (4-neighbor connectivity).
+4. **Algorithm Hint (Greedy/Iterative)**:
+   - Initialize all cells as unassigned.
+   - First, identify cells that *must* be part of a region (e.g., border cells or '1' cells). 
+   - Use a BFS/DFS approach to expand regions A, B, and C to cover the grid while respecting constraints. 
+   - A simplified approach for 16x16 is to scan the grid and assign regions in a snake-like pattern, then verify constraints. If '2' constraints are violated, adjust (e.g., duplicate the cell in a neighbor region).
+   - Since the grid is small, the module can use a state machine (FSM) to iterate through the 256 cells multiple times if necessary.
+5. **Output Phase**: When the solution is found, `result_a`, `result_b`, and `result_c` should hold the bitmasks for the 16x16 grid. `done` pulses high. If no solution is found after a fixed number of cycles (e.g., 10,000), `possible` goes low and `done` pulses high.
+
+**Constraints:**
+- Clock frequency is assumed to be standard.
+- The module must handle arbitrary valid inputs within the 16x16 limit.
+- Connectivity must be strictly enforced for A, B, and C.
+- If the grid size is less than 16x16, the unused cells should be ignored or masked out in the output (but indices remain 0-255).
+
+**Testbench Expectations:**
+- The testbench will provide the grid row-by-row.
+- It will verify that the three output bitmasks satisfy all constraints and connectivity.

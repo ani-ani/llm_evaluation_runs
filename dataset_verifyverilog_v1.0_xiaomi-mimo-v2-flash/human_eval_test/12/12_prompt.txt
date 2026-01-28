@@ -1,0 +1,35 @@
+Verilog HDL Module Specification:
+
+Problem: Find the longest string from a list of fixed-width strings. Return the first one in case of ties. Return NULL (e.g., a flag) if the list is empty.
+
+Constraints & Adaptations:
+- List size: Up to 8 strings (MAX_STRINGS = 8).
+- String length: Each string is fixed-width of 16 characters (STRING_WIDTH = 16). If a string is shorter, the remaining characters are padded with 0x00 (null).
+- Input format: A 2D array `strings[0:7][0:15]` where each element is 8-bit (ASCII byte).
+- Output: The index of the longest string (3-bit index, 0-7). If no strings (empty list), output a flag (e.g., `valid = 0`).
+- Logic: Sequential FSM that iterates through the list, comparing lengths (count of non-null bytes). On ties, keep the first found (lower index).
+
+Interface:
+Inputs:
+  - `clk`: System clock.
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle pulse to start processing.
+  - `strings`: 8x16 8-bit array. Input strings must be right-aligned/null-padded.
+  - `num_strings`: 4-bit input (0-8). Number of valid strings in the list.
+Outputs:
+  - `done`: 1-cycle pulse asserted when calculation is complete.
+  - `longest_idx`: 3-bit index of the longest string. Valid when `done` is high. If `num_strings` is 0, `longest_idx` is don't-care.
+  - `valid`: 1-bit signal high if `num_strings > 0` (i.e., result is meaningful).
+
+Timing:
+  - Assert `start` for 1 cycle.
+  - Within ~200 cycles, `done` will pulse high. Sample `longest_idx` and `valid` at that cycle.
+  - Reset (2 cycles) clears `done`, `valid`, and internal state.
+
+Implementation Notes:
+  - Use a state machine (IDLE, SCAN, COMPARE, DONE).
+  - In SCAN state, read current string length (count non-null bytes).
+  - In COMPARE state, compare current length with `max_len` register. If `current_len > max_len`, update `max_len` and `longest_idx`. If equal, do nothing (preserves first occurrence).
+  - The `valid` output is simply `|num_strings` (OR reduction) registered at the end.
+
+Do not provide the module code. Provide only this specification.

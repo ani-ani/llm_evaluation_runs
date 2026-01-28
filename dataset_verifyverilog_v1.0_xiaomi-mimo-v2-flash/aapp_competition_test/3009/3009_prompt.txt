@@ -1,0 +1,60 @@
+Design a Verilog module that solves the lighting arrangement balancing line problem.
+
+**Problem Scaling & Adaptation:**
+- N ≤ 12 lamps → Fixed arrays of size 16
+- Coordinates 1-99 → Scale to Q10.6 fixed-point (10 integer, 6 fractional bits) for precise distance calculation
+- Energy values -2000 to 2000 → Scale to 16-bit signed integers (scaled by factor of 10 to avoid floating-point)
+- Goal: Find shortest closed curve dividing points into two subsets with equal energy sum
+- Approach: For each valid energy-balanced partition (2^(N-1) combos), compute convex hull perimeter of one subset, find minimum across all valid partitions
+- Note: 'Balanced' means sum(inside) = sum(outside) → total sum must be even, partition sum = total_sum/2
+
+**Module Interface:**
+- Inputs:
+  - clk, rst_n: Standard synchronous control
+  - start: 1-cycle pulse to initiate calculation
+  - lamps_x[0:15], lamps_y[0:15]: 16x10-bit arrays (scaled coordinates, Q10.6)
+  - lamps_e[0:15]: 16x16-bit arrays (scaled energies, Q16.0)
+  - num_lamps: 4-bit (actual count N)
+- Outputs:
+  - result: 32-bit fixed-point representing perimeter (Q16.16 format)
+  - valid: 1-bit, asserted when result is valid
+  - impossible: 1-bit, asserted if no balanced partition exists
+  - done: 1-cycle pulse when calculation completes
+
+**Implementation Details:**
+1. **Preprocessing:** Scale coordinates: qx = x * 64, qy = y * 64 (6 fractional bits). Scale energies: e_scaled = e * 10 (integers).
+2. **Total Energy Check:** Compute total sum of scaled energies. If odd or zero (no valid partition), assert impossible.
+3. **Subset Generation:** Iterate through subsets (0 to 2^N). Skip empty/full subsets. For each, compute subset energy sum. Target = total_sum / 2.
+4. **Convex Hull:** For valid subsets, compute convex hull using Monotone Chain algorithm (O(N log N), N≤12). 
+   - Sort points by x then y (using comparators)
+   - Build lower and upper hulls
+   - Compute perimeter: sum of Euclidean distances between consecutive hull vertices
+   - Distance: sqrt((dx)^2 + (dy)^2) → use Q16.16 square root approximation or lookup table
+5. **Minimum Tracking:** Track minimum perimeter across all valid partitions.
+6. **Fixed-Point Math:** Use Q16.16 for distances. Square root can be implemented via iterative approximation or 16-bit lookup table with interpolation.
+7. **State Machine:** 
+   - IDLE
+   - PREPARE (compute total sum)
+   - SUBSET_LOOP (iterate subsets)
+   - CONVEX_HULL (compute hull for current subset)
+   - PERIMETER (compute total perimeter)
+   - UPDATE_MIN (compare with current minimum)
+   - COMPLETE (output result)
+
+**Timing Constraints:**
+- 2^12 = 4096 subsets maximum
+- Each subset: convex hull O(N log N) ~ 12*log2(12) ~ 12*4 = 48 operations
+- Within 256 cycles per subset (conservative), total ~ 1M cycles
+- Use pipelining where possible
+
+**Output Format:**
+- If impossible: result=0, impossible=1, done=1
+- If possible: result=Q16.16 perimeter, impossible=0, done=1
+
+**Edge Cases:**
+- All positive or all negative energies → IMPOSSIBLE
+- Single lamp in subset → perimeter of 1 lamp is 0 (not a closed loop)
+- Collinear points → convex hull perimeter equals segment distances
+
+**Example Verification:**
+- Sample 1: 4 lamps at (10,10),(10,20),(20,10),(20,20) with energies 5 each → total=20, target=10. Any 2 lamps sum to 10. Convex hull of 2 points has perimeter 0. Convex hull of all 4 = square perimeter 28. Minimum is 28.

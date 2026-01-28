@@ -1,0 +1,53 @@
+Create a Verilog module that calculates the n'th star number using the formula: 6 * n * (n - 1) + 1.
+
+Inputs:
+  clk: 1-bit rising edge clock
+  rst_n: 1-bit active-low synchronous reset
+  start: 1-bit start signal (pulse, high for one cycle)
+  n: 5-bit unsigned integer input (range 0-31, sufficient for typical test cases)
+
+Outputs:
+  result: 16-bit unsigned integer output (star number)
+  done: 1-bit signal, goes high for one cycle when result is ready
+
+Behavior:
+  1. On reset (rst_n=0): Clear internal state, set done=0, result=0
+  2. On start pulse (start=1 when rst_n=1): Begin calculation
+  3. Compute in sequence: temp1 = n - 1 (5-bit subtraction)
+     temp2 = 6 * n (16-bit: 6*n fits in 16 bits for n<=31)
+     temp3 = temp2 * temp1 (16-bit: 6*n*(n-1) max value 6*30*29=5220 fits in 16 bits)
+     result = temp3 + 1
+  4. The calculation should complete within 5 clock cycles from start
+  5. Set done=1 for one cycle when result is valid
+  6. After done, wait for next start pulse
+
+Timing Requirements:
+  - start pulse must be synchronized to clock (rising edge)
+  - Minimum 2 cycles of reset required
+  - Done signal appears 5 cycles after start
+  - Result is stable when done=1
+
+Bit Widths:
+  - Internal computations use 16-bit unsigned
+  - n input: 5 bits (0-31)
+  - Output result: 16 bits (max star number for n=31 is 6*31*30+1=5581)
+
+Module Interface:
+  module star_number (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [4:0] n,
+    output reg [15:0] result,
+    output reg done
+  );
+
+State Machine (recommended implementation):
+  - State 0: IDLE (wait for start)
+  - State 1: CALC1 (compute n-1, store 6*n)
+  - State 2: CALC2 (multiply temp2 * temp1)
+  - State 3: CALC3 (add 1 to result)
+  - State 4: DONE (assert done, return to IDLE)
+
+Reset Behavior:
+  When rst_n=0: set result=0, done=0, and all internal states to IDLE

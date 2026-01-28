@@ -1,0 +1,70 @@
+Implement a Verilog module that computes the longest non-decreasing jumping path in a rooted tree and counts such paths.
+
+**Problem Adaptation:**
+- Scale N to maximum 16 nodes
+- Scale labels to 8-bit integers (0-255)
+- Use adjacency list representation
+- Implement iterative post-order traversal using stack
+- Use DP table: `dp_len[node][label]` = (max_length, count) for paths ending at node with max label
+
+**Module Interface:**
+Inputs:
+  - clk: Clock signal (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - N: 4-bit input (number of nodes, 1-16)
+  - labels[0:15]: 16x8-bit array (label for each node, padded with 0s)
+  - parents[1:15]: 15x4-bit array (parent index for each node, parent[0] is unused)
+
+Outputs:
+  - result_len: 8-bit output (length L of longest path)
+  - result_count: 24-bit output (count M mod 11092019)
+  - done: 1-cycle pulse when computation complete
+
+**Timing:**
+- Start to done: Maximum 2000 clock cycles
+- Reset: 2 cycles minimum, outputs 0
+- Computation uses iterative post-order traversal with stack
+
+**Algorithm:**
+1. Build tree structure using parent array
+2. Compute post-order traversal sequence (nodes visited after children)
+3. For each node in post-order:
+   - Initialize dp table: dp[label] = (1, 1) for current node
+   - For each child node (already processed):
+     - For each label value 0-255:
+       - If child's dp has length >= current node's label:
+         - Update current dp for that label
+4. Find maximum length across all nodes and labels
+5. Count total paths with that maximum length
+
+**Constraints:**
+- Use fixed 16-node maximum for arrays
+- Use 256-entry DP table per node (simplified to 8-bit label space)
+- Modulo prime: 11092019 = 0xA63B43
+- Stack depth: 16 entries
+- State machine with ~2000 cycle budget
+
+**Implementation Details:**
+- Use 8-bit register for current node traversal
+- Use 8-bit label index
+- Use dual-port RAM or registers for DP storage
+- Post-order: process children before parent
+- Parent array indices: 0 (root), 1..15 for children
+- Labels: valid for nodes 0..N-1
+- Undefined nodes have label 0 and are ignored
+- Count overflow: modulo 11092019 at each addition
+
+**Memory Layout:**
+- dp_table: 16 x 256 entries, each entry: {length[7:0], count[23:0]}
+- post_order: 16 x 4-bit array
+- child_count: 16 x 4-bit array
+
+**State Machine States:**
+0: IDLE
+1: BUILD_CHILD_LIST
+2: COMPUTE_POSTORDER (DFS using stack)
+3: PROCESS_NODE (for each node in post-order)
+4: UPDATE_CHILD_RESULTS
+5: FIND_MAX_AND_COUNT
+6: DONE

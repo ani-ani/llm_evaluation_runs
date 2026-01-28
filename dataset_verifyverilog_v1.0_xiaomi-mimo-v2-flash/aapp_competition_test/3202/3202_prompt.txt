@@ -1,0 +1,35 @@
+Implement a Verilog module for the marble vanishing problem with scaled constraints: N≤16 marbles, K≤5 consecutive to vanish, colors 1-8 (encoded as 3-bit). The module computes minimum insertions needed to clear the entire sequence using dynamic programming.
+
+Module Interface:
+- Inputs: clk, rst_n, start (1-cycle pulse)
+- Input arrays (16 elements max):
+  * arr_colors[0:15]: 3-bit each (encoded colors 1-8, 0=idle)
+  * arr_len: 4-bit (actual sequence length N, ≤16)
+  * K_req: 3-bit (consecutive count required, 2-5)
+- Outputs:
+  * result: 8-bit (minimum insertions, 0-255)
+  * done: 1-cycle pulse when computation complete
+
+Behavior: The module must compute the minimum insertions needed to make all marbles vanish. The DP approach:
+1. Consider intervals [i,j] of the sequence
+2. For each interval, compute min insertions to clear it
+3. Base case: if interval length < K, need K - len insertions to make K identical
+4. Recurrence: try splitting interval or extending existing color groups
+5. Use iterative DP with bounded loops (max 16*16 iterations)
+
+Timing: start->done within 500 clock cycles
+Reset: done=0, result=0, min 2 cycles
+
+Implementation details:
+- Use fixed-size arrays for DP table (16x16)
+- State encoding: color groups (max 8 colors, 3-bit each)
+- Iterative processing: outer loop over interval lengths, inner loops for splits
+- For each color, track consecutive count and minimum insertions needed
+- Final result is dp[0][N-1]
+
+Example test cases:
+1. N=2, K=5, colors=[1,1] → result=3 (need 3 more to make 5)
+2. N=5, K=3, colors=[2,2,3,2,2] → result=2 (insert 2 of color 2 between)
+3. N=10, K=4, colors=[3,3,3,3,2,3,1,1,1,3] → result=4
+
+Note: Since N≤16, K≤5, and colors≤8, the DP state space is manageable in hardware. Use iterative loops with explicit bounds.

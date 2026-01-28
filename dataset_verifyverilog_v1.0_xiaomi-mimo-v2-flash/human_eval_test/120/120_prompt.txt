@@ -1,0 +1,45 @@
+Design a Verilog module that finds the k maximum values in an array and returns them sorted in ascending order. The module must handle fixed-size arrays with signed 9-bit integers (range -512 to 511) and return a sorted list of up to 16 elements.
+
+### Interface:
+- **Clock/Reset**: `clk` (rising edge), `rst_n` (active-low synchronous)
+- **Control**: `start` (1-cycle pulse to initiate), `done` (1-cycle pulse when result is valid)
+- **Input Data**: 
+  - `arr`: Array of 16 elements, each 9 bits (signed)
+  - `k`: 5-bit unsigned integer (0 to 16)
+  - `arr_valid`: 16-bit mask indicating which array elements are valid (for arrays with length < 16)
+- **Output Data**:
+  - `result`: Array of 16 elements, each 9 bits (signed). Only first `k` elements contain valid data, sorted ascending.
+  - `result_valid`: 16-bit mask indicating valid result elements (bits 0 to k-1 set)
+
+### Functionality:
+1. On `start` rising edge, capture input array and `k`
+2. Process to find top `k` maximum values (largest = highest numerical value)
+3. Sort the found values in ascending order (smallest to largest)
+4. Set `done` for 1 cycle when complete, with valid result
+5. Return sorted values in result[0..k-1], zero-filled in result[k..15]
+6. `result_valid` bits set from 0 to k-1
+
+### Constraints:
+- Maximum array size: 16 elements (fixed)
+- Data width: 9 bits signed (two's complement)
+- `k` range: 0 to 16 (5 bits)
+- Processing time: ≤256 clock cycles after `start`
+- Must handle duplicate values (e.g., [4,4,4] with k=2 → [4,4])
+- If k=0, return all zeros and `result_valid=0`
+
+### Algorithm Implementation:
+Use iterative selection approach:
+- First pass: Find maximum value, remove from pool, repeat k times (or use sorting network adaptation)
+- Second pass: Sort the k found values using a bounded sorting network (e.g., bubble sort variant or odd-even sort)
+- Result: Copy to output array in ascending order
+
+### Reset State:
+- `done` = 0
+- `result` all 0
+- `result_valid` = 0
+
+### Timing:
+- Start → Done: ≤256 cycles
+- Result valid at same cycle as `done`
+
+Note: For simplicity in hardware, you may implement a selection algorithm that iteratively finds max values and stores them, then sorts those values. All operations must be pipelined or iterative to fit within resource constraints.

@@ -1,0 +1,83 @@
+Design a Verilog module `bracket_fix` that computes the minimum cost to fix a bracket sequence using reorder operations. The solution involves scanning the sequence to track bracket balance and accumulating lengths of segments where balance goes negative.
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge active)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing (high for 1 cycle)
+  - `data_in`: 1-bit input stream (0 for '(', 1 for ')') - streaming data
+  - `valid_in`: 1-bit indicating valid input data (high for 1 cycle per character)
+- Outputs:
+  - `result`: 16-bit unsigned integer representing minimum nanoseconds cost
+  - `done`: 1-cycle pulse indicating valid result
+  - `ready`: 1-bit high when ready to accept new input
+
+**Implementation Requirements:**
+1. **Constraints:** Input length N ≤ 1024 (scaled from 10^6 for hardware)
+2. **Algorithm:**
+   - Scan sequence character by character
+   - Track balance: +1 for '(', -1 for ')'
+   - If balance becomes negative, start accumulating segment length
+   - Continue until balance returns to 0, then add accumulated length to total cost
+   - If final balance != 0, output -1 (represented as 0xFFFF)
+3. **State Machine:**
+   - `IDLE`: Wait for `start`
+   - `READ`: Process `valid_in` signals, update balance
+   - `DONE`: Output result, set `done` high
+4. **Data Path:**
+   - Balance counter: 11-bit signed (range -1024 to 1024)
+   - Segment length counter: 10-bit unsigned (max segment length 1024)
+   - Total cost accumulator: 16-bit unsigned (max 2^16-1)
+   - Input buffer: Store 1024 bits (1024×1-bit array) for sequential processing
+5. **Control Logic:**
+   - Handle `valid_in` to advance through buffer
+   - On `start`: reset all counters, set `ready=0`
+   - During `READ`: 
+     - If `data_in` is '(' (0): increment balance
+     - If `data_in` is ')' (1): decrement balance
+     - If balance < 0 and segment active: increment segment length
+     - If balance becomes 0 after negative: add (segment_length + 1) to result, reset segment
+   - At end of input (after N cycles): check final balance
+     - If balance == 0: output accumulated cost
+     - Else: output 0xFFFF (representing -1)
+   - Set `ready=1` and `done=1` for 1 cycle
+
+**Timing:**
+- Reset: 2 cycles, clears all registers
+- Processing: N + 2 cycles (N inputs + 1 for final check + 1 for done)
+- `done` pulse width: 1 cycle
+- `ready` is low during computation
+
+**Reset Behavior:**
+- `result` = 0
+- `done` = 0
+- `ready` = 1
+- Balance counter = 0
+- Segment active flag = 0
+- Segment length = 0
+
+**Example:**
+For input "))((())(" (n=8):
+- Start: balance=0, cost=0, seg_len=0, seg_active=0
+- ')': balance=-1, seg_active=1, seg_len=1
+- ')': balance=-2, seg_len=2
+- '(': balance=-1
+- '(': balance=0 → cost += 2+1 = 3, reset segment
+- ')': balance=-1, seg_active=1, seg_len=1
+- ')': balance=-2, seg_len=2
+- '(': balance=-1
+- '(': balance=0 → cost += 2+1 = 3, total=6
+- Final result: 6
+
+**Edge Cases:**
+- Final balance != 0: output 0xFFFF
+- Empty sequence (n=0): output 0
+- Immediate return to 0 after negative: count the character that fixed it
+
+**Hardware Requirements:**
+- Use a 1024-bit shift register or RAM for input storage
+- 11-bit signed balance counter with overflow protection
+- 10-bit segment length counter
+- 16-bit cost accumulator
+- State machine with 3-4 states
+- Clock frequency: 100MHz (10ns period) for reasonable timing

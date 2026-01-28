@@ -1,0 +1,56 @@
+Implement a Verilog module that counts even and odd decimal digits in a 16-bit signed integer. The module should process the absolute value of the input number, counting digits as it extracts them.
+
+**Interface Specification:**
+
+**Inputs:**
+  - `clk`: Clock signal (rising edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate processing
+  - `num`: 16-bit signed integer input (scaled from Python int, range -32768 to 32767)
+
+**Outputs:**
+  - `even_count`: 4-bit unsigned count of even digits (0-9)
+  - `odd_count`: 4-bit unsigned count of odd digits (0-9)
+  - `done`: 1-cycle pulse indicating valid output available
+
+**Functionality Requirements:**
+1. Process the absolute value of `num` (handle negative numbers by taking two's complement absolute value)
+2. Handle special case: `num == 0` -> even_count = 1, odd_count = 0
+3. For non-zero numbers: extract decimal digits one by one using modulo 10 and division by 10
+4. Count even digits (0,2,4,6,8) vs odd digits (1,3,5,7,9)
+5. Maximum of 5 decimal digits for 16-bit numbers (max 32767)
+6. Output result when done signal pulses
+
+**State Machine States:**
+  - IDLE: Wait for start pulse
+  - ABS: Compute absolute value of input
+  - ZERO_CHECK: Check if number is zero
+  - EXTRACT: Extract digits iteratively (max 5 iterations)
+  - DONE: Pulse done signal and hold results
+
+**Implementation Constraints:**
+- Use 16-bit data path
+- Max 5 digit extractions (20 cycles max for EXTRACT state)
+- Use 4-bit counters for even/odd counts
+- Reset clears all counters and sets done=0, result=0
+- Start-to-done latency: 20 cycles maximum
+- Edge case: Input 0 should set even_count=1, odd_count=0 immediately
+- For negative numbers, use two's complement absolute value before counting
+
+**Signal Details:**
+- `even_count`[3:0]: 4-bit unsigned (0-9)
+- `odd_count`[3:0]: 4-bit unsigned (0-9)
+- `num`[15:0]: 16-bit signed
+- All sequential logic, synchronous reset
+- `done` pulse width: 1 cycle
+
+**Timing:**
+- On rising edge with `start=1`, begin processing
+- Within 20 cycles, `done` goes high for 1 cycle
+- When `done=1`, sample `even_count` and `odd_count`
+
+**Example mappings:**
+- Input: 123 (0x007B) -> even=1, odd=2
+- Input: -12 (0xFFF4 absolute 12) -> even=1, odd=1
+- Input: 0 -> even=1, odd=0
+- Input: 346211 (0x548B3 but truncated to 16-bit) -> even=3, odd=3

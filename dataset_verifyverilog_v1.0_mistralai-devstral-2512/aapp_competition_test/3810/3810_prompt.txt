@@ -1,0 +1,51 @@
+Design a Verilog module that solves the box pile problem using graph theory and DP. The module must process divisibility relationships between numbers 1-60.
+
+**Problem Adaptation**:
+- Represent up to 16 boxes per connected component using bitmasks
+- Build divisibility graph: box i divides box j if (a[j] % a[i] == 0)
+- For each component, compute number of valid orders using DP over subsets
+- Combine results from components using combinatorics
+
+**Interface Specification**:
+- Inputs:
+  - clk: rising edge clock
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to begin computation
+  - n: 4-bit input (number of boxes, 3-16)
+  - data[5:0]: 6-bit input for array values (1-60)
+  - addr[3:0]: 4-bit address to index array
+- Outputs:
+  - result[31:0]: 32-bit final answer modulo 10^9+7
+  - done: 1-cycle pulse when valid
+  - ready: high when ready for next input
+
+**Implementation Guidelines**:
+1. **Input Phase** (cycles 0-16): Accept n values via data/addr, store in internal array
+2. **Graph Construction** (cycles 17-32): For each pair (i,j), set bit if a[i] divides a[j]
+3. **Component Detection** (cycles 33-48): DFS to find connected components
+4. **DP Phase** (cycles 49-256):
+   - For each component with size p (≤16) and m nodes (≤16):
+   - Precompute inMask[i]: bitmask of p nodes that divide node i
+   - DP[k][mask]: ways to arrange k nodes with parent set mask
+   - Use 16x2^16 state space per component
+5. **Combination Phase** (cycles 257-272): Multiply component results with binomial coefficients
+
+**Memory Requirements**:
+- Array storage: 16x6-bit = 96 bits
+- Graph adjacency: 16x16-bit = 256 bits  
+- DP table: 17x65536 x 32-bit = 35MB (compressed: process component-by-component)
+- Component tracking: 16x4-bit = 64 bits
+
+**Constraints**:
+- Max cycles: 300 (start → done)
+- Modulus: 1,000,000,007 (fits in 30 bits)
+- All arithmetic modulo MOD
+- Reset: result=0, done=0, ready=1
+
+**Control Signals**:
+- phase[1:0]: 0=input, 1=graph, 2=DP, 3=combine
+- component_idx[3:0]: current component
+- dp_state[15:0]: current DP mask
+- counter[7:0]: cycle counter for timeout
+
+**Verilog Module**: Implement as a finite state machine with iterative DP. Use parameterized widths. Ensure result is valid only when done=1.

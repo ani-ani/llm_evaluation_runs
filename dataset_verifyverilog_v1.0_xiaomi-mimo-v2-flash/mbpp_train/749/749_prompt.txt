@@ -1,0 +1,57 @@
+Design a Verilog module that sorts a list of numeric strings numerically. Adapt the problem to hardware constraints: input strings are represented as fixed-width 8-bit signed integers (representing values from -128 to 127). The module should accept up to 16 elements and output the sorted list in ascending order.
+
+**Module Interface:**
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle start pulse
+- `len`: 4-bit input indicating number of valid elements (1 to 16)
+- `arr_in[0:15]`: 16x8-bit array of signed input numbers
+
+**Outputs:**
+- `arr_out[0:15]`: 16x8-bit array of sorted numbers (ascending order)
+- `done`: 1-cycle pulse indicating valid output
+
+**Functional Requirements:**
+1. On `start` pulse, capture the first `len` elements from `arr_in`
+2. Perform in-place bubble sort on the captured elements
+3. Output sorted values on `arr_out[0:15]`
+4. Assert `done` for one cycle when sorting completes
+
+**Constraints:**
+- Maximum 16 elements
+- Signed 8-bit values (-128 to 127)
+- Start->done latency: maximum 1000 cycles (worst-case bubble sort: 16*16 = 256 iterations)
+- Reset state: all outputs zero, done=0
+
+**Implementation Notes:**
+- Use a dual-port RAM or register file approach
+- Implement bubble sort: iterate `len-1` times, compare adjacent elements
+- For each iteration: scan through array, swap adjacent elements if out of order
+- Use signed comparison (two's complement)
+- The `arr_out` should only be valid when `done=1`
+
+**Signal Widths:**
+- `len`: 4 bits (0-15, but valid range 1-16)
+- `arr_in`: 8-bit signed
+- `arr_out`: 8-bit signed
+- Internal index: 4 bits
+- Internal iteration counter: 4 bits
+
+**Timing:**
+- `start` must be held high for one cycle while `rst_n=1`
+- Reset: at least 2 cycles, sets `done=0`, `arr_out=0`
+- After reset, wait for `start` pulse
+- Sorting begins immediately after start
+- `done` pulses when final sorted array is ready on `arr_out`
+
+**Simplified Algorithm:**
+1. Initialize: Copy first `len` elements to internal registers
+2. Outer loop: For `i` from 0 to `len-2`
+3. Inner loop: For `j` from 0 to `len-2-i`
+4. Compare `reg[j]` and `reg[j+1]`
+5. If `reg[j] > reg[j+1]`, swap them
+6. After loops complete, copy to `arr_out` and pulse `done`
+
+**Note:** This is a simplified version where strings are pre-parsed to 8-bit integers. The sorting logic remains the same as the original Python problem.

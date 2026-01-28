@@ -1,0 +1,38 @@
+Implement a Verilog module that computes a tournament schedule for `m` teams of `n` players each. The schedule must cover all pairwise games between players of different teams using `R = (m-1)*n` rounds, where each player plays exactly one game per round (no more than 1 bye).
+
+**Algorithm**:
+For `R` rounds, round `r` (0-indexed), pair player `p` in team `t` with player `q` in team `u` where `p + q ≡ r (mod n)` and `u = (t + 1) mod m`. This ensures a valid cyclic schedule covering all edges.
+
+**Interface**:
+- Inputs:
+  `clk`: System clock (rising edge)
+  `rst_n`: Active-low asynchronous reset
+  `start`: 1-cycle pulse to start calculation
+  `n`: 4-bit unsigned (1-25)
+  `m`: 5-bit unsigned (2-25)
+- Outputs:
+  `result`: 64-bit packed vector representing the schedule for the current round
+    - Format: 8 bytes per game, 8 games max per round (64 bits total)
+    - Each byte represents one player (0-249): `team_id*25 + player_id`
+    - Games are packed as [p1, p2, p1, p2...] in order
+    - Unused entries are 0
+  `round_index`: 6-bit counter (0 to 31)
+  `done`: 1-cycle pulse when all rounds processed
+
+**Timing**:
+- Start to first result: 2 cycles (calculation)
+- Valid result available for `R` cycles
+- `done` asserted after `R` rounds
+- Total cycles: `R + 4` (worst case `R=600` for n=25,m=25)
+
+**State Machine**:
+1. IDLE: wait for `start`
+2. CALC: compute schedule for current round
+3. OUTPUT: drive `result` and increment round
+4. DONE: assert `done` for 1 cycle
+
+**Constraints**:
+- Max players: 100 (25 teams * 25 players)
+- Max rounds: 600
+- Must handle `n=1, m=5` case (5 rounds, 1 bye per player)
+- Pack data in 64-bit word for efficient output

@@ -1,0 +1,41 @@
+Implement a Verilog module that identifies critical elements in a sequence where removal would decrease the LIS length. Problem constraints: n ≤ 16 (input size), sequence is a permutation of 1..n. Critical elements are those that belong to EVERY longest increasing subsequence. An element is critical if it appears in all LISs.
+
+Module Interface:
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation (optional, for sequential version)
+  len: 4-bit input for sequence length (1-16)
+  seq[0:15]: 16x8-bit array of sequence values (1-16, fits in 8 bits)
+
+Outputs:
+  result: 24-bit packed output (bit 23:8 = 16-bit mask of critical elements, bits 7:0 = count of critical elements)
+  done: 1-cycle pulse indicating valid result
+
+Behavior:
+1. Reset: All outputs zero
+2. When start=1, compute LIS length and identify critical elements
+3. Output format: result[23:8] is a 16-bit bitmask where bit i (0-indexed) represents value (i+1). If set, value (i+1) is critical.
+   result[7:0] is count of critical elements (0 if none)
+4. done=1 for 1 cycle when computation completes (within 100 cycles)
+5. If no critical elements, result[7:0]=0
+
+Algorithm (simplified):
+- Compute LIS length using DP (forward and backward)
+- For each element i, check if it belongs to all LISs
+- An element is critical if: it's part of some LIS AND removing it cannot form another LIS of same length
+
+Test cases:
+1. n=4, seq=[1,3,2,4]: critical values {1,4} → mask=0x0001 | 0x0008 = 0x0009, count=2
+2. n=5, seq=[1,2,3,4,5]: all critical → mask=0x001F, count=5
+3. n=4, seq=[2,1,4,3]: no critical → mask=0x0000, count=0
+4. n=4, seq=[4,3,1,2]: critical values {1,2} → mask=0x0006, count=2
+
+Implementation notes:
+- Use sequential FSM with max 100 cycles
+- Fixed array size: 16 elements maximum
+- Use 8-bit values, 16-bit indices/masks
+- For forward DP: dp_f[i] = length of LIS ending at position i
+- For backward DP: dp_b[i] = length of LIS starting at position i
+- Total LIS length = max(dp_f)
+- Element i is critical if dp_f[i] + dp_b[i] - 1 == LIS_length AND it's the only element with that property at that position in any LIS

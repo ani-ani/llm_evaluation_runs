@@ -1,0 +1,38 @@
+Design a Verilog module that checks if any pair of distinct elements in a fixed-size array sums to zero.
+
+**Requirements:**
+- Input: 16-element array of 8-bit signed integers (Q8.0 format)
+- Output: Single-bit result (1 if pair found, 0 otherwise)
+- Operation: Sequential scan using comparators
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: Clock signal (rising edge active)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `arr[0:15]`: 16x8-bit signed integers (arr[i] uses two's complement)
+  - `len`: 4-bit unsigned (actual array length, 1-16)
+- Outputs:
+  - `result`: 1-bit valid when `done` is high
+  - `done`: 1-cycle pulse indicating computation complete
+
+**Behavior:**
+1. On `start` pulse, reset internal state and begin sequential scan
+2. Compare all distinct pairs (i, j) where i < j < len
+3. For each pair, check if arr[i] + arr[j] == 0
+4. If any pair matches, set result = 1 and terminate early
+5. If no pair found after checking all pairs, result = 0
+6. `done` pulse should occur 1 cycle after computation completes
+7. Maximum cycles: ≤256 (16*16/2 = 120 comparisons worst-case)
+
+**Implementation Notes:**
+- Use two nested counter loops (outer: 0 to len-1, inner: i+1 to len-1)
+- Sum comparison: (arr[i] + arr[j]) == 0
+- Early termination: if result becomes 1, skip remaining comparisons
+- State machine: IDLE → SCANNING → COMPLETE
+- Reset state: done=0, result=0
+
+**Example:**
+Input: [2, 4, -5, 3, 5, 7] → Result: 1 (2 + (-5) = -3 ≠ 0, 4 + (-5) = -1 ≠ 0, -5 + 5 = 0 → found)
+Input: [1, 3, 5, 0] → Result: 0 (no pair sums to zero)
+Input: [1] → Result: 0 (single element, no pair)

@@ -1,0 +1,75 @@
+Verilog Module Specification: Minimum Vertex Cover with Friend Preference
+
+OVERVIEW:
+Implement a hardware module that finds the minimum vertex cover of a bipartite graph representing employee teams, with a preference to include employee 1009 if possible. This corresponds to the classic minimum vertex cover problem solvable via maximum matching.
+
+INPUT SPECIFICATION:
+- Parameters: MAX_TEAMS = 10, MAX_NODES = 16 (10 Stockholm IDs 1000-1009, 6 London IDs 2000-2005)
+- Signals:
+  - clk: Clock input
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to begin computation
+  - valid_team: Indicates if current team entry is valid
+  - stockholm_id: 10-bit input (1000-1009 mapped to 0-9)
+  - london_id: 10-bit input (2000-2005 mapped to 0-5)
+
+OUTPUT SPECIFICATION:
+- result_valid: 1-cycle pulse when result is ready
+- result_size: 4-bit output (number of invitees, 1-16)
+- result_0 to result_15: 10-bit outputs (employee IDs, 0-1023, needs remapping)
+  - Note: IDs will be remapped: 1000-1009 -> 0-9, 2000-2009 -> 10-19
+
+ALGORITHM IMPLEMENTATION:
+1. Graph Construction (FSM):
+   - Store up to 10 edges as adjacency matrix (10x6 bits)
+   - Map IDs: Stockholm 1000-1009 → 0-9, London 2000-2005 → 10-15
+
+2. Maximum Matching (Kőnig's Algorithm):
+   - Implement Hopcroft-Karp or DFS-based matching
+   - Two-phase: BFS to build layers, then DFS for augmenting paths
+   - Use 16-bit registers for match arrays: match_st[9:0], match_ld[5:0]
+
+3. Vertex Cover Extraction:
+   - From matching results, construct minimum vertex cover
+   - Use König's theorem: Left-unmatched + Right-matched
+
+4. Friend Preference (1009 = Stockholm index 9):
+   - After finding minimum cover, check if index 9 is included
+   - If not, check if alternative minimum cover exists with index 9
+   - This requires checking alternating paths from unmatched left nodes
+
+TIMING:
+- Input phase: Up to MAX_TEAMS cycles (10 cycles max)
+- Computation phase: Up to 100 cycles for matching
+- Total: < 128 cycles
+
+STATE MACHINE STATES:
+0: IDLE - wait for start
+1: INPUT - read team data
+2: BUILD_GRAPH - construct adjacency
+3: MATCH_START - begin matching algorithm
+4: MATCH_BFS - build layer graph
+5: MATCH_DFS - find augmenting paths
+6: COVER_CONSTRUCT - build vertex cover
+7: FRIEND_CHECK - verify friend inclusion
+8: OUTPUT - present results
+
+CRITICAL CONSTRAINTS:
+- Use 4-bit counters for loops (max 16 iterations)
+- Use 16-bit memory for match arrays and visited flags
+- Fixed-size arrays, no dynamic allocation
+- Clock-driven sequential logic only
+- Maximum 256 cycles total runtime
+
+EXAMPLE:
+Input: 2 teams (1009-2011, 1017-2011)
+Graph: 1009→2011, 1017→2011
+Matching: 1009-2011 (size 1)
+Cover: {2011} (size 1) - friend 1009 not included but is acceptable
+Output: 1, 2001 (2011 mapped to index 1)
+
+NOTES:
+- IDs outside 1000-1099 or 2000-2099 are ignored
+- Maximum 10 teams, 16 unique employees
+- Result array will be unsorted
+- Friend ID 1009 maps to index 9 on left side

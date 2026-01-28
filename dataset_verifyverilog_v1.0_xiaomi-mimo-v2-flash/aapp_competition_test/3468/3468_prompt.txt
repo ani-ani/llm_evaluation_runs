@@ -1,0 +1,69 @@
+Implement a Verilog module to solve the app installation optimization problem. The problem is a variant of the knapsack problem where each item has a download size d and storage size s, requiring max(d, s) space to install, and the goal is to maximize the number of apps installed given total capacity c.
+
+**SCALING & CONSTRAINTS:**
+- Maximum apps (n): 16
+- Maximum capacity (c): 256 megabytes
+- Maximum download/storage size (d, s): 128 megabytes
+- Maximum installation space required (req = max(d, s)): 128
+- Output: Maximum count and list of indices (1-based)
+
+**INTERFACE SPECIFICATION:**
+- **Inputs:**
+  - `clk`: System clock (rising edge active)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to begin computation
+  - `app_d_i`: 8-bit input, download size of current app
+  - `app_s_i`: 8-bit input, storage size of current app
+  - `app_idx_i`: 4-bit input, index of current app (1-16)
+  - `app_valid_i`: 1-bit, indicates valid app data on inputs
+  - `app_done_i`: 1-bit, indicates all apps have been input
+- **Outputs:**
+  - `result_count`: 5-bit (max 16 apps), maximum number of apps that can be installed
+  - `result_order_0` to `result_order_15`: 4-bit each, the 1-based indices of installed apps in optimal order
+  - `done`: 1-cycle pulse when computation is complete
+  - `busy`: High while processing
+
+**ALGORITHM REQUIREMENTS:**
+1. **Input Phase:** Accept app data sequentially (d, s, idx) while `app_valid_i` is high. Store app requirements in internal memory.
+2. **Computation Phase:** Use dynamic programming with state compression. The DP state tracks: `dp[capacity][count] = true` if it's possible to install `count` apps using exactly `capacity` space. Since we need the installation order, we must also store backpointers.
+3. **State Space:** 
+   - Capacity: 0 to 255 (8 bits)
+   - Count: 0 to 16 (4 bits)
+   - Store DP table as `dp[capacity][count]` (256x17 = 4352 bits) and `prev[capacity][count]` (stores previous app index used).
+4. **Optimization:** Since we want to maximize count, iterate through apps and update DP table in reverse capacity order (to avoid using same app multiple times).
+5. **Reconstruction:** After DP fill, find the highest count with dp[capacity][count] = true for any capacity ≤ c. Trace back using prev pointers to recover the installation order.
+6. **Ordering:** The DP must ensure that the installation order satisfies the space constraint: for each step, the required space max(d,s) must be ≤ remaining capacity at that point. This is naturally handled by the DP if we iterate apps in sorted order or handle the constraint correctly.
+
+**IMPLEMENTATION DETAILS:**
+- Use synchronous logic with `clk` and `rst_n`.
+- `start` signal initiates the state machine: 1) Reset DP table 2) Wait for input phase 3) Compute DP 4) Find optimum 5) Reconstruct order 6) Output result.
+- Internal storage: 
+  - `app_req[0:15]`: 8-bit array for required space (max(d,s))
+  - `app_idx[0:15]`: 4-bit array for original indices
+  - `dp[0:255][0:16]`: 1-bit array for feasibility (256*17 = 4352 bits)
+  - `prev[0:255][0:16]`: 4-bit array storing previous app index (or a special value for start)
+- **CRITICAL:** The installation order must be valid. To ensure this, we need to sort apps by (max(d,s), d, s) or use a greedy-like DP where order matters. The correct approach is to sort apps by required space (ascending) because installing smaller requirement apps first leaves more space for others.
+- **Sorting:** The input apps must be sorted before DP. Since hardware sorting is complex, we can accept apps in any order and sort them internally using a bubble sort network (16 elements, 16 stages).
+- **Order Reconstruction:** The DP table only gives us the set of apps. To get the installation order, we need to store the sequence. One approach: when updating dp[new_cap][new_cnt] from dp[old_cap][old_cnt], store the app index that caused this transition. Then backtrack to find the sequence.
+- **Output:** Once reconstruction is done, output the count and the 16 indices (using 0 for unused slots).
+
+**STATE MACHINE:**
+1. `IDLE`: Wait for `start`. On `start`, reset internal state and go to `INPUT_WAIT`.
+2. `INPUT_WAIT`: Wait for `app_valid_i` or `app_done_i`. Store apps as they arrive. Go to `SORT` when `app_done_i` is high.
+3. `SORT`: Sort apps by required space (ascending) using a 16-cycle bubble sort. Go to `DP_INIT` after sorting.
+4. `DP_INIT`: Initialize DP table (dp[0][0] = 1, all others = 0). Go to `DP_FILL`.
+5. `DP_FILL`: For each app (iter i from 0 to n-1), for each capacity (descending), update DP states. This takes O(n * c * n) cycles, but with n=16, c=256, it's ~65536 cycles max. Go to `FIND_OPT`.
+6. `FIND_OPT`: Scan dp table from max count downwards to find valid state with capacity ≤ c. Go to `RECONSTRUCT`.
+7. `RECONSTRUCT`: Trace back using prev pointers to build the installation order list. Go to `OUTPUT`.
+8. `OUTPUT`: Assert `done` pulse and set `result_count` and `result_order_*` signals. Return to `IDLE`.
+
+**RESOURCE ESTIMATION:**
+- DP table: 4352 bits (small)
+- prev table: 4352 * 4 bits = 17408 bits (moderate)
+- App storage: 16 * (8+4) bits = 192 bits
+- State machine: ~20 states
+- Total cycles: < 70,000 (acceptable for simulation)
+
+**NOTE:** The problem requires a specific installation order. The DP approach with sorted inputs ensures that any valid set of apps can be installed in the sorted order. However, to output the exact order, we need to record the sequence during backtracking.
+
+**DO NOT WRITE THE VERILOG CODE.** Provide this detailed specification only.

@@ -1,0 +1,61 @@
+Design a Verilog module that detects triple correlations in a digit sequence. The module searches for patterns of the form a(n)b(m)c where a,b,c are digits (0-9) and n,m are distances (1-63). The input is a sequence of digits, and the output is the first triple correlation found (prioritized by earliest occurrence, then smallest n, then smallest m).
+
+## Interface Specification
+
+### Inputs:
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to begin search
+- `seq_len`: 4-bit input (1-16, representing p/8 scaling for feasibility)
+- `seq_din`: 4-bit input digit (0-9) loaded sequentially
+- `seq_we`: 1-bit write enable for loading sequence
+
+### Outputs:
+- `done`: 1-cycle pulse when search completes
+- `found`: 1-bit indicator if correlation found
+- `a_out`: 4-bit value of a
+- `b_out`: 4-bit value of b
+- `c_out`: 4-bit value of c
+- `n_out`: 6-bit value of n (distance from a to b)
+- `m_out`: 6-bit value of m (distance from b to c)
+
+## Scaling Requirements
+- Maximum sequence length: 64 elements (scaled from 1000)
+- Digits: 0-9 (4-bit)
+- Distances n,m: 1-63 (6-bit)
+- Correlation count threshold: ceil(p/40)+1 (scaled accordingly)
+- Maximum iterations: 200 cycles
+
+## Algorithm Behavior
+1. **Load Phase**: Accept `seq_din` digits via `seq_we` into internal memory
+2. **Search Phase**: Check all valid (a,n,b,m,c) combinations
+   - For each position i where seq[i] == a and seq[i+n] == b:
+     - Check if seq[i+n+m] == c (if within bounds)
+   - For each position j where seq[j] == b and seq[j+m] == c:
+     - Check if seq[j-n] == a (if within bounds)
+   - For each position k where seq[k] == a and seq[k+n+m] == c:
+     - Check if seq[k+n] == b
+3. **Validation**: Count valid occurrences for each correlation
+4. **Selection**: Choose first valid correlation (by earliest i, then smallest n, then smallest m)
+5. **Completion**: Assert `done` with results
+
+## Implementation Notes
+- Use internal memory: 64x4-bit SRAM for sequence storage
+- Implement parallel comparison pipelines where possible
+- The threshold condition: count >= (seq_len >> 5) + 1 (scaled from ceil(p/40)+1)
+- Start searching only after sequence is loaded
+- If no correlation found, `found` = 0
+
+## Timing
+- Reset: Assert `done` = 0, `found` = 0, all outputs 0
+- Load phase: Accept up to 64 digits
+- Search phase: Complete within 200 cycles after `start`
+- Result: Valid when `done` = 1
+
+## State Machine (Suggested)
+- IDLE: Wait for `start`
+- LOAD: Accept sequence data
+- SEARCH: Iterate through all valid patterns
+- DONE: Output results
+
+Ensure all signals are properly sized to prevent overflow. Use asynchronous reset for reliability. Implement a watchdog timer to prevent infinite loops (max 200 cycles).

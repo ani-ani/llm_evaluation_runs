@@ -1,0 +1,90 @@
+Design a Verilog module implementing the minimum cost to reach (0,0) using purchasable move cards.
+
+**Interface:**
+Inputs:
+  clk: 1-bit clock
+  rst_n: 1-bit active-low synchronous reset
+  start: 1-bit start signal (pulsed high for 1 cycle)
+  card_r[15:0]: 16-bit signed r coordinate of card
+  card_c[15:0]: 16-bit signed c coordinate of card
+  card_a[15:0]: 16-bit signed a value of card
+  card_b[15:0]: 16-bit signed b value of card
+  card_p[15:0]: 16-bit unsigned price of card
+  card_idx[3:0]: 4-bit index for card input (0-15)
+  card_valid: 1-bit flag to store current card data
+  calc: 1-bit trigger to compute result
+
+Outputs:
+  min_cost[15:0]: 16-bit unsigned minimum cost to reach (0,0)
+  done: 1-bit pulse indicating calculation complete
+  possible: 1-bit flag (1=reachable, 0=impossible)
+
+**Implementation Requirements:**
+1. Support max 16 cards (4-bit index).
+2. Store cards: position (r,c), move offsets (a,b), price p.
+3. Knight starts at card 0's position (r0,c0).
+4. Knight owns only card 0 initially (can use its moves).
+5. When visiting a card location, can purchase card (add to owned set).
+6. Moves: From any owned card (a,b), can jump to relative positions: (±a,±b), (±b,±a).
+7. Goal: Reach (0,0). Target is absolute, not a card location.
+8. Algorithm: BFS/Dijkstra on state (position, owned_set, cost). 
+   - Since N≤16, owned_set is a 16-bit bitmask.
+   - Positions are 16-bit signed (clamped from 32-bit input).
+   - Graph nodes: (position_r, position_c, owned_set). Max 16*16*65536 is too big.
+   - **Simplification**: Only track reachable positions derived from cards. 
+     - States are card indices (0..15) + goal. 
+     - Edges: Buying a card at location `i` grants access to moves of card `i`.
+     - From a card `i` owned, you can reach any card `j` if `pos_j` is reachable using moves from `i`'s set.
+     - Reachability check: Can we go from (r_i, c_i) to (r_j, c_j) using moves from owned set?
+       - This is a linear combination of vectors. 
+       - Hard in HW. 
+   - **HW-Friendly Greedy/Iterative**: 
+     1. Initialize `owned = {0}`, `cost = p0`, `pos = (r0,c0)`.
+     2. Loop: Try to buy any accessible card `j` (not in owned) such that distance `dist(pos, card_j)` is reachable using current moves.
+        - Distance check: Simplified. Only exact position matching or bounded steps.
+        - **Simplified Reachability**: 
+           - If `pos == (r_j, c_j)`, buy it.
+           - Or, if `pos` is reachable via 1 jump from any owned card.
+           - Since N=16, we can iterate.
+     3. If card bought, add to owned set, add price to cost, update `pos` to card_j's position.
+     4. Repeat until no new card can be bought.
+     5. Check if (0,0) is reachable from current `pos` using owned moves. If yes, output `cost`. Else -1.
+
+**State Machine:**
+- IDLE: Wait for `start`. Load cards.
+- CALC: Iterate to find reachable cards.
+- DONE: Output result.
+
+**Data Path:**
+- 16x 16-bit registers for R, C, A, B, P.
+- 16-bit `owned_mask`.
+- 16-bit `current_cost`.
+- 16-bit `current_r`, `current_c`.
+- Comparator logic for position equality.
+- Distance logic: Check if `(r_j - r_i)` and `(c_j - c_i)` are linear combos of A,B from owned cards. 
+  - **Extreme Simplification**: Assume 1-step reachability only (Direct landing on card location). Or assume card positions are close (within 8-bit offsets). 
+  - **Adopted Logic**: 
+     1. Knight is at `(r0, c0)`.
+     2. Can move to any `(r0 + k_a, c0 + k_b)` etc. 
+     3. Search for card `j` where `(r_j, c_j)` matches any generated move.
+     4. If found, buy it. Update position to `(r_j, c_j)`.
+     5. Repeat with new moves.
+     6. Finally, check if `(0,0)` is reachable from current position with current moves.
+
+**Constraints:**
+- Max 16 cards.
+- Coordinates 16-bit signed (clamped from input 32-bit).
+- Max iterations: 16 (buying one card per pass).
+- Timeout: 100 cycles.
+
+**Reset:**
+- `done`=0, `possible`=0, `min_cost`=0.
+- Clear internal registers.
+
+**Input Handling:**
+- When `card_valid`=1, load `card_r`, `card_c`, `card_a`, `card_b`, `card_p` into index `card_idx`.
+- `calc` triggers execution.
+
+**Output Timing:**
+- `done` pulses high for 1 cycle when calculation finishes.
+- `min_cost` and `possible` are valid when `done`=1.

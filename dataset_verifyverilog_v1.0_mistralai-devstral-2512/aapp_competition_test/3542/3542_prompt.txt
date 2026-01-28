@@ -1,0 +1,32 @@
+Design a Verilog module that computes the minimum total wire length to connect two point pairs (A1-A2 and B1-B2) on an N x M grid, without sharing vertices. Constraints: Grid size N,M ≤ 8 (scaled from 100), coordinates 0..N and 0..M (9-bit values). Points are unique. Wires must be Manhattan paths on grid edges.
+
+Approach: Precompute shortest Manhattan distances for all point pairs. For validity, check if two shortest paths can be routed without intersecting at any grid vertex. Since N,M ≤ 8, the grid has at most 9x9 vertices. Use exhaustive checking: enumerate all possible routing choices for each wire (up/down/left/right decisions at intersections). For each valid non-intersecting pair of paths, compute total length. Output the minimum length, or indicate impossible if no valid routing exists.
+
+Module Interface:
+- Inputs:
+  - clk, rst_n: System clock and active-low reset
+  - start: 1-cycle pulse to start computation
+  - ax1, ay1, ax2, ay2: 4-bit coordinates for A1, A2 (0-8)
+  - bx1, by1, bx2, by2: 4-bit coordinates for B1, B2 (0-8)
+- Outputs:
+  - result: 16-bit total minimum length (0-65535)
+  - done: 1-cycle pulse when computation complete
+  - possible: 1-bit flag (1 if solution exists, 0 otherwise)
+
+Behavior:
+- On start, compute Manhattan distances: dA = |ax1-ax2| + |ay1-ay2|, dB = |bx1-bx2| + |by1-by2|
+- Check if paths intersect: For each vertex (x,y) where both wires could pass, verify non-overlap. Use a 2D boolean array of size 9x9 to track occupied vertices. 
+- Since exact path routing is combinatorial, implement a simplified check: If the bounding boxes of A and B paths overlap, check if they can be routed around each other. For simplicity, assume wires are shortest Manhattan paths. If the segments share a vertex, output 'impossible' (set possible=0).
+- The minimum length is dA + dB if paths don't intersect. If they intersect, check if there's an alternative routing: For N,M ≤ 8, we can precompute a small lookup table or use a BFS for each path, but for hardware simplicity, assume no alternative paths (only shortest). If intersection exists, mark impossible.
+- Timing: Computation completes within 100 cycles after start. Reset sets done=0, result=0, possible=1.
+
+Implementation Notes:
+- Use 4-bit counters for loops (max 8 iterations).
+- The grid vertices are 9x9 = 81 possible points. Check intersection by comparing all vertices of path A with path B.
+- For path generation: Given two points, generate the Manhattan path (e.g., move horizontally then vertically). Check if this path intersects with the other path's generated path. If they share any vertex, consider it intersecting.
+- Since inputs are coordinates 0..8, use 4-bit signals.
+- The module should be combinational in logic but sequential in control (state machine: idle, compute, done).
+
+Example: For input (2,3)-(4,0) and (0,2)-(6,1) on 6x3 grid, paths intersect -> IMPOSSIBLE. Output: possible=0, result=0.
+
+Implement with state machine and bounded loops.

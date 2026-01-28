@@ -1,0 +1,64 @@
+Verilog Module Specification for Simplified Flight Scheduling
+
+Objective: Implement a hardware module to solve a scaled-down version of the 'Metropolis Flight Scheduling' problem.
+
+Problem Adaptation:
+- Maximum 16 cities (0 is Metropolis, 1..15 are Jury Cities).
+- Maximum 32 flights.
+- Maximum duration 256 days.
+- Costs are 16-bit integers (Q16.0 fixed-point).
+- The algorithm computes the minimum cost to gather all 16 jury members in city 0 for a duration of K days, and then send them back.
+
+Module Interface:
+
+Inputs:
+  clk: System clock (rising edge trigger)
+  rst_n: Active-low synchronous reset (min 2 cycles to reset)
+  start: 1-cycle pulse to start processing
+  flight_day: 9-bit input (current flight day, 0-511)
+  flight_from: 5-bit input (0-31)
+  flight_to: 5-bit input (0-31)
+  flight_cost: 16-bit input (Q16.0)
+  flight_valid: 1-bit input (validates current flight data)
+  k_duration: 9-bit input (required stay duration in days)
+
+Outputs:
+  min_cost: 16-bit output (minimum total cost)
+  done: 1-bit output (pulsed for 1 cycle when calculation is complete)
+  impossible: 1-bit output (set if no solution exists)
+
+Behavioral Requirements:
+1.  **Initialization**: On reset, internal states reset. Wait for `start` pulse.
+2.  **Input Processing**: The module accepts flights sequentially via `flight_valid`.
+    - You must store flights in internal memory (Block RAMs).
+    - Max 32 flights, so a 6-entry address space is needed.
+3.  **Algorithm FSM**:
+    - The module must compute two sets of costs: `cost_to_metropolis` and `cost_from_metropolis`.
+    - Since this is hardware, you cannot run a full graph search for every query. Instead, compute the cheapest flight to/from Metropolis for each city for each day.
+    - Use a `day_cost` array (size 256) for each city (16 cities).
+    - For `cost_to_metropolis`: Iterate through days 1..256. For each day, update the minimum cost for each city to reach Metropolis.
+    - For `cost_from_metropolis`: Iterate backwards from day 256 to 1.
+4.  **Aggregation**:
+    - For every possible 'arrival day' (where all 16 cities have arrived by Metropolis), calculate the total 'incoming' cost.
+    - For every possible 'departure day' (where all 16 cities leave Metropolis), calculate the total 'outgoing' cost.
+    - The departure day must be at least `arrival_day + k_duration`.
+5.  **Hardware Constraints**:
+    - Use a lookup table (LUT) or Block RAM to store flight costs per day per city.
+    - Use a loop counter (max 256 cycles) for day iteration.
+    - Use a state machine (IDLE, READ_FLIGHTS, COMPUTE_INCOMING, COMPUTE_OUTGOING, FIND_MIN, DONE).
+    - Intermediate sums must fit in 32-bit accumulators to prevent overflow before final reduction to 16-bit.
+
+Timing:
+- The `start` pulse initiates the process.
+- The `done` signal asserts when `min_cost` is valid.
+- Processing time should be bounded (e.g., within 10,000 clock cycles).
+
+Inputs:
+  clk: rising edge | rst_n: active-low sync reset
+  start: 1-cycle pulse
+  flight_day: 9-bit | flight_from: 5-bit | flight_to: 5-bit | flight_cost: 16-bit | flight_valid: 1-bit
+  k_duration: 9-bit
+Outputs:
+  min_cost: 16-bit | done: 1-cycle | impossible: 1-bit
+Timing: start->done within 10000 cycles, sample result when done=1
+Reset: done=0, min_cost=0, impossible=0, min 2 cycles

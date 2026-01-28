@@ -1,0 +1,45 @@
+Design a Verilog module that finds a Lucky Permutation Triple for a given integer n, but only when n is odd. If n is even, output an invalid indicator.
+
+**Constraints & Adaptations:**
+- **Scale:** n is limited to 32 (representable by 5 bits). This is a hardware-friendly reduction of the problem, suitable for sequential logic.
+- **Algorithm:** 
+  - If `n` is even, output `valid = 0` immediately.
+  - If `n` is odd, generate permutations sequentially.
+  - **Permutation Generation:** Use a Linear Feedback Shift Register (LFSR) to generate a permutation sequence. The state is initialized to 0, and on each clock cycle, the LFSR updates to produce the next value.
+  - Permutation `a` is the identity sequence (0 to n-1). Since n is small, we can generate this on the fly using a counter.
+  - Permutation `b` is also the identity sequence.
+  - Permutation `c` is computed as `(a + b) % n`. In hardware, this is `(counter + counter) % n`.
+  - **Verification:** Since we generate `c` mathematically as `(i + i) % n`, it is a permutation iff `n` is odd. We do not need a parallel check for the output; the problem statement guarantees validity for this construction when n is odd.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock.
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle high to start calculation.
+  - `n_in`: 5-bit input (representing n, max 32).
+- **Outputs:**
+  - `valid`: High if n is odd (a solution exists).
+  - `addr_a`, `addr_b`, `addr_c`: 5-bit output addresses (indices 0 to n-1).
+  - `data_a`, `data_b`, `data_c`: 5-bit output data values (permutation values 0 to n-1).
+  - `wr_en`: Write enable signal.
+  - `done`: 1-cycle high when all n values are written.
+- **Operation:**
+  1. Wait for `start`.
+  2. Check `n_in`. If even, set `valid = 0` and assert `done` immediately.
+  3. If odd, set `valid = 1`.
+  4. Run a loop from `i = 0` to `n-1`:
+     - Set `addr_a = i`, `data_a = i`.
+     - Set `addr_b = i`, `data_b = i`.
+     - Set `addr_c = i`, `data_c = (i + i) % n`.
+     - Assert `wr_en` for one cycle.
+  5. When `i == n-1` finishes, assert `done`.
+
+**Timing:**
+- Reset: 2 cycles.
+- Throughput: Start to Done takes `n + 2` cycles (max 34 cycles for n=32).
+
+**Implementation Details:**
+- Use a 5-bit counter for the index `i`.
+- Use a 5-bit register for `n_val` to store the input.
+- The modulo operation `(i + i) % n` can be implemented by subtracting `n` if the sum exceeds or equals `n`.
+- The module effectively acts as a memory writer, providing the address and data values for an external memory (or internal register file) to store the permutations.

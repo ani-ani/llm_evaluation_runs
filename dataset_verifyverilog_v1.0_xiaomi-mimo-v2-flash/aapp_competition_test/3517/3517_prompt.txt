@@ -1,0 +1,52 @@
+Design a Verilog module that finds the minimum construction time for an airplane when exactly one step's duration can be reduced to 0.
+
+**Problem Scaling:**
+- Input N (number of steps) is limited to 16.
+- Step times are clamped to 16-bit unsigned integers (0-65535).
+- Dependencies form a Directed Acyclic Graph (DAG). Each step `i` (1-indexed) depends on steps with indices < i.
+- All steps depend on step 1. Step N depends on all steps.
+
+**Algorithm:**
+1.  **Input:** Clock, reset, start signal. Arrays for step times (16 elements of 16 bits) and dependency lists.
+    Since variable-length dependency lists are difficult in Verilog, assume a fixed maximum dependency width (e.g., 4 dependencies per step) or a flattened matrix structure. For simplicity in this spec, we will model the graph using a 16x16 adjacency matrix where `adj[i][j] = 1` if step `j` depends on step `i`.
+2.  **Processing:**
+    - Calculate the original total time using a topological sort (since indices imply order). The total time is the longest path from step 1 to step N (Critical Path).
+    - To find the best step to remove, we need to compute the longest path from start (step 1) to every node (`dist_from_start`) and from every node to end (step N) (`dist_to_end`).
+    - For each step `i`, if we remove it, the new time is determined by the longest path that bypasses `i`. This is equivalent to finding the longest path from 1 to N where step `i` is skipped. Since the graph is a DAG and step indices are topologically sorted, we can compute this.
+    - Specifically, iterate through each step `i`. If `i` is removed, we effectively break the graph at `i`. The new path must go from 1 to some predecessor of `i` (or `1` itself) and then to some successor of `i` (or `N` itself), bypassing `i`. However, since dependencies are strict, removing a node merges its incoming paths to its outgoing paths.
+    - **Simplified Logic:** 
+      1. Compute `dp_start[k]`: Longest path time from step 1 to step `k`.
+      2. Compute `dp_end[k]`: Longest path time from step `k` to step `N`.
+      3. Original Total Time = `dp_start[N]`.
+      4. For each step `i` from 1 to N:
+         - The new total time if step `i` is removed is the longest path from 1 to N that doesn't include `i`.
+         - Since it's a DAG and step indices respect topology, a path skipping `i` must go through some node `p` (predecessor of `i`) and then to some node `s` (successor of `i`). 
+         - The length is `dp_start[p] + time[s] + ... + dp_end[s]`. However, finding the global max bypassing `i` in one go is hard. 
+         - **Alternative DP:** Let `dp[k][mask]` be the longest path to `k` using steps in `mask`. This is too expensive ($16 * 2^{16}$).
+         - **Hardware-friendly approach:** Since N is small (16), we can iterate removing each node one by one and re-calculate the longest path (Topological Sort) on the modified graph. 
+           1. Precompute adjacency matrix `adj[16][16]` and `time[16]`.
+           2. Loop `remove_idx` from 0 to N-1.
+           3. Inside, run DP for longest path on the DAG: `longest_path[k] = max(longest_path[j] + time[k])` for all `j` where `adj[j][k] == 1` and `j != remove_idx` and `k != remove_idx`.
+           4. Track the minimum of `longest_path[N-1]` (0-indexed) across all `remove_idx`.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous signals.
+  - `start`: 1-cycle high pulse to initiate computation.
+  - `step_time [15:0]`: 16-bit array (16 elements) storing durations of steps.
+  - `adj_matrix [15:0][15:0]`: 16x16 binary matrix indicating dependencies. `adj_matrix[i][j] == 1` means step `j` depends on step `i` (edge i -> j).
+  - `N`: 5-bit integer (2-16) indicating number of active steps.
+
+- **Outputs:**
+  - `result`: 16-bit integer, the minimum possible construction time.
+  - `done`: 1-cycle high pulse when result is valid.
+
+- **Timing:**
+  - Start to Done: Within 2000 cycles (approx $16 * 16 * 16$ ops + overhead).
+  - Reset: Clear all registers, done=0.
+
+- **Implementation Details:**
+  - Use a Finite State Machine (FSM) to manage the outer loop (trying each step to remove) and the inner DP loop (topological sort).
+  - `reg [15:0] dp [0:15];` for DP values.
+  - `reg [15:0] min_total;` to store the answer.
+  - Ensure all arithmetic is unsigned 16-bit, clipping at 65535.

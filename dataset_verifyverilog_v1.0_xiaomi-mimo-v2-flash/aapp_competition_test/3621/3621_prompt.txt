@@ -1,0 +1,37 @@
+Implement a Verilog module to solve a graph coloring problem under constraints. The graph is complete, undirected, with n nodes (1≤n≤16). The property 'every cycle has adjacent same-colored edges' implies the graph's edges can be colored such that the graph is a union of disjoint monochromatic cliques (likely via star decomposition or similar). We assume a simplified structural property: for any subset of nodes, the maximum monochromatic clique size (f(S)) can be computed efficiently via dynamic programming.
+
+Since 2^16 = 65536, we can use a lookup table or iterative DP. The solution will sum f(S) for all non-empty subsets S modulo 10^9+7.
+
+Inputs:
+  clk: Rising edge clock
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start calculation
+  n: 4-bit integer (1 to 16)
+  color_matrix: 16x16 array of 8-bit values (indices 0-15 map to nodes 1-16). Diagonal is 0.
+
+Outputs:
+  result: 32-bit integer (sum modulo 10^9+7)
+  done: 1-cycle pulse indicating calculation complete and result is valid
+
+Timing:
+  Calculation must complete within 10,000 clock cycles.
+  Reset state: result=0, done=0.
+
+Algorithm (Hardware Adaptation):
+1. Store the color matrix in internal BRAMs (16x16x8 bits).
+2. Iterate through all non-empty subsets S of nodes. There are 2^n - 1 subsets.
+3. For each subset S, calculate f(S) (max monochromatic clique size).
+   - Optimization: Since the graph is small, we can iterate through all sub-subsets of S to check for monochromatic cliques.
+   - A subset K is a monochromatic clique if all edges between nodes in K have the same color.
+   - We compute f(S) by checking all subsets K of S (including singletons).
+4. Accumulate f(S) into a 32-bit accumulator modulo 10^9+7.
+5. Signal 'done' when all subsets processed.
+
+Constraints:
+- Use 8-bit colors, 4-bit node indices.
+- State machine control for subset generation and clique checking.
+- Modular arithmetic: result = (result + f(S)) % MOD where MOD = 10^9+7.
+
+Interface Specifications:
+- Valid input sampling: when start=1, capture n and color_matrix.
+- Output: result holds sum, done asserts for 1 cycle when finished.

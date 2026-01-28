@@ -1,0 +1,46 @@
+Implement a Verilog module that finds the maximum number of nodes in a rooted tree that can form a heap subset (ancestor values > descendant values). Scale down to 8 nodes max for FPGA implementation.
+
+**Interface:**
+- Inputs: clk, rst_n, start (1-cycle pulse)
+- Node values: val[0:7] (8x8-bit arrays for node values 0-255)
+- Parent indices: parent[0:7] (8x3-bit arrays, 0-7, where parent[0]=0 for root)
+- Outputs: result (4-bit, max 8 nodes), done (1-cycle pulse when valid)
+
+**Implementation Details:**
+1. Transform to DAG: Create 8x8 adjacency matrix 'anc' where anc[i][j]=1 if node i is ancestor of node j
+2. Sort nodes by value descending (use 8-node sorting network)
+3. DP on sorted list: dp[i] = longest chain ending at node i
+   dp[i] = 1 + max(dp[j] for j where anc[j][i]=1 and val[j] > val[i])
+4. Use pipeline: 16-256 cycles total
+5. Fixed-width: All values 8-bit, indices 3-bit, result 4-bit
+
+**Module Header:**
+module heap_subset #(
+    parameter NODES = 8,
+    parameter VAL_WIDTH = 8,
+    parameter IDX_WIDTH = 3,
+    parameter RESULT_WIDTH = 4
+)(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [VAL_WIDTH-1:0] val [0:NODES-1],
+    input wire [IDX_WIDTH-1:0] parent [0:NODES-1],
+    output reg [RESULT_WIDTH-1:0] result,
+    output reg done
+);
+
+**Algorithm Steps:**
+1. Reset: done=0, result=0, internal state=0
+2. Idle: Wait for start=1
+3. Compute ancestor matrix (2 cycles per pair): For i in 0..7, j in 0..7, if i==j or parent[j]==i or parent[j]==i's ancestor, set anc[i][j]=1
+4. Sort nodes by value descending (bitonic sort network for 8 elements, ~32 cycles)
+5. DP computation: For each sorted node k (0..7), compute dp[k] by checking ancestors
+6. Result = max(dp[0..7])
+7. Set done=1 for one cycle
+
+**Constraints:**
+- Latency: 100-200 cycles max
+- Reset: 2 cycles, all outputs 0
+- Valid result when done=1, sample immediately
+- Internal arrays: 8x8 bit matrices, 8x4-bit DP table

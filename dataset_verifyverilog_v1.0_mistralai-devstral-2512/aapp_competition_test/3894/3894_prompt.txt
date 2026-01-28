@@ -1,0 +1,58 @@
+Implement a Verilog module to determine the winner of the Lieges of Legendre game.
+
+## Game Rules
+- Two piles: pile size `a` (1-1000000000) and global parameter `k` (1-1000000000)
+- Moves: (1) Remove 1 cow (a → a-1), (2) If a is even (a=2x), replace with k piles of size x
+- Both players play optimally (combinatorial game theory)
+- Winner determined by XOR of Grundy numbers: Kevin wins if XOR != 0
+
+## Adaptations for Hardware
+- **Input Scaling**: Pile sizes scaled to 16-bit (0-65535) representing original / 1000
+- **k**: Scaled to 1-bit (k%2) since only parity matters
+- **Iteration Limit**: Grundy calculation bounded to 256 cycles max
+- **Output**: 16-bit result (XOR of Grundy numbers)
+
+## Interface Specification
+
+### Inputs
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start calculation
+- `k_parity`: 1-bit (k % 2)
+- `n`: 4-bit (0-15) - number of piles (scaled)
+- `pile_i`[0:15]: 16-bit array - pile sizes (scaled)
+
+### Outputs
+- `result`: 16-bit - XOR of Grundy numbers
+- `done`: 1-cycle pulse when calculation complete
+- `winner`: 1-bit (1=Kevin, 0=Nicky)
+
+## Implementation Requirements
+
+1. **Grundy Number Calculation** (per pile):
+   - If k is even: g(a) = a%2 for a>=3 (0=odd, 1=even)
+   - If k is odd: g(a) = [0,1,0,1,2] for a≤4, else depends on g(a/2)
+   - State machine with 256 cycle timeout
+
+2. **XOR Reduction**:
+   - Sequentially XOR all Grundy numbers
+   - Final result determines winner
+
+3. **Timing**:
+   - start→done: max 256 cycles per pile (4096 total)
+   - Reset: 2 cycles, result=0, done=0
+
+4. **Optimization**:
+   - Use lookup table for small values (a≤4)
+   - Iterative division by 2 for odd k
+   - Pipeline for multiple piles
+
+## Test Cases (Scaled)
+- Test 1: k=1 (odd), piles=[3,4] → Kevin (XOR=0^2=2)
+- Test 2: k=2 (even), piles=[3] → Nicky (XOR=3%2=1, but k even so g=1? Wait...)
+
+## Output Format
+- result: 16-bit XOR
+- winner: 1-bit (1 if XOR != 0)
+
+Note: The exact Grundy calculation logic from provided Python code must be adapted to fixed-precision arithmetic.

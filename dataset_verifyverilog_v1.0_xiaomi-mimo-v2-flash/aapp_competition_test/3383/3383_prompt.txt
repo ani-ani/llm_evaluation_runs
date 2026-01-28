@@ -1,0 +1,37 @@
+Implement a Verilog module to solve the ice cream optimization problem. 
+
+**Interface:**
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse
+  n[29:0]: 30-bit number of scoops (max 2e9)
+  k[6:0]: 7-bit number of flavours (1-100)
+  a[7:0]: cost per scoop (0-255)
+  b[7:0]: cone cost (0-255)
+  t[6:0][15:0]: array of k flavours, each 16-bit fixed-point Q8.8 (range -128 to 127.99)
+  u[6:0][6:0][15:0]: 2D array of k*k additional tastiness, each 16-bit fixed-point Q8.8
+
+Outputs:
+  result[47:0]: 48-bit fixed-point Q24.24 result (tastiness/cost) * 2^24
+  done: 1-cycle pulse when calculation complete
+  valid: high when result is valid
+
+**Constraints:**
+- Input sizes: k <= 100, n <= 2e9, a,b <= 200
+- Fixed-point: Use Q24.24 (24 integer, 24 fractional bits) for intermediate and final results
+- Matrices: 100x100 max-plus algebra matrices. Implement iterative matrix exponentiation using shift-and-add in max-plus domain (log2(n) steps).
+- Core Logic:
+  1. Initialize max-plus matrix M where M[i][j] = t[j] + u[i][j] (edge weight from i to j adding scoop j).
+  2. Use Floyd-Warshall (100 iterations) to compute longest paths (max tastiness) for any number of hops, handling negatives and cycles.
+  3. Use max-plus matrix exponentiation: Base matrix for 1 scoop, Exponent = n (clamped to 2e9). 
+  4. Result vector: tastiness for n scoops starting from any flavour.
+  5. Compute cost = n*a + b (saturating arithmetic).
+  6. Divide tastiness by cost using iterated subtraction (bitwise or Newton-Raphson for 24-bit precision).
+  7. Output (tastiness/cost) * 2^24 as Q24.24.
+- Operations: 
+  - Max-plus add: max(A,B)
+  - Max-plus multiply: max_{k}(A[i][k] + B[k][j]) (saturating addition).
+  - Use 32-bit intermediate registers for Q24.24 sums to prevent overflow before saturation.
+- Timing: Latency depends on n (~30 matrix multiplications). Done signal asserts when division completes.
+- Reset: done=0, valid=0, result=0, all counters/FSM states idle.

@@ -1,0 +1,57 @@
+Design a Verilog module that determines the immediate boss and number of subordinates for employees based on salary and height rules.
+
+**Problem Adaptation:**
+- Scale `m` (employees) to maximum 1000 (from 100,000).
+- Employee ID: 6 decimal digits (fit in 16-bit integer).
+- Salary: 24-bit (max 10,000,000 fits in 24 bits).
+- Height: 24-bit (max 2,500,000 fits in 24 bits).
+- Queries: Max 100.
+
+**Algorithm Logic:**
+1. **Input Storage:** Store employee data in parallel arrays: `ids[0:N-1]`, `salaries[0:N-1]`, `heights[0:N-1]`.
+2. **Sorting:** Sort indices based on Salary (Ascending). The Chairperson is the last element (highest salary).
+3. **Hierarchy Construction:**
+   - Iterate through sorted employees (excluding Chairperson).
+   - For each employee `i` (in sorted order), find the immediate boss.
+   - The boss is the employee with the **smallest salary** greater than `i`'s salary who is **taller or equal** to `i`.
+   - Since we process by increasing salary, potential bosses are already processed.
+   - Implementation: Scan through employees with higher salary (indices > current in sorted list) and check height condition. Pick the one with minimum salary (first valid one if sorted ascending).
+4. **Subordinate Counting:**
+   - Build a tree using `parent` array.
+   - Use iterative Depth First Search (DFS) or count propagation from leaves (Chairperson) down to subordinates.
+   - `sub_count[i]` = sum of `sub_count[child]` + 1 (for child) for all children of `i`.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to initiate processing.
+  - `data_in_valid`: Indicates valid input data on `data_bus`.
+  - `data_bus`: 32-bit bus carrying multiplexed data (Type, Value).
+    - Type 0: Employee ID
+    - Type 1: Salary
+    - Type 2: Height
+    - Type 3: End of Input
+  - `query_id`: 16-bit ID to query (when `query_start` is high).
+  - `query_start`: 1-cycle pulse to start a query.
+- **Outputs:**
+  - `done`: 1-cycle pulse when processing is complete.
+  - `result_boss`: 16-bit ID of the boss (0 for chairperson).
+  - `result_sub_count`: 16-bit count of subordinates.
+  - `result_valid`: 1-cycle pulse when query result is ready.
+  - `busy`: High while processing input or computing.
+
+**Constraints:**
+- Use iterative loops with fixed bounds (e.g., `MAX_EMP = 1000`).
+- Do not use recursion.
+- State machine to manage Input -> Sort -> Build Tree -> Query phases.
+
+**Implementation Details:**
+- Use a Sorting Network or Bubble Sort (acceptable for N=1000 in simulation/hardware trade-off).
+- Tree traversal: Use a stack-based approach (simulated in hardware) to compute subtree sizes.
+
+**Verilog Code Structure:**
+- Define parameters for MAX_EMP, DATA_WIDTH.
+- Implement FSM (Idle, Load, Sort, Build, Query).
+- Implement sorting comparator logic.
+- Implement tree traversal logic.
+- Ensure all signals are properly sized.

@@ -1,0 +1,31 @@
+Implement a Verilog module that computes the maximum obtainable blue lemonade from a sequence of trades. Since hardware cannot handle dynamic string parsing or arbitrary graph sizes, adapt the problem as follows:
+
+**Input Constraints:**
+- Maximum 8 distinct lemonade types (represented by 3-bit indices: 0=pink, 1=blue, 2=red, 3=orange, 4=yellow, 5=green, 6=indigo, 7=violet).
+- Start with 1.0 liter of 'pink' lemonade (index 0).
+- Target is 'blue' lemonade (index 1).
+- Maximum 8 trades (N ≤ 8).
+- Exchange rates scaled to Q8.8 fixed-point (8 integer bits, 8 fractional bits). Rate R = round(R_float * 256).
+- You process trades sequentially as they appear in the input array.
+
+**Logic:**
+Maintain an array `amount[0:7]` of 16-bit Q8.8 fixed-point values representing liters of each lemonade type. Initially: `amount[0] = 256` (1.0 liter), all others 0.
+For each trade i (0 to 7):
+  - Input: `trade_offer[i]` (3-bit type O), `trade_want[i]` (3-bit type W), `trade_rate[i]` (16-bit Q8.8).
+  - Process trade ONLY if `amount[W] > 0`.
+  - Calculate `traded = amount[W]` (all of it). Set `amount[W] = 0`.
+  - Calculate `received = (traded * trade_rate[i]) >> 8` (multiply Q8.8 * Q8.8, then shift right 8 to keep Q8.8).
+  - Add to `amount[O]` using saturation: `amount[O] = min(amount[O] + received, 65535)` (65535 in Q8.8 is 255.996 liters).
+
+**Output:**
+- `result`: 16-bit integer representing blue lemonade in liters. Scale Q8.8 value by dividing by 256 (shift right 8) and clamp to max 10 liters (10 * 256 = 2560).
+- `done`: Single cycle pulse (1) when calculation complete, otherwise 0.
+
+**Interface:**
+- Inputs: `clk`, `rst_n`, `start` (1-cycle pulse), `trade_offer[0:7][2:0]`, `trade_want[0:7][2:0]`, `trade_rate[0:7][15:0]`
+- Outputs: `result[15:0]`, `done`
+- Timing: start->done within 100 cycles.
+- Reset: done=0, result=0, amounts=0.
+
+**Implementation Strategy:**
+Use a finite state machine (FSM) with states: IDLE, PROCESS_TRADE, CALCULATE, FINISH. Use an index counter for trades (0 to 7). Process each trade in 1-2 cycles. Final result computation uses 16x16 multiplier for final scaling (or shift if dividing by 256). Ensure saturation logic for `amount[O]` addition.

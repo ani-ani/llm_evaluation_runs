@@ -1,0 +1,100 @@
+Implement a Verilog module that determines the number of valid spin states for an N x M grid under 2x2 balance constraints.
+
+PROBLEM ANALYSIS:
+- 2x2 balance constraint implies a checkerboard pattern: spins alternate in both directions.
+- There are 2 valid patterns (offset by (0,0) spin and base parity), unless N=1 or M=1.
+- If N=1 or M=1: all spins are free (2^(N*M) states).
+- Measurements fix specific cells. If contradictory, answer is 0.
+- If consistent, remaining free bits determine the answer.
+- N, M up to 1e9, K up to 1e5. Use 64-bit arithmetic (32-bit is insufficient for N*M).
+- Modulo 10^9 + 7.
+
+INTERFACE:
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  N [31:0]: Grid height
+  M [31:0]: Grid width
+  K [31:0]: Number of measurements
+  Measurement interface (valid when processing = 1):
+    - We assume K measurements are streamed in sequentially over K cycles.
+    - y_in [31:0]: Row index (1-based)
+    - x_in [31:0]: Column index (1-based)
+    - s_in: Spin bit (1 for '+', 0 for '-')
+
+Outputs:
+  result [63:0]: Number of valid states modulo 10^9+7
+  done: 1-cycle pulse indicating result is valid
+  error: 1-cycle pulse if invalid input (e.g., contradictory measurements)
+
+ALGORITHM STEPS (Hardware Logic):
+1. Reset: Set result=0, done=0, error=0.
+2. Start: Latch N, M, K.
+3. Edge Case Check:
+   - If N == 1 or M == 1: Valid states = 2^(N*M) mod MOD.
+   - Calculate 2^(N*M) using modular exponentiation (iterative).
+   - If K > 0: Check for contradictions in 1D array.
+     - In 1D, all cells are independent, so no contradictions possible unless duplicate measurements (handled by input constraint). Wait, if N=1 or M=1, there is no 2x2 constraint, so all cells are free. However, measurements fix specific cells. If we have K measurements, the remaining cells are N*M - K. So count = 2^(N*M - K).
+     - BUT WAIT: The problem says "recover the state of every electron". If we have measurements, we know those spins. The count is for the *remaining* unknown spins.
+     - Let's re-read: "number of valid states consistent with measurements".
+     - If N=1 or M=1: No constraints. Any state is valid. If K measurements are made, they fix K bits. Remaining N*M - K bits are free. Count = 2^(N*M - K).
+     - Wait, if N=1 and M=1, K=1, result is 1.
+     - If N=1, M=2, K=1, result is 2.
+4. Grid Case (N > 1 AND M > 1):
+   - Two candidate patterns exist:
+     P1: Cell (i,j) spin = Base ^ (i+j)%2
+     P2: Cell (i,j) spin = Base ^ (i+j+1)%2
+     (Base is spin at (1,1) for P1)
+   - Check measurements against P1 and P2.
+   - For each measurement (y, x, s):
+     - P1_expected = Base ^ ((y-1)+(x-1))%2. Since Base is unknown (0 or 1), we check consistency of the equation.
+       Actually, we can fix Base for P1 as the spin of the first measurement (if K>0). If K=0, Base is free.
+     - Let's treat the two patterns separately.
+     - Pattern 1 (Parity 0): (i+j)%2 == 0 -> Spin A, (i+j)%2 == 1 -> Spin B. (A, B = 0,1 or 1,0)
+       This defines 2 configurations (A=0, B=1 or A=1, B=0).
+     - Pattern 2 (Parity 1): (i+j)%2 == 0 -> Spin B, (i+j)%2 == 1 -> Spin A.
+   - We can represent the constraints as a graph problem (bipartite) or simply check consistency.
+   - Let's map measurements to linear equations.
+     Let variable P be the spin at (1,1).
+     Constraint: Spin(y,x) = P ^ ((y-1)+(x-1))%2.
+     If measurement says S, then P ^ ((y-1)+(x-1))%2 = S => P = S ^ ((y-1)+(x-1))%2.
+     This determines P uniquely if consistent. All measurements must yield the same P.
+     - If all measurements yield same P: 1 solution for this parity structure.
+     - If contradictory: 0 solutions for this parity structure.
+   - We have two parity structures: (i+j)%2 and (i+j+1)%2.
+   - Actually, the problem implies the grid *must* satisfy 2x2 balance. This forces a strict checkerboard.
+   - Let's define the grid spins S[i][j] such that S[i][j] + S[i+1][j] + S[i][j+1] + S[i+1][j+1] = 2 (binary +1/-1 or 0/1). 
+   - If we use 0/1 (0=down, 1=up): S[i][j] ^ S[i+1][j] ^ S[i][j+1] ^ S[i+1][j+1] = 0.
+   - This implies S[i][j] = S[1][1] ^ ((i-1)%2) ^ ((j-1)%2).
+   - Or S[i][j] = S[1][1] ^ ((i-1)%2) ^ ((j-1)%2) ^ 1.
+   - There are exactly 2 solutions for the entire grid if N, M > 1.
+   - We need to check if measurements are consistent with either of these 2 solutions.
+   - Algorithm:
+     1. Assume Solution A: S[y][x] = 0 ^ ((y-1)%2) ^ ((x-1)%2). (Origin (1,1) is 0)
+     2. Check all K measurements against this. If all match, count_A = 1.
+     3. Assume Solution B: S[y][x] = 1 ^ ((y-1)%2) ^ ((x-1)%2). (Origin (1,1) is 1)
+     4. Check all K measurements against this. If all match, count_B = 1.
+     5. Result = count_A + count_B.
+   - Optimization: We can do this in O(K).
+5. Modular Arithmetic:
+   - MOD = 1000000007.
+   - Need 64-bit intermediate for multiplication.
+
+MODULE STRUCTURE:
+- State Machine: IDLE, CHECK_EDGES, CHECK_GRID, CALCULATE, DONE.
+- Registers for N, M, K.
+- Counter for measurement index.
+- Registers for valid_A, valid_B (booleans).
+- Temporary registers for pow calculations.
+
+EDGE CASES:
+- N=0 or M=0? Input says >=1.
+- K=0: If N>1, M>1, result is 2. If N=1 or M=1, result is 2^(N*M).
+- Contradictory measurements: Result is 0.
+
+TESTBENCH:
+- Verify N=2, M=4, K=4 (checkerboard match -> 2).
+- Verify N=1, M=1, K=0 -> 2.
+- Verify N=1, M=1, K=1 -> 1.
+- Verify contradictory -> 0.

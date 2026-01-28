@@ -1,0 +1,45 @@
+Design a Verilog module for a simplified casting optimization problem. 
+
+**Problem Context**: A show host processes candidates with aggressiveness levels and recruitment costs. Participants on stage trigger fights (merging levels) when duplicates exist. The goal is to select a subset of candidates to maximize profit (revenue - cost).
+
+**Simplifications**:
+1. **Fixed Limits**: n (candidates) and m (max initial level) are fixed at 16. Aggressiveness levels are scaled/clamped to 0..15.
+2. **Revenue**: Costs `c_i` are mapped to a lookup table (ROM) of 32 values (0..31). Revenue is calculated via a simplified merge simulation.
+3. **DP State**: Use a 16x16 grid (Level x Count). `grid[l][k]` stores max profit for having `k` participants at level `l`.
+4. **Merging**: Processing a candidate triggers a sequential state machine that updates the grid. If a level is full (e.g., count reaches threshold 16), it merges upward to the next level.
+
+**Module Interface**:
+- **Inputs**:
+  - `clk`, `rst_n`: Standard synchronous reset clock.
+  - `start`: 1-cycle pulse to start processing a candidate.
+  - `l_in`: 4-bit input aggressiveness (0..15).
+  - `s_in`: 16-bit recruitment cost (scaled from original).
+  - `c_rom_addr`: 5-bit address for revenue lookup (0..31).
+  - `c_rom_data`: 16-bit data from revenue ROM (pre-loaded).
+- **Outputs**:
+  - `profit`: 32-bit signed total profit. Valid when `done=1`.
+  - `done`: 1-cycle pulse indicating calculation complete.
+
+**Implementation Details**:
+1.  **Initialization**: On reset, initialize `grid` to all zeros. Profit is 0.
+2.  **Processing Loop** (FSM):
+    - State `IDLE`: Wait for `start`. Initialize `current_l = l_in`, `current_k = 1` (new candidate enters).
+    - State `CALC_REVENUE`: Add `c_rom_data` (where address is `current_l`) to `profit`. This represents the entry revenue.
+    - State `CHECK_DUPLICATE`: Read `grid[current_l]`. 
+        - If `grid[current_l] == 0`: Update `grid[current_l] = current_k`. Transition to `UPDATE_PROFIT` (subtract cost `s_in`).
+        - If `grid[current_l] != 0`: A fight occurs. 
+            - `new_k = grid[current_l] + current_k`.
+            - The defeated participant leaves (no change to profit from the loser's initial entry, handled implicitly).
+            - The winner's level increases: `current_l = current_l + 1`. The winner counts as 1 participant at the new level.
+            - Add `c_rom_data` (new level) to `profit` (fight resolution revenue).
+            - If `current_l >= 16`: Stop (overflow, assume loss or clamp). Else loop back to `CHECK_DUPLICATE`.
+    - State `UPDATE_PROFIT`: Subtract `s_in` from `profit`.
+    - State `DONE`: Pulse `done`, return to `IDLE`.
+3.  **Constraints**: 
+    - Grid is 16 levels x 16 counts (max). 
+    - Counts wrap or saturate at 16 (simplified for HW). 
+    - Pipeline the `CHECK_DUPLICATE` and `ADD` operations. 
+    - Use 32-bit arithmetic for profit accumulation.
+    - `c_rom_data` is an external input simulating the ROM lookups, allowing the testbench to control revenue values.
+
+**Testing Strategy**: The cocotb testbench will instantiate the module, load the `c_rom` data via the `c_rom_data` port, and drive `start` pulses with sequences of `l_in` and `s_in`. It will verify the final `profit` against a Python simulation of the simplified algorithm.

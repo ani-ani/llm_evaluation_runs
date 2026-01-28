@@ -1,0 +1,60 @@
+Design a Verilog module that counts pairs of numbers in an array whose sum equals a target value.
+
+**Constraints:**
+- Input array length: 16 elements max
+- Data width: 8-bit signed integers
+- Target sum: 8-bit signed integer
+- Result width: 8-bit unsigned (max 120 pairs for 16 elements)
+- Timing: Sequential execution, start-to-done within 256 cycles
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate calculation
+- `arr_in`: 16x8-bit array of input numbers (vectorized or indexed)
+- `len`: 4-bit input specifying valid array length (1-16)
+- `target_sum`: 8-bit signed target sum
+
+**Outputs:**
+- `result`: 8-bit unsigned count of matching pairs
+- `done`: 1-cycle pulse indicating valid result available
+
+**Behavior:**
+1. On reset: `done` = 0, `result` = 0, internal state idle
+2. On `start` pulse (when idle):
+   - Load array elements and length into internal registers
+   - Initialize pair counter and loop indices
+   - Set `done` = 0, `result` = 0
+3. Sequential Operation (clock cycles):
+   - Use nested loops logic: outer loop index i from 0 to len-2, inner loop j from i+1 to len-1
+   - For each (i, j) pair:
+     - Add arr[i] + arr[j] (8-bit signed addition)
+     - Compare with target_sum (8-bit signed)
+     - If equal, increment internal counter (8-bit, saturate at 255)
+   - Cycle through all pairs (max 120 cycles for len=16)
+4. Completion:
+   - When all pairs processed: assert `done` for 1 cycle
+   - `result` = internal counter value
+   - Return to idle state
+
+**Implementation Notes:**
+- Use 4-bit counters for i and j indices
+- Internal accumulator for pair count (8-bit unsigned)
+- Array storage: 16x8-bit register file or 128-bit vector
+- Adder and comparator should handle signed arithmetic
+- Ensure no overflow on intermediate sums (use 9-bit adder, truncate to 8-bit for comparison? No, 8-bit sum is sufficient if inputs are 8-bit, but watch for overflow in intermediate comparison)
+- If sequential, cycle budget is adequate for 16 elements (max 120 cycles + overhead)
+
+**Module Declaration:**
+module pair_count (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire signed [7:0] arr_in[0:15],  // OR input wire signed [7:0] arr_in_0, arr_in_1, ...
+    input wire [3:0] len,
+    input wire signed [7:0] target_sum,
+    output reg [7:0] result,
+    output reg done
+);
+// Implementation here
+endmodule

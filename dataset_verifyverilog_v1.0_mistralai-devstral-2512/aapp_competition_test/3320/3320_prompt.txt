@@ -1,0 +1,83 @@
+You are to implement a hardware module for the Magical Island crystal transportation problem. The problem is scaled down for hardware implementation:
+
+**SCALED CONSTRAINTS:**
+- Maximum n (cities): 8
+- Maximum m (roads): 16
+- Edge weights: 8-bit values (0-255)
+- Maximum q (queries): 16
+- Distance metric: Bitwise OR of edge weights along path
+- Algorithm: Compute all-pairs shortest paths using modified Floyd-Warshall
+
+**MODULE SPECIFICATION:**
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `src`: 3-bit input for source city (city 1-8 map to 0-7)
+- `dst`: 3-bit input for destination city
+- `edge_u`: 4-bit input for current edge's endpoint (cycle 0-15)
+- `edge_v`: 4-bit input for other endpoint
+- `edge_w`: 8-bit input for edge weight
+- `config_valid`: 1-bit flag indicating edge configuration is valid
+
+**Outputs:**
+- `result`: 8-bit output for minimum OR distance between src and dst
+- `done`: 1-cycle pulse when result is valid
+- `busy`: 1-bit flag indicating computation is in progress
+
+**Internal State (FSM):**
+1. **IDLE**: Wait for start pulse
+2. **CONFIG**: Receive edges via edge_u, edge_v, edge_w with config_valid
+3. **COMPUTE**: Run Floyd-Warshall iterations (k=0 to n-1)
+4. **QUERY**: Sample src/dst and output result
+
+**COMPUTATION ALGORITHM:**
+- Initialize distance matrix D[n][n] with infinity (0xFF for 8-bit)
+- D[i][i] = 0
+- For each configured edge (u,v,w): D[u][v] = D[v][u] = min(D[u][v], w)
+- Floyd-Warshall iteration:
+  for k in 0..n-1:
+    for i in 0..n-1:
+      for j in 0..n-1:
+        D[i][j] = min(D[i][j], D[i][k] | D[k][j])
+
+**TIMING REQUIREMENTS:**
+- Configuration: Accept up to 16 edges via config_valid
+- Computation: Complete within 1000 cycles
+- Query: Respond within 10 cycles after computation complete
+- Reset: 2 cycles minimum, all outputs zero, done=0
+
+**HARDWARE IMPLICATIONS:**
+- Use 8x8 array for distance matrix (64 bytes = 64 8-bit registers)
+- Implement 3-level nested loops with counters
+- OR operation: Single cycle
+- Min operation: Comparison logic
+- Pipeline the inner loop for efficiency
+- Result available after first query cycle
+
+**INTERFACE EXAMPLE:**
+For graph: 1-2 (weight=5), 1-3 (weight=3)
+- Set config_valid=1, edge_u=0, edge_v=1, edge_w=5
+- Set config_valid=1, edge_u=0, edge_v=2, edge_w=3
+- Set config_valid=0 for other cycles
+- Assert start
+- After computation, set src=0, dst=2
+- Observe result=3 (direct edge), done=1
+
+**TESTBENCH REQUIREMENTS:**
+The testbench will:
+1. Reset the module
+2. Configure up to 12 edges
+3. Start computation
+4. Wait for done=1
+5. Send multiple queries (src/dst pairs)
+6. Verify results against expected OR distances
+
+**CRITICAL IMPLEMENTATION NOTES:**
+- All registers must be reset to known values
+- Address decoding for city indices (0-7)
+- Floyd-Warshall loops must be bounded
+- No external memory access required
+- Edge configuration is done via sequential inputs
+- Result matrix should be stored internally

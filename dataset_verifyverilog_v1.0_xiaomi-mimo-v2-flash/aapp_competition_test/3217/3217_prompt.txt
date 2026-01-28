@@ -1,0 +1,31 @@
+Design a Verilog module that calculates the minimum number of panels (surface area) required to enclose a set of defective cells in a 3D grid. The grid is 5x5x5 (scaled from 10x10x10 to fit hardware constraints). Input is a list of up to 256 defective cell coordinates. The solution must compute the total surface area of the union of the defective cells (counting only exposed faces) and output the count. 
+
+Interface Specification:
+Inputs:
+  clk: clock signal, rising edge active
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  num_defects: 8-bit integer (0-256) indicating number of defective cells
+  defect_x[0:255]: 256 x 3-bit array (x-coordinate 0-4)
+  defect_y[0:255]: 256 x 3-bit array (y-coordinate 0-4)
+  defect_z[0:255]: 256 x 3-bit array (z-coordinate 0-4)
+Outputs:
+  result: 16-bit integer (max surface area 6*256=1536)
+  done: 1-cycle high pulse when result is valid
+
+Implementation Guidelines:
+1. Store defective cells in an internal 5x5x5 boolean occupancy grid (25x5=125 bits total).
+2. When start=1, initialize occupancy grid to all zeros.
+3. Over 256 cycles, populate the occupancy grid using defect_x, defect_y, defect_z.
+4. After population, compute surface area by iterating through all 125 cells. For each occupied cell, count exposed faces: check 6 neighbors (+/-x, +/-y, +/-z) within bounds 0-4. If neighbor is out of bounds or unoccupied, increment count.
+5. Output count in result and pulse done.
+6. Reset should clear occupancy grid and internal state. Done=0, result=0 on reset.
+7. Timing: start->done within 1000 cycles maximum.
+
+Testbench Requirements:
+- Create a 5x5x5 test case mapping to the 10x10x10 example via scaling (e.g., 0,0,0 maps to 0,0,0).
+- Verify sample inputs: 1 cell -> 6 panels, 2 adjacent cells -> 10 panels.
+- Handle empty input (n=0) -> output 0.
+- Use individual signal assignment for all array elements, never bulk assign lists.
+- Clamp all inputs to bit-widths before assignment.
+- Use cocotb with timeout and done-signal waiting.

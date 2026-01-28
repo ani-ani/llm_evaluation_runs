@@ -1,0 +1,59 @@
+You are an expert Verilog designer tasked with creating a Verilog HDL module for Vasya's vacation optimization problem. The module computes the minimum number of rest days required given daily constraints.
+
+### Problem Definition
+Given n days (1 ≤ n ≤ 100), each day i has an input a_i ∈ {0,1,2,3} encoding gym availability (bit 2) and contest availability (bit 1):
+- 0: gym closed (0), contest not carried out (0)
+- 1: gym closed (0), contest carried out (1)
+- 2: gym open (2), contest not carried out (0)
+- 3: gym open (2), contest carried out (1)
+
+On each day, Vasya can:
+- Rest (always allowed, counts towards rest days)
+- Do sport (only if gym is open, i.e., bit 2 is set)
+- Write contest (only if contest is carried out, i.e., bit 1 is set)
+
+Constraint: He cannot perform the same activity (sport or contest) on two consecutive days. Goal: Minimize total rest days.
+
+### Algorithm Specification
+Use dynamic programming with three states per day, representing the minimum rest days up to day d, given the activity performed on day d:
+- State 0: Rested on day d (last activity was rest)
+- State 1: Did contest on day d (last activity was contest)
+- State 2: Did sport on day d (last activity was sport)
+
+Let `dp[d][s]` be the minimum rest days up to day d ending in state s. Initialize `dp[0][0]=0`, `dp[0][1]=0`, `dp[0][2]=0`. For each day d from 1 to n, compute:
+- `dp[d][0] = min(dp[d-1][0], dp[d-1][1], dp[d-1][2]) + 1`  (Rest always possible, adds 1 rest day)
+- `dp[d][1] = min(dp[d-1][0], dp[d-1][2])` if contest available (a_d has bit 1 set), else infinity (large number)
+- `dp[d][2] = min(dp[d-1][0], dp[d-1][1])` if sport available (a_d has bit 2 set), else infinity
+
+The answer is `min(dp[n][0], dp[n][1], dp[n][2])`. Scale to 100 days, use 7-bit counters (since 100 < 128), and 8-bit wide DP values (max rest days ≤ 100 < 256). Use a single clocked FSM that processes days sequentially, updating a 3-element array of DP values (one for each state). The input day array is stored in a 7-bit indexed register file (100 entries × 2 bits). The module outputs the final minimum rest days as an 8-bit result.
+
+### Interface Specification
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset (resets FSM and counters)
+  start: 1-cycle pulse to start processing (loads day array from input ports)
+  day_arr[0:99][1:0]: 100 days, each 2 bits (size: 200 bits total). Day 0 is a_1, Day 99 is a_100. In Verilog, use an array of 100 2-bit wires or a packed vector.
+  n: 7-bit integer (1-100), number of valid days.
+
+Outputs:
+  result: 8-bit integer, minimum rest days (valid when done=1)
+  done: 1-cycle pulse, asserted when computation is complete
+  busy: indicates FSM is processing
+
+Timing:
+  After start, FSM cycles through n days. For n=100, completion within 110 cycles (allow overhead). Result is valid in the cycle when done=1.
+  Reset: After 2 cycles of rst_n=0, FSM idle, result=0, done=0, busy=0.
+
+Implementation Details:
+  - Use a finite-state machine with states: IDLE, LOAD, PROCESS, DONE.
+  - In PROCESS state, iterate days from 0 to n-1 (indexed 0..n-1). For each day, update the 3 DP values using combinational logic and register them.
+  - Store day_arr in a synchronous read register file (200 bits) or use combinational access if it's a wire array.
+  - Use 8-bit wide ALU for min/add operations (add only for rest state).
+  - Use 7-bit day counter to track iteration.
+  - Hardware-friendly: No recursion, bounded loops, fixed-size arrays.
+  - Infinity value for unavailable states: use 255 (8-bit max).
+  - Output result directly from min of DP array.
+
+Example for n=4, days=[1,3,2,0]: Output=2.
+
+Design the module `vacation_dp` with the specified interface. Ensure it is synthesizable and uses reasonable resources.

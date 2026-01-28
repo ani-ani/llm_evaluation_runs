@@ -1,0 +1,39 @@
+Design a Verilog module `lights_sim` that simulates up to 100 lights with periodic toggles. The module must handle the following:
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate simulation
+- `init_state[99:0]`: 100-bit vector, 1=initially ON, 0=initially OFF
+- `a[99:0][2:0]`: 100 lights, each with 3-bit period 'a' (1-5)
+- `b[99:0][2:0]`: 100 lights, each with 3-bit start time 'b' (1-5)
+
+**Outputs:**
+- `max_on[7:0]`: 8-bit maximum number of lights on simultaneously (result)
+- `done`: 1-cycle pulse indicating completion
+
+**Behavior:**
+1. Upon `start`, latch all inputs and reset simulation state.
+2. Simulate time from t=0 to t=255 (8-bit counter).
+3. For each light i:
+   - If t < b[i]: light state remains `init_state[i]`.
+   - If t >= b[i]: calculate toggle count = ((t - b[i]) / a[i]) + 1.
+     - If toggle count is even, state = `init_state[i]`.
+     - If toggle count is odd, state = NOT `init_state[i]`.
+4. At each time step t, count number of ON lights (sum of states).
+5. Track the maximum count across all t (0 to 255).
+6. After t=255, latch result to `max_on` and assert `done`.
+
+**Constraints:**
+- n <= 100 (hardcoded for implementation, use fixed arrays)
+- Periods 'a' and start times 'b' are 3-bit integers (1-5).
+- Time counter is 8-bit (0-255).
+- Result fits in 8 bits (max 100 lights).
+- Timing: Start-to-done within 300 clock cycles.
+- Reset: Must clear all internal counters and state registers. `max_on` and `done` must be 0.
+
+**Implementation Notes:**
+- Use combinational logic for the toggle condition check for each light at current time.
+- Use a combinational tree to count the number of ON lights at each time step.
+- Use sequential logic to update the maximum count.
+- Do not use loops that depend on runtime variables; unroll or use fixed iteration logic.

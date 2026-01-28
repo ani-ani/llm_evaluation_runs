@@ -1,0 +1,57 @@
+Implement a Verilog module that computes the maximum sum of an increasing subsequence ending at a specific index `k` in the input array, given a constraint that the subsequence must pass through or be associated with index `index`. The core algorithm is a dynamic programming approach using an 8x8 lookup table.
+
+### Interface Specification
+
+**Inputs:**
+- `clk`: System clock (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate calculation
+- `arr_in`: 8-bit signed integer input for the array elements
+- `index`: 2-bit unsigned integer (0-3 for array index, scaled down from 0-7 for hardware constraints)
+- `k`: 2-bit unsigned integer (0-3, must be > index)
+- `write_en`: Signal indicating `arr_in` is valid for current cycle
+
+**Outputs:**
+- `result`: 16-bit signed integer representing the maximum sum
+- `done`: 1-cycle pulse indicating valid result on `result`
+- `arr_ready`: 1-cycle pulse when all array elements have been loaded (waiting for `start`)
+
+**Behavior:**
+1. **Load Phase**: Assert `write_en` high for 8 consecutive cycles to load `arr_in` into an internal 8-element memory (max 8 elements). After 8 writes, assert `arr_ready`. If fewer elements are needed, pad with 0 (or the user must provide exactly 8, although the logic will handle the effective length based on the internal calculation loop).
+
+2. **Compute Phase**: On `start` pulse, begin the DP calculation. The DP table `dp[i][j]` is stored in an internal register file (8x8 registers). The algorithm loops through `i` from 0 to 3 (scaled max) and `j` from 0 to 3.
+
+   - **Logic**: 
+     - If `arr[j] > arr[i]` AND `j > i`:
+       - `dp[i][j] = max(dp[i-1][i] + arr[j], dp[i-1][j])`
+     - Else:
+       - `dp[i][j] = dp[i-1][j]`
+     - Base case `i=0` initializes `dp[0][j] = arr[0] + arr[j]` (if `arr[j] > arr[0]`) or just `arr[j]`.
+
+3. **Result**: When the loop completes (approx 16-32 cycles), latch the value from `dp[index][k]` to the output `result` and pulse `done` high for one cycle.
+
+**Constraints:**
+- Array size: 8 elements maximum.
+- Element width: 8-bit signed.
+- Index range: 0-3 (scaled from 0-7 to fit 2-bit control logic).
+- Timing: `start` to `done` within 100 cycles.
+- Reset: Clears internal memory and DP state.
+
+**Verilog Module Definition:**
+```verilog
+module max_sum_inc_subseq (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_in,
+    input wire [1:0] index,
+    input wire [1:0] k,
+    input wire write_en,
+    output reg [15:0] result,
+    output reg done,
+    output reg arr_ready
+);
+// Implement internal state machine, register file for array and DP table,
+// and logic for the nested loops as described.
+endmodule
+```

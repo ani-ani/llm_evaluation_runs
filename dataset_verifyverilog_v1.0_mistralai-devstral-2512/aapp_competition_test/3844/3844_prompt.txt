@@ -1,0 +1,44 @@
+Design a Verilog HDL module `card_game` that determines the winner of a card game based on optimal play. The core insight is that the game outcome depends solely on the parity of the count of each distinct card value. If any distinct card value appears an odd number of times, Conan (the first player) wins. Otherwise, Agasa wins.
+
+### Inputs
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to begin processing a new set of cards.
+- `card_in`: 17-bit input vector representing a card value (scaled to fit 17 bits for values up to 100,000).
+- `card_valid`: 1-bit flag indicating `card_in` is valid.
+- `card_done`: 1-bit flag indicating no more cards will be sent for the current test case.
+
+### Outputs
+- `result`: 1-bit output. `1` indicates Conan wins, `0` indicates Agasa wins.
+- `done`: 1-cycle pulse indicating `result` is valid.
+
+### Behavior
+1. **Frequency Counting**: The module must maintain a frequency counter for each possible card value (range 0 to 131,071). Since the maximum input value is 100,000, a 17-bit address is sufficient. A dual-port BRAM or register array should be used. To save logic, use a sequential state machine to update counts.
+   - On `start`, reset the frequency table or prepare for accumulation.
+   - When `card_valid` is high, increment the count for `card_in`.
+2. **Parity Check**: Once `card_done` is asserted, the module must scan the frequency table (indices 0 to 131,071) and check if any count is odd.
+   - A count is odd if the Least Significant Bit (LSB) of the counter is `1`.
+3. **Result**: 
+   - If an odd count is found during the scan, set `result` to `1` (Conan).
+   - If the scan completes without finding any odd counts, set `result` to `0` (Agasa).
+4. **Timing**: The scan process must be bounded (e.g., max 256 cycles). If the input range is larger, use a pipelined approach or a wider counter width to handle accumulation over multiple cycles. Given the constraints (max 100,000), a simple sequential scan over a BRAM is appropriate.
+
+### Implementation Details
+- Use a 17-bit address bus for the frequency table.
+- Use a 9-bit counter (since max frequency is 10^5, < 2^9). However, to detect odd/even, only 1 bit is needed, but we need to store the full count if we process inputs sequentially. Alternatively, we can toggle a parity bit directly: `parity[value] = !parity[value]`.
+- **Optimization**: Instead of a full counter, use a 1-bit parity flag array (size 131072). Initialize to 0. On each input, toggle the bit at the address `card_in`.
+- **State Machine**: 
+  - `IDLE`: Wait for `start`.
+  - `COLLECT`: Wait for `card_done`. On `card_valid`, toggle the parity bit for `card_in`.
+  - `SCAN`: Iterate through address 0 to 131071. If any bit is 1, assert `result` and transition to `DONE`. If end of range reached with no 1s, assert `result = 0`.
+  - `DONE`: Pulse `done` for 1 cycle, then back to `IDLE`.
+
+### Signal Widths
+- `card_in`: 17 bits (covers 0-131071).
+- `address`: 17 bits.
+- `result`: 1 bit.
+- `done`: 1 bit.
+
+### Constraints
+- The module must handle sequential input processing (card by card).
+- The scan phase must be completed within a reasonable number of cycles (e.g., < 200,000 cycles for full scan, or simplified to checking a maximum of 100,000 entries if mapped to input range). For the benchmark, assume we scan the full 131072 range or a representative subset.

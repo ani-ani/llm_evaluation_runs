@@ -1,0 +1,36 @@
+Implement a Verilog module that computes the sum of elements in a range of an array after increment operations.
+
+**Core Logic:**
+1.  **Array:** The array `seq` is initially all zeros. N=1024 (10-bit address).
+2.  **Increment Operations:** Receive K=16 jump values `X`. For each `X`, increment `seq[i]` for indices `i` where `i % X == 0`. In hardware, this is equivalent to toggling a 'valid' flag at those indices.
+    *   Since N is small, maintain a boolean flag array `is_active[1024]`. 
+    *   Process each jump `X`: Set `is_active[i] = 1` for all `i` where `i % X == 0`. (If an index is hit multiple times, the count would increase, but for boolean logic, we assume OR behavior or sum of counts). 
+    *   **Correction for Logic:** The problem implies `seq[i]` is the *count* of operations that hit index `i`. We need to sum these counts over ranges.
+    *   **Simplification for Hardware:** Instead of processing jumps dynamically, we will pass a pre-calculated `counts[1024]` array directly to the module (simulating the jump computation in the testbench). The module will compute prefix sums of these counts and return the sum over `[L, R]`.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard clock and active-low reset.
+  - `start`: 1-cycle pulse to begin computation.
+  - `counts[0:1023]`: 1024-bit vector (or 1024 1-bit signals) representing the count at each index (0 or 1 for simplicity, or max 16 bits if we sum multiple jumps).
+  - `L`: 10-bit left bound.
+  - `R`: 10-bit right bound.
+- **Outputs:**
+  - `result`: 16-bit sum (max sum is 1024 * 16 = 16384, fits in 14 bits).
+  - `done`: 1-cycle pulse indicating valid result.
+
+**Implementation Steps:**
+1.  **Compute Prefix Sums:** Upon `start`, iterate from index 0 to 1023. Accumulate `counts[i]` into a running sum `prefix_sum`. Store `prefix_sum` in a register array `ps[0:1024]`. 
+    *   `ps[0] = 0`
+    *   `ps[i+1] = ps[i] + counts[i]`
+2.  **Answer Query:** The range sum for `[L, R]` is `ps[R+1] - ps[L]`.
+    *   Once prefix sum computation is done (after 1024 cycles), the result is immediately available by reading `ps[R+1]` and `ps[L]`.
+3.  **Timing:** 
+    - Start -> Prefix calculation (1024 cycles) -> Done.
+    - In practice, we can compute prefix sums on the fly and keep them. Since inputs change, we assume `counts` are valid when `start` is high.
+
+**Constraints:**
+- Use blocking assignments for sequential logic.
+- Bit widths: `counts` input is 1-bit (boolean hit). Sum is 16-bit.
+- Address width: 10 bits (1024 elements).
+- Max cycles: 1500 (safe margin for 1024 cycles + overhead).

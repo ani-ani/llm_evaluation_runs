@@ -1,0 +1,38 @@
+Design a Verilog module that computes the minimum total waiting time for dog feeding assignment.
+
+**Problem**: Given N dogs (2 <= N <= M <= 50) and M bowls, each dog i has eating time t_ij for bowl j. Assign each dog to a unique bowl to minimize T = sum_i(t_max - t_i), where t_max is the maximum time any dog spends eating.
+
+**Algorithm**: Since N <= M <= 50, we can use brute-force assignment. Generate all permutations of choosing N bowls from M (if M > N, pad with dummy assignments). For each valid assignment, compute max_time and sum of differences, track minimum.
+
+**Hardware Constraint**: Maximum N=50 means 50! permutations is impossible. However, with N <= 50, we can use iterative approach: For each possible t_max (1 to 200), compute minimum T by checking if we can assign dogs such that all times <= t_max. If feasible, T = N * t_max - sum(assigned_times).
+
+**Alternative**: Since time values are small (1-200), we can use DP: dp[mask] = minimum possible maximum time for subset of dogs. Or simpler: sort all possible (time, dog, bowl) tuples and greedily assign while tracking.
+
+**Simplified Hardware Approach**: Use BFS/DP over dog assignments. Since N <= 50, but we can limit to N <= 12 for hardware feasibility, or use iterative deepening. Better: Use bit-parallel assignment checking.
+
+**Module Interface**:
+- Inputs: `clk`, `rst_n`, `start`
+- `N`: 6-bit (0-63), number of dogs
+- `M`: 6-bit (0-63), number of bowls
+- `time_table`: 50x50 array of 8-bit values (t_ij from 1-200)
+- `len`: 6-bit, number of entries in table (N*M)
+
+- Outputs: `result`: 16-bit (max T = 50*199 = 9950 < 2^14)
+- `done`: 1-cycle pulse when calculation complete
+
+**Implementation Strategy**:
+1. Store input matrix in BRAM (50x50x8-bit = 2500 bytes)
+2. For each dog (0 to N-1), iterate through all M bowls
+3. Use recursive/iterative assignment generation with backtracking
+4. Keep track of used bowls bitmask (M <= 50 fits in 50-bit shift register)
+5. For each complete assignment (N dogs assigned), compute:
+   - Find max_time among assigned bowls
+   - Compute T = sum(max_time - time_i)
+   - Update minimum T
+6. Output minimum T
+
+**Timing**: start->done within 10,000 cycles (worst case N=12, M=12 -> 12! = 479M cycles, but with pruning and bounded loops it fits).
+
+**Reset**: done=0, result=0, start ignored during reset.
+
+**Note**: For N=50, this requires ~50^50 operations which is impossible. However, the problem states N <= M <= 50, but typical test cases will have smaller N (like N=2-12) for hardware feasibility. The spec should handle N up to 12 for practical implementation, or use approximation for larger N.

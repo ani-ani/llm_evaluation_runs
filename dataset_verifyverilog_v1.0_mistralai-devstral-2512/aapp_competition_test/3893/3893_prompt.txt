@@ -1,0 +1,75 @@
+You are to implement a Verilog module that calculates the minimum number of steps to cross from a home block to a university block in Crazy Town, given a set of infinite line roads.
+
+**Core Insight**: The minimum number of steps equals the number of lines that separate the two points. A line separates the points if the evaluation of the line equation `a*x + b*y + c` at the home and university coordinates has opposite signs.
+
+**Problem Constraints**:
+- Input coordinates `x`, `y` range from -10^6 to 10^6. Use 32-bit signed integers (two's complement).
+- Coefficients `a`, `b`, `c` range from -10^6 to 10^6. Use 32-bit signed integers.
+- Maximum number of roads `n` is 300. We will process them sequentially.
+- The calculation involves multiplication of values up to ~10^12 (e.g., `a*x`). 32-bit signed arithmetic supports up to ~2*10^9, so we must handle overflow carefully.
+- **Adaptation**: Since 32-bit multiplication of 10^6 scale numbers overflows, we will use 64-bit accumulation. However, strictly speaking, for Verilog synthesis, we will stick to 32-bit logic but assume the inputs are scaled or truncated if necessary, or rely on the fact that we only need the *sign* of the product `(a*x1 + b*y1 + c) * (a*x2 + b*y2 + c)`. 
+- **Critical Simplification**: To avoid 64-bit requirement, we only need to check if the signs of `(a*x1 + b*y1 + c)` and `(a*x2 + b*y2 + c)` are different. We can check this by calculating the two dot products and comparing their signs. 
+- **Algorithm**: 
+  1. Input: 2 points (x1, y1, x2, y2) and 1 line (a, b, c) per cycle.
+  2. Calculate `val1 = a*x1 + b*y1 + c`.
+  3. Calculate `val2 = a*x2 + b*y2 + c`.
+  4. Check if `(val1 < 0 and val2 > 0)` OR `(val1 > 0 and val2 < 0)`.
+  5. Increment counter if true.
+  6. Repeat for all `n` lines.
+
+**Module Interface**:
+- `clk`: System clock.
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start calculation.
+- `x1, y1, x2, y2`: 32-bit signed inputs for home and university coordinates.
+- `line_a, line_b, line_c`: 32-bit signed inputs for the line coefficients.
+- `line_valid`: Input flag indicating the current line coefficients are valid (part of the stream).
+- `line_end`: Input flag indicating the last line of the stream.
+- `step_count`: 9-bit unsigned output (0 to 300).
+- `done`: 1-cycle pulse indicating calculation is complete and `step_count` is valid.
+
+**Timing**:
+- The module accepts inputs in a streaming fashion (line by line).
+- On `start`, the module resets the internal counter.
+- It processes lines cycle-by-cycle. For each cycle where `line_valid` is high, it performs the calculation.
+- When `line_end` is high, the module finishes processing that line and asserts `done` (or sets a ready state).
+
+**Implementation Details**:
+- Use a state machine (IDLE, CALCULATING, DONE).
+- Use 32-bit arithmetic. Handle sign detection for the sum `S = a*x + b*y + c`.
+- Since `a*x` can be large (~10^12), 32-bit arithmetic will overflow. 
+  *Correction*: In Verilog, we must stick to defined widths. To make this synthesizable without 64-bit logic, we assume the testbench will provide inputs that fit 32-bit results OR we use a simplified check. 
+  *Revised Logic for Verilog*: The problem guarantees inputs in the range -10^6 to 10^6. The product `a*x` is up to 10^12. Standard 32-bit logic will overflow. 
+  *Adaptation*: The prompt must instruct to use 64-bit accumulators (or Python-style unlimited precision in simulation) OR accept that we clamp/overflow behavior is acceptable for benchmarking. Given the benchmarking context, I will specify to use 64-bit internal accumulators for the intermediate sums to prevent overflow, as Python (the reference) uses arbitrary precision.
+
+**Signal Widths**:
+- Inputs: 32-bit signed (default for coordinates/coeffs).
+- Internal Accumulator: 64-bit signed (`a*x` is ~40 bits, `a*x + b*y` is ~41 bits. 64-bit is safe).
+- Counter: 9-bit unsigned (max 300).
+
+**State Machine**:
+- IDLE: Wait for `start`. If `start`, clear `step_count`, wait for first valid line.
+- PROCESS: While `line_valid` is high, compute values. If signs differ, increment `step_count`. If `line_end` is high, transition to DONE.
+- DONE: Assert `done` for one cycle, then return to IDLE.
+
+**Verilog Module Specification**:
+```verilog
+module crazy_town_min_steps (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    // Inputs for a single line (streamed)
+    input wire signed [31:0] x1, y1, x2, y2,
+    input wire signed [31:0] line_a, line_b, line_c,
+    input wire line_valid, // High when line coefficients are valid
+    input wire line_end,   // High when this is the last line
+    output reg [8:0] step_count, // Max 300 steps
+    output reg done
+);
+```
+
+**Testbench Requirements**:
+- Generate random inputs for x1, y1, x2, y2.
+- Generate `n` random lines (a, b, c).
+- Stream these lines into the DUT cycle-by-cycle.
+- Check `step_count` matches the Python calculation (count of sign differences).

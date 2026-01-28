@@ -1,0 +1,55 @@
+Design a synchronous Verilog module implementing a Union-Find (Disjoint Set Union) data structure with path compression.
+
+**Requirements:**
+1. **Interface:**
+   - Inputs: `clk` (posedge), `rst_n` (active-low sync reset), `start` (1-cycle pulse), `op_type` (1-bit: 0=join, 1=query), `a` (4-bit), `b` (4-bit)
+   - Outputs: `result` (1-bit: 0=no, 1=yes), `done` (1-cycle pulse when valid)
+2. **Scaling:**
+   - N = 16 elements (indices 0-15)
+   - Max Q = 256 operations
+   - Parent array: 16x4-bit (stores parent index, 0-15)
+3. **Algorithm:**
+   - Initialize: `parent[i] = i` for all i (reset state)
+   - Find operation: iterative path compression with `a <= 16` loop bound
+     - Traverse up to root: `while parent[x] != x: x = parent[x]`
+     - Path compression: compress all nodes to root (single pass)
+   - Union: Find roots of a and b, set parent of one root to other
+   - Query: Find roots of a and b, compare
+4. **Control Logic:**
+   - Use FSM with states: IDLE, FIND_A, FIND_B, COMPRESS_A, COMPRESS_B, UNION, QUERY, COMPLETE
+   - `done` pulses 1 cycle after operation completion
+   - `result` valid when `done` = 1
+5. **Reset:**
+   - `rst_n` low: `parent` array initialized to `i` for i=0..15, `done` = 0, `result` = 0
+6. **Constraints:**
+   - No unbounded loops (max 16 cycles per find)
+   - All operations complete within 64 cycles
+   - Use combinational logic for root finding (no memory read/write conflicts)
+
+**Module Declaration:**
+```verilog
+module union_find (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire op_type,
+    input wire [3:0] a,
+    input wire [3:0] b,
+    output reg result,
+    output reg done
+);
+    // Internal logic here
+endmodule
+```
+
+**Implementation Notes:**
+- Store `parent` as a 16-element array of 4-bit registers
+- Use a temporary variable for path traversal
+- Implement iterative find with loop counter (0-15)
+- Compress path by updating parent entries during traversal
+- For query: compare roots (1-cycle operation)
+- For union: find roots, update one parent (2-cycle operation)
+
+**Timing:**
+- Start pulse -> result in ≤ 64 cycles
+- Reset -> initialization complete in ≤ 2 cycles

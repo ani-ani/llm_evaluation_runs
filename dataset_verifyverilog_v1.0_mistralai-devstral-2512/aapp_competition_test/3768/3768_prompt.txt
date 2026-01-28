@@ -1,0 +1,38 @@
+Implement a Verilog module that computes a compressed card sequence for the fruit game based on input numbers x and y. The module must simulate the Euclidean algorithm variant used in the problem solution.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `x_i`: 64-bit input for number of oranges
+  - `y_i`: 64-bit input for number of apples
+- Outputs:
+  - `result_valid`: 1-bit high when output is valid
+  - `result_char`: 8-bit ASCII character ('A' or 'B') for current segment
+  - `result_count`: 32-bit count for the current segment
+  - `done`: 1-cycle pulse high when entire sequence is complete (or impossible)
+  - `impossible`: 1-bit flag, high if no solution exists
+
+**Behavior:**
+1. On `start` pulse, reset internal state and begin computation.
+2. The algorithm computes `k = min(x // y, x - 1)` when `x > y`, or `k = min(y // x, y - 1)` when `y > x`.
+3. Output the pair (k, character) where character is 'A' if computing from x>y, else 'B'.
+4. Update state: `(x, y) = (y, x - k*y)` or `(x, y) = (y - k*x, x)`.
+5. Continue until `x == 1` and `y == 1` (success) or `x == 0` or `y == 0` (failure).
+6. Upon completion (or failure), assert `done` for 1 cycle. If failed, assert `impossible`.
+
+**Constraints:**
+- Use 64-bit arithmetic (use `[63:0]`).
+- Implement iterative state machine (FSM) with states: IDLE, COMPUTE, OUTPUT, CHECK, FINISH.
+- Since output length is variable but bounded by ~10^6 cycles, the module must output segments sequentially. The testbench will collect them.
+- Assume output sequence length fits within 10^6 segments (loop limit). If not, the testbench timeout will catch it.
+- Timing: `start` to first `result_valid` within 10 cycles. `done` asserted after last segment.
+- Reset: `result_valid=0`, `done=0`, `impossible=0`.
+
+**Implementation Details:**
+- Use a temporary register `state_x`, `state_y` initialized with `x_i`, `y_i`.
+- Use a `char_reg` to store 'A' or 'B'.
+- Use a `count_reg` to store `k`.
+- Use a counter `step_counter` to limit iterations (e.g., max 200 steps) to prevent infinite loops in HDL.
+- Output protocol: When `result_valid` is high, the `result_char` and `result_count` are valid. The host should read them. Then, the FSM proceeds to next step. When `done` is high, it's the end.

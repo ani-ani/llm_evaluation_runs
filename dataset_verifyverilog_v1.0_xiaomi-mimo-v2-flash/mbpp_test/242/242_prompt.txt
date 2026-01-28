@@ -1,0 +1,48 @@
+Create a Verilog module `char_counter` that counts characters in a fixed-width string. The module processes a string stored in a 16-element byte array, where each element is an 8-bit ASCII character. A 4-bit input `len` specifies the valid character count (0-15). The result should be a 5-bit unsigned integer representing the character count.
+
+**Interface:**
+- Inputs:
+  - `clk`: Rising edge clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle start pulse
+  - `str[15:0]`: 16x8-bit array of ASCII characters
+  - `len`: 4-bit unsigned integer (0-15)
+- Outputs:
+  - `result`: 5-bit unsigned count (0-16)
+  - `done`: 1-cycle valid pulse when result is ready
+
+**Behavior:**
+1. On `rst_n=0`, reset: `done=0`, `result=0`, idle state
+2. On `start` pulse: load `len` value, start processing
+3. Process each character in sequence (1 char/cycle):
+   - For `i` from 0 to `len-1`: read `str[i]`, increment counter
+   - Skip characters where `str[i] == 8'h00` (null terminator) - treat as valid ASCII (0-255)
+4. After `len` characters processed (or on first null if null-terminated), set `result` and pulse `done`
+5. If `len=0`, immediate `done=1`, `result=0`
+
+**Timing:**
+- start->done: within `len+2` cycles (max 17 cycles for len=15)
+- Reset: 2 cycles, all outputs stable
+
+**Constraints:**
+- Use sequential FSM with counters
+- Widths: len=4 bits, result=5 bits, str indices=4 bits
+- No unbounded loops: max 16 iterations
+- ASCII characters (8 bits) are valid inputs (0-255)
+
+**Module Declaration:**
+module char_counter (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] str [0:15],
+    input wire [3:0] len,
+    output reg [4:0] result,
+    output reg done
+);
+
+**Implementation Notes:**
+- Use 3 states: IDLE, COUNTING, DONE
+- Counter register for character index (4-bit)
+- Result register (5-bit) accumulating count
+- On DONE state, pulse `done` for 1 cycle, then return to IDLE

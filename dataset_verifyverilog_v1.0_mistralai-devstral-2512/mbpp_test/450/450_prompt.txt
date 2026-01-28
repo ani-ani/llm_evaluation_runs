@@ -1,0 +1,42 @@
+Verilog Module Specification: Filter Fixed-Length Strings
+
+Overview:
+Implement a hardware module that filters an array of fixed-width strings based on a target length. The module should output the filtered strings into a separate result array. Since Verilog handles fixed-size arrays, we will process 8-character strings (ASCII bytes) with a maximum of 16 strings in the input array.
+
+Inputs:
+  clk: Clock signal (rising edge triggered)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to initiate the operation
+  len_req: 4-bit unsigned integer representing the target string length (0-15)
+  str_arr[0:15][0:7]: Array of 16 strings, each 8 bytes wide (8-bit ASCII). 
+    *Note: String length is determined by the first null byte (0x00) encountered or 8 if no null is found. If no null, string is assumed to be length 8.*
+
+Outputs:
+  result_arr[0:15][0:7]: Array of 16 strings (8 bytes each). Strings that do not match the length are zeroed out (0x00). The order is preserved.
+  result_count: 4-bit unsigned integer indicating the number of matching strings found.
+  done: 1-cycle pulse indicating operation completion and valid output on result_arr and result_count.
+
+Internal Logic/Constraints:
+- Processing is combinational for each string index (0-15) but synchronized by the FSM.
+- The FSM will iterate through indices 0 to 15 sequentially over 16 clock cycles.
+- For each string, calculate its length by scanning for the first null byte (0x00). 
+- If the calculated length matches `len_req`, copy the string to the corresponding output slot (maintaining index). If not, set the output slot to all zeros.
+- `result_count` increments only when a match is found.
+- Operation latency: 16 cycles + 2 setup/reset cycles. 
+- Reset state: `done`=0, `result_count`=0, `result_arr` initialized to 0.
+
+Timing Diagram Sequence:
+1. `start` goes high for 1 cycle.
+2. `rst_n` must be high.
+3. `done` will go high exactly 16 cycles after `start` (assuming sequential processing). 
+4. Result is valid when `done` is high.
+
+Functionality:
+- If `len_req` is 0, strings of length 0 (empty string "") or starting with 0x00 are matched.
+- If `len_req` > 8, no matches are possible (as max length is 8), `result_count` stays 0.
+
+Hardware Resource Estimate:
+- 16x8-byte SRAM block for inputs.
+- 16x8-byte SRAM block for outputs.
+- 8-bit comparators for length check.
+- Simple state machine with 4 states (IDLE, CALC_LEN, STORE, DONE).

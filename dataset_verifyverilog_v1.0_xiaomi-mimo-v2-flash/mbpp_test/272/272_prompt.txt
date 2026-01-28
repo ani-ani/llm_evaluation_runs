@@ -1,0 +1,78 @@
+Implement a Verilog module that extracts the last element from each tuple in a fixed-size array. The input consists of 8 tuples, each containing 3 elements (8-bit each). The output is an array of the last elements (8-bit each).
+
+### INTERFACE SPECIFICATION:
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `tuples[0:7][0:2][7:0]`: 8x3x8-bit array of tuples. Each tuple has 3 elements (8-bit each).
+  - `tuples_0_el_0`, `tuples_0_el_1`, `tuples_0_el_2` (for tuple 0)
+  - ... repeating for tuples 1-7
+- `valid_input`: Input valid indicator (all tuples are present)
+
+**Outputs:**
+- `result[0:7][7:0]`: 8x8-bit array of last elements (one per tuple)
+  - `result_0`, `result_1`, ..., `result_7` (each 8-bit)
+- `done`: 1-cycle pulse when processing is complete (output valid)
+- `valid_output`: Indicates valid output data
+
+**Internal Signals:**
+- `state`: 4-bit FSM state (0=idle, 1=processing, 2=done)
+- `counter`: 3-bit counter (0-7) for tuple index
+- `temp_result[0:7][7:0]`: 8x8-bit register for storing extracted values
+
+### FUNCTIONAL REQUIREMENTS:
+
+1. **Reset Behavior** (2 cycles minimum):
+   - `done` = 0
+   - `valid_output` = 0
+   - `result[i]` = 0 for all i
+   - `state` = 0 (idle)
+   - `counter` = 0
+
+2. **Processing Logic** (FSM):
+   - **Idle State (0)**: Wait for `start` pulse (1 cycle). When `start=1`, transition to Processing State.
+   - **Processing State (1)**: For each clock cycle from i=0 to 7:
+     - Extract `tuples[i][2]` (last element of tuple i) -> `temp_result[i]`
+     - Increment counter
+     - Continue until all 8 tuples processed (counter reaches 7)
+     - Transition to Done State when finished
+   - **Done State (2)**: Set `done` = 1 (pulse), `valid_output` = 1, and copy `temp_result` to `result` output ports. Transition back to Idle on next cycle.
+
+3. **Timing Constraints**:
+   - Start-to-done latency: ≤ 10 cycles (8 processing + 2 idle)
+   - Each tuple extraction must happen within 1 clock cycle
+   - Output valid when done=1
+
+4. **Bit Widths**:
+   - All element values: 8-bit unsigned
+   - Counter: 3-bit (0-7)
+   - State: 4-bit (0,1,2 only)
+   - Result array: 8x8-bit
+
+5. **Port Naming Convention**:
+   - Tuples: `tuples_X_el_Y` where X=0..7, Y=0..2 (0=first element, 2=last)
+   - Result: `result_X` where X=0..7
+
+6. **Key Simplifications**:
+   - Fixed array size: exactly 8 tuples
+   - Each tuple has exactly 3 elements
+   - Extract only the 3rd element (index 2) from each tuple
+   - No dynamic sizing or variable length
+
+### IMPLEMENTATION GUIDANCE:
+
+- Use combinational logic for element extraction (no delay per element)
+- Use sequential logic for FSM control and counter
+- The `temp_result` register captures values during processing state
+- The `result` outputs are updated when entering Done state
+- The module should be synthesizable with reasonable area (~500 LUTs for 8 tuples)
+
+### EXAMPLE TRANSFORMATION:
+
+**Python Input**: [(1, 'Rash', 21), (2, 'Varsha', 20), (3, 'Kil', 19)]
+**Verilog Input**: tuples_0_el_2=21, tuples_1_el_2=20, tuples_2_el_2=19 (others ignored)
+**Verilog Output**: result_0=21, result_1=20, result_2=19
+
+Do not implement the module; provide only the specification.

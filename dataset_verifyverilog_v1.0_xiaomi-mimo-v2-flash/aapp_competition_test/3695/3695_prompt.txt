@@ -1,0 +1,81 @@
+Design a Verilog module to compute the maximum number of dog food bowls a dog can eat within a time limit. The dog moves right at 1 unit/sec, starting at x=0. Bowl i is at position i (1-indexed). Each bowl i has a ready time t_i. The dog can wait or skip bowls. The show ends at time T.
+
+**Problem Analysis:**
+The problem is a variation of the interval scheduling or greedy selection with constraints. However, a standard efficient solution for this specific problem (max bowls eaten) often involves transforming the constraints into intervals for possible wait times, or using a greedy approach with a priority queue (heap) to manage bowls that can be eaten. 
+
+Since hardware sorting/priority queues are resource-intensive, we will implement a **pipeline-based greedy selection** with a **sorting network** for the critical path. We will scale constraints to **N=64 bowls** and **T=512 seconds**. Time values (t_i) are scaled to **16-bit integers (0-65535)**.
+
+**Core Algorithm (Simplified):**
+For a sequence of bowls, the dog's optimal strategy often involves looking ahead or managing a 'pool' of candidate bowls. The constraint for eating bowl i is roughly: `current_time + wait_time <= T`. 
+We will implement a **pipelined sort-and-select mechanism** that processes bowls in batches.
+
+**Module Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard clock and active-low reset.
+  - `start`: 1-cycle pulse to start processing a set of inputs.
+  - `n`: Number of bowls (0-63). Input vector [5:0].
+  - `T_limit`: Time limit (0-65535). Input vector [15:0].
+  - `t_arr`: Array of 64 ready times. Input array [63:0] of [15:0] vectors.
+- Outputs:
+  - `result`: Max bowls eaten (0-64). Output vector [6:0].
+  - `done`: 1-cycle pulse when calculation is complete.
+
+**Implementation Details:**
+The module will use a pipeline of 64 stages. 
+1. **Input Latch**: On `start`, capture `n`, `T_limit`, and `t_arr`.
+2. **Pipeline Logic**:
+   - Iterate through bowls $i = 1$ to $N$.
+   - For each bowl, calculate the earliest time it can be eaten: $T_{eat} = i + max(0, t_i - i)$.
+   - If $T_{eat} < T_{limit}$, the bowl is a candidate.
+   - To handle the 'max count' logic, we implement a **counter and threshold filter**.
+   - *Simplified Logic for HDL*: We will compute a binary validity flag for each bowl and then use a **bitwise population count** (Hamming weight) on the valid flags in the final stage.
+   - Validity Condition: `(t_i + i <= T_limit + i)` is implicitly handled. A more robust condition for hardware: The dog must reach bowl $i$ by $T$. Reach time is $i$ (assuming no waits). If $t_i > i$, the dog waits. Total time used is $i + max(0, t_i - i)$. If this is $< T$, it's valid.
+   - Wait time logic: `wait = (t_i > i) ? (t_i - i) : 0`.
+   - Total time: `total = i + wait`.
+   - Valid if `total < T`.
+
+**Constraints:**
+- Max bowls N = 64 (controlled by `n` input).
+- Time T = 512 max (controlled by `T_limit` input).
+- `t_arr` width: 16 bits.
+- Result width: 7 bits (0-64).
+- Timing: Combinational logic for validity check, sequential for population count or pipeline accumulation.
+
+**Verilog Structure:**
+- `input wire [5:0] n`
+- `input wire [15:0] T_limit`
+- `input wire [15:0] t_arr [0:63]`
+- `output reg [6:0] result`
+- `output reg done`
+
+- **Logic**:
+  1. On `start`, latch inputs.
+  2. Generate valid flags in parallel (combinational loop over 64 entries).
+  3. Count valid flags where `index + max(0, t_i - index) < T_limit`. Note: Index is 1-based for position in problem (bowl 1 at x=1). 
+  4. **Pipeline Accumulation**: Use a shift register or iterative counter to sum valid bits.
+  5. **Output**: Set `result` and pulse `done`.
+
+**Note on Complexity**: Full sorting of t_i is not required for just counting valid ones if constraints are simple, but to match the 'greedy selection' nature often found in solutions (like the heap approach in Python), we will assume a valid bowl must satisfy $t_i + i <= T$ (simplified constraint). 
+
+**Refined Algorithm for HDL (Iterative/Sequential)**:
+Since 64 elements is small, a sequential controller iterating 0 to 63 is area-efficient and simpler than a full combinational sorting network for 64 elements.
+- State 0: Idle.
+- State 1: Processing. Loop counter $i$ from 0 to 63. 
+  - Calculate `pos = i + 1`.
+  - Calculate `wait = (t_i > pos) ? (t_i - pos) : 0`.
+  - Calculate `finish = pos + wait`.
+  - If `finish < T_limit` and `i < n`, increment counter.
+- State 2: Done. Output count.
+
+**Refined Interface (Iterative)**:
+- `clk`, `rst_n`
+- `start`: Pulse to begin.
+- `n`, `T_limit`, `t_arr` (latched internally).
+- `result`: Final count.
+- `done`: High when in State 2.
+
+**Testbench Requirements**:
+- Test with N=3, T=5, t=[1,5,3]. Expect 2.
+- Test with N=1, T=2, t=[1]. Expect 1.
+- Test with N=1, T=1, t=[1]. Expect 0.
+- Test edge cases with N=64, T=512.

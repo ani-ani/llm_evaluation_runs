@@ -1,0 +1,51 @@
+Design a Verilog module that sorts an array of 8-bit unsigned integers based on: (1) ascending popcount (number of 1-bits), (2) ascending decimal value for ties.
+
+Interface:
+- Inputs:
+  clk: system clock
+  rst_n: active-low async reset (2 cycles minimum)
+  start: 1-cycle pulse, starts sorting
+  arr[0:7]: 8-element array of 8-bit unsigned integers (indexed 0-7)
+- Outputs:
+  result[0:7]: 8-element sorted array of 8-bit unsigned integers
+  done: 1-cycle pulse, asserts when result is valid (max 128 cycles after start)
+
+Behavior:
+1. On start assertion, latch input array into internal registers
+2. Compute popcount for each element (0-8 range, needs 4 bits)
+3. Perform sorting using comparator: primary key = popcount, secondary key = value
+4. Use iterative comparator network (like bubble sort, max 8 passes)
+5. Output sorted array when done=1
+
+Constraints:
+- Use 8 elements max (fixed size)
+- 8-bit data width
+- Popcount requires 4-bit storage
+- Done signal must assert within 128 cycles
+- Reset must clear result to zeros
+- Non-pipelined implementation acceptable
+
+Implementation approach:
+- Store original array in 8x8-bit registers
+- For each element, compute popcount using sequential or parallel method
+- Implement comparator: (popcount_a < popcount_b) OR (popcount_a == popcount_b AND value_a < value_b)
+- Use state machine with states: IDLE, COUNT, SORT, OUTPUT
+- Sorting state: perform 8 iterations of adjacent comparisons/swaps
+- Output state: drive result ports from internal registers
+
+Module definition:
+module sort_array_by_popcount(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr [0:7],
+    output reg [7:0] result [0:7],
+    output reg done
+);
+
+Timing:
+- start -> done: within 128 cycles
+- done pulse: 1 cycle when result valid
+- result stable when done=1
+
+Note: The sorting logic should compare (popcount, value) pairs, where popcount is primary key and value is secondary key for ties.

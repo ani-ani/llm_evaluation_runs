@@ -1,0 +1,42 @@
+Design a Verilog module that counts the number of times the word "Bulbasaur" can be formed from an input string. The word "Bulbasaur" requires: 1 'B', 2 'u', 1 'l', 1 'b', 2 'a', 1 's', 1 'r'.
+
+**Input Interface:**
+- `clk`, `rst_n`: Standard synchronous logic control
+- `start`: 1-cycle pulse to start processing
+- `char_in`: 8-bit ASCII character input (one character per cycle)
+- `char_valid`: 1-bit, indicates char_in is valid for current cycle
+- `char_last`: 1-bit, indicates this is the last character of the input string
+
+**Output Interface:**
+- `result`: 8-bit unsigned integer (max 255 copies)
+- `done`: 1-cycle pulse, asserted when result is valid
+- `idle`: 1-bit, high when waiting for start
+
+**Internal Logic Requirements:**
+1. Must maintain 7 counters (B, u, l, b, a, s, r) as 8-bit registers
+2. Counters must increment on rising edge when `char_valid` is high
+3. ASCII comparison must be performed: 'B'=0x42, 'u'=0x75, 'l'=0x6C, 'b'=0x62, 'a'=0x61, 's'=0x73, 'r'=0x72
+4. After `char_last` is sampled, compute result: `min(count_B, count_u>>1, count_l, count_b, count_a>>1, count_s, count_r)`
+5. Result calculation must complete within 10 cycles after last char
+6. `done` pulse must last exactly 1 cycle
+7. Reset must clear all counters to zero
+
+**Behavioral Description:**
+- On `start` pulse: Reset counters to 0, enter processing state
+- For each subsequent cycle: If `char_valid` high, increment appropriate counter based on ASCII value
+- When `char_last` sampled: Move to calculation state
+- Calculation state: Perform shift and comparison operations (max 7 comparisons for min)
+- Final state: Assert `done` for 1 cycle with result on `result` bus, then return to idle
+
+**Constraints:**
+- Input string length: maximum 128 characters
+- Result range: 0 to 255 (8-bit)
+- Clock frequency: assume 100MHz
+- All counters are 8-bit unsigned
+- Use combinational logic for min calculation
+
+**Timing:**
+- Start to first character: 1 cycle
+- Processing: 1 cycle per character
+- Calculation: ≤10 cycles
+- Total worst-case: 138 cycles

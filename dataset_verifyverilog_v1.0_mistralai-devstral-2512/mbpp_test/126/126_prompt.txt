@@ -1,0 +1,41 @@
+Verilog module specification for finding sum of common divisors:
+
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to begin calculation
+  a, b: 16-bit unsigned integers (scaled from original to fit 16-bit range)
+  max_iter: 12-bit constant = 256 (maximum number of iterations for loop bound)
+
+Outputs:
+  result: 24-bit unsigned sum (max possible sum for 16-bit inputs fits in 24 bits)
+  done: 1-cycle pulse, asserted when calculation complete
+  busy: high while calculating
+
+Timing:
+  - start pulse initiates calculation
+  - Calculation completes within 256 clock cycles
+  - result is valid when done=1
+  - The module loops through values 1 to min(a,b) (capped at max_iter-1) and accumulates divisors
+  - Use iterative approach: state machine with counter, modulo computation, and accumulator
+
+Implementation details:
+  - Use parameter MIN_WIDTH = 16 for input width
+  - Use parameter ITER_WIDTH = 12 for loop bound (256 max iterations)
+  - Use parameter RESULT_WIDTH = 24 for output sum
+  - Implement modulo operation using repeated subtraction or built-in % operator
+  - Handle edge case: if a or b is 0, common divisors sum is 0
+  - The module must terminate early when counter >= min(a,b) or counter >= max_iter
+  - Reset: result=0, done=0, busy=0
+  - The done signal should be exactly 1 cycle high
+
+State machine states:
+  - IDLE: wait for start
+  - INIT: compute min(a,b) and initialize counter=1, sum=0
+  - CHECK: check if counter >= bound, if yes go to FINISH
+  - MODULO: compute a%counter and b%counter
+  - ACCUM: if both modulos are 0, add counter to sum
+  - INCREMENT: counter++
+  - FINISH: set done=1, return to IDLE
+
+Note: The modulo operation is the core computational kernel. For hardware efficiency, use sequential computation (sequential subtraction) or leverage Verilog's % operator if synthesis tool supports it. For benchmarking purposes, the % operator is acceptable.

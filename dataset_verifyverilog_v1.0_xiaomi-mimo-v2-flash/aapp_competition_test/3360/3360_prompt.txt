@@ -1,0 +1,50 @@
+Implement a Verilog module `cfg_search` that performs bottom-up parsing to find the longest substring matching a context-free grammar.
+
+**Module Interface:**
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  char_in: 8-bit ASCII character input (lowercase letter or space)
+  cfg_rules: 32-bit packed rule definitions (see format below)
+  input_len: 4-bit length of input string (max 16 characters)
+  text_mode: 1-bit flag (1=text mode, 0=cfg input mode)
+
+Outputs:
+  result_start: 4-bit start index of best match
+  result_len: 4-bit length of best match
+  done: 1-cycle pulse when processing complete
+  busy: high while processing
+
+**CFG Rules Format:**
+- Each rule is encoded in 32 bits: [Head:8 bits] [Production: 24 bits]
+- Head: ASCII uppercase letter (variable)
+- Production: 3x8-bit chars (A-Z, a-z) or 0xFF for empty
+- Max 16 rules (handled via repeated start pulses or external configuration)
+
+**Algorithm:**
+1. Accept input string via `char_in` when `text_mode=1` and `start=1`. Store in internal buffer (16 chars).
+2. Parse CFG rules when `text_mode=0` (requires external rule loader logic).
+3. Perform CYK-style bottom-up parsing:
+   - Initialize: Single chars match terminals or rules producing single char
+   - Iterate: Combine adjacent spans that match variables
+   - Track longest valid substring ending at any position
+4. Output best match (longest, then earliest).
+
+**Constraints:**
+- Input string length: 16 chars max
+- Variables: A-Z (26 max)
+- Terminals: a-z, space (27 chars)
+- Parsing window: 16x16 table
+- Cycles: < 256 per input
+- State: Maintain 2D table of possible variables for each span
+
+**Implementation Details:**
+- Use internal RAM: 16x16 array of 32-bit bitmask (26 variables)
+- Parsing stages: Fill table diagonally
+- Match detection: Check if S (start variable) exists in any span
+- Return earliest longest span with S
+
+**Reset Behavior:**
+- done=0, result_start=0, result_len=0, busy=0
+- Min 2 cycles reset

@@ -1,0 +1,54 @@
+Implement a Verilog module that calculates the minimum transit card cost given a pricing scheme and trip schedule.
+
+**Problem Scaled:**
+- l (price levels) ≤ 10
+- t (total days) ≤ 128
+- n (trips) ≤ 10
+- Prices p_i ≤ 1023 (10-bit)
+- Days d_i ≤ 64 (6-bit)
+- Trip intervals a, b ≤ 128
+
+**Interface Specification:**
+
+Inputs:
+  - clk: Rising edge clock
+  - rst_n: Active-low synchronous reset (min 2 cycles)
+  - start: 1-cycle pulse to start calculation
+  - l_in: 4-bit integer (number of price levels, 1-10)
+  - p_in: Array of 10x10-bit values (prices p_1..p_10)
+  - d_in: Array of 9x6-bit values (days d_1..d_9, last level duration)
+  - t_in: 7-bit integer (total days, 1-128)
+  - n_in: 4-bit integer (number of trips, 0-10)
+  - trip_a: Array of 10x7-bit (trip start days)
+  - trip_b: Array of 10x7-bit (trip end days)
+
+Outputs:
+  - result: 18-bit integer (minimum cost)
+  - done: 1-cycle pulse when calculation complete
+
+**Behavioral Requirements:**
+1. When start=1, latch inputs and begin computation
+2. Use dynamic programming to find optimal cost
+3. DP State: dp[i] = min cost for first i days
+4. For each day i (1 to t):
+   - Option 1: Continue current interval (if previous day was active)
+   - Option 2: Start new interval (pay based on current pricing)
+5. Calculate cost for an interval of length L days:
+   - First d_1 days cost p_1 each
+   - Next d_2 days cost p_2 each
+   - ...
+   - Remaining days cost p_l each
+6. Handle trip days: Can be inactive in intervals (no cost)
+7. Optimize by considering all possible interval boundaries
+8. Done signal goes high 1 cycle after final calculation
+9. Reset: result=0, done=0
+
+**Timing:**
+- Start to Done: ≤256 cycles
+- Combinational logic should be balanced
+
+**Implementation Notes:**
+- Use lookup tables for price per day based on position in interval
+- DP can be computed iteratively
+- Intermediate values fit in 18 bits
+- No combinatorial loops

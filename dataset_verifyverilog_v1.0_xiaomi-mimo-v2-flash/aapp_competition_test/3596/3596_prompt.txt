@@ -1,0 +1,109 @@
+Implement a Verilog module that computes the location of Arnar's opponent as described in the problem. Due to hardware constraints, we will approximate the complex integrals and special functions using bounded fixed-point arithmetic.
+
+**SCALED REQUIREMENTS:**
+- Input parameters: r, s, n, k, l (all 10-bit values)
+- Constants a, b, c: fixed-point Q16.16 format (32-bit total, 16 fractional bits)
+- Taylor polynomial degree: r <= 25 (due to hardware limits)
+- Recursive sequence length: s <= 5 (due to hardware limits)
+- Iterative calculation: max 256 cycles
+
+**FUNCTION APPROXIMATIONS:**
+1. Gamma(z): Use iterative Lanczos approximation for z=0.5..3.0, else constant 1.0
+2. erf(x): Use polynomial approximation: erf(x) ≈ 1 - (a1*t + a2*t^2 + a3*t^3) * exp(-x^2) where t=1/(1+0.3275911*x)
+3. J_k(x): For small x, use series expansion J_k(x) ≈ (x/2)^k / k!
+4. Taylor coefficients: Precompute f^(i)(0) for i=0..r using finite differences
+5. Polynomial evaluation: Horner's method
+6. Differentiation: Coefficient manipulation
+
+**MODULE INTERFACE:**
+Inputs:
+  clk: clock (rising edge)
+  rst_n: active-low async reset
+  start: start computation (1-cycle pulse)
+  params: packed inputs (see below)
+  
+Outputs:
+  result: 32-bit fixed-point Q16.16 location value
+  done: 1-cycle pulse when computation complete
+  
+**INPUT ENCODING (params wire, 64-bit total):**
+  [9:0]: r (degree)
+  [19:10]: s (sequence length)
+  [29:20]: n (evaluation point)
+  [39:30]: k (Bessel order)
+  [49:40]: l (additive constant)
+  [50]: unused
+
+**COMPUTATION FLOW:**
+1. Compute Taylor coefficients for P(x) (0..r) in 256 cycles max
+2. Build P_0, P_1, ..., P_s (s <= 5) recursively
+3. Differentiate P_s (deg+1) times to get g (constant 0)
+4. Compute g(n) + l = l (since g is zero polynomial)
+5. Calculate final formula: ((l)^2)/(pi*e) + 1/(l+1)
+
+**CONSTANTS (fixed in ROM):**
+- pi = 3.141592653589793 (Q16.16: 205887)
+- e = 2.718281828459045 (Q16.16: 178145)
+- gamma(0.5) = sqrt(pi) = 1.772453850905516 (Q16.16: 116077)
+
+**OUTPUT FORMULA (simplified):**
+Since g is derivative (deg+1) times of P_s, and deg(P_s) = r+s, and r,s >= 1, the (r+s+1)-th derivative of any polynomial is 0. Therefore g(n) = 0.
+
+Final result: ((l^2) * inv_pi * inv_e) + inv(l+1)
+where inv(x) = 1/x in fixed-point.
+
+**TIMING:**
+- Reset: 2 cycles (done=0, result=0)
+- Computation: <256 cycles from start
+- Pipeline: 3 stages (coefficient compute, polynomial build, final eval)
+
+**REGISTER LAYOUT:**
+- coeff[0:25][31:0]: Taylor coefficients (Q16.16)
+- poly[0:30][31:0]: Current polynomial (max degree r+s <= 50)
+- temp[31:0]: Multiplication accumulator
+- counter[7:0]: Cycle counter
+- state[2:0]: FSM state (IDLE=0, COMP_COEFF=1, BUILD_POLY=2, EVAL=3, DONE=4)
+
+**CRITICAL CONSTRAINTS:**
+- All arithmetic in Q16.16 fixed-point
+- Multiplication: 32x32 -> 64 bits, truncate upper 32 bits
+- Division: Use iterative Newton-Raphson (16 iterations max)
+- Overflow: Clamp to 32-bit range
+- Signed numbers: 2's complement
+
+**IMPLEMENTATION HINTS:**
+1. Use lookup table for gamma(0.5) only (other gamma values approximated as 1)
+2. erf(0) = 0, erf(x) for x>0 approximated as polynomial
+3. J_k(0) = 0 for k>0
+4. f^(i)(0) = 0 for all i>0 (since all special functions are 0 at x=0 except Gamma)
+5. Taylor polynomial P(x) simplifies to constant c*Gamma(0) = c*1 = c
+6. Recursive polynomial building: P_n(x) = sum P_{n-1}(i) * x^i
+7. Final differentiation yields 0
+8. Final formula reduces to: ((l*l) * inv(pi*e)) + inv(l+1)
+
+**EXAMPLE CALCULATION:**
+For l=9: result = (81 * inv(8.53973)) + inv(10) = (81 * 0.11709) + 0.1 = 9.484 + 0.1 = 9.584
+
+**TESTBENCH VERIFICATION:**
+- Test with r=9, s=99, n=9, k=99, l=9
+- Expected output: ~9.585073
+- Allow ±0.01 tolerance for fixed-point approximation errors
+
+**RTL ARCHITECTURE:**
+- FSM with 5 states
+- 3-stage pipeline for multiplication/division
+- Memory: coeff array (26x32), poly array (31x32)
+- Counter: 8-bit (0-255 cycles)
+- Output registers: result_reg[31:0], done_reg
+
+**START PROTOCOL:**
+- Wait for start=1 on rising edge
+- Capture params into registers
+- Begin computation
+- Set done=1 for 1 cycle when complete
+- Result valid on same cycle as done=1
+
+**RESET BEHAVIOR:**
+- Asynchronous active-low reset
+- On reset: state=IDLE, done=0, result=0, counter=0
+- Minimum 2 cycles reset for proper initialization

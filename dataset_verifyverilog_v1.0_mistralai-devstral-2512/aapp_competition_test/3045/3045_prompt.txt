@@ -1,0 +1,28 @@
+Implement a Verilog module to solve the Manhattan Positioning System (MPS) problem. 
+
+**Interface Specifications:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous clock and active-low reset.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `beacon_x`, `beacon_y`, `beacon_d`: 24-bit inputs for the current beacon's X, Y coordinates and Manhattan distance.
+  - `beacon_valid`: Indicates the current `beacon_x/y/d` inputs are valid.
+- **Outputs:**
+  - `result_x`, `result_y`: 24-bit outputs representing the receiver position (valid when `done` is high).
+  - `status`: 2-bit output indicating result type (00=No solution, 01=Valid single solution, 10=Uncertain, 11=Invalid/Error).
+  - `done`: High for 1 cycle when computation is finished.
+
+**Implementation Logic:**
+1. **Constraint Collection:** Use a state machine to process incoming beacon data. Since N is small (suggested scale: up to 8 beacons) and coordinates are bounded (16-bit), store the beacon data in small internal BRAMs or registers.
+2. **Search Space:** The receiver position $(X_R, Y_R)$ must satisfy $|X_R - X_i| + |Y_R - Y_i| = D_i$ for all beacons $i$.
+   - From a single constraint, the possible $X_R$ values for a given $Y_R$ lie within a range: $X_i - (D_i - |Y_R - Y_i|)$ to $X_i + (D_i - |Y_R - Y_i|)$. 
+   - Iterate through a bounded range of potential $Y_R$ values (e.g., derived from the constraints of the first beacon: $Y_0 - D_0$ to $Y_0 + D_0$). 
+   - For each candidate $Y_R$, check all beacons to see if there is a valid integer range for $X_R$. If valid ranges from all beacons overlap at a single point, record it. If they overlap at a range of integers, mark as uncertain.
+3. **Hardware Constraints:**
+   - Use fixed-point arithmetic for the distance logic.
+   - The search loop must have a fixed maximum iteration count (e.g., 2048 cycles for the Y-range, and 128 cycles for the X-range check).
+   - Track the number of valid solutions found (0, 1, or >1).
+4. **Timing:**
+   - `start` triggers the loading phase.
+   - Processing phase takes a fixed number of clock cycles.
+   - `done` is asserted for exactly 1 cycle at the end.
+   - If `done` is low, `result_x`, `result_y`, and `status` are invalid.

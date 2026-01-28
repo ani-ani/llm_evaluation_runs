@@ -1,0 +1,61 @@
+Implement a Verilog module that solves the 'Maze Escape' problem. The maze is a 16x16 grid (fixed size for hardware implementation). The grid contains walls (#), passable squares (.), Joe's starting position (J), and fire sources (F).
+
+Constraints:
+- Grid size: 16x16 (R=16, C=16 max)
+- Joe moves one square per minute (up, down, left, right)
+- Fire spreads to all 4 adjacent passable squares every minute
+- Joe wins if he reaches any border square (row 0, row 15, col 0, col 15) before or at the same time as the fire reaches that square
+- Fire cannot enter walls, Joe cannot enter walls or squares on fire
+- The fire spreads simultaneously with Joe's movement
+
+Module Interface:
+- Inputs:
+  - clk, rst_n: Standard clock and active-low async reset
+  - start: 1-cycle pulse to start the calculation
+  - grid [15:0][15:0][2:0]: 16x16 array of 3-bit encoded cells (000=empty/passable, 001=wall, 010=Joe start, 011=Fire source). Note: To avoid complex 2D arrays, use a flattened input or separate ports. We will use separate ports for simplicity.
+    - wall [255:0]: 256-bit vector where bit i=1 if cell i is a wall
+    - joe_start [255:0]: 256-bit vector where bit i=1 if Joe starts here
+    - fire_start [255:0]: 256-bit vector where bit i=1 if Fire starts here
+- Outputs:
+  - result [7:0]: The minimum time (minutes) to escape (0-255). 0xFF (255) indicates IMPOSSIBLE.
+  - done: 1-cycle pulse indicating calculation complete
+
+Internal Logic (Implementation Spec):
+1.  Use a 2D representation internally (16x16). Map input vectors to a 2D register array or use indexing logic.
+2.  Implement two parallel BFS-like state machines (or FSMs):
+    - Fire BFS: Compute the time every cell burns (fire_time[15:0][15:0]). Initialize with 0 for fire sources, MAX_TIME (e.g., 255) for others. Propagate fire time to neighbors every cycle (virtual time steps). Since it's hardware, simulate the wavefront or unroll the loop. Given 16x16=256 cells, a sequential FSM is efficient. Update fire times in layers.
+    - Joe BFS: Track Joe's reachable positions over time. Joe cannot enter a cell if the current time >= fire_time of that cell. Joe starts at t=0. Update Joe's reachable positions layer by layer (minutes).
+3.  Output Logic: During Joe's BFS, if Joe reaches any border cell at time T, and T <= fire_time[border], then result = T. The first valid border reached is the minimal time.
+4.  If Joe's BFS finishes without reaching a safe border, result = 255.
+5.  Timing: Start signal initiates the BFS loops. Done is asserted when the calculation finishes (max 256 cycles or when all reachable states are processed).
+
+Simplified Implementation Approach for HDL:
+- Use a 'visited' array for Joe and 'burned' array for Fire.
+- Cycle 0: Reset arrays. Mark fire sources (time 0). Mark Joe start (reachable at time 0).
+- Cycles 1 to N: Iterate. In each cycle, update Fire wavefront: all 'current' fire cells spread to neighbors. Update Joe wavefront: all 'current' Joe cells move to valid neighbors. Check for border exit.
+- Optimization: Use a pipeline to compute Fire times first (static property), then compute Joe's path. 
+  - Phase 1: Fire BFS (0-255 cycles). Fill 'fire_time' memory.
+  - Phase 2: Joe BFS (0-255 cycles). Check borders.
+- Result register holds the first valid exit time.
+
+Signal Widths:
+- Grid data: 16x16 = 256 bits per map type (Wall, Joe, Fire).
+- Time counter: 8 bits (0-255).
+- Positions: 8 bits (row[3:0], col[3:0]).
+- Result: 8 bits (0-255).
+
+Module Definition:
+module maze_escape (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [255:0] wall_map,
+    input wire [255:0] joe_start_map,
+    input wire [255:0] fire_start_map,
+    output reg [7:0] result,
+    output reg done
+);
+    // Internal registers and FSM logic here
+endmodule
+
+Constraints: Max cycles < 10,000. Reset sets done=0, result=0.

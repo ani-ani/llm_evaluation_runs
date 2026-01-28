@@ -1,0 +1,38 @@
+You are to design a Verilog module that determines if Misha can travel from position `t1` to `t2` on a clock face without crossing the hour, minute, or second hands.
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate computation
+- `h[3:0]`: Hour input (1-12)
+- `m[5:0]`: Minute input (0-59)
+- `s[5:0]`: Second input (0-59)
+- `t1[3:0]`: Starting position (1-12)
+- `t2[3:0]`: Target position (1-12)
+
+**Outputs:**
+- `result`: 1-bit output, 1 if path is clear (YES), 0 if blocked (NO)
+- `done`: 1-cycle pulse indicating valid result is ready
+
+**Constraints & Logic:**
+1. Map all inputs to a 60-minute cycle (0-59 integers). Use modulo 12 for hour positions. Multiply positions by 5 to convert hour marks (1-12) to minute equivalents (5, 10, ... 60). If `m` or `s` is non-zero, the hour hand is slightly offset, but for this discrete version, we treat hand positions as integer grid points where the hand points exactly to an integer tick.
+2. **Hand Positions Calculation:**
+   - `pos_h`: Hour hand position = `(h % 12) * 5`
+   - `pos_m`: Minute hand position = `m`
+   - `pos_s`: Second hand position = `s`
+3. **Path Check:**
+   - Normalize `t1` and `t2` to 0-59 range (t1*5, t2*5). Ensure `t1 < t2`. Since `t1 != t2` and no hand coincides with start/end, we can assume distinct integers.
+   - The clock face is a circle. Misha can move in two directions: Clockwise (direct path from `t1` to `t2`) or Counter-clockwise (path from `t1` to `t2` wrapping around 60 -> 0).
+   - **Clockwise Check:** If `pos_h`, `pos_m`, and `pos_s` are **all** outside the open interval `(t1, t2)`, the clockwise path is clear.
+   - **Counter-clockwise Check:** If `pos_h`, `pos_m`, and `pos_s` are **all** outside the interval `(t2, t1 + 60)` (modulo 60), the counter-clockwise path is clear. 
+   - Implementation: Compare integer values directly. For the counter-clockwise path, map `t1` to `t1 + 60` and check if hands are < `t2` or > `t1 + 60` (modulo logic).
+   - **Result:** Output 1 if either path is clear, 0 otherwise.
+
+**Timing:**
+- Start-to-Done latency: Max 10 cycles.
+- Reset: Clears all internal state, `done`=0, `result`=0.
+
+**Module Name:** `clock_misha`
+**Clock Frequency:** 100 MHz

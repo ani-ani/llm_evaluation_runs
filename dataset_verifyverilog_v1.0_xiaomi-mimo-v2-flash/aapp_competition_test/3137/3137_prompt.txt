@@ -1,0 +1,44 @@
+Design a Verilog module 'bacteria_simulation' that simulates the movement of K bacteria on a grid to find when they all land on the trap cell simultaneously.
+
+**Inputs:**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low asynchronous reset.
+- `start`: 1-cycle pulse to start simulation (asserted after loading data).
+- `trap_row`, `trap_col`: 4-bit unsigned (0-15, scaled for 8x8 grid).
+- For each bacterium `i` (0 to K-1):
+  - `start_row_i`, `start_col_i`: 4-bit unsigned starting position.
+  - `start_dir_i`: 2-bit unsigned (0=Up, 1=Right, 2=Down, 3=Left).
+  - `grid_i`: 64x4-bit array (flattened or accessed via address) representing the 8x8 board digits (0-9).
+
+**Outputs:**
+- `result`: 16-bit signed integer. Time in seconds if trap reached, or -1 (65535 in unsigned if using 16-bit) if timeout/loop.
+- `done`: 1-cycle pulse indicating result is valid.
+
+**Behavior:**
+1. Initialize `time` to 0, `result` to 0, `done` to 0.
+2. Upon `start` rising edge, begin simulation.
+3. Each cycle (representing 1 second):
+   - For each bacterium:
+     - Read digit X from its current cell in `grid_i`.
+     - Update direction: `new_dir = (current_dir + X) % 4`.
+     - Check boundaries: If moving `new_dir` goes outside 0-7 (scaled from 1-8), flip direction 180 deg (`new_dir = (new_dir + 2) % 4`).
+     - Update position: Move 1 step in `new_dir`.
+   - Check if all bacteria are at (`trap_row`, `trap_col`).
+     - If yes: Set `result` to current `time`, assert `done`, stop.
+   - Increment `time`.
+   - If `time` exceeds 256 (or a detected cycle state repeats), set `result` to 65535 (-1), assert `done`, stop.
+4. The state for cycle detection must be hashed (e.g., XOR of positions and directions) and stored in a small BRAM or LUT. If a state repeats, output -1.
+
+**Constraints:**
+- N, M scaled to 8 (index 0-7).
+- K max 5.
+- Direction encoded 2 bits.
+- Grid values 0-9 (4 bits).
+- Max cycles: 256 (fits in 8 bits, but `result` is 16-bit).
+- Timing: Start to Done within 300 cycles.
+
+**Implementation Note:**
+- Use a FSM: IDLE -> LOAD -> STEP -> CHECK -> DONE/LOOP.
+- Since K=5, process all bacteria in parallel within the STEP state or iterate sequentially over a few cycles.
+- Use `grid_i` as a 64-element array per bacterium. Since Verilog arrays are tricky in ports, consider flattening or providing individual signals (though for the spec, describe it conceptually as an array).
+- Reset clears all registers and the state history memory.

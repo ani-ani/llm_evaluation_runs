@@ -1,0 +1,37 @@
+Design a Verilog module that computes cylinder volume V = π × r² × h using fixed-point arithmetic.
+
+**Constraints:**
+- Fixed-point Q16.16 representation (16-bit integer, 16-bit fractional)
+- π constant: 0x3243F (≈3.14159265)
+- Input radius (r) and height (h) are 8-bit unsigned integers (0-255)
+- Output volume is 32-bit fixed-point Q16.16
+- Pipeline depth: 3 cycles (r², multiply by h, multiply by π)
+- No floating-point units
+- Maximum cycle latency: 10 cycles
+
+**Interface:**
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  r: 8-bit unsigned input (radius)
+  h: 8-bit unsigned input (height)
+Outputs:
+  result: 32-bit fixed-point Q16.16 output (valid when done=1)
+  done: 1-cycle pulse indicating valid result
+  busy: 1 when computation in progress
+
+**Behavior:**
+1. On start=1, latch inputs and begin computation
+2. Pipeline stage 1: compute r² (r × r), result is 16-bit unsigned
+3. Pipeline stage 2: compute r² × h, result is 24-bit unsigned (h is 8-bit)
+4. Pipeline stage 3: multiply by π (0x3243F) to get Q16.16 result
+5. Set done=1 when computation completes, result holds for 1 cycle
+6. Reset clears all registers, done=0, busy=0, result=0
+
+**Implementation Notes:**
+- Use pipelined multipliers with registers between stages
+- π is a fixed constant, pre-computed in Q16.16: 3.14159265 × 65536 = 205887
+- Round/truncate appropriately after each multiplication
+- No combinational loops, register all intermediate values
+- Area optimized: single multiplier reused or 3 separate multipliers

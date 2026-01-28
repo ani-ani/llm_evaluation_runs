@@ -1,0 +1,44 @@
+Design a Verilog module to simulate a pharmacy prescription filling system under 'in-store first' policy.
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing (valid on rising edge of clk)
+  - `presc_valid`: Input valid signal for streaming prescription data
+  - `presc_time`: 32-bit drop-off time (unsigned)
+  - `presc_type`: 1-bit type (0=Remote, 1=In-Store)
+  - `presc_duration`: 9-bit fill duration (unsigned, max 500)
+  - `num_technicians`: 4-bit (max 10)
+- Outputs:
+  - `busy`: High while processing inputs
+  - `done`: 1-cycle pulse when all calculations complete
+  - `avg_store`: 32-bit fixed-point Q16.16 average time for in-store
+  - `avg_remote`: 32-bit fixed-point Q16.16 average time for remote
+  - `error`: 1-bit (1 if num_technicians==0)
+
+**Algorithm:**
+1. Accept `n` prescriptions via streaming `presc_*` signals when `presc_valid` is high.
+2. Store prescriptions in internal buffer (capacity: 256). Each entry: `{time[31:0], type, duration[8:0]}`.
+3. After last prescription, when `start` arrives, begin simulation clock cycles.
+4. Use event-driven simulation logic converted to FSM:
+   - Maintain priority queue for 'ready' prescriptions (sorted by: type (in-store first), time, duration).
+   - Track technician availability and completion times.
+   - Process 1 event per clock cycle (bounded by 2048 cycles).
+5. Compute sums and counts for each type, output averages as Q16.16.
+6. Complete when all prescriptions processed; assert `done`.
+
+**Implementation Details:**
+- Max 256 prescriptions, 32-bit time values (scaled from 10^9).
+- Sorting logic: Use iterative selection from buffer, handle same-time same-type ordering by duration.
+- Execution: Simulate technician allocation and completion in 1-2048 cycles.
+- Reset: `done=0`, `avg_store=0`, `avg_remote=0`, `busy=0`.
+- Validity: Check `num_technicians > 0`, set error if 0.
+
+**Example Interaction:**
+1. Clock 0: `presc_valid=1`, load 5 prescriptions via `presc_*` lines.
+2. Clock N: `start=1` (after all loaded).
+3. Clock N+1 to N+2048: Internal FSM runs.
+4. Clock M: `done=1`, `avg_store` and `avg_remote` valid.
+
+**Constraint:** Do not implement unbounded logic; use bounded loops and arrays.

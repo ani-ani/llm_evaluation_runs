@@ -1,0 +1,53 @@
+Design a Verilog module that computes the minimum time for Iahub to travel from (1,1) to (n,n) in an n×n grid with volcano obstacles. Only right/down moves allowed (2 steps per move, 1 second each).
+
+SCALED REQUIREMENTS:
+- n: 16-bit (scaled from 10^9 to 0-65535)
+- m: 16-bit (scaled from 10^5 to 0-65535)
+- Volcano coordinates: 16-bit x, 16-bit y
+- Grid: 16x16 (n=16 maximum)
+- Volcanoes: Up to 64 maximum
+- Path: Only right/down, 2 steps per move
+- Algorithm: Sweep-line with coordinate compression
+
+INTERFACE:
+Inputs:
+  clk: clock signal
+  rst_n: active-low asynchronous reset
+  start: 1-cycle pulse to start computation
+  m_count: 16-bit, number of volcanoes (0-64)
+  volcano_x[0:63]: 64x16-bit array of volcano x-coordinates
+  volcano_y[0:63]: 64x16-bit array of volcano y-coordinates
+
+Outputs:
+  result: 32-bit (2*(n-1) or -1 if impossible)
+  done: 1-cycle pulse when result is valid
+
+ALGORITHM:
+1. Implement sweep-line algorithm (original Python logic adapted)
+2. Process rows from 1 to n
+3. For each row, process volcano coordinates in sorted order
+4. Maintain active intervals that represent reachable columns
+5. Update intervals when encountering volcanoes
+6. If all intervals are blocked at any row, output -1
+7. Otherwise output 2*(n-1)
+
+HARDWARE CONSTRAINTS:
+- Use 16-bit signed arithmetic
+- Implement coordinate compression (sort volcanoes by row)
+- Use fixed-size buffers for intervals (max 8 intervals)
+- Use 16x16 BRAM for volcano storage
+- Maximum 256 clock cycles for computation
+- Done signal pulses for 1 cycle when computation completes
+- On reset: result=0, done=0, all internal state cleared
+
+SPECIAL CASES:
+- If no volcanoes (m=0): output 2*(n-1)
+- If volcano blocks all paths: output -1
+- If start (1,1) or end (n,n) has volcano: output -1 (though problem guarantees start is clear)
+- If m > 64: truncate to first 64 volcanoes
+
+TIMING:
+- Start to done: ≤ 256 cycles
+- Reset: 2 cycles minimum
+
+Note: The implementation should use a sweep-line algorithm similar to the provided Python solution, but adapted for fixed-size arrays and sequential processing in hardware.

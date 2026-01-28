@@ -1,0 +1,32 @@
+Implement a Verilog module `bus_expenses` that solves the travel cost problem.
+
+**Interface:**
+- `clk`, `rst_n`: Standard synchronous control.
+- `start`: 1-cycle pulse to start processing.
+- `config_a`, `config_b`, `config_f`: 8-bit inputs for costs.
+- `config_k`: 5-bit input (max 300 cards, scaled to fit 5 bits if K>32, but logic handles up to 300).
+- `trip_data`: 12-bit input (4-bit src_id, 4-bit dst_id, 1-bit is_trans, 3-bit unused). Input is provided when `req_route` is high.
+- `accum_addr`: 5-bit output (address for route cost accumulation).
+- `accum_wdata`: 16-bit output (new cost value to write).
+- `accum_rdata`: 16-bit input (current cost read from memory).
+- `accum_we`: 1-bit output (write enable for memory).
+- `req_route`: 1-bit output (request for next trip data).
+- `total_cost`: 16-bit output (final result).
+- `done`: 1-cycle pulse when finished.
+
+**Logic:**
+1. **FSM**: IDLE -> READ_TRIPS (iterates N times) -> CALCULATE (sort costs) -> OUTPUT.
+2. **Transshipment Logic**: During READ_TRIPS, compare current trip start stop with previous trip end stop to determine cost (a or b).
+3. **Memory Management**: 
+   - Use `accum_addr` to index a route. Route index is derived from min(src,dst) and max(src,dst) mapped to a 5-bit address.
+   - Read `accum_rdata`, add current trip cost, write back to `accum_wdata` with `accum_we`.
+4. **Sorting/K-Selection**: In CALCULATE state, iterate through memory (simulated via `accum_addr`/`accum_rdata` handshake). Maintain a buffer of top K costs (e.g., using a simple selection sort or bubble sort on a small buffer since N is small) or sort all non-zero route costs. 
+   - For simplicity and hardware friendliness, sort the top K costs found. Since max routes is 300, we can sort them in place using a memory scratchpad or simply pass through multiple times if memory is external. Given the external BRAM interface, we will read the array multiple times to find the K largest values.
+5. **Cost Calculation**: Subtract the K largest costs (if > `f`) and add `k` * `f`.
+6. **Output**: Store result in `total_cost` and assert `done`.
+
+**Constraints:**
+- N <= 300, K <= 300.
+- Stop IDs: 0-15.
+- Costs: 8-bit inputs, 16-bit internal accumulation.
+- Memory: Assume latency of 1 cycle for reads/writes (synchronous BRAM).

@@ -1,0 +1,64 @@
+Create a Verilog module `sand_art` that computes the minimum difference between maximum and minimum sand heights across sections. 
+
+**Input Constraints (Scaled for HDL):**
+- `n`: Number of sections (fixed at 8 in the module, though inputs are padded if smaller).
+- `m`: Number of colors (fixed at 8 in the module).
+- `w`, `h`: Box dimensions (scaled to 16-bit integers representing Q8.8 fixed-point).
+- `volume`: Array of `m` volumes (Q16.16 fixed-point).
+- `divider_x`: Array of `n` x-coordinates (Q8.8 fixed-point). Note: The input provides `n-1` dividers; assume the module pads with 0 and `w` to form `n` sections.
+- `min_amount`: `n x m` array of minimum sand amounts (Q16.16).
+- `max_amount`: `n x m` array of maximum sand amounts (Q16.16).
+
+**Algorithmic Requirement:**
+The module must implement an iterative solver (bounded to ~256 cycles) using Binary Search on the total height difference `D`. 
+
+1. **Binary Search State Machine:**
+   - Maintain search range for `D` (Low to High).
+   - In each step, pick a candidate `D`.
+   - Check feasibility: Can we distribute sand such that `max_height - min_height <= D`?
+   - If feasible, try smaller `D`; else, try larger `D`.
+
+2. **Feasibility Check (Inner Loop):**
+   - We know the total volume of sand `V_total`.
+   - The average height `H_avg = V_total / (w * 1)` (since depth=1). 
+   - However, to satisfy `max - min <= D`, the heights must lie within an interval `[H_low, H_high]` where `H_high - H_low = D`.
+   - This interval `[H_low, H_high]` can be slid across the possible height range.
+   - For a specific interval `[H_low, H_high]`, calculate the required volume for each section `i`: 
+     - Width of section `i` = `divider_x[i+1] - divider_x[i]`.
+     - Required volume for section `i` = `width_i * H_target`, but subject to constraints.
+   - **Constraint Logic:**
+     - We must allocate the available sand volumes to sections such that:
+       - Total volume allocated to section `i` (sum over colors) is within `[width_i * H_low, width_i * H_high]`.
+       - For each color `c`, amount in section `i` is within `[min_amount[i][c], max_amount[i][c]]`.
+       - Total amount of color `c` used is `<= volume[c]`.
+   - **HDL Implementation:**
+     - Use a linear solver approximation or a greedy allocation check. Given the complexity, the module should verify if a simple allocation (e.g., filling minimums, then distributing remaining volume) fits within the `[H_low, H_high]` windows.
+     - Specifically: 
+       1. Calculate `min_total_vol` and `max_total_vol` for section `i` based on `H_low`/`H_high` and width.
+       2. Check if the sum of minimums for section `i` fits within `min_total_vol`. If not, infeasible.
+       3. Check if the sum of maximums for section `i` (or available volume) allows fitting within `max_total_vol`. If not, infeasible.
+       4. Check global volume availability.
+
+**Interface:**
+- Inputs: `clk`, `rst_n`, `start`. 
+- Parameters: `N=8`, `M=8`, `DATA_WIDTH=32` (Q16.16). 
+- Input Ports:
+  - `w_in` [15:0], `h_in` [15:0] (Q8.8).
+  - `volume_in` [M-1:0][31:0] (Array of Q16.16).
+  - `divider_x_in` [N:0][15:0] (Array of Q8.8, length N+1 to define N sections).
+  - `min_in` [N-1:0][M-1:0][31:0] (2D array).
+  - `max_in` [N-1:0][M-1:0][31:0] (2D array).
+- Output Ports:
+  - `result` [31:0] (Q16.16 fixed-point result).
+  - `done` (1 cycle pulse).
+
+**Timing:**
+- Reset clears all state.
+- Start initiates the binary search.
+- Expect `done` within ~5000 cycles.
+
+**Verilog Details:**
+- Use `reg` arrays for state.
+- Use `wire` for intermediate calculations.
+- Implement the binary search loop and the feasibility check loop (nested or sequential).
+- Output the final `D` value (Q16.16).

@@ -1,0 +1,57 @@
+Verilog HDL Module Specification: Dictionary Merge (3-way)
+
+**Core Concept**: Implement a fixed-size associative memory that merges three dictionaries into one. Keys have precedence: dict3 > dict2 > dict1 (later dictionaries override earlier ones).
+
+**Constraints**:
+- Max 16 unique keys across all dictionaries
+- Each key: 8-bit ASCII character (A-Z)
+- Each value: 8-bit ASCII character (A-Z, a-z)
+- All keys are single characters (length = 1)
+- Output dictionary contains up to 16 key-value pairs
+- If key appears in multiple inputs, value from highest-precedence dict is kept
+
+**Interface**:
+- **Inputs**:
+  - `clk`, `rst_n`: Standard synchronous control
+  - `start`: 1-cycle pulse to initiate merge
+  - `len1`, `len2`, `len3`: 4-bit inputs (0-8 each) for dict sizes
+  - `key1[0:7]`: 8-bit key array for dict1 (indices 0-7)
+  - `val1[0:7]`: 8-bit value array for dict1 (indices 0-7)
+  - `key2[0:7]`: 8-bit key array for dict2 (indices 0-7)
+  - `val2[0:7]`: 8-bit value array for dict2 (indices 0-7)
+  - `key3[0:7]`: 8-bit key array for dict3 (indices 0-7)
+  - `val3[0:7]`: 8-bit value array for dict3 (indices 0-7)
+- **Outputs**:
+  - `result_valid`: 1-bit, asserted when output is ready
+  - `out_key[0:15]`: 16-bit array of keys in merged dictionary (8-bit each)
+  - `out_val[0:15]`: 16-bit array of values in merged dictionary (8-bit each)
+  - `out_len`: 4-bit output length (0-16)
+  - `done`: 1-cycle pulse when merge completes
+
+**Implementation Guidelines**:
+1. Use a 16-entry register array for the merged dictionary (8-bit key + 8-bit value each)
+2. Process dict3 first (highest priority), then dict2, then dict1
+3. For each key in input dictionaries:
+   - Check if key already exists in output buffer
+   - If not found, add to next empty slot
+   - If found, overwrite value (only for dict3/dict2, dict1 won't overwrite existing)
+4. Use a simple FSM: IDLE → READ_DICT3 → READ_DICT2 → READ_DICT1 → DONE
+5. Maximum cycles: 100 (16 entries × 6 cycles per entry)
+6. Reset state: done=0, out_len=0, result_valid=0
+
+**Timing**:
+- Start pulse triggers FSM
+- Result available when done=1 (single cycle pulse)
+- out_key/out_val valid when done=1
+- out_len shows actual number of key-value pairs in output
+
+**Error Handling**:
+- Keys/values beyond ASCII range (32-126) are clamped/ignored
+- Duplicate keys within same dict are ignored (first occurrence kept)
+- Output sorted by insertion order (dict3, then dict2, then dict1)
+
+**Example Test Cases**:
+1. dict1={"R":"Red","B":"Black"}, dict2={"G":"Green"}, dict3={"W":"White","B":"Blue"} → Output: B:Blue, W:White, R:Red, G:Green (2+1+1=4 entries)
+2. Overlap case: dict3 overwrites dict2, which overwrites dict1
+
+**Note**: This is a hardware-friendly interpretation. The module does not perform runtime dynamic allocation; all sizes must be known/compatible with fixed array widths.

@@ -1,0 +1,52 @@
+Implement a Verilog module `paren_parser` that separates nested parentheses groups from a fixed-width input string.
+
+## Specification
+
+### Interface
+Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `char_in`: 8-bit ASCII character input (constant for simplicity)
+  - `char_valid`: 1-bit input indicating `char_in` is valid
+  - `char_end`: 1-bit input indicating end of string
+Outputs:
+  - `group_start`: 1-bit pulse indicating start of a new group
+  - `group_end`: 1-bit pulse indicating end of current group
+  - `done`: 1-bit pulse when entire string processed
+  - `result`: 16-bit output containing result summary (for verification)
+
+### Functionality
+1. Receive a string stream via `char_in` and `char_valid`
+2. Ignore spaces (ASCII 0x20)
+3. Track balance counter: increment on '(', decrement on ')'
+4. When balance reaches 0, emit `group_end` pulse
+5. `group_start` pulse when balance transitions from 0 to 1
+6. When `char_end` received and balance==0, emit `done`
+
+### Constraints
+- Max input length: 16 characters
+- ASCII only: parentheses '(' (0x28), ')' (0x29), space (0x20)
+- Balance counter: 5-bit (max depth 31)
+- Result format: Count of groups in bits [3:0], max balance in bits [7:4]
+- Timing: Process one char per cycle when `char_valid` is high
+
+### State Machine States
+- IDLE: Wait for start
+- READING: Process characters
+- ERROR: Unbalanced (optional, can wrap)
+
+### Implementation Notes
+- Use a simple FSM with balance counter
+- When balance==0 and '(' encountered, assert `group_start`
+- When balance==1 and ')' encountered (after processing), assert `group_end`
+- Sample `result` when `done` pulses
+
+### Test Cases
+1. Input: "( ) (( )) (( )( ))" -> Groups: "()", "(())", "(()())"
+2. Input: "(()()) ((())) () ((())()())" -> 4 groups
+3. Input: "() (()) ((())) (((())))" -> 4 groups
+4. Input: "(()(())((())))" -> 1 group
+
+### Verification Format
+For testing, the testbench will send characters via `char_in` and `char_valid`. The module should emit pulses correctly for group boundaries.

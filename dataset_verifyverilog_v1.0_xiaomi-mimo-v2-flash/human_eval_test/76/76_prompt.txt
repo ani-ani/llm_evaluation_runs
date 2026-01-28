@@ -1,0 +1,60 @@
+Design a Verilog module that checks if integer x is a simple power of n (x = n^k for integer k >= 0).
+
+**Requirements**:
+- Use fixed-point representation for x and n (scaled to 16-bit integers)
+- Algorithm: Check if x is 1 (always true), then repeatedly divide x by n until remainder is non-zero or value becomes 1
+- Maximum iterations: 16 (covers 2^16 = 65536)
+- Handle edge cases: x=1 is always true, n=1 is only true if x=1
+- For n=0: only true if x=1 (0^0 defined as 1)
+
+**Interface**:
+- Inputs:
+  - clk: clock signal
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - x_i: 16-bit input (scaled integer, range 0-65535)
+  - n_i: 16-bit input (scaled integer, range 0-65535)
+- Outputs:
+  - result: 1-bit, high if x is simple power of n
+  - done: 1-cycle pulse indicating result is valid
+
+**Timing**:
+- Start asserted for 1 cycle, then de-asserted
+- done pulses after computation (max 16 cycles)
+- Sample result when done = 1
+
+**Reset behavior**:
+- After reset: result = 0, done = 0
+- Minimum 2 cycles of reset
+
+**Algorithm details**:
+1. If n_i == 0: result = (x_i == 1) [n^0 = 1]
+2. If x_i == 1: result = 1 [1 = n^0 for any n != 0]
+3. If x_i == 0: result = 0 [0 is not a power of positive n]
+4. Otherwise: repeatedly divide x_i by n_i:
+   - quotient = x_i / n_i
+   - remainder = x_i % n_i
+   - If remainder != 0: break, result = 0
+   - x_i = quotient
+   - If x_i == 1: break, result = 1
+   - Repeat max 16 times
+
+**Edge cases to handle**:
+- x=1, n=1 -> true (1^0 = 1)
+- x=1, n=anything -> true (1 = n^0)
+- x=0, n=anything -> false (except n=0, 0^0 = 1)
+- n=0, x=1 -> true (0^0 = 1)
+- n=0, x!=1 -> false
+- Large values: use 16-bit arithmetic
+
+**State Machine**:
+- IDLE: wait for start
+- CHECK_EDGE: handle edge cases
+- COMPUTE: repeated division loop (max 16 iterations)
+- DONE: assert done, result valid
+
+**Implementation notes**:
+- Use combinational division (shift/add method or sequential divider)
+- Track iteration counter (4-bit, max 16)
+- Use overflow protection for division by 0
+- State transition: IDLE -> CHECK_EDGE -> COMPUTE -> DONE

@@ -1,0 +1,77 @@
+Implement a Verilog module that filters positive numbers from an input array. The module should operate synchronously on a clock edge.
+
+**Interface Specification:**
+- **Clock & Reset**: Standard synchronous design
+  - `clk`: Rising-edge clock
+  - `rst_n`: Active-low synchronous reset
+- **Control Signals**:
+  - `start`: 1-cycle pulse to initiate operation
+  - `done`: 1-cycle pulse indicating operation complete
+- **Data Inputs**: 16-element array of 8-bit signed integers
+  - `arr_in[0:15]`: Each element is 8 bits wide (signed value -128 to 127)
+  - `len_in`: 4-bit unsigned input (1-16, 0 means empty input)
+- **Data Outputs**: Variable-length array of positive numbers
+  - `result[0:15]`: Each element is 8 bits wide
+  - `len_out`: 4-bit unsigned output (number of positive numbers found)
+
+**Operation Specification:**
+1. **Input**: Wait for `start` pulse. At rising edge of `clk` when `start=1`, capture input array and length.
+2. **Processing**: Iterate through `len_in` elements, one per clock cycle, checking if `arr_in[i] > 0` (signed comparison). If positive, write to next available `result` slot.
+3. **Output**: The `result` array contains only positive numbers in original order. `len_out` equals count of positive numbers.
+4. **Completion**: Set `done=1` for one cycle when processing finishes. When `done=1`, the `result` array and `len_out` contain valid data.
+
+**Constraints & Requirements:**
+- **Maximum Elements**: 16 input elements, 16 output elements (worst case all positive)
+- **Number Range**: 8-bit signed (-128 to 127). Only numbers > 0 (1-127) are output.
+- **Timing**: Processing time = `len_in` cycles (1-16 cycles). Total cycles from start to done = `len_in` + 1 cycles (including input capture).
+- **Reset Behavior**: On reset, `done=0`, `len_out=0`, and all `result` elements should be zero or undefined.
+- **Edge Cases**: 
+  - If `len_in=0`, should immediately set `done=1` with `len_out=0`.
+  - If no positive numbers, `len_out=0` and `done=1` after `len_in` cycles.
+  - If all numbers positive, `len_out=len_in` and all `result[0:len_out-1]` valid.
+- **Implementation**: Use a simple FSM with 3 states: IDLE, PROCESSING, DONE. A counter tracks current index being processed. For each cycle, check sign bit of current input element; if positive, write to next output slot and increment output count.
+
+**Verilog Module Definition:**
+```verilog
+module filter_positives (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_in[0:15],  // 16x8-bit signed
+    input wire [3:0] len_in,
+    output reg [7:0] result[0:15],  // 16x8-bit signed
+    output reg [3:0] len_out,
+    output reg done
+);
+```
+
+**Implementation Guidelines:**
+- Use non-blocking assignments (`<=`) for sequential logic.
+- State encoding: 3 states (2-bit)
+- Instantiate a counter: `reg [3:0] idx` for input array index.
+- Instantiate an output counter: `reg [3:0] out_idx` for result array index.
+- Sign check: `arr_in[idx][7] == 0` (sign bit 0 for positive numbers, 1 for negative). Note: 0 is not positive.
+- During PROCESSING state: If current input element > 0, assign `result[out_idx] <= arr_in[idx]` and increment `out_idx`.
+- When `idx` reaches `len_in`, transition to DONE state and set `done=1`.
+- In IDLE state: When `start=1`, load `len_in` and `arr_in` into local buffers, reset `idx=0` and `out_idx=0`.
+
+**Timing Diagram (simplified):**
+- Cycle 0: `start=1`, `done=0`
+- Cycle 1 to N: `start=0`, `done=0`, processing input indices 0 to N-1
+- Cycle N+1: `done=1`, `len_out` and `result` valid
+- After Cycle N+1: `done=0` (unless start=1 again)
+
+**Testing Expectations:**
+- The module must correctly filter positive numbers.
+- All test cases from the Python function must pass.
+- The module should be synthesizable with minimal resource usage (no division, multiplication, etc.)
+
+**Constraint**: Design must fit within 16-element arrays and 8-bit numbers. The implementation must be purely combinational/sequential without any external memory or dynamic allocation.
+
+**Implementation Steps:**
+1. Define states (IDLE, PROCESSING, DONE).
+2. Create buffers for input array and length.
+3. Instantiate counters for input and output indices.
+4. In PROCESSING state, perform conditional output array update.
+5. Handle edge cases for `len_in=0` (immediate transition to DONE).
+6. Ensure proper reset behavior for all registers.

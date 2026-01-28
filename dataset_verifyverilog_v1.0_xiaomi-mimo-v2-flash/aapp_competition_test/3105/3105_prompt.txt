@@ -1,0 +1,61 @@
+Design a Verilog module that finds lexicographically smallest pair (A, B) with A ≠ B such that A, B, A, B appears as a subsequence in input sequence S.
+
+Input Specification:
+- Input sequence S has N elements (1 ≤ N ≤ 1024 for hardware scaling)
+- Each element S_i is in range 1..N (scaled to 1..1024, requiring 10 bits)
+- Elements arrive sequentially over serial input or as array
+
+Module Interface:
+- Inputs:
+  * clk: System clock (rising edge)
+  * rst_n: Active-low synchronous reset
+  * start: 1-cycle pulse to begin processing
+  * data_in: 10-bit input value (valid when data_valid=1)
+  * data_valid: Input data valid signal
+- Outputs:
+  * A_out: 10-bit output for value A (valid when done=1)
+  * B_out: 10-bit output for value B (valid when done=1)
+  * done: 1-cycle pulse indicating completion (A,B found or -1)
+  * found: 1-bit indicating if valid pair was found (1=found, 0=-1)
+
+Algorithm Approach (Hardware-friendly):
+1. Maintain tracking arrays for each possible value (1..1024):
+   - first_A_pos[value]: earliest position where this value was seen as A
+   - first_B_after_first_A[value_B][value_A]: for each B, earliest position after first_A_pos[value_A]
+   - second_A_after_first_B[value_A][value_B]: for each A, earliest position after first_B entry
+
+2. Process sequence in single pass:
+   - For each incoming value X at position pos:
+     a. Check if X completes any existing pattern:
+        * For each A where we have first_A and first_B:
+          if X == A and second_A_after_first_B[A][B] is not set:
+            if position > first_B[B][A]: mark pattern A,B complete
+     b. Update tracking arrays for X as potential A or B:
+        * If X hasn't been seen as A: set first_A_pos[X] = current position
+        * If X has been seen as A before: use as B for other values
+
+3. Lexicographic search:
+   - Search A from 1 to 1024, B from 1 to 1024
+   - First valid pair found is answer (A,B)
+   - Output -1 if no pair found
+
+4. Implementation details:
+   - Use 10-bit counters for positions (max 1024 positions)
+   - Use priority encoding for lexicographic search
+   - State machine: IDLE → COLLECTING → SEARCHING → DONE
+   - Timing: Single pass through data (1024 cycles) + search (1024 cycles) = ~2048 cycles
+
+Example:
+Input: [1,3,2,4,1,5,2,4]
+Lexicographically smallest: A=1, B=2 (1,2,1,2 at positions 1,3,5,7)
+Output: A_out=1, B_out=2, found=1, done=1
+
+Edge cases:
+- No valid pair: found=0, A_out/B_out undefined
+- Single values repeated: Need A≠B
+- Multiple valid pairs: Return lexicographically smallest
+
+Reset conditions:
+- All counters and state machines reset to 0
+- found=0, done=0
+- Require 2 cycle reset

@@ -1,0 +1,39 @@
+Implement a Verilog module that determines if a string contains the pattern 'a' followed by one or more 'b's. The string is provided as a fixed-width byte array. Use a finite state machine (FSM) to scan the input string.
+
+**Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing (holds string constant during scan)
+  - `str_data`: 128-bit packed array representing 16 characters (8 bits each, ASCII)
+  - `str_len`: 4-bit unsigned integer (1 to 16, number of valid characters)
+
+**Outputs:**
+  - `match_found`: 1-bit flag, asserted when pattern is found (remains high until reset)
+  - `done`: 1-cycle pulse, asserted when scanning completes
+
+**Behavior:**
+- Reset: All outputs 0
+- Processing: On `start`, scan `str_data` from index 0 to `str_len-1` using an FSM
+- State Machine:
+  1. **IDLE**: Wait for `start`, then move to `SCAN` and set `index=0`, `state=S_IDLE`
+  2. **SCAN**: At each clock cycle, compare `str_data[index*8 +: 8]` with ASCII values:
+     - If character == 8'h61 ('a'): set `found_a=1`
+     - If character == 8'h62 ('b') and `found_a==1`: set `match_found=1`
+     - If `found_a==0` and character != 'a': stay in IDLE mode (reset found_a)
+     - If `found_a==1` and character != 'a' and != 'b': stay in IDLE mode
+  3. Increment `index` each cycle until `index >= str_len`
+  4. When scan completes (index == str_len): assert `done` for 1 cycle, latch `match_found` result
+
+**Constraints:**
+- Maximum 16 characters (128-bit input)
+- ASCII values: 'a'=0x61 (97), 'b'=0x62 (98)
+- Timing: Start to done within 100 cycles
+- Reset: Clear all state, min 2 cycles
+- Output: `match_found` stays high after detection (no reset needed for detection)
+
+**Implementation Notes:**
+- Use state: {2'b00: S_IDLE, 2'b01: S_SCAN, 2'b10: S_DONE}
+- Use `found_a` register (1 bit) to track if 'a' was seen
+- Use `index` register (4 bits) for character position
+- Packed access: `str_data[index*8 +: 8]` extracts ASCII byte at position
+- Match is found if any 'a' is followed by any 'b' (not necessarily adjacent, but in order)

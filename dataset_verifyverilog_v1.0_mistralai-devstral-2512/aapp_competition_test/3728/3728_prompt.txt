@@ -1,0 +1,67 @@
+Design a Verilog module that checks if a table of permutations can be sorted to identity using at most one column swap and at most one row swap per row.
+
+**Problem Adaptation:**
+- Given n rows (1-20) and m columns (1-20), each row is a permutation of 1..m.
+- You can perform: (1) Zero or one column swap (swap two columns globally), (2) Zero or one swap per row (swap two elements in a row).
+- Goal: Check if identity permutation (1,2,...,m) can be achieved in every row.
+
+**Hardware Approach:**
+- For each possible column pair (c1, c2) where c1 ≤ c2 (including c1=c2 for no swap):
+  1. Apply the column swap to all rows (in memory).
+  2. For each row, count mismatches with identity.
+  3. If any row has >2 mismatches, this column swap is invalid.
+  4. If all rows have ≤2 mismatches, the answer is YES.
+- If no valid column swap found, answer is NO.
+
+**Interface Specification:**
+- Inputs:
+  - clk, rst_n: Standard clock and active-low reset.
+  - start: 1-cycle pulse to start computation.
+  - table_data[0:399]: Input table stored as 400 8-bit values (20 rows × 20 columns). Index = row*20 + column.
+  - n [3:0]: Number of rows (1-20).
+  - m [3:0]: Number of columns (1-20).
+- Outputs:
+  - result: 1-bit: 1 if YES, 0 if NO.
+  - done: 1-cycle pulse when result is valid.
+
+**Timing & State Machine:**
+- Reset: Done=0, result=0, internal state initialized.
+- Start triggers the computation.
+- Compute cycle count: max (m*(m+1)/2) * (n*m) ≈ 400 * 400 = 160,000 cycles worst case, but we can pipeline. Target: ≤256 cycles for typical cases (m≤16).
+- States:
+  1. IDLE: Wait for start.
+  2. CHECK_NO_SWAP: Check without any column swap (c1=c2).
+  3. GENERATE_COLUMN_SWAP: Iterate c1 from 0 to m-1, c2 from c1 to m-1.
+  4. APPLY_SWAP: Apply swap to current row's data (temporary buffer).
+  5. CHECK_ROW: For current row, count mismatches vs identity.
+  6. UPDATE_RESULT: Update overall result if valid.
+  7. DONE: Set done=1.
+
+**Implementation Details:**
+- Store input table in 400-bit register (or 400x8-bit array).
+- Use a 5-bit counter for row index (0-19) and 5-bit for column index (0-19).
+- Mismatch counter per row: 5-bit (max 20).
+- Internal state: 3-bit (6 states).
+- For column swap test: Iterate c1=0..m-1, c2=c1..m-1. For each pair, iterate all rows.
+- For each row during column swap test: Compare modified row with identity.
+- Modified row values: For column index j:
+  - If j == c1, compare table[row][c2] with j+1.
+  - If j == c2, compare table[row][c1] with j+1.
+  - Else, compare table[row][j] with j+1.
+- If any row has >2 mismatches, break to next column pair.
+- If all rows have ≤2 mismatches, set result=1 and done.
+- If all column pairs tested with no success, set result=0 and done.
+
+**Signal Widths:**
+- table_data: 400 bits (packed) or 20x20x8 array.
+- n, m: 4 bits each.
+- row_idx: 5 bits, col_idx: 5 bits.
+- mismatch_count: 5 bits.
+- state: 3 bits.
+- result: 1 bit.
+- done: 1 bit.
+
+**Constraints:**
+- Use combinational logic for comparison to reduce latency.
+- Sequential state machine for iteration.
+- No external memory required; all data fits in registers.

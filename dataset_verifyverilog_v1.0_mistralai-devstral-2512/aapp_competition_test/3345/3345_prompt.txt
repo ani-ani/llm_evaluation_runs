@@ -1,0 +1,19 @@
+Implement a Verilog module that computes the minimum Euclidean distance between two moving dogs on piecewise linear paths defined by sequences of points. Both dogs start simultaneously at time 0, move at equal constant speed (1 unit per second) along straight line segments between consecutive points. Each dog finishes its walk upon reaching its final point and stops (distance to the other dog is no longer considered after either dog stops). Output the minimum distance achieved during the overlapping active period.
+
+Interface:
+- Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle high to initiate computation
+  len_a: 4-bit integer (2-16), number of points for dog A
+  len_b: 4-bit integer (2-16), number of points for dog B
+  For i in 0..15: a_x_i, a_y_i: 16-bit signed Q8.8 fixed-point coordinates for dog A's i-th point
+  For i in 0..15: b_x_i, b_y_i: 16-bit signed Q8.8 fixed-point coordinates for dog B's i-th point
+- Outputs:
+  result: 32-bit signed Q16.16 fixed-point value representing the minimum distance
+  done: 1-cycle high when result is valid (after processing all segments)
+- Timing: After start goes high, the module processes all segment pairs for both dogs, updating the minimum distance. Must complete within 200,000 clock cycles. Output result is valid when done=1.
+- Reset: On reset, done=0, result=0, and all internal state cleared.
+- Operation: The module iterates through segments of both dogs in parallel time. For each overlapping time interval (where both dogs are moving), compute the distance between their positions (linear interpolation along their current segments). Track the minimum distance across all overlapping intervals. Use fixed-point arithmetic for all calculations (Q16.16 for intermediate results, Q8.8 for coordinates). Ensure no overflow by using 32-bit accumulators.
+- Constraints: Coordinates are 0-10000, mapped to Q8.8 range -128 to 127.996 (sufficient for 0-10000 scale factor). Segment lengths are non-zero. Dogs may have different total path lengths.
+- Implementation Hint: Use a finite state machine to iterate over segments. For each pair of segments (A_seg_i, B_seg_j), compute overlapping time window (0 <= t <= min(seg_i_len, seg_j_len)). Within this window, positions are linear functions of t. Distance squared is a quadratic in t; find minimum over [0, T] analytically or via 16-cycle loop (sufficient for 10-bit precision). Update global minimum distance squared, then take square root at the end using a 16-cycle Newton-Raphson iteration.

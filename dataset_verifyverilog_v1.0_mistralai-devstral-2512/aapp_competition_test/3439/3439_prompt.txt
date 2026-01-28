@@ -1,0 +1,45 @@
+Implement a Verilog module `drain_baltic` that calculates the total volume of water drained from a grid based on a source cell.
+
+**Core Algorithm:**
+1. The map is a 2D grid of altitudes (negative = water).
+2. Water flows to 8 neighbors (horizontal, vertical, diagonal) if the neighbor has lower altitude.
+3. The drainage device is at a specific `(source_i, source_j)` and can drain water if it can flow there.
+4. Essentially, this is finding the maximum flow network, but the problem simplifies to: find all cells connected to the source via a path where altitudes are strictly decreasing (or water level limits flow).
+5. *Simplification for Hardware:* We will implement a bounded iterative wavefront propagation (like Dijkstra or BFS). We process the grid in a fixed number of cycles (e.g., max 256 for an 8x8 grid).
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (posedge sensitive).
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle pulse to start the computation.
+  - `source_row`: 4-bit input (0-15) for the starting row.
+  - `source_col`: 4-bit input (0-15) for the starting column.
+  - `grid_valid`: 1-bit, indicates `grid_data` is valid on current cycle.
+  - `grid_data`: 16-bit signed integer, altitude of the current cell being written. Order is row-major: (0,0), (0,1)...
+- **Outputs:**
+  - `drained_volume`: 32-bit unsigned integer output.
+  - `done`: 1-cycle pulse indicating calculation complete.
+
+**Implementation Details:**
+1. **Memory:** Store the 16x16 grid (256 cells). Each cell needs 16 bits for altitude. Initialize with 0.
+2. **Configuration:**
+   - Set `MAX_ROWS = 16`, `MAX_COLS = 16`.
+   - Use 16-bit signed arithmetic for altitudes.
+   - Use 32-bit unsigned arithmetic for the volume sum.
+3. **Logic Flow:**
+   - **Reset/Init:** Clear memory and internal registers.
+   - **Loading:** When `start` is high, prepare to load. While `grid_valid` is high, store `grid_data` into `mem[row][col]`. You need a counter to track the current loading position (0 to 255).
+   - **Processing:** After loading, start the processing state machine.
+     - Initialize a `visited` flag array (or use a separate memory for water levels).
+     - Use a priority queue or a simple scan. Since hardware doesn't have dynamic pointers easily, use a `queue_buffer` (array of registers) to store candidate cells (max depth 256).
+     - **Propagation:** Start from `(source_row, source_col)`. Mark it as drained if its altitude is negative. 
+     - Check 8 neighbors. If a neighbor's altitude is strictly less than the current cell's altitude AND it hasn't been visited/drained yet, add it to the queue. 
+     - *Critical Note:* Water flows to *lower* ground. So if we are at a cell with altitude `H`, we can drain neighbor `N` if `altitude(N) < H`.
+     - Sum the absolute value of the altitude for every cell included in the drained set (since altitude is negative, volume = -altitude).
+4. **Output:** When the queue is empty (or max iterations reached), output the sum and assert `done`.
+
+**Constraints:**
+- Use fixed-size loops (max 256 iterations for processing).
+- Use `reg` arrays for memory.
+- Handle 8-neighbor addressing with boundary checks (0 to MAX_ROWS-1, 0 to MAX_COLS-1).
+- Input altitudes are signed 16-bit. Output volume is 32-bit.

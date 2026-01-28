@@ -1,0 +1,80 @@
+Implement a Verilog module that finds the minimum maximum turning angle route from junction 1 to junction J, with distance <= D.
+
+**Constraints & Adaptations:**
+- J (junctions): 8-16 max (scaled from 200)
+- R (roads): Up to 64 edges (scaled from 40000)
+- D (distance): 16-bit integer (scaled from 1e6)
+- Coordinates: 16-bit signed integers (Q16.0 from -100000..100000)
+- Angles: Discretized to 32 bins (11.25° per bin) for lookup tables
+- Distance precision: 16-bit fixed-point (Q8.8 or similar)
+- Algorithm: Modified Dijkstra with state: (node, incoming_angle_bin, cost_distance, max_angle_bin)
+- Search: BFS/Dijkstra over states where cost is lexicographic (max_angle, distance)
+- Path reconstruction: Not required, only maximum angle value
+
+**Module Interface:**
+Inputs:
+  clk: Rising edge clock
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start calculation
+  node_count: 4-bit (actual J)
+  max_dist: 16-bit (D, scaled)
+  src_node: 4-bit (always 1, but kept for generic)
+  dst_node: 4-bit (always J)
+  edges_i: 4-bit index for edge input
+  edges_a: 4-bit source node
+  edges_b: 4-bit dest node
+  coord_x_i: 4-bit node index for coordinates
+  coord_x: 16-bit signed x-coordinate
+  coord_y: 16-bit signed y-coordinate
+
+Outputs:
+  result_angle_bin: 5-bit (0-31 representing 0-348.75°)
+  result_angle_deg: 32-bit fixed-point Q16.16 (actual float conversion)
+  result_valid: 1-cycle when result is ready
+  done: 1-cycle pulse when computation complete (even if impossible)
+  impossible: 1-bit flag
+
+**Timing:**
+- Input loading: Sequential/parallel loading of edges (up to 64) and coords (up to 16)
+- Computation: Clock-cycles per state depend on node count. 16 nodes with 32 angle bins = 512 states max.
+- Each state computation: ~4 cycles for angle calc and comparison
+- Total cycles: < 5000
+
+**Implementation Strategy:**
+1. **Coordinate Storage**: BRAM for 16 nodes, 32-bit total per node (X[15:0], Y[31:16])
+2. **Edge Storage**: Dual-port memory, 8-bit per edge (src[3:0], dst[3:0]), 64 entries
+3. **State Memory**: 512-entry SRAM (16 nodes * 32 angle bins). Each entry stores:
+   - best_distance: 16-bit
+   - max_angle_bin: 5-bit
+   - visited: 1-bit
+4. **Angle Calculation**:
+   - Compute vector dot product: (dx1*dx2 + dy1*dy2)
+   - Compute magnitudes: sqrt(dx^2 + dy^2) (use precomputed LUT or approximation)
+   - Angle = arccos(dot / (mag1 * mag2))
+   - Quantize angle to 32 bins (0-31)
+5. **Dijkstra Priority Queue**: Simple FIFO with 32 priority slots (one per angle bin) or small register-based queue (max 8 entries)
+6. **Main Loop**: Process states in increasing angle_bin order (like Dial's algorithm)
+   - For current node N with angle_bin A:
+     - For each outgoing edge (N -> M):
+       - Calculate turning angle from incoming (if any) to edge (N->M)
+       - Determine new_angle_bin = max(A, turn_angle_bin)
+       - Calculate edge distance (precomputed 16-bit)
+       - If new_angle_bin < best_angle[M] OR (equal and distance < best_dist[M]): Update state
+7. **Distance Constraint**: Check if total_distance + edge_distance <= max_dist. If > max_dist, skip.
+8. **Termination**: When destination node is popped from queue or queue empty. If reached, output the angle_bin and convert to degrees.
+9. **Degree Conversion**: Use fixed-point lookup table for sin/cos or a simple divider. Output Q16.16.
+
+**Edge Cases:**
+- Start node (1) has no incoming angle: treat angle_bin = 0 for initial outgoing edges
+- Straight roads (180°): angle_bin = 0 (or 16 depending on definition)
+- No path: output 'Impossible' flag
+
+**Verilog Modules:**
+1. `coord_rom`: Stores X, Y for 16 nodes
+2. `edge_rom`: Stores edges (src, dst, dist precomputed)
+3. `angle_lut`: Fixed-point arccos/atan2 approximation for 32 bins
+4. `dijkstra_fsm`: Main control logic
+5. `state_mem`: 512 entries for best distance/angle
+6. `queue`: Small priority queue for processing
+
+**DO NOT** write the full code, just provide this specification for implementation.

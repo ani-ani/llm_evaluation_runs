@@ -1,0 +1,32 @@
+Implement a Verilog module 'frog_jump' that simulates the frog movement on a discrete grid.
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to initialize calculation
+  plant_x[15:0] [15:0]: Array of 16 x-coordinates (16-bit) for plants
+  plant_y[15:0] [15:0]: Array of 16 y-coordinates (16-bit) for plants
+  dir_seq[63:0]: 64-bit input storing 16 directions (4 bits per char: A=0, B=1, C=2, D=3)
+  num_plants: 4-bit input (N)
+  num_jumps: 4-bit input (K)
+
+Outputs:
+  final_x: 16-bit output
+  final_y: 16-bit output
+  done: 1-cycle pulse when calculation complete
+
+Logic:
+  1. Store plants in internal arrays (addressable by index).
+  2. On start, initialize current position to index 0 (first plant).
+  3. For each jump cycle (1 to K):
+     - Parse current direction from dir_seq.
+     - Scan remaining plants (indices > current) to find the first plant in the diagonal direction.
+       * Direction A: (x2-x1) == (y2-y1) > 0
+       * Direction B: (x2-x1) == -(y2-y1) > 0
+       * Direction C: (x2-x1) == -(y2-y1) < 0 (or y2-y1 > 0, x2-x1 < 0)
+       * Direction D: (x2-x1) == (y2-y1) < 0
+     - If found, update current index to target. Mark source plant as removed (optional, implied by index scan order).
+     - If not found, stay at current.
+  4. Output coordinates of final plant index.
+
+Timing: Reset clears arrays. Start initiates sequential processing. 'done' asserts after K cycles (or fewer if scan logic is multi-cycle). Ensure internal state handles N<=16, K<=16.

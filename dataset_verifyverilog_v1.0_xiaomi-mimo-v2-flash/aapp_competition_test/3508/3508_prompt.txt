@@ -1,0 +1,40 @@
+Implement a Verilog module that simulates the pillar collapse problem for a maximum of 16 pillars.
+
+**Problem Simplification:**
+1. Input `n` is fixed to 5 bits (0-16). Internal pillar strengths `b[i]` are 24-bit integers (scaled from input).
+2. Roof weight is fixed at 1000 kN.
+3. Algorithm: Iterate through all possible initial pillars to destroy (0 to n-1). For each scenario, simulate the chain reaction.
+   - When pillar `i` is destroyed, the load on neighboring pillars increases based on distance.
+   - Load on pillar `j` becomes `2000 / |i-j|` (using integer division). *Note: To simplify hardware, assume load increases by fixed increments per gap: e.g., gap 1 = 1000, gap 2 = 500, gap 3 = 333, etc. capped at 16 gaps.*
+   - If `load > b[j]`, pillar `j` collapses, triggering redistribution.
+   - Repeat until no more collapses occur.
+4. Count the total number of destroyed pillars (including the initial one).
+5. Output the max count and the index that caused it.
+
+**Module Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous signals.
+  - `start`: 1-cycle pulse to start calculation.
+  - `n`: 5-bit input (number of pillars, 1-16).
+  - `b_addr`: 4-bit address for writing pillar strengths.
+  - `b_data_in`: 24-bit data for pillar strength.
+  - `b_wr`: 1-bit write enable for `b` array.
+- Outputs:
+  - `max_damage`: 5-bit result (max pillars destroyed).
+  - `best_idx`: 4-bit result (pillar index to destroy).
+  - `done`: 1-cycle pulse when calculation finishes.
+
+**Implementation Details:**
+1. Use a Block RAM (distributed RAM) array `b[0:15]` to store strengths (24-bit wide).
+2. Use a finite state machine (FSM) with states: `IDLE`, `LOADING`, `SCENARIO_LOOP`, `SIMULATE_COLLAPSE`, `UPDATE_MAX`, `DONE`.
+3. `SCENARIO_LOOP` iterates `current_pillar` from 0 to `n-1`.
+4. `SIMULATE_COLLAPSE` uses a 16-bit register `status` (1 for intact, 0 for collapsed) and a 5-bit register `current_load` array. Since full array ops are costly, process sequentially or use a fixed pipeline depth of 16 cycles per simulation step.
+5. **Pipeline Strategy**: For each scenario, perform up to 16 passes. In each pass, check all pillars. If a pillar is intact and `load > b[i]`, mark it as collapsed and set a flag to trigger another pass. Use a `pass_count` counter.
+6. The load calculation: If pillar `p` is destroyed, the load on `i` is `1000 / abs(p - i)`. To avoid division, pre-calculate: `1000, 500, 333, 250, 200, 166, 142, 125, 111, 100, 90, 83, 76, 71, 66, 62` (integers). Access via lookup table based on distance (0-15).
+7. Reset `status` to all 1s for each scenario. Calculate `current_load`. Check failures. Update `status`. Loop until `status` stabilizes or max passes reached.
+8. Count bits in `status` (popcount) to get damage.
+9. Compare with `max_damage` and update if larger.
+
+**Timing Constraints:**
+- Start to Done: Within 2048 cycles (16 scenarios * 128 cycles max).
+- Use `done` signal to indicate valid result on `max_damage` and `best_idx`.

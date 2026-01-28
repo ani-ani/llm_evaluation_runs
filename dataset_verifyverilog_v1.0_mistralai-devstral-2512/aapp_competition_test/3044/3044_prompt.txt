@@ -1,0 +1,43 @@
+Verilog Module Specification:
+
+Module Name: `robot_path_fixer`
+
+Description: Calculates the minimum number of edits (insertions/deletions) to a command string to guide a robot from 'S' to 'G' on an 8x8 grid with obstacles. The implementation uses a dynamic programming approach (edit distance style) to find the shortest sequence of valid moves.
+
+Inputs:
+  - `clk`: System clock (1-bit)
+  - `rst_n`: Active-low synchronous reset (1-bit)
+  - `start`: Start signal, high for one cycle to initiate calculation (1-bit)
+  - `grid`: 64-bit packed array representing the 8x8 grid. Each 8-bit chunk represents a character: '.' (0x2E), '#' (0x23), 'S' (0x53), 'G' (0x47).
+  - `cmd_str`: 128-bit packed array representing the command string. Each 8-bit chunk represents a character: 'L' (0x4C), 'R' (0x52), 'U' (0x55), 'D' (0x44). Unused characters should be 0x00.
+  - `cmd_len`: 5-bit integer representing the actual length of the command string (1 to 16).
+
+Outputs:
+  - `result`: 8-bit integer representing the minimum edit cost (0 to 255).
+  - `done`: High for one cycle when calculation is complete (1-bit).
+
+Implementation Details:
+1.  **Grid Parsing**: Upon start, parse the 64-bit grid input to locate the coordinates of 'S' and 'G'. Store obstacles in a 64-bit register.
+2.  **State Representation**: Maintain a table of valid states. A state is defined by `(x, y, step)`, where `(x,y)` is the robot's position (3 bits each for 8x8 grid) and `step` is the index in the command sequence (0-16).
+3.  **Dynamic Programming**: Use a 3D array `dp[x][y][k]` where `k` is the edit distance. Since hardware memory is limited, implement this as an iterative state machine.
+    -   Initialize `dp[Sx][Sy][0] = 0` (cost 0 at start with 0 edits).
+    -   Iterate `k` from 0 to `cmd_len` (or until target reached).
+    -   For each valid state `(x, y, k)`:
+        -   **Option 1: Keep Command**: Simulate the command at index `k`. If valid (in bounds, no obstacle), update `dp[next_x][next_y][k+1] = min(dp[next_x][next_y][k+1], cost)`.
+        -   **Option 2: Delete Command**: Skip the command. Update `dp[x][y][k+1] = min(dp[x][y][k+1], cost + 1)`.
+        -   **Option 3: Insert Command**: For each direction (L,R,U,D), if valid move, update `dp[next_x][next_y][k] = min(dp[next_x][next_y][k], cost + 1)`. (Note: To avoid infinite loops in hardware, limit insertions or process them in a specific order).
+4.  **Optimization Constraint**: To fit in hardware, limit the search space. The state machine should transition through 'k' (command index) and iterate through the grid coordinates. Use a block RAM style approach if possible, or a set of registers for active states (max 8x8=64 states).
+5.  **Termination**: The process terminates when the 'G' position is reached with any command index `k`. The result is the minimum cost found.
+
+Timing:
+-   Start high for 1 cycle.
+-   Calculation takes approximately 1000-2000 clock cycles (bounded by 8x8 grid * 16 steps).
+-   `done` pulses high for 1 cycle when finished.
+-   `result` is valid when `done` is high.
+
+Reset:
+-   `done` = 0, `result` = 0.
+
+Interface:
+Inputs: `clk`, `rst_n`, `start`, `grid [63:0]`, `cmd_str [127:0]`, `cmd_len [4:0]`
+Outputs: `result [7:0]`, `done`

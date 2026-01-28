@@ -1,0 +1,14 @@
+Implement a Verilog module that counts permutations of length n with maximum run length k, modulo prime p.
+
+**Adaptation**: Scale n from 2000 to 128 (max feasible in hardware), keep k=2..7. The DP tracks permutations of length i ending with a specific run length in increasing/decreasing direction.
+
+**Interface**:
+- Inputs: clk, rst_n, start, n[7:0] (0-127), k[2:0] (1-7), p[31:0] (prime)
+- Outputs: result[31:0], done (1-cycle pulse when complete)
+- Timing: start initiates computation, done asserts after ~1000 cycles
+
+**Algorithm**: Use DP table dp[i][j][d] = count of permutations of length i ending with a run of length j in direction d (0=increasing, 1=decreasing). Initialize dp[1][1][0] = dp[1][1][1] = 1. For each i from 2 to n: for each previous run length j from 1 to min(i-1, k-1) and direction d: try appending new element in increasing/decreasing direction to extend run or start new run. Sum valid states modulo p.
+
+**Constraints**: n≤128, k≤7, p≤2^31-1. Use 32-bit arithmetic with modulo reduction. State size: dp[128][7][2] ≈ 1792 32-bit values. Implement as pipelined FSM with external BRAM or internal registers if space allows. Output final sum of dp[n][j][d] for all valid j,d.
+
+**Implementation hints**: Use fixed-point arithmetic for modulo operations. Consider using block RAM for DP table if synthesis allows. For small n≤64, use internal registers. Include timing assumptions: 1000-2000 cycles for full computation.

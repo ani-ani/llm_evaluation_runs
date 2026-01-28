@@ -1,0 +1,76 @@
+Implement a Verilog module for finding the shortest palindrome beginning with an input string.
+
+## Problem Adaptation
+- Input string: fixed 16-character byte array (ASCII)
+- Output string: fixed 32-character byte array (max palindrome length = 2*16-1)
+- Algorithm: Check if input is already palindrome by comparing with reversed version. If yes, output equals input. If no, append reverse of prefix before longest palindromic suffix.
+
+## Module Interface Specification
+
+### Inputs:
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate operation
+- `input_str[15:0][7:0]`: 16-element array of 8-bit ASCII characters (input string)
+- `input_len`: 5-bit input length (0-16)
+
+### Outputs:
+- `output_str[31:0][7:0]`: 32-element array of 8-bit ASCII characters (palindrome result)
+- `output_len`: 6-bit output length (0-32)
+- `done`: 1-cycle pulse indicating completion
+
+### Timing & Control:
+1. **Reset**: 2+ cycles, `done=0`, `output_len=0`
+2. **Operation**: Start pulse initiates computation
+3. **Completion**: `done=1` for exactly 1 cycle when result is valid
+4. **Max cycles**: 128 cycles (256 comparisons worst-case)
+5. **When `done=1`**: `output_str` and `output_len` contain valid result
+
+### Algorithm Steps (FSM-based):
+1. **Reset State**: idle
+2. **Check Palindrome** (256 cycles max): Compare `input_str` with its reverse
+   - If palindrome found → state = OUTPUT_INPUT
+   - Else → state = FIND_SUFFIX
+3. **FIND_SUFFIX State**: Find longest palindromic suffix (64 cycles max)
+   - Check suffixes from length 15 down to 1
+   - First palindrome found → note length K
+4. **BUILD_OUTPUT State**: Construct palindrome (64 cycles max)
+   - If already palindrome: copy input to output
+   - Else: append reverse of prefix before suffix
+     - Output = input_str[0:len-K-1] + input_str[len-K-1:len] + reverse(prefix)
+5. **DONE State**: Set done=1 for 1 cycle
+
+### Data Widths:
+- ASCII chars: 8 bits (0-255)
+- Lengths: 5 bits for input, 6 bits for output
+- Internal counters: 5 bits
+- Max operations: 128 cycles per section
+
+### Functional Requirements:
+- Input strings are lowercase ASCII letters only (a-z)
+- Empty string returns empty string
+- Single character returns same character
+- Algorithm guarantees shortest palindrome starting with input
+
+### Implementation Notes:
+- Use FSM for control flow
+- Use block RAM for string storage (16x8-bit for input, 32x8-bit for output)
+- Use comparators for palindrome checking
+- No recursion; all loops bounded by 16 iterations
+- Output format: {prefix}{palindromic suffix}{reverse(prefix)}
+
+## Example Operations:
+1. Input: "cat" (len=3) → Output: "catac" (len=5)
+   - Not palindrome
+   - Longest palindromic suffix = "at"? Actually "t" is palindrome (len=1)
+   - Prefix = "ca"
+   - Result = "ca" + "t" + "ac" = "catac"
+
+2. Input: "xyx" (len=3) → Output: "xyx" (len=3)
+   - Already palindrome → return as-is
+
+## Signal Definitions:
+- `done`: Asserted when operation complete, deasserted next cycle
+- `output_len`: Length of valid characters in output_str (0-32)
+- `input_len`: Length of valid characters in input_str (0-16)
+- All arrays are zero-indexed [0:15] for input, [0:31] for output

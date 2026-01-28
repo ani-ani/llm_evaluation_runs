@@ -1,0 +1,40 @@
+Design a Verilog module to solve the maximum subarray sum with swaps problem. The problem asks: given an array of 16 elements (each 8-bit signed), find the maximum subarray sum achievable by performing at most k swaps (where k ≤ 4) between the subarray and elements outside it.
+
+### Interface Specification:
+- **Inputs**:
+  - `clk`: 1-bit clock, rising edge triggered
+  - `rst_n`: 1-bit active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `arr`: 16x8-bit array (elements a[0] to a[15]), each signed 8-bit (range -128 to 127)
+  - `k`: 4-bit unsigned integer (0 to 15), representing max swaps allowed
+
+- **Outputs**:
+  - `result`: 16-bit signed integer representing the maximum subarray sum found
+  - `done`: 1-bit pulse indicating computation completion (1 cycle active)
+
+### Algorithm Requirements:
+1. **Initialization**: Upon `start` pulse, the module should begin searching all possible subarrays [l, r] where 0 ≤ l ≤ r < 16.
+2. **For each subarray**:
+   - Extract elements in the subarray (a[l] to a[r]) and the elements outside it.
+   - Sort the subarray in ascending order (smallest first).
+   - Sort the outside elements in descending order (largest first).
+   - Perform up to `k` swaps: swap the i-th smallest inside element with the i-th largest outside element if the outside element is larger than the inside element.
+   - Calculate the sum of the subarray after potential swaps.
+3. **Tracking Maximum**: Keep track of the maximum sum across all subarrays.
+4. **Termination**: After checking all subarrays, assert `done=1` for one cycle and output the maximum sum via `result`.
+
+### Constraints:
+- **Array Size**: Fixed at 16 elements (hardcoded). Subarrays range from 1 to 16 elements.
+- **Swap Count**: Maximum of `k` swaps per subarray (4-bit `k` input).
+- **Timing**: The computation should complete within 10,000 clock cycles (worst-case: 16*16=256 subarrays, each requiring sorting and up to 4 swaps).
+- **Hardware Friendliness**: Implement sorting networks (e.g., odd-even sort) for fixed-size arrays (max 16 elements). Use bounded loops (e.g., `for i in 0 to k-1`) for swaps. Avoid recursion; use iterative loops.
+- **Memory**: Store the original array in a register file. Use internal registers/buffers for subarray and outside elements during processing.
+- **Pipelining**: Can be done sequentially: process one subarray per batch of cycles.
+
+### Module Behavior:
+- **Reset**: On `rst_n=0` (synchronous), `result=0`, `done=0`, internal state machines reset to idle.
+- **Start**: `start` pulse transitions module from IDLE to PROCESSING state.
+- **Processing**: State machine iterates through l=0..15, r=l..15. For each (l,r), compute sum with swaps. After last subarray, transition to DONE state.
+- **Done**: `done=1` for one cycle, `result` holds the maximum sum. Module returns to IDLE.
+
+### Note**: Do not implement the module code directly. Instead, provide a detailed specification for how to implement the algorithm in hardware, including the state machine design, loop bounds, sorting network size, and data flow between registers.

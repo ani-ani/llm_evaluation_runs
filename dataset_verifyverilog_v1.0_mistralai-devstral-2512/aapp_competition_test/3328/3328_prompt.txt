@@ -1,0 +1,37 @@
+Implement a Verilog module that calculates the minimum sum of uncovered cells on an 8x8 grid after placing K dominoes (1x2 tiles covering adjacent cells). The input is a fixed 8x8 grid of 16-bit signed values. The solution must explore all valid placements of K dominoes to minimize the remaining sum.
+
+**Interface Specification:**
+
+Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start calculation
+  - grid_valid: Indicates the grid data is valid
+  - grid_data: 16-bit value for the current cell (row-major order, index 0 to 63)
+  - grid_addr: 6-bit address for grid_data (0-63)
+  - K: 4-bit integer (1 to 8)
+
+Outputs:
+  - result: 16-bit minimum sum of visible fields (valid when done=1)
+  - done: 1-cycle pulse indicating calculation complete
+  - ready: High when ready to accept new start or grid data
+
+**Implementation Requirements:**
+1. **Grid Storage**: Use a dual-port block RAM (64 entries x 16 bits) to store the input grid. 
+2. **Algorithm**: Use a depth-first search (DFS) approach to place K dominoes. Since the grid is 8x8 and K <= 8, the total number of states is manageable. The algorithm should:
+   - Iterate through every possible starting cell (row 0-7, col 0-7).
+   - Attempt to place a domino horizontally (right) and vertically (down) if adjacent cells are within bounds.
+   - Recursively place the next domino (K-1 remaining).
+   - Keep track of the current coverage mask (64 bits) and the current sum of uncovered cells.
+   - Return the minimum sum found.
+3. **FSM Control**: Implement a finite state machine (FSM) to control the DFS traversal. The FSM should handle the recursive backtracking using an iterative approach or a stack to avoid recursion depth issues.
+   - States: IDLE, LOAD_GRID, INIT_SOLVE, CHECK_CELL, PLACE_DOMINO, BACKTRACK, UPDATE_MIN, DONE.
+4. **Optimization**: The DFS must be bounded. Pre-calculate the total sum of the grid. As dominoes are placed, subtract the values of the covered cells. The goal is to maximize the subtracted sum (since total sum is constant). This transforms the problem into maximizing the covered sum.
+5. **Timing**: The calculation might take many cycles. The module must remain responsive. `done` is asserted for exactly 1 cycle when the optimal solution is found.
+
+**Constraints:**
+- Grid values: 0 to 1000 (fit in 16 bits).
+- K: 1 to 8.
+- Grid size: Fixed 8x8.
+- Result range: 0 to 64*1000 = 64000 (fits in 16 bits signed).
+- Timeout: The calculation must complete within a reasonable simulation time (e.g., 100,000 cycles).

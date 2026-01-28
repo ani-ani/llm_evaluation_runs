@@ -1,0 +1,64 @@
+Design a Verilog module that calculates the perimeter of a regular pentagon from its side length. The input 'side' is a fixed-point Q8.8 number (8 integer bits, 8 fractional bits) representing the side length. The output 'perimeter' should also be Q8.8 format. The calculation is simply perimeter = 5 * side. Since the side length is bounded (0-255.996), the maximum perimeter is 5 * 255.996 ≈ 1279.98, which fits within 16 bits (12 bits integer, 8 fractional). Use combinational logic (no state machine needed). 
+
+Interface:
+Inputs:
+  side[15:0]: Q8.8 fixed-point side length
+Outputs:
+  perimeter[15:0]: Q8.8 fixed-point perimeter
+
+Implementation notes:
+- Multiply side by 5 (binary 101) using bit shifts and addition: side * 5 = (side << 2) + side
+- Ensure proper bit growth: Q8.8 * 5 → Q12.8 result (requires 20 bits for intermediate, then truncate to Q12.8)
+- Final output: extend to 16-bit width (sign-extend if negative, though inputs are assumed positive)
+- Combinational: always @(*) block
+- No clock/reset needed
+
+Module Definition:
+module pentagon_perimeter (
+    input [15:0] side,
+    output reg [15:0] perimeter
+);
+
+Verilog implementation details:
+1. Compute 5 * side using: side_shifted = {side[15:0], 2'b00} // multiply by 4
+2. Add original side: perimeter_raw = side_shifted + side
+3. Truncate/pack into Q8.8 format if needed (though 5*Q8.8 = Q12.8, we keep 16-bit output)
+4. Assign to output
+
+// Note: Since this is purely combinational, ensure no timing loops.
+// The multiplication by 5 is constant factor, so simple shift-and-add works.
+// For side = 8'hFF (255), 5*255 = 1275 = 0x04FB
+// Input side is Q8.8, so for integer side values, fractional bits are 0.
+// The module should handle any Q8.8 value, outputting 5*side in Q12.8 format, padded to 16 bits.
+endmodule
+
+Verilog code structure:
+module pentagon_perimeter(
+    input [15:0] side,
+    output [15:0] perimeter
+);
+    wire [17:0] side_times_4; // Q10.8
+    wire [17:0] side_extended; // Q8.8 extended to 18 bits
+    wire [17:0] result_extended; // Q10.8? Actually 5*Q8.8 = Q12.8
+    
+    assign side_extended = {2'b00, side}; // Zero-extend to 18 bits (if unsigned)
+    assign side_times_4 = {side, 2'b00}; // Shift left 2 (multiply by 4), now Q10.8
+    assign result_extended = side_times_4 + side_extended; // 5*side, Q10.8
+    
+    // Truncate/pack to 16-bit Q8.8 output: keep lower 16 bits of result_extended
+    // This effectively does integer division by 4 (truncate fractional), but since it's exact multiplication by 5
+    // and input is Q8.8, output should be Q12.8. To fit 16-bit, we can output lower 16 bits (losing upper bits)
+    // OR we can define output as Q12.8, but interface says 16-bit output. Let's assume 16-bit Q8.8
+    // which means we need to scale back: output = (5*side) >> 2? No, that's wrong.
+    // Clarification: 5*Q8.8 is Q12.8. For 16-bit output Q8.8, we need to take lower 8 fractional bits and lower 8 integer bits from Q12.8
+    // i.e., output = result_extended[15:0] (lower 16 bits)
+    assign perimeter = result_extended[15:0];
+endmodule
+
+This handles multiplication and bit alignment. For test, side=5 (Q8.8=0x0500), 5*5=25 (0x1900 in Q12.8). Lower 16 bits: 0x1900. Test case expects 25 (0x1900 in Q8.8). Yes, matches.
+
+For side=10 (0x0A00), 5*10=50 (0x3200), lower 16 bits 0x3200. Perfect.
+
+For side=15 (0x0F00), 5*15=75 (0x4B00), lower 16 bits 0x4B00. Works.
+
+Thus, the module is trivial and combinational.

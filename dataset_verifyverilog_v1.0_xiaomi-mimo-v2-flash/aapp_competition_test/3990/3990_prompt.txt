@@ -1,0 +1,48 @@
+Design a Verilog module that computes the minimum time for both train and bus to reach town n under safety constraints, scaled to n=16 towns.
+
+**Problem Scale & Adaptation:**
+- Scale: n=16 towns max, m=120 railways max (but we use adjacency matrix for simplicity).
+- Graph representation: Use a 16x16 bit matrix `rail_mat` where bit `rail_mat[u][v]` is 1 if railway exists, 0 otherwise. Input will provide up to 16 edges.
+- Safety constraint: Train (railways) and Bus (roads) must not meet at same town (except n). This implies we need the shortest path for the vehicle that has the shortest path on the complementary graph.
+- Algorithm: Calculate shortest path on the railway graph (RailDist) and on the road graph (RoadDist). If rail graph has edge (1,n), we must use Road graph (otherwise Bus would meet Train at n if we didn't enforce the rule, but problem says they *can* meet at n, but the specific logic in problem 'Codeforces 601A' implies we choose the graph that doesn't have a direct 1->n edge). Actually, the correct logic is: if railway exists between 1 and n, we must use the road graph (shortest path on roads). If no railway, we use railways.
+- Input: `n` (4-bit), `m` (4-bit), `edges`: `m` pairs of `u` (4-bit), `v` (4-bit).
+- Output: `result` (8-bit time, max 15) or `fail` flag.
+
+**Module Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Standard clock, active-low reset.
+  - `start`: 1-cycle pulse to begin computation.
+  - `n_in`: 4-bit input (number of towns, 2-16).
+  - `m_in`: 4-bit input (number of railways).
+  - `edge_u`, `edge_v`: 4-bit inputs for railway edges.
+  - `edge_valid`: 1-bit valid signal for edge input.
+- Outputs:
+  - `result`: 8-bit output (minimum time or 0xFF for -1).
+  - `done`: 1-bit pulse, asserted for 1 cycle when result is valid.
+
+**Internal Logic Specification:**
+1. **Input Stage**: Accumulate edges into a 16x16 BRAM/SRAM structure `rail_mat`. Since n is small, a 2D register array `reg [15:0] rail_mat [15:0]` is acceptable. Reset all bits to 0.
+2. **Edge Loading**: On `edge_valid`, set `rail_mat[edge_u][edge_v]` and `rail_mat[edge_v][edge_u]` to 1.
+3. **Graph Selection**: Check `rail_mat[0][n-1]` (assuming 0-based indexing for hardware). If 1, we solve for Roads (complement graph). If 0, we solve for Railways.
+4. **BFS Solver**:
+   - Implement a single-port BRAM for distance storage `dist [15:0]` initialized to 0xFFFF (unvisited).
+   - Implement a FIFO (width 4, depth 16) for the BFS queue.
+   - Initialize `dist[0] = 0`, push 0 to FIFO.
+   - While FIFO not empty:
+     - Pop `current` node.
+     - For `i` from 0 to `n-1`:
+       - If `i == current`, skip.
+       - Check connectivity: If Graph is Railways: `connect = rail_mat[current][i]`. If Graph is Roads: `connect = ~rail_mat[current][i]`.
+       - If `connect` is 1 and `dist[i]` is 0xFFFF:
+         - `dist[i] = dist[current] + 1`.
+         - Push `i` to FIFO.
+         - If `i == n-1`, terminate early.
+   - The BFS requires sequential iteration over neighbors (0 to n-1). This fits within timing constraints if we run at single clock speed or pipelined.
+5. **Timing**: BFS on 16 nodes requires at most 16 iterations per level. Max distance is 15. Total cycles < 16*16 = 256 cycles.
+6. **Output**: When BFS completes or destination is found, output `dist[n-1]` as 8-bit `result`. If unreachable, output 0xFF. Assert `done`.
+
+**Verilog Constraints:**
+- Use synchronous logic for BFS state machine.
+- Ensure FIFO handles backpressure (depth 16 is sufficient for 16 nodes).
+- Bit widths: `n` (4-bit), `node_idx` (4-bit), `dist` (8-bit, since max dist is 15).
+- Reset: Clear `rail_mat` and `dist`.

@@ -1,0 +1,39 @@
+Implement a Verilog module to compute the rounded average of integers from n to m (inclusive), returning binary string equivalent. Constraints: n, m <= 255 (8-bit), range size <= 256, result fits in 8 bits. For n > m, output error flag.
+
+**Interface:**
+- Inputs: clk, rst_n (sync reset, active low), start (1-cycle pulse), n[7:0], m[7:0]
+- Outputs: result[7:0] (binary value of average), valid (1-cycle pulse), error (1-cycle pulse for n>m)
+
+**Behavior:**
+1. On start, check if n > m. If yes, assert error for 1 cycle, set result=0.
+2. If n <= m, compute sum = (n + n+1 + ... + m). Use 16-bit accumulation to avoid overflow (max sum ~32k).
+3. Compute count = m - n + 1 (max 256).
+4. Calculate average = round(sum / count). Use integer division with rounding: (sum + count/2) / count.
+5. Convert average (0-255) to binary string equivalent. Since we return numeric value, result = average.
+6. Assert valid for 1 cycle after completion.
+
+**Timing:**
+- Reset: 2 cycles, result=0, valid=0, error=0
+- Start to valid: ≤ 512 cycles (max 256 iterations + overhead)
+- Processing: iterative sum loop with counter
+
+**Simplified Algorithm:**
+- Use finite state machine: IDLE → CHECK → SUMMING → CALC → DONE
+- SUMMING: count iterations, accumulate sum in 16-bit register
+- CALC: compute division with rounding using 16-bit/8-bit division
+- ERROR: immediate on invalid input
+
+**Testbench Requirements:**
+- Test n=1,m=5 → avg=3 → result=3 (binary 0b11)
+- Test n=7,m=13 → avg=10 → result=10 (0b1010)
+- Test n>m cases
+- Test edge: n=m returns that value
+- Verify valid/error pulses are 1 cycle
+- Clamp all inputs to 8-bit range (0-255)
+
+**Signal Widths:**
+- n,m: 8 bits
+- sum: 16 bits
+- count: 9 bits (to handle 256)
+- result: 8 bits
+- average calculation: 16-bit numerator, 8-bit denominator

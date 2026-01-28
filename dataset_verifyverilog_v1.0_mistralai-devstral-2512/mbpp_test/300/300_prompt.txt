@@ -1,0 +1,20 @@
+Design a Verilog module that computes the count of binary sequences of length 2n where sum of first n bits equals sum of last n bits. For n up to 4, the result fits in 16 bits.
+
+**Module Interface:**
+- Inputs: clk (posedge), rst_n (active-low), start (1-cycle pulse), n [3:0] (n value, 0-4)
+- Outputs: result [15:0] (fixed-point Q8.8), done (1-cycle pulse when valid)
+
+**Behavior:**
+1. On start pulse, begin computation. Reset must clear internal state.
+2. Use iterative approach: compute C(n,r) for r=1 to n, accumulate result = 1 + sum(C(n,r)^2)
+3. All arithmetic is integer/fixed-point. C(n,r) = C(n,r-1) * (n-r+1) / r. Division by r is exact integer division.
+4. C(n,r)^2 uses multiplication. Final result is integer, but output as Q8.8 format (multiply by 256).
+5. Timing: start->done within 50 cycles. done=0 during computation. result valid when done=1.
+6. Reset: done=0, result=0, internal counters reset.
+
+**Implementation Details:**
+- Use bounded loops: max 4 iterations for n=4.
+- Handle n=0 case: return 1.0 (1*256 in Q8.8).
+- Fixed-point: integer values stored, output multiplied by 256.
+- No external memory; use registers for iteration state.
+- Example: n=2: C(2,1)=2, C(2,2)=1, res = 1 + 2^2 + 1^2 = 6. Output: 6*256 = 1536.

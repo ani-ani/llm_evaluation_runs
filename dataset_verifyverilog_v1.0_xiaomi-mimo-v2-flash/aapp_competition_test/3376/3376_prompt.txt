@@ -1,0 +1,53 @@
+Design a Verilog module to solve the Nudgémon XP optimization problem.
+
+**Core Logic:**
+1. Parse families: Each family has `s_i` Nudgémon and `s_i-1` evolution costs `c_j`. Costs are non-decreasing.
+2. Parse catches: `n` events with timestamp `t_i` (0..10^9) and Nudgémon name.
+3. XP Rules:
+   - Catch: 100 XP (base), 3 candies.
+   - Transfer: 1 candy (no XP).
+   - Evolve: 500 XP (doubled if active), consumes `c_j` candies.
+   - Blessed Egg: Active for 1800s (30 min) starting at chosen `e`.
+
+**Hardware Constraints & Scaling:**
+- **Families:** Max 8 families. `s_i` capped at 8. Costs `c_j` capped at 255 (8-bit).
+- **Catches:** Max 64 catches. Timestamps scaled to 0-511 (9-bit). Names mapped to IDs (0-255).
+- **XP/Candies:** 16-bit signed integers (Q0.16) for XP sum. 8-bit for candies.
+- **Blessed Egg:** The optimal `e` must be one of the catch timestamps. Iterate over 64 possible start times (or 0 for never).
+- **Evolution Strategy:** Within the active window, greedily evolve from weakest to strongest as candies allow (since costs are non-decreasing, this maximizes count).
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to begin computation.
+  - `config_addr`: 5-bit address for loading configuration (Families, Catches).
+  - `config_data`: 32-bit data bus (encodes ID, cost, time, name hash).
+- **Outputs:**
+  - `result`: 16-bit maximum XP.
+  - `done`: 1-cycle high when calculation finishes.
+  - `debug_state`: 4-bit current state (for debugging).
+
+**Implementation Steps:**
+1. **Configuration Phase:** Load 8 families (max 8 IDs + 7 costs each) and 64 catches (ID + timestamp) into BRAM-style registers via `config_addr`/`config_data`.
+2. **Computation Phase (FSM):**
+   - State `IDLE`: Wait for `start`.
+   - State `EVAL_EGG`: Iterate `e` from 0 to 63 (catch indices). For each `e`:
+     - Reset XP/Candies for all families to initial values (catches give 3 candies, 100 XP).
+     - Identify catches within `[t_e, t_e+1800)`.
+     - For those catches, apply 'Transfer' (gain 1 candy, no XP) or 'Keep' (no candy change, no XP) to maximize future evolutions. Since we only evolve inside the window, we should transfer everything *outside* the window immediately (gaining candies). Inside the window, we keep catches for evolution potential.
+     - **Greedy Evolution:** Scan catches inside window sorted by time. For each catch, apply 100 XP (base). Then, attempt to evolve that specific Nudgémon family from its current rank up as far as candies allow. Since costs are non-decreasing, evolving immediately is optimal.
+     - If an evolution happens during the window, add 500 XP (doubled to 1000) and subtract cost.
+   - State `UPDATE_MAX`: Compare current `total_xp` with `max_xp`. Update if larger.
+   - State `NEXT_EGG`: Move to next `e`. Loop until all 64 checked.
+   - State `DONE`: Set `done` high.
+
+**Signal Widths:**
+- XP/Candy Registers: 16-bit.
+- Timestamps: 9-bit (scaled 0-511). 1800s window wraps/clamps.
+- Indices: 6-bit (for 64 catches/families).
+- Loop Counters: 6-bit.
+
+**Timing:**
+- Configuration: 128 cycles.
+- Computation: ~64 (eggs) * 64 (catches) * 8 (families) cycles. Total < 50,000 cycles.
+- Use 32-bit fixed-point or simple integer arithmetic.

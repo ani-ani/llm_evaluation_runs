@@ -1,0 +1,45 @@
+Implement a Verilog module to simulate the Exploding Kittens game for benchmarking. Scale inputs to fit 16-bit widths and limit to 16 players, 16 Exploding Kittens, and 16 Defuse cards.
+
+**Interface Specification:**
+- Inputs:
+  `clk`: System clock (rising edge)
+  `rst_n`: Active-low synchronous reset
+  `start`: 1-cycle start pulse
+  `N`: 5-bit input, number of players (2-16)
+  `E`: 5-bit input, number of Exploding Kittens (2-16)
+  `D`: 5-bit input, number of Defuse cards (2-16)
+  `e_locs[0:15]`: 16x16-bit array, positions of Exploding Kittens (scaled from 0-2e9)
+  `d_locs[0:15]`: 16x16-bit array, positions of Defuse cards (scaled from 0-2e9)
+- Outputs:
+  `result`: 5-bit winner ID (0-15) or 31 (for -1, indicating no winner)
+  `done`: 1-cycle pulse indicating simulation complete
+
+**Functional Requirements:**
+1. On `start`, sample inputs and process the game.
+2. **Deck & Events**: Combine E Exploding Kittens and D Defuse cards. Sort them by position (ascending). Ignore events beyond the total number of cards drawn until a winner is determined or no events remain.
+3. **Simulation Logic:**
+   - Maintain an array `players[N]` (16 max). Each player has: `active` (1-bit), `has_defuse` (1-bit).
+   - Initialize all players active, hands empty.
+   - Simulate turns sequentially. Player index `p` cycles from 0 to N-1, skipping inactive players.
+   - Draw phase: Increment card counter. Check if the current card position matches the next event in the sorted list.
+   - **Exploding Kitten Event:**
+     - If current player has `has_defuse` = 1: Set `has_defuse` = 0, discard the Kitten (remove event), and remove the corresponding Defuse card from the game (see below).
+     - Else: Deactivate the player (`active` = 0). Check if only one player remains active. If yes, that player wins (output their ID). If no players remain, output 31 (no winner).
+   - **Defuse Event:** If current player does not have a Defuse, set `has_defuse` = 1 and consume the event. (Optimal play: only take Defuse when needed. Simplification: Defuse is taken when encountered by an active player without one).
+   - **Defuse Removal:** When a Defuse is used to defuse a Kitten, find the oldest Defuse card in the game (simplest rule: remove the Defuse corresponding to the current Kitten's paired index, or the most recent Defuse). For deterministic hardware, map Kitten `i` to Defuse `i` modulo D.
+   - **Hand Limit:** After drawing, if the player has more than 5 cards (track a 3-bit counter), discard down to 5. Since only Defuse cards matter, simply cap `has_defuse` to 1 and discard extras.
+4. **Termination:** Stop when a winner is found or all events processed without a clear winner.
+5. **Output:** 
+   - Winner ID: ID of the single active player (0 to N-1).
+   - No Winner: 31 (binary `11111`).
+   - Set `done` high for one cycle when simulation ends.
+
+**Timing & Reset:**
+- Reset sets `done=0`, `result=0`, and internal state to idle.
+- After `start`, `done` goes high within 1024 clock cycles.
+- Result is valid when `done=1`.
+
+**Constraints:**
+- Use combinational sorting network for up to 32 total events (16 K + 16 D).
+- Use iterative state machine for game loop (max ~2048 cycles).
+- Clock frequency: 100MHz (10ns period).

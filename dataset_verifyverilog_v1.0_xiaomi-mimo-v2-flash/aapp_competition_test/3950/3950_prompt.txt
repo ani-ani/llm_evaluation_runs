@@ -1,0 +1,39 @@
+Design a Verilog module that verifies if a given array with zeros can be produced by a sequence of range updates. The module must handle an array of up to 16 elements, where each element is an integer between 0 and 15 (representing query IDs 1-16). 
+
+Inputs:
+  clk: clock signal
+  rst_n: active-low synchronous reset
+  start: 1-cycle high pulse to start the validation process
+  arr: 16 x 8-bit input array (16 elements, 8 bits each, values 0-15). Index 0 corresponds to position 1.
+  n: 5-bit input specifying the number of active elements in the array (1 to 16).
+  q: 8-bit input specifying the total number of queries (1 to 16).
+
+Outputs:
+  result_valid: 1-bit, asserted high when the check is complete and the result is valid
+  is_possible: 1-bit, high if the array can be obtained, low otherwise
+  restored_arr: 16 x 8-bit output array containing the restored values. If is_possible is low, this output is undefined. If high, zeros are filled with valid query IDs.
+
+Behavior:
+  The module should implement an iterative state machine (FSM) to process the array from index 0 to n-1. It must detect if any non-zero value is strictly smaller than the current maximum expected query ID in the current scope (simulating a stack of 'active' queries). It must handle '0's by filling them with the current maximum expected ID (or 1 if none). 
+
+  The core algorithm logic is:
+  1. Maintain a 'current_max' value and a stack.
+  2. Iterate i from 0 to n-1:
+     - If arr[i] == 0: Set output[i] = max(current_max, 1).
+     - Else if arr[i] > current_max: 
+        - If this is not the last occurrence of arr[i] (needs tracking of last positions), push current_max to stack and update current_max = arr[i].
+        - (Note: Since tracking last occurrence requires full array scan or pre-buffering, we assume a simplified check where we validate monotonicity and closure of intervals. A valid check is: arr[i] >= current_max. If arr[i] < current_max, return NO).
+     - If arr[i] == current_max and it's the end of the current segment (requires knowledge of next positions or stack logic), pop stack.
+  3. After processing the array, check if q >= max(arr). If q > max(arr), there must be at least one zero to assign q to (or if q is the max, it's valid). If q < max(arr), it's invalid.
+  4. Ensure every position is covered: effectively handled by filling zeros.
+
+  Constraints:
+  - Use fixed-sized buffers (depth 16).
+  - The FSM should complete within 256 clock cycles.
+  - The module should output the restored array directly.
+
+  Implementation Details:
+  - Use a 5-bit counter for index iteration.
+  - Use an 8-bit stack array (depth 8).
+  - Use 8-bit registers for current_max and max_val.
+  - States: IDLE, SCAN_INPUT, CHECK_CONDITION, UPDATE_STACK, POP_STACK, FINALIZE, DONE, ERROR.

@@ -1,0 +1,47 @@
+Implement a Verilog module that solves the Maximum Priority Subset Selection problem using dynamic programming.
+
+**Core Algorithm:**
+1. Scale inputs: Discretize time into 256 intervals (0-255) representing the active duration of streams.
+2. Each stream has: start time (8 bits), end time (8 bits), priority (16 bits).
+3. Create a DP table where `dp[i]` = max priority using streams ending at time `i`.
+4. For each time `t` from 1 to 255:
+   - `dp[t] = dp[t-1]` (skip this time)
+   - For each stream ending at `t`:
+     - `candidate = dp[start_time] + priority`
+     - If `candidate > dp[t]`, update `dp[t]`
+5. Result is `dp[255]`.
+
+**Module Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Clock and active-low reset
+  - `start`: 1-cycle start pulse
+  - `stream_valid`: Indicates current input is valid
+  - `stream_start`: 8-bit start time
+  - `stream_end`: 8-bit end time
+  - `stream_prio`: 16-bit priority
+- Outputs:
+  - `result`: 16-bit maximum total priority
+  - `done`: 1-cycle pulse when calculation complete
+  - `busy`: High while processing
+
+**Internal Structure:**
+- 256-entry DP memory: `dp_mem[0:255]` (16-bit each)
+- Stream buffer: Store up to 8 streams simultaneously for processing
+- FSM: IDLE -> LOAD_STREAMS -> PROCESS_DP -> OUTPUT
+- State transitions:
+  - IDLE: Wait for `start`
+  - LOAD_STREAMS: Accumulate 8 streams into buffer
+  - PROCESS_DP: Run DP algorithm on buffered streams (256 cycles)
+  - OUTPUT: Present result and set `done`
+
+**Timing:**
+- Processing time: ~300 cycles max
+- Reset: Clears DP memory, resets FSM
+
+**Constraints:**
+- Use 16-bit fixed-point for priorities
+- All arithmetic uses unsigned addition
+- Assume inputs are pre-scaled to fit 8-bit time values
+- Result fits in 16 bits (max 5000 streams × 100000 priority = 500M, but scaled for Verilog)
+
+Do NOT provide module code. Provide only the interface specification and implementation approach.

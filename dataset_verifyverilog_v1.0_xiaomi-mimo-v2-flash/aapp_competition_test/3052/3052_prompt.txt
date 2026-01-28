@@ -1,0 +1,55 @@
+Implement a Verilog module that calculates the minimum time to travel from point A to point B using walking (1 m/s) and conveyor belts (2 m/s in forward direction only). The algorithm is a graph shortest path problem.
+
+**SCALING & PRECISION:**
+- Input coordinates are floating point (0.0 to 1000.0). Convert to Q16.16 fixed-point (16 integer, 16 fractional bits).
+- Distance calculation: Euclidean distance. Use integer math where possible: distance = sqrt((dx^2 + dy^2) >> 16) to keep bits manageable, or use a lookup table approximation.
+- Time calculation: Distance / Speed. Walking speed = 1.0, Conveyor speed = 2.0.
+- Maximum nodes: 202 (A, B, and up to 100 conveyor segments, each contributing 2 endpoints).
+- Maximum edges: Complete graph (approx 200^2 = 40,000), but practically limited to walking paths between all nodes and valid conveyor connections.
+
+**GRAPH CONSTRUCTION (Hardware Logic):**
+1.  **Nodes:**
+    -   Node 0: Start Point A.
+    -   Node 1: End Point B.
+    -   Nodes 2..N+1: Start points of conveyors.
+    -   Nodes N+2..2N+1: End points of conveyors.
+2.  **Edges & Weights:**
+    -   **Walking Edges:** Between ANY two nodes (including A, B, and all conveyor endpoints). Weight = Euclidean distance / 1.0.
+    -   **Conveyor Edges:**
+        -   From Start_i to End_i: Weight = Euclidean distance / 2.0.
+        -   (No reverse edge allowed).
+        -   Hop-on/Hop-off at any point is implicit by walking to the nearest point on the segment, then walking the segment, then walking away. However, for simplicity in fixed-point, we only consider endpoints as nodes. (This is a valid simplification for the "approximate" nature of the problem if we assume Euclidean straight lines are optimal).
+
+**MODULE INTERFACE:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous signals.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `a_x`, `a_y`, `b_x`, `b_y`: Q16.16 inputs for coordinates (32-bit inputs).
+  - `conv_count`: 8-bit integer (0-100) indicating number of conveyors.
+  - `conv_x1[i]`, `conv_y1[i]`, `conv_x2[i]`, `conv_y2[i]`: Array of Q16.16 inputs for conveyor endpoints. (Max 100 conveyors. Input interface can be a single 32-bit bus with index or a flattened array). *Simplification: Input 1 conveyor per cycle on a sequential interface to save pins, or assume 100 max inputs are latched in during setup.*
+- Outputs:
+  - `result`: 32-bit fixed-point output (Q16.16 representing time in seconds).
+  - `done`: 1-cycle pulse when calculation is complete.
+
+**IMPLEMENTATION STRATEGY (Verilog):**
+1.  **Latching:** Store inputs in registers. A, B, and up to 100 conveyors (200 points).
+2.  **Distance Engine:** A combinatorial block calculating Euclidean distance between two Q16.16 points. Output should be Q16.16 or similar precision.
+    -   `dx = x1 - x2`, `dy = y1 - y2`. (32-bit subtraction).
+    -   `dist_sq = dx*dx + dy*dy`. (64-bit result).
+    -   `dist = sqrt(dist_sq)`. Use a scalable CORDIC or integer square root (Newton-Raphson) module.
+3.  **Dijkstra State Machine (FSM):**
+    -   States: IDLE, SETUP_GRAPH, INIT_DIST, RELAX_EDGES, FINISH.
+    -   Since the graph is dense, we can iterate through all pairs (i, j) to build the adjacency matrix or list.
+    -   **Step 1:** Initialize `dist[0..201]` to infinity. `dist[0] = 0` (Start A).
+    -   **Step 2:** Iterate `202` times (max nodes). In each iteration, find the unvisited node `u` with min `dist[u]`.
+    -   **Step 3:** For all other nodes `v`, calculate potential new distance:
+        -   `d = distance(u, v)`. 
+        -   If `u` is a conveyor start and `v` is the matching conveyor end, `d = d / 2` (divider required). Otherwise `d = d / 1` (identity).
+        -   Update `dist[v]` if `dist[u] + d < dist[v]`.
+4.  **Result:** Output `dist[1]` (distance to Node 1 / Point B).
+
+**CONSTRAINTS:**
+-   Node count <= 202.
+-   Clock frequency assumed sufficient for iterative loops.
+-   Precision: Fixed-point arithmetic throughout. Use 64-bit accumulators for sums to prevent overflow before final truncation.
+-   Optimization: If CORDIC is too complex, approximate sqrt using bit-width methods or a small lookup table for the MSB.

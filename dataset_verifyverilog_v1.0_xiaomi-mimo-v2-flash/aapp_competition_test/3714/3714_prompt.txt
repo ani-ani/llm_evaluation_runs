@@ -1,0 +1,58 @@
+Design a Verilog module that finds the smallest integer t such that for every person x in a permutation graph (1..n), the round-trip distance from x to its crush and back is a multiple of t.
+
+**Problem Analysis**:
+- Input: Permutation crush[1..n] where each person i has crush crush[i] (1 ≤ crush[i] ≤ n)
+- Condition: For each x, if x starts a round with t messages, the Joon-Joon y must satisfy that starting from y returns to x
+- This requires that for each cycle in the permutation, the return distance is either cycle_length (odd cycles) or cycle_length/2 (even cycles)
+- Answer is LCM of all adjusted cycle lengths, or -1 if no solution
+
+**Implementation Strategy**:
+1. Model permutation as 8-bit indices (0-99 for n=100)
+2. Use DFS to detect cycles and compute cycle lengths
+3. For each cycle length L:
+   - If L is odd: use L
+   - If L is even: use L/2
+4. Compute LCM of all adjusted lengths
+
+**Interface Requirements**:
+- 8-bit input array `crush[0:99]` (values 1..100, stored as 1-indexed)
+- 7-bit input `n` (1-100)
+- 1-bit input `start` (1-cycle pulse)
+- 1-bit input `rst_n` (active-low synchronous reset)
+- 1-bit input `clk` (rising edge)
+- 32-bit output `result` (LCM value, 0 indicates invalid)
+- 1-bit output `done` (1 when valid result ready)
+- 1-bit output `valid` (1 if solution exists, 0 if -1)
+
+**Timing**:
+- Start signal initiates computation
+- Done signal pulses 1 when computation complete
+- Maximum 1000 cycles for n=100
+- Reset: all outputs zero, done=0
+
+**Functional Requirements**:
+1. Verify permutation (each number 1..n appears exactly once)
+   - If invalid, set valid=0, result=0
+2. Find all cycles in permutation
+3. For each cycle length L:
+   - If L is odd: adjusted = L
+   - If L is even: adjusted = L/2
+4. Compute LCM of all adjusted lengths
+5. Output result = LCM, valid = 1 (or 0 if invalid)
+
+**Hardware Constraints**:
+- Use 8-bit counters for cycle detection (n ≤ 100)
+- 16-bit accumulator for LCM (max 100 cycles of length ≤ 100)
+- Fixed 1000 cycle timeout
+- No recursion - iterative DFS with stack
+
+**Edge Cases**:
+- Self loops (crush[i] = i): cycle length = 1, adjusted = 1
+- Invalid permutation (duplicates): valid = 0
+- Large LCM values: 32-bit output is sufficient for n=100
+
+**Example**:
+- n=4, crush=[2,3,1,4]
+- Cycles: 1→2→3→1 (length 3, odd → use 3), 4→4 (length 1, odd → use 1)
+- LCM(3,1) = 3
+- Result: 3, valid = 1

@@ -1,0 +1,44 @@
+Design a Verilog module that computes the sum of decimal digits of base^power. Since base^power can be huge, we scale the problem to manageable sizes: base is a 4-bit input (0-8), power is a 4-bit input (0-15). The maximum result is base^15, which for base=8 is about 2^45 (~35 trillion), requiring up to 15 decimal digits (approx 50 bits). Use a fixed-point multiplication approach: compute base^power iteratively (exponentiation by squaring simplified) using 64-bit internal registers to hold the value, then extract decimal digits by repeated division by 10 and sum them. The module should compute the sum of digits directly during digit extraction, avoiding storing the full string. For base=0, handle as 0^power = 0 (sum=0) if power>0, else 0^0=1 (sum=1). Use a finite state machine with the following states: IDLE, POWER_CALC, DIGIT_SUM, DONE.
+
+Interface Specification:
+- Inputs:
+  - clk: System clock, rising edge triggered
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start calculation
+  - base: 4-bit unsigned integer (0-8)
+  - power: 4-bit unsigned integer (0-15)
+- Outputs:
+  - result: 8-bit sum of decimal digits (max sum for 15 digits: 15*9=135, fits in 8 bits)
+  - done: 1-cycle pulse when calculation is complete
+- Timing: Start signal triggers calculation. After start, done becomes high within 200 clock cycles. Result is valid when done is high. On reset, done=0, result=0.
+- Internal: 64-bit accumulator for current value, 8-bit digit sum counter, 4-bit state register (IDLE=0, POWER=1, DIGIT=2, DONE=3). Use simple iterative loop: for power computation, multiply base power times (max 15 multiplies). For digit sum, while temp > 0, digit = temp % 10, sum += digit, temp = temp / 10 (using division by 10). Division can be implemented with repeated subtraction or fixed-point approximation; but since it's for a benchmark, use a simple 64-bit/10 divider using subtraction in a loop (max 64 cycles per digit, max 15 digits). Total cycles ≤ 15 (multiplies) + 15*64 (digits) ≈ 975, which is too high for 200-cycle constraint. Adjust: Use 64-bit values, but for base≤8 and power≤15, base^power fits in 64 bits (8^15 ≈ 3.5e13). Division by 10 can be done in 1 cycle using a combinational divider? Not realistic in hardware. Alternative: Use shift-add for decimal conversion in a pipeline or iterative loop with bound. However, for the benchmark, we can relax the timing to 2000 cycles or use a simpler approach: Since base and power are small, precompute? Not allowed. Instead, use a digit sum by repeated subtraction: while temp >= 10, temp -= 10, increment count for units, then for tens, etc. This is inefficient. Better: Use a LUT for division by 10? No. We'll set MAX_CYCLES to 2000. The spec should allow up to 2000 cycles. Implementation: State POWER: if power==0, result=1 else multiply base power times (loop with counter). State DIGIT: while temp > 0, compute digit = temp % 10 by subtracting 10 repeatedly, sum digits, temp = temp / 10 (also by subtraction). For temp up to 3.5e13, digit extraction can take up to 3500 subtractions, which is too many. We need a smarter method. Since this is a benchmark, we can approximate by using 64-bit fixed-point division by 10 using a lookup or precomputation. However, for feasibility, we can use a combinatorial divisor for 64-bit/10? Not viable. Instead, the problem statement can be adapted: The Python function sums digits, but in hardware, we can compute the sum of digits without forming the number by using modular arithmetic: For base b and power p, compute (sum of digits of b^p) = (b^p mod 9) if b^p mod 9 !=0, else 9, but only if we ignore the case of 0. This property holds for digit sum modulo 9. However, it's not the exact digit sum; it's the digital root. The problem asks for sum of digits, not digital root. So that's not correct.
+
+Revised approach: Limit power to 10-12? Or use a smaller scale: base ≤ 8, power ≤ 8 (max 8^8=16,777,216, 7 digits). Then digit sum is easy. We'll scale to power ≤ 8 to fit in 200 cycles. Use 32-bit accumulator. Digit extraction: while temp >0, digit = temp % 10 (using a loop of subtraction up to 10 times), sum, temp = temp / 10 (using repeated subtraction). With 7 digits, max 70 subtractions for digit sum, plus 8 multiplies for power. Total cycles < 100. This fits 200 cycles. So for the spec, we state that power input is limited to 0-8 for this implementation, but the interface supports 4-bit (0-15). The module will handle up to power=8 within 200 cycles; for higher powers, it may take more cycles or produce invalid results (benchmark limitation).
+
+Verilog module spec:
+- Use a finite state machine: IDLE -> POWER (if power==0, go to DIGIT with temp=1 else start multiply loop) -> DIGIT (extract digits, sum them) -> DONE.
+- Multiply: Use 32-bit * 4-bit? Actually, base is 4-bit (max 8), power up to 8, so result fits in 32 bits (max 8^8=16,777,216 < 2^24). Use 32-bit accumulator.
+- For digit extraction in DIGIT state: temp <= value. While temp > 0, compute digit = temp % 10 by subtracting 10 repeatedly, increment digit counter, add to sum, set temp = temp / 10 (by repeated subtraction of 10, count how many times fits). This is done in a sub-state: DIVIDE_SUB, SUM_ADD.
+- Reset: done=0, result=0, state=IDLE.
+- Output: result (8-bit sum), done (1-cycle pulse).
+- Timing: start to done ≤ 200 cycles for power≤8.
+- Assume: base and power are constant during calculation (no change during operation). If power=0, sum of digits of 1 is 1. If base=0 and power>0, sum is 0 (0^n =0). If base=0 and power=0, conventionally 0^0=1, sum=1.
+
+Signal widths:
+- base: 4 bits
+- power: 4 bits
+- result: 8 bits (max 9*8=72 for 8 digits of 8^8)
+- internal: 32-bit value, 32-bit temp, 8-bit digit_sum, 8-bit digit_temp, 4-bit state, 4-bit loop counters for multiplication and division.
+
+Verilog module header:
+module digit_sum_calculator(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] base,
+    input wire [3:0] power,
+    output reg [7:0] result,
+    output reg done
+);
+
+Include the following states: IDLE=0, POWER=1, DIGIT=2, DONE=3. Use parameters for states.

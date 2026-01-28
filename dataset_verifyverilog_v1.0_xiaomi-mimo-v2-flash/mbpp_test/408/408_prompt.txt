@@ -1,0 +1,48 @@
+Implement a Verilog module that finds k smallest pairs from two arrays using a min-heap approach adapted for hardware. 
+
+**Specification:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard clock and active-low reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `arr1[0:7]`: 8-element array of 8-bit values (sorted ascending)
+  - `arr2[0:7]`: 8-element array of 8-bit values (sorted ascending)
+  - `len1`: 3-bit unsigned (1-8, actual length of arr1)
+  - `len2`: 3-bit unsigned (1-8, actual length of arr2)
+  - `k`: 4-bit unsigned (1-16, number of pairs to return)
+- **Outputs:**
+  - `result_valid`: 1-bit, asserted when valid pair is available
+  - `pair_val1`, `pair_val2`: 8-bit each, the current pair values
+  - `done`: 1-cycle pulse when all k pairs are computed or heap exhausted
+- **Internal Requirements:**
+  - Implement a fixed-size heap (max 16 entries) using registers
+  - Each heap entry contains: sum (16-bit), i (3-bit), j (3-bit)
+  - Use min-heap property: smallest sum at root
+  - **Algorithm:**
+    1. On start, push (arr1[0], arr2[0]) into heap
+    2. While pairs_generated < k AND heap not empty:
+       - Extract minimum (sum, i, j)
+       - Output pair (arr1[i], arr2[j]) as valid for one cycle
+       - Push (arr1[i], arr2[j+1]) if j+1 < len2
+       - Push (arr1[i+1], arr2[0]) if j == 0 AND i+1 < len1
+    3. When done, assert `done` for one cycle
+- **Timing:**
+  - start → first result_valid: ≤20 cycles
+  - Each subsequent result: ≤20 cycles
+  - Total for k pairs: ≤320 cycles (worst-case 16 pairs * 20 cycles)
+  - When done=1, the pair_val1/pair_val2 hold the final pair
+- **Reset:**
+  - done=0, result_valid=0, heap empty
+  - Minimum 2 clock cycles of reset
+- **Constraints:**
+  - Arrays are pre-sorted ascending
+  - Input values are 8-bit unsigned (0-255)
+  - Output pairs are valid only when result_valid=1
+  - Heap operations must preserve min-heap property
+  - Handle edge cases: len1=1, len2=1, k=1
+
+**Implementation Notes:**
+- Use combinational logic for heap comparison and swapping
+- Use sequential logic for state transitions (FSM with states: IDLE, SETUP, EXTRACT, PUSH, OUTPUT)
+- The heap can be implemented as 16 parallel registers with comparator tree for min selection
+- Output should be valid for one clock cycle per pair, then result_valid deasserts until next pair
+- When all k pairs are generated or heap is empty, done=1 for one cycle and return to IDLE

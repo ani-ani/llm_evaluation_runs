@@ -1,0 +1,34 @@
+Implement a Verilog module for calculating maximum chaos during train sabotage. 
+
+**Problem Adaptation**: Scale from n=100k to n=16 coaches. Passenger counts p_i are 0-100 (8-bit). Explosion order is a permutation of 1-16.
+
+**Chaos Calculation**: 
+- Segment Chaos = RoundUpToNearest10(Sum of passengers in segment)
+- Total Chaos = (Segment Chaos) * (Number of Disjoint Segments)
+- Track maximum chaos across all steps (reverse process: add coaches back).
+
+**Algorithm**: Process explosions in reverse (construction). Use Disjoint Set Union (DSU) to maintain connected segments. 
+1. Initially: All coaches removed (0 segments, chaos=0).
+2. Add coaches in reverse explosion order.
+3. When adding coach `i`, create new segment. If neighbors (i-1, i+1) exist, union segments.
+4. After each addition, calculate total chaos:
+   - Find root for each existing segment (0 to 15).
+   - For each root, sum passengers, round up to nearest 10.
+   - Sum these values, multiply by number of unique roots.
+   - Update max chaos.
+
+**Inputs**:
+- `clk`, `rst_n`: Standard synchronous control.
+- `start`: 1-cycle pulse to start computation.
+- `passengers[0:15]`: 16x8-bit inputs, passenger counts for coaches 0-15.
+- `order[0:15]`: 16x4-bit inputs, explosion order (coach indices 0-15).
+
+**Outputs**:
+- `result`: 16-bit unsigned integer, maximum chaos encountered.
+- `done`: 1-cycle pulse when computation finishes.
+
+**Timing/Constraints**:
+- Process requires ~16 steps (reverse order). Each step involves DSU find/union (approx 16 cycles) and chaos calculation (approx 16 cycles). Total latency < 500 cycles.
+- Reset: Sets all internal state to 0, `done`=0.
+- Logic: Use combinational logic for DSU find (tree traversal) and summation. Use sequential logic for the main loop control.
+- Bit widths: Passenger sums can reach 16*100=1600 (requires 11 bits). Round up to 10 adds small overhead. Final chaos: (2000) * 16 = 32000 (fits in 16 bits). Use 16-bit internal accumulation.

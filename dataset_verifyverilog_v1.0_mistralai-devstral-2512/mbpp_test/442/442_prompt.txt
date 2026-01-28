@@ -1,0 +1,81 @@
+Implement a Verilog module to calculate the ratio of positive numbers in an integer array.
+
+### INTERFACE SPECIFICATION
+
+**Inputs:**
+- `clk`: Clock signal (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate calculation
+- `arr[0:15]`: 16-element array of 8-bit signed integers (2's complement)
+- `len`: 4-bit unsigned integer (1-16, actual array length)
+
+**Outputs:**
+- `result`: 16-bit fixed-point number (Q8.8 format: 8 integer bits, 8 fractional bits)
+- `done`: 1-cycle pulse indicating calculation complete and result valid
+
+### TIMING & BEHAVIOR
+
+1. **Reset State:**
+   - `done` = 0
+   - `result` = 0
+   - Internal counters reset
+
+2. **Operation:**
+   - On `start` pulse, begin iterating through array elements indexed 0 to `len-1`
+   - Count positive numbers (`x > 0`) into `pos_count` register (4-bit)
+   - Total iterations = `len` (4-bit counter)
+   - Ratio = `pos_count / len` converted to Q8.8 fixed-point
+   - **Conversion formula:** `result = (pos_count << 8) / len` (integer division)
+   - **Timing:** Operation completes within 18 cycles (max 16 elements + 2 overhead)
+
+3. **Output Update:**
+   - Assert `done` for 1 cycle when calculation finishes
+   - `result` holds the fixed-point ratio until next start
+   - `result` bits: `result[15:8]` = integer part, `result[7:0]` = fractional part
+
+### IMPLEMENTATION REQUIREMENTS
+
+- Use combinatorial logic for array indexing
+- Sequential logic for counting and iteration
+- **Division:** Implement as simple integer division (bit shifting for division by 2, or sequential subtraction for general case)
+- **Fixed-point:** Multiply numerator by 256 (8-bit shift) before division
+- **Signed comparison:** `x > 0` means `x[7] == 0` AND (`x[6:0] != 0` OR handle zero case correctly)
+- **Zero division:** If `len == 0`, return `0` (or undefined behavior - design choice)
+
+### TEST CASES (for verification)
+
+1. Input: `[0, 1, 2, -1, -5, 6, 0, -3, -2, 3, 4, 6, 8]` (len=13)
+   Expected: 7 positive numbers → 7/13 ≈ 0.53846 → Q8.8 = 138 (0.539)
+
+2. Input: `[2, 1, 2, -1, -5, 6, 4, -3, -2, 3, 4, 6, 8]` (len=13)
+   Expected: 9 positive numbers → 9/13 ≈ 0.6923 → Q8.8 = 177 (0.691)
+
+3. Input: `[2, 4, -6, -9, 11, -12, 14, -5, 17]` (len=9)
+   Expected: 5 positive numbers → 5/9 ≈ 0.5556 → Q8.8 = 142 (0.555)
+
+### CONSTRAINTS
+
+- Maximum array length: 16 elements
+- Signed 8-bit integers: range -128 to 127
+- Fixed-point precision: Q8.8 (1/256 ≈ 0.0039)
+- No unbounded loops: maximum 16 iterations
+- Use 8-bit counters internally for flexibility
+- Division result fits in 16 bits
+
+### EDGE CASES
+
+- `len` = 0: Return 0 (avoid division by zero)
+- All positive: Return (1 << 8) = 256 in Q8.8
+- No positive: Return 0
+- Mixed signs: Correct count of `> 0` (zero not counted)
+
+### HINTS FOR IMPLEMENTATION
+
+1. Use a 4-bit counter for element index (0 to 15)
+2. Use a 4-bit counter for positive count
+3. Use a state machine: IDLE → COUNTING → DIVIDING → DONE
+4. Division can be done by: `(pos_count << 8) / len` using a divider or sequential bit-shift method
+5. Since 8-bit division is simple, consider: `result = (pos_count * 256) / len` where multiplication by 256 is just shifting left by 8
+6. Implement comparator: `pos = (arr[index][7] == 0) && (arr[index][6:0] != 0)` for > 0
+
+Write the Verilog module code following this specification.

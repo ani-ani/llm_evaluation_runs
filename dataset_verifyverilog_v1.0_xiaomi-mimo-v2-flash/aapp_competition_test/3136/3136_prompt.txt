@@ -1,0 +1,58 @@
+Implement a Verilog module that solves a scaled-down version of the shipping routing problem.
+
+### Interface Specification:
+- **Inputs**:
+  - `clk`: Global clock, rising edge triggered
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `n`: 4-bit input (number of nodes, max 16)
+  - `m`: 6-bit input (number of edges, max 64)
+  - `t`: 4-bit input (number of deliveries, max 16)
+  - `warehouse_a`: 4-bit input (node index)
+  - `warehouse_b`: 4-bit input (node index)
+  - `employee_loc`: Array of 16x4-bit inputs (employee locations)
+  - `client_loc`: Array of 16x4-bit inputs (client locations)
+  - `edge_u`, `edge_v`, `edge_d`: 6x4-bit inputs (edge connections, for loading edges)
+- **Outputs**:
+  - `result`: 32-bit output (total minimum distance)
+  - `done`: 1-bit output (high for 1 cycle when computation finishes)
+  - `busy`: 1-bit output (high during computation)
+
+### Functionality Requirements:
+1. **Graph Construction**: On `start` high, reset distance matrix to infinity (0xFFFF). Use `edge_u`, `edge_v`, `edge_d` to populate adjacency matrix. Self-distance = 0.
+2. **All-Pairs Shortest Path**: Compute minimum distances between all nodes (16x16) using a pipelined Floyd-Warshall or iterative BFS (max 16x16x16 iterations).
+3. **Cost Calculation**: For each of the `t` deliveries, calculate two costs per employee:
+   - `Cost1`: dist(employee, warehouse_a) + dist(warehouse_a, client)
+   - `Cost2`: dist(employee, warehouse_b) + dist(warehouse_b, client)
+   Take minimum of `Cost1` and `Cost2` as the cost for that (employee, delivery) pair.
+4. **Matching**: Find the minimum total cost by assigning `t` employees (from `s` available) to `t` deliveries. Since constraints are small (max 16), implement a greedy algorithm or a bitmask DP (state = delivery_mask, last assigned employee index). 
+   - *Simplified Heuristic*: Sort delivery costs per employee, then assign greedily.
+   - *DP Approach*: State = `dp[delivery_index][employee_index]`.
+5. **Pipeline**: 
+   - State 1: Load edges (3 cycles)
+   - State 2: Compute APSP (Floyd-Warshall, 4096 cycles)
+   - State 3: Compute Cost Matrix (s*t cycles, max 256)
+   - State 4: Compute Minimum Match (DP iteration)
+   - State 5: Output result
+
+### Constraints:
+- Max nodes = 16 (4-bit index)
+- Max edges = 64
+- Max deliveries = 16 (t)
+- Max employees = 16 (s)
+- Edge weights fit in 32-bit (input D is 32-bit)
+- Distances computed internally fit in 32-bit.
+- Output `result` is 32-bit.
+- Timing: Expect ~5000-10000 cycles for completion.
+
+### Implementation Details:
+- Use `reg [31:0] dist_matrix [0:15][0:15]` for graph distances.
+- Use `reg [31:0] cost_matrix [0:15][0:15]` for employee-delivery costs.
+- Use `reg [31:0] dp_buffer [0:16]` for DP state.
+- **Reset**: `done`=0, `result`=0, `busy`=0, `dist_matrix` cleared.
+- **Busy**: High from `start` assertion until `done` assertion.
+
+### Edge Case Handling:
+- If a path is unreachable (shouldn't happen per problem, but check for `INF` in distances), treat cost as high (0xFFFF_FFFF).
+- If `t` > `s`, impossible (but input guarantees `t <= s`).
+- Warehouses can be same node.

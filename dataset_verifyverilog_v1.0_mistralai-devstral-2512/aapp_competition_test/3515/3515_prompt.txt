@@ -1,0 +1,49 @@
+Implement a Verilog module to compute shortest paths in a directed graph with weighted edges, optimized for small networks. The graph has at most 16 nodes (cities). Each node has an x-coordinate (y_i), a minimum flight distance (d_i), and a base time (r_i). From node i, there's a directed edge to node j if |x_i - x_j| >= d_i, with weight r_i + |x_i - x_j|.
+
+Interface:
+- Inputs: clk, rst_n (active-low), start (1-cycle pulse)
+- For node i (0-indexed, max 16 nodes):
+  - x_i, d_i, r_i: 24-bit unsigned integers (scaled from Q8.16 fixed-point)
+- Input length: node_count (4-bit, 2-16)
+- Outputs: result[15:0] (16-bit shortest time to node j), done (1-cycle pulse when valid)
+- Output format: result[15:0] holds distance to node 1, result[31:16] to node 2, etc. (padded to 16 nodes)
+
+Implementation Requirements:
+1. Use 4-state FSM: IDLE, BUILD_EDGES, DIJKSTRA, FINISH
+2. Build adjacency matrix: 16x16 bits, set bit (i,j) if |x_i - x_j| >= d_i
+3. Compute edge weights: r_i + |x_i - x_j| (24-bit + 16-bit = 24-bit max)
+4. Run Dijkstra: O(N^2) for N<=16, use 16-bit distances
+5. Output distances to nodes 1-15 (index 1-15) as 16-bit values
+6. Start from node 0 (city 1), compute to all others
+7. If unreachable, output 0xFFFF (-1 in 16-bit unsigned)
+8. Done signal asserted for 1 cycle after calculation
+9. Reset: all outputs 0, done=0
+10. Timing: Complete within 1000 cycles for 16 nodes
+
+Signal Details:
+- x_i, d_i, r_i: 24-bit, Q8.16 fixed-point (8 integer, 16 fractional bits)
+- node_count: 4-bit, valid range 2-16
+- result: 256-bit packed array (16 x 16-bit)
+- All distances in Q8.16 format, convert to 16-bit integer at output
+
+Edge Cases:
+- Start node 0 to itself: distance 0
+- If no path exists: 0xFFFF
+- Coordinate differences use absolute value
+- Saturate at max 16-bit (65535)
+
+Example with 3 nodes:
+Node 0: x=1.0, d=3.0, r=2.0
+Node 1: x=2.0, d=5.0, r=2.0
+Node 2: x=3.0, d=0.0, r=0.0
+Edges from 0: to 2 (|3-1|=2 >= 3? No) -> none
+Edges from 1: to 2 (|3-2|=1 >= 5? No) -> none
+Edges from 2: to 0 (|1-3|=2 >= 0? Yes) weight=0+2=2, to 1 (|2-3|=1 >=0? Yes) weight=0+1=1
+Shortest from 0: to 1=INF, to 2=INF, but can go 0->2 via? No direct. Wait, need multiple hops.
+0->2: 0 can't reach 2 directly. But 2->0 exists, not useful. Actually 0 has no outgoing edges here.
+For valid example: 0 (x=1,d=3,r=2), 1 (x=2,d=5,r=2), 2 (x=3,d=0,r=0)
+From 0: to 2? |3-1|=2 < 3, no. From 1: to 2? |3-2|=1 <5, no. From 2: to 0? |1-3|=2 >=0, yes weight=2, to 1? |2-3|=1>=0, yes weight=1
+So from 0, can we reach 1? 0 can't go anywhere, so -1. From 0 to 2: 0 can't reach 2, -1. But 2 can reach 0 and 1.
+Need to ensure FSM handles 1-hop and multi-hop correctly.
+
+Testing: Verify with sample 5-node case, scaled coordinates by 256 (Q8.16), clamp results to 16-bit, -1 as 0xFFFF.

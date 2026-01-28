@@ -1,0 +1,63 @@
+You are an expert in converting competitive programming problems into Verilog HDL module specifications for hardware acceleration. For the following problem, provide a complete Verilog specification for a hardware module that solves a scaled-down version suitable for FPGA implementation.
+
+**Problem:**
+It was recycling day in Kekoland. Adil and Bera collect bottles to put them in a recycling bin. There are n bottles on the ground at positions (x_i, y_i). Adil and Bera can carry one bottle at a time. The process is: choose a bottle, walk to it, pick it, walk to the bin, repeat. They can work simultaneously. We need to minimize the total distance walked by both.
+
+**Scaling & Adaptation:**
+- **Constraint:** n ≤ 16 bottles.
+- **Coordinates:** Scale input coordinates to fit within 16-bit signed integers (-32768 to 32767). Input coordinates will be pre-scaled by the testbench.
+- **Distance Calculation:** Use integer Euclidean distance squared (d^2) to avoid floating point. The algorithm logic remains identical, just based on squared distances. The final result will be a 32-bit integer representing the minimum total squared distance.
+- **Algorithm:** 
+  1. Calculate `dist_bin_sq` for each bottle: `(bx - x)^2 + (by - y)^2`.
+  2. Calculate `savings_adil` for each bottle: `2 * dist_bin_sq - ((ax - x)^2 + (ay - y)^2)`. This represents the distance saved if Adil picks this bottle instead of just moving to bin and back.
+  3. Calculate `savings_bera` similarly for Bera.
+  4. Find the best configuration: 
+     - Max single saving (Adil or Bera).
+     - Max combined saving for two different bottles (Adil picks i, Bera picks j, i != j).
+  5. Total base cost = 2 * sum(dist_bin_sq). Result = Base Cost - Max Savings.
+
+**Verilog Module Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge triggered).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start calculation.
+- `ax[15:0]`: 16-bit signed, Adil's x-coordinate.
+- `ay[15:0]`: 16-bit signed, Adil's y-coordinate.
+- `bx[15:0]`: 16-bit signed, Bera's x-coordinate.
+- `by[15:0]`: 16-bit signed, Bera's y-coordinate.
+- `bin_x[15:0]`: 16-bit signed, Bin's x-coordinate.
+- `bin_y[15:0]`: 16-bit signed, Bin's y-coordinate.
+- `bottle_x[15:0]`: 16-bit signed, Current bottle's x-coordinate (fed sequentially).
+- `bottle_y[15:0]`: 16-bit signed, Current bottle's y-coordinate (fed sequentially).
+- `bottle_valid`: High when `bottle_x` and `bottle_y` are valid.
+- `bottle_index[3:0]`: Index of the current bottle (0 to 15).
+
+**Outputs:**
+- `result[31:0]`: 32-bit unsigned integer, minimum total squared distance.
+- `done`: 1-cycle pulse indicating result is valid.
+- `ready`: High when module is ready to accept a new set of coordinates (when idle). Use this to control the feeding of bottle data.
+
+**Timing & Control:**
+The module operates in two phases:
+1. **Input Phase:** When `ready` is high, the external logic feeds the 16 bottles one by one via `bottle_x`, `bottle_y`, `bottle_index`, and asserts `bottle_valid`. The module accumulates data.
+2. **Processing Phase:** After all bottles are fed (indicated by an external signal or reaching index 15), assert `start`. The module calculates the savings and total cost.
+3. **Output Phase:** Assert `done` when calculation finishes (within 1024 cycles).
+
+**Internal Logic Details:**
+- Use a state machine: IDLE, RECV, COMPUTE, DONE.
+- During RECV, store `bin_dist_sq`, `adil_dist_sq`, `bera_dist_sq` for each bottle in BRAM/registers (16 entries each, 17 bits wide is enough for sums). Also compute `savings_adil` and `savings_bera` per bottle.
+- During COMPUTE:
+  - Iterate through 16 bottles to find top 2 `savings_adil` (val and index) and top 2 `savings_bera`.
+  - Calculate `total_base = 2 * sum(bin_dist_sq)`.
+  - `max_single = max(top1_adil, top1_bera)`.
+  - `max_dual = 0`. If `top1_adil_index != top1_bera_index`, `max_dual = top1_adil + top1_bera`. Else, check `top1_adil + top2_bera` and `top2_adil + top1_bera`.
+  - `result = total_base - max(max_single, max_dual)`.
+
+**Cocotb Testbench Requirements:**
+- Testbench must generate random coordinates within 16-bit signed range.
+- Feed bottles to DUT in chunks (or full 16) when `ready` is high.
+- Verify result against Python reference (using squared distances).
+- Use `clamp_to_width` for all signals.
+- Use `from_signed` for signed inputs.
+- Must include standard helpers (reset, wait_for_done, is_value_defined).

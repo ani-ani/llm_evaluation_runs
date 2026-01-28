@@ -1,0 +1,138 @@
+Verilog HDL Module Specification: Beautiful Rectangle Generator
+
+=== PROBLEM CONTEXT ===
+Given n integers (n ≤ 4000), create the largest beautiful rectangle (matrix) where each row and column has distinct values. Scaled from n=400k to n=4000 for hardware feasibility.
+
+=== INTERFACE ===
+Inputs:
+  clk: System clock, rising edge active
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to begin operation
+  len_in: 4-bit input (actual n, max 4000, but we'll process in chunks)
+  data_in: 32-bit integer input (one per clock cycle, streaming)
+  data_valid: Input data valid flag
+  data_last: Input last data flag
+
+Outputs:
+  result_area: 16-bit maximum area value
+  result_h: 8-bit rectangle height (rows)
+  result_w: 8-bit rectangle width (cols)
+  done: 1-cycle pulse when entire operation completes
+  out_data: 32-bit output value for grid
+  out_valid: 1-cycle pulse when outputting grid cell
+  out_x: 8-bit column index (0-based)
+  out_y: 8-bit row index (0-based)
+
+=== INTERNAL ARCHITECTURE ===
+1. Count Frequency (FSM):
+   - Use 16-bit counters for values (scaled 0..4095)
+   - Store counts in RAM (4096 x 16-bit)
+   - Process streaming input over multiple cycles
+   - Output: count histogram
+
+2. Sort Counts (Sorting Network):
+   - Sort frequencies from highest to lowest
+   - Use 16-element sorting network (bitonic sort)
+   - Input: 16 frequencies + 16 value IDs
+   - Output: sorted frequency-value pairs
+
+3. Find Optimal Rectangle (Optimization Loop):
+   - Try heights h from 1 to min(64, sqrt(n))
+   - For each h, calculate width w = floor(available_numbers / h)
+   - Use prefix sums to count numbers with freq ≥ h
+   - Find max area where w ≥ h
+   - Output: optimal (h, w, area)
+
+4. Fill Grid (Construction Phase):
+   - Use diagonal filling algorithm
+   - For each column in width:
+     - For each row in height:
+       - Place next number from sorted list
+       - Track usage count per number
+       - Wrap to next number when count reached h
+   - Use (row + col) mod w for column rotation
+   - Store grid in 64x64 BRAM
+   - Stream output in row-major order
+
+=== SCALING & CONSTRAINTS ===
+- Max input n: 4000 (scaled from 400k)
+- Max values: 2^32-1 (32-bit integers)
+- Frequency counting: 16-bit counters (max count 4000)
+- Grid dimensions: 64x64 max (4096 cells)
+- Sorting: 16 elements maximum (top frequency values)
+- Timing: Complete within 10,000 clock cycles
+- Memory: 64x64 grid array (32-bit values)
+
+=== FSM STATES ===
+0: IDLE
+1: READ_INPUT (streaming data)
+2: SORT_COUNTS (sorting network)
+3: FIND_RECT (optimize h,w)
+4: FILL_GRID (construct matrix)
+5: OUTPUT (stream grid)
+6: DONE
+
+=== ALGORITHM DETAILS ===
+1. Counting: Maintain histogram in block RAM
+2. Sorting: Use 16-stage bitonic network (2^4 stages)
+3. Optimization: For h from 1..64:
+   - total = sum(min(count, h) for all values)
+   - w = total / h
+   - if w >= h: candidate area = h*w
+4. Grid Filling:
+   - Use diagonal placement: grid[(r+c)%w][r] = value
+   - Track per-value usage (0..h)
+   - Move to next value when count == h
+
+=== VERILOG MODULE TEMPLATE ===
+module beautiful_rectangle(
+    input clk, rst_n,
+    input start,
+    input [3:0] len_in,
+    input [31:0] data_in,
+    input data_valid,
+    input data_last,
+    output reg [15:0] result_area,
+    output reg [7:0] result_h, result_w,
+    output reg done,
+    output reg [31:0] out_data,
+    output reg out_valid,
+    output reg [7:0] out_x, out_y
+);
+    // Internal signals
+    reg [2:0] state;
+    reg [11:0] input_counter;
+    reg [15:0] freq_ram [0:4095]; // Frequency storage
+    reg [31:0] value_ram [0:4095]; // Value storage
+    reg [31:0] grid [0:63][0:63]; // Grid storage
+    reg [5:0] sort_data [0:15]; // Sorting network input
+    reg [31:0] sort_value [0:15]; // Associated values
+    
+    // Helper: CLAMP
+    function [15:0] clamp16;
+        input [31:0] v;
+        clamp16 = (v > 16'hFFFF) ? 16'hFFFF : v[15:0];
+    endfunction
+    
+    // Rest of implementation using bounded loops
+    // Always complete within 10000 cycles
+endmodule
+
+=== IMPLEMENTATION NOTES ===
+- Use BRAM for freq_ram and grid
+- Implement sorting network with 16 stages
+- Use state machine for orchestration
+- Ensure no combinational loops
+- All loops have compile-time bounds
+- Output streaming format: sequential cells
+
+=== COMPLETE IMPLEMENTATION TASK ===
+Implement the complete module with:
+1. Input streaming interface
+2. Frequency histogram logic
+3. 16-element bitonic sorting network
+4. Rectangle optimization (h,w selection)
+5. Grid filling algorithm (diagonal method)
+6. Output streaming interface
+
+Ensure all operations are pipeline-friendly and complete within 10,000 cycles.

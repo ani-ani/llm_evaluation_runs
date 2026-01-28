@@ -1,0 +1,63 @@
+You are to design a Verilog module that calculates the search steps for a query word in a database of words. The algorithm is sequential: it compares the query word to each database word until found, counting comparisons and the sum of longest common prefix (LCP) lengths.
+
+**Constraints & Scaling**:
+- N (database size) ≤ 16 (scaled from 30000)
+- Q (queries) ≤ 16 (scaled from 30000)
+- Word length ≤ 16 characters (scaled from 30)
+- Character representation: 5-bit unsigned (0-25 for 'a'-'z')
+- LCP length: 4-bit counter (max 15)
+- Result (steps): 16-bit unsigned
+- Comparison cycle time: 1 cycle per character compared
+
+**Module Interface**:
+- **Inputs**:
+  - `clk`: System clock, rising edge triggered
+  - `rst_n`: Active-low asynchronous reset
+  - `load_db`: 1-bit control signal (active high during database loading)
+  - `db_word_idx`: 4-bit index for current word being loaded (0 to N-1)
+  - `db_word_in`: 80-bit packed word (16 chars × 5 bits)
+  - `search_start`: 1-bit pulse to start search for current `query_word`
+  - `query_word`: 80-bit packed query word
+- **Outputs**:
+  - `result`: 16-bit unsigned result (total steps)
+  - `done`: 1-bit pulse indicating search completion
+
+**Implementation Requirements**:
+1. **Memory**: Internal storage for 16 database words, each 80-bit wide.
+2. **State Machine**: Implement a sequential FSM for search operation.
+3. **Search Algorithm**:
+   - Reset `result` to 0, `steps` counter to 0.
+   - Loop through database words (0 to N-1).
+   - For each database word:
+     - Increment `result` (word comparison count).
+     - Calculate LCP length between `query_word` and `db_word`:
+       - Compare characters 0 to 15 sequentially.
+       - Count until mismatch or end of either word.
+     - Add LCP length to `result`.
+     - If LCP length equals word length (exact match) OR query word exhausted, stop loop (word found).
+     - If end of database reached without exact match, result is total steps (word not found).
+4. **Timing**: Start to Done within 1000 cycles.
+5. **Reset State**: On reset, `done`=0, `result`=0.
+
+**Implementation Hints**:
+- Use 16-bit `result_reg` and `steps_cnt`.
+- Use 4-bit `idx_cnt` for database index (0-15).
+- Use 4-bit `char_idx` for character position (0-15).
+- Use 5-bit `char_q` and `char_d` for comparison.
+- Use combinational logic to extract 5-bit chars from packed word based on `char_idx`.
+- Sequential logic updates `result_reg` and advances `idx_cnt`/`char_idx`.
+- State: IDLE, LOAD (ignored, handled externally), COMPARE_CHAR, NEXT_WORD, DONE.
+
+**Detailed Signal Flow**:
+- On `search_start`: Reset state, initialize counters. Start comparing `char_idx=0`.
+- **COMPARE_CHAR** state: Extract `char_q` from `query_word` at `char_idx` and `char_d` from `db_word[idx_cnt]` at `char_idx`.
+  - If mismatch or end-of-word: increment `result_reg` by `char_idx` (LCP length), advance to **NEXT_WORD**.
+  - If match: increment `char_idx`, continue.
+- **NEXT_WORD** state: Check if exact match (char_idx == query_len or db_len). If yes, go to **DONE**. Else, increment `idx_cnt`, reset `char_idx=0`. If `idx_cnt` < N, go to **COMPARE_CHAR**. If `idx_cnt` == N, go to **DONE**.
+- **DONE** state: Assert `done`, hold `result_reg`.
+
+**Verilog Spec**:
+- Module name: `search_steps`
+- Parameters: `MAX_WORDS=16`, `MAX_LEN=16`, `CHAR_BITS=5`
+- Ports: Match interface above.
+- Internal: `reg [79:0] db_mem [0:15]` (16x80).

@@ -1,0 +1,47 @@
+Design a Verilog module that computes all possible last digits d (in base k) that can be formed using unlimited banknotes of given denominations. The mathematical solution is: compute g = gcd(k, a1, a2, ..., an), then the valid d values are {0, g, 2g, 3g, ...} modulo k, where k/g is the number of possible values.
+
+Simplify for hardware:
+- Input denominations a_i are reduced modulo k to range [0, k-1]
+- Compute g = gcd(k, a1_mod, a2_mod, ...)
+- Output: all multiples of g that are < k
+- Max n = 16, max k = 128 (8-bit), max a_i = 10^9 (clamp to 16-bit)
+- g fits in 8 bits
+
+Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse, initiates computation
+  n: 4-bit (number of denominations, 1-16)
+  a[0:15]: 16x16-bit array (denominations, values clamped)
+  k_in: 8-bit (base k, 2-128)
+Outputs:
+  result_count: 8-bit (number of valid d values)
+  result_d[0:15]: 16x8-bit array (valid d values in ascending order, padded with zeros for unused entries)
+  done: 1-cycle pulse, set when computation complete
+
+Timing:
+- On start rising edge, begin computation
+- Pipeline: 16 clock cycles for GCD accumulation (one per denomination), then 16 cycles for generating multiples
+- done pulses after 32 cycles (max)
+- result_valid when done=1
+- All outputs stable until next start
+
+Reset:
+- rst_n=0: clear all state, done=0, result_count=0, result_d all zeros
+- Hold rst_n low for 2 cycles minimum
+
+Behavior:
+1. Compute g_temp = k_in
+2. For each i=0 to n-1: g_temp = gcd(g_temp, a[i] % k_in)
+3. g_final = g_temp
+4. Count multiples: result_count = k_in / g_final
+5. Generate array: for i=0 to result_count-1: result_d[i] = i * g_final
+6. Pad remaining entries (result_count to 15) with 0
+7. Pulse done
+
+Notes:
+- Use 16-bit arithmetic for intermediates
+- gcd computation can use 8-bit modules
+- Division by g_final can be simplified as repeated subtraction for 8-bit values
+- Array output uses 16 slots for maximum compatibility, unused slots are 0

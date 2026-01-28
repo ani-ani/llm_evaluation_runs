@@ -1,0 +1,112 @@
+Module Specification: SmallY's Tower of Hanoi with Weighted Moves
+
+OVERVIEW:
+Implement the minimum cost solver for a weighted Tower of Hanoi puzzle. The standard Tower of Hanoi problem moves all disks from rod 1 to rod 3 using rod 2 as auxiliary, requiring exactly 2^n - 1 moves. In this weighted version, each move from rod i to rod j has a cost t[i][j]. The goal is to find the minimum total cost to move all disks from rod 0 to rod 2.
+
+CORE ALGORITHM:
+The optimal strategy can be derived via dynamic programming. For n disks, we have two strategies:
+1. Move the top n-1 disks to the auxiliary rod (3-1-2), then move the largest disk from start to target (0->2), then move n-1 disks from auxiliary to target.
+2. Move top n-2 disks to target (0->2), move disk n-1 to auxiliary (0->1), move largest disk (0->2), move n-1 disks from auxiliary to target (1->2), move n-2 disks from target to start (2->0), move largest disk (0->2), move n-2 disks from start to target (0->2).
+
+However, the provided Python solution uses a simpler recurrence:
+dp[n][src][dst] = min(
+  dp[n-1][src][aux] + cost[src][dst] + dp[n-1][aux][dst],
+  dp[n-2][src][dst] + cost[src][aux] + dp[n-1][aux][dst] + cost[aux][dst] + dp[n-1][dst][src] + cost[src][dst] + dp[n-2][src][dst]
+)
+where aux = 3 - src - dst.
+
+For hardware implementation, we will use a bounded loop approach since n is limited to 10 in practical HDL testing.
+
+INTERFACE SPECIFICATION:
+
+Clock and Reset:
+- clk: System clock, rising edge triggered
+- rst_n: Active-low synchronous reset
+
+Control Signals:
+- start: Single-cycle pulse to initiate calculation (1 bit)
+- done: Single-cycle pulse indicating result valid (1 bit)
+
+Inputs:
+- cost_in: 3x3 matrix of move costs, packed as 9x16-bit values
+  - Array indices: 0:0->0, 1:0->1, 2:0->2, 3:1->0, ...
+  - Each cost is 16-bit unsigned (0-65535)
+- n: Number of disks (4-bit, 1-10)
+
+Outputs:
+- result: 32-bit unsigned integer containing minimum cost
+
+DATA WIDTHS:
+- Cost matrix entries: 16-bit unsigned
+- DP values: 32-bit unsigned (to accommodate large costs for n=10)
+- Disk count: 4-bit (supports 1-10 disks)
+- Iteration counter: 4-bit
+- State machine: 3-bit
+
+IMPLEMENTATION DETAILS:
+
+1. Storage Structure:
+   - dp_prev[3][3]: 9 registers for n-1 case (32-bit each)
+   - dp_prev2[3][3]: 9 registers for n-2 case (32-bit each)
+   - cost_matrix[3][3]: 9 registers for move costs (16-bit each)
+   - current_n: counter tracking current number of disks (4-bit)
+
+2. State Machine (FSM):
+   - IDLE: Waiting for start signal
+   - INIT: Initialize dp[0][i][j] = 0 for all i,j
+   - CALCULATE: Compute dp for current_n from 1 to n
+   - DONE: Latch final result and set done signal
+
+3. Calculation Logic (combinational):
+   For each pair (src, dst) where src != dst:
+     aux = 3 - src - dst
+     
+     Strategy 1 (direct):
+       cost1 = dp_prev[src][aux] + cost[src][dst] + dp_prev[aux][dst]
+     
+     Strategy 2 (through auxiliary for n>=2):
+       cost2 = dp_prev2[src][dst] + cost[src][aux] + dp_prev[aux][dst] + 
+               cost[aux][dst] + dp_prev[dst][src] + cost[src][dst] + dp_prev2[src][dst]
+     
+     dp_curr[src][dst] = min(cost1, cost2) for n>=2
+     dp_curr[src][dst] = cost1 for n==1
+
+4. Timing Constraints:
+   - Start to done: ≤ 100 cycles
+   - Clock frequency: 100 MHz (10ns period)
+   - Reset duration: 2 cycles minimum
+   - Combinational path: No loops, combinational delay < 2 cycles
+
+5. Reset Behavior:
+   - dp_prev, dp_prev2, cost_matrix → 0
+   - current_n → 0
+   - done → 0
+   - result → 0
+
+6. Input Constraints:
+   - cost_in values must be clamped to 16-bit range (0-65535)
+   - n must be 1-10 (if n=0, result should be 0)
+   - For n>10, result may overflow 32-bit
+
+7. Edge Cases:
+   - n=1: Direct move from src to dst
+   - n=2: Both strategies considered
+   - n≥3: Both strategies, with iterative updates
+
+8. Implementation Notes:
+   - Use iterative calculation (not recursive)
+   - Store only last 2 DP states to save memory
+   - For n=1, initialize dp_prev2 as zeros
+   - Final result is dp_curr[0][2] when n disks processed
+
+9. Verification Points:
+   - Check monotonic cost increase with n for same cost matrix
+   - Verify symmetry when cost matrix is symmetric
+   - Ensure dp_curr[src][dst] >= cost[src][dst] for all n
+
+10. Example Test Cases:
+    Case 1: cost = [[0,1,1],[1,0,1],[1,1,0]], n=3 → result=7
+    Case 2: cost = [[0,2,2],[1,0,100],[1,2,0]], n=3 → result=19
+    Case 3: cost = [[0,2,1],[1,0,100],[1,2,0]], n=5 → result=87
+
+Note: The implementation should handle costs up to 10,000 and n up to 10. For larger n, results may require 64-bit integers, but we use 32-bit for this HDL version.

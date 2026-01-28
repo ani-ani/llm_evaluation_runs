@@ -1,0 +1,68 @@
+Implement a Verilog module that reconstructs a treasure map from multiple rectangular pieces. 
+
+Input Constraints:
+- N pieces (2 ≤ N ≤ 8)
+- Max piece size: 10x10
+- Target map size: Max 80 cells (since sum of areas is bounded)
+
+Module Interface:
+- Inputs: clk, rst_n, start
+- Configuration inputs: 
+  - `piece_count`: 3 bits (max 8)
+  - For each piece i (0-7):
+    - `piece_w[i]`: 4 bits (1-10)
+    - `piece_h[i]`: 4 bits (1-10)
+    - `piece_data[i]`: 10x10 grid flattened, 400 bits total (100 cells * 4 bits per cell). 
+      *Note: Since 400 bits is large for input vectors, assume data is loaded serially or provided via a helper interface in testbench. For the Verilog spec, define a valid interface for 8 pieces of 10x10 max.*
+      *Simplified Input Interface:* 
+      `input [3:0] piece_w [0:7]`, `input [3:0] piece_h [0:7]`, `input [3:0] piece_data [0:799]` (flattened).
+      
+- Outputs:
+  - `out_width`: 7 bits (max 80)
+  - `out_height`: 7 bits (max 80)
+  - `result_grid`: 80x80 array of 4-bit values (or flattened). 
+    *Simplification:* Since 80x80=6400 bits is huge, we will output the result row-by-row or assume the testbench extracts the configuration.
+    *Better Output Interface:*
+    `output [3:0] map_data [0:799]` (flattened result, padded to max size, only valid up to W*H).
+    `output [6:0] final_w, final_h`
+    `output [2:0] piece_indices [0:799]` (map of which piece owns the cell, 0-7).
+    `output valid` (pulsed when reconstruction is done).
+
+Algorithm Implementation (Verilog):
+1. **State Machine (FSM):**
+   - `IDLE`: Wait for start.
+   - `PREPARE`: Calculate total area and possible bounding boxes (factors of total area).
+   - `ARRANGE`: Backtracking loop. Try placing pieces (4 rotations) into a target WxH grid.
+     - Use a `placement_valid` flag.
+     - Use a `current_slot` index (0 to N-1).
+     - Iterate `try_x` and `try_y` within grid bounds.
+   - `VALIDATE`: Once all pieces placed (slot == N), check if the grid follows the treasure map property.
+     - Identify treasure location (value 0 or matching modulo logic).
+     - Verify rectilinear distances modulo 10 against grid values.
+   - `FINISH`: Latch results and assert `valid`.
+
+2. **Data Structures (Verilog Arrays):**
+   - `grid_occupied [0:79][0:79]`: 1-bit array to track filled cells.
+   - `grid_value [0:79][0:79]`: 4-bit array for final map values.
+   - `grid_piece [0:79][0:79]`: 3-bit array for piece indices.
+   - `pieces [0:7].rotated_data`: Registers to store rotated versions of input pieces.
+
+3. **Rotation Logic:**
+   - For each piece, generate 4 rotated versions (0, 90, 180, 270 degrees) in `PREPARE`.
+
+4. **Treasure Verification:**
+   - In `VALIDATE` state, scan grid for a '0' (or any digit). Assume this is the treasure location.
+   - For every other cell, calculate `abs(x - tx) + abs(y - ty)`. 
+   - Check `calculated % 10 == grid_value[y][x]`.
+
+5. **Output:**
+   - Flatten the final grid into `map_data` array (e.g., index = y*80 + x).
+   - Flatten `piece_indices` similarly.
+   - Set `final_w`, `final_h`.
+
+Constraints:
+- Max iterations: Backtracking might require pruning. With N=8 and max dimension 10, search space is manageable with aggressive bound checks.
+- Clock cycles: Allow up to 200,000 cycles for complex cases (worst-case backtracking).
+- Reset: Asynchronous active-low, sets all registers to 0.
+
+Testbench will provide inputs, start the sequence, and verify the `valid` signal. It will then read the flat arrays and reconstruct the 2D grid for comparison with expected output.

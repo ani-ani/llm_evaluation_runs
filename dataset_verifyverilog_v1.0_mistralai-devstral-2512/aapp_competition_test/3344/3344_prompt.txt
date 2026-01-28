@@ -1,0 +1,35 @@
+Implement a Verilog module that finds the maximum speed v for luggage collision avoidance. 
+
+**Problem Adaptation**: 
+- Input: N (1-8), L (1-16), and positions x_i (0-1000, scaled to 16-bit fixed-point Q10.6).
+- Algorithm: Binary search for v in [0.1, 10] over 64 iterations. For a candidate v, check if all pairwise distances on the circular belt (considering wraps) are >1m when bags are dropped (time = position / v).
+- Constraint: If a collision occurs (distance <= 1m), reduce v.
+- Output: Maximum valid v (scaled to Q10.6) or "no fika" (0x7FFF). 
+
+**Interface**:
+- Inputs: 
+  - `clk`, `rst_n`: Clock and active-low reset.
+  - `start`: 1-cycle pulse to start computation.
+  - `L_val`: 8-bit (1-16).
+  - `pos[0:7]`: 8 inputs, each 16-bit fixed-point (10 integer, 6 fractional bits). Only first N are valid.
+  - `N_val`: 4-bit (1-8).
+- Outputs:
+  - `result`: 16-bit fixed-point output.
+  - `valid`: 1 when result is ready.
+  - `no_fika`: 1 if no speed exists.
+- Timing: Start to valid within 10,000 cycles. Use binary search (64 iterations) with inner pairwise distance check (N<=8 => max 28 pairs).
+- Reset: valid=0, result=0, no_fika=0.
+
+**Algorithm Details**:
+1. Convert inputs to fixed-point: scale x_i by 64 (since 2^-6).
+2. Binary search v in [6.4, 640] (0.1*64 to 10*64 in fixed-point). Initial low=6.4, high=640.
+3. For each mid v: compute times t_i = x_i / v (integer division of scaled values). Sort t_i (use insertion sort for 8 elements).
+4. Check circular distances: For sorted t_i, check diff = t[i+1] - t[i] (in seconds, scaled). If diff <= 1 (scaled to 64), collision. Also check wrap-around: t[N-1] to t[0] + L (seconds, scaled).
+5. If any collision, high = mid; else low = mid.
+6. After 64 iterations, output low if valid, else 'no fika' (0x7FFF).
+7. If low > 0.1*64 (6.4) and no collision at low, output low; else 'no fika'.
+
+**Key Constraints**:
+- Use 32-bit internal registers for intermediate calculations (division, sorting).
+- Fixed-point arithmetic: Q16.16 for time computations.
+- No unbounded memory; limit to 8 items.

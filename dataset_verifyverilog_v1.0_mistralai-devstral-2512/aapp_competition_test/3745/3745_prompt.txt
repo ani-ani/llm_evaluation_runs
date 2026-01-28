@@ -1,0 +1,40 @@
+Verilog HDL Module Specification: Graph String Reconstruction
+
+Problem: Given an undirected graph with N vertices (scaled N<=16) and M edges, determine if there exists a string s of length N using letters 'a', 'b', 'c' such that an edge exists between i and j if and only if s[i] and s[j] are equal or adjacent in the alphabet (neighbors: a-b, b-c; non-neighbors: a-c). If found, output the string bits (mapped 0=a, 1=b, 2=c).
+
+Module Interface:
+- Inputs:
+  - clk: System clock
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start processing
+  - n: 4-bit input, number of vertices (1 to 16)
+  - m: 7-bit input, number of edges (0 to 120)
+  - u_arr[0:15]: 16x4-bit array, source vertex indices (0-indexed)
+  - v_arr[0:15]: 16x4-bit array, destination vertex indices (0-indexed)
+- Outputs:
+  - result: 32-bit output. Lower 2*N bits contain the character mapping: bits 1:0 -> vertex 0 (00=a, 01=b, 10=c), bits 3:2 -> vertex 1, etc. MSB (bit 31) indicates validity (1=Yes, 0=No).
+  - done: 1-cycle pulse indicating result is valid
+
+Implementation Constraints:
+1. The graph is stored in an adjacency matrix of size 16x16 (1 bit per entry).
+2. Algorithm: Iterative search.
+   - Store edges into matrix.
+   - Use a state machine to iterate through all 3^N possible assignments (represented as base-3 counter).
+   - For each assignment, validate against the adjacency matrix:
+     - For every pair (i,j) with i<j:
+       - Check if edge exists in graph.
+       - Check if characters match (same or adjacent).
+       - They must match.
+   - If a valid assignment is found, load the result bits and assert result_valid.
+3. Scaling: Since N<=16, 3^16 is too large for sequential processing in reasonable time. Limit brute force to N <= 8 (max 6561 iterations) or implement a heuristic BFS/DFS graph coloring (3-coloring variant).
+   - Suggested Approach: BFS Coloring.
+   - Iterate vertices 0 to N-1.
+   - Try assigning 'a', 'b', 'c' to current vertex such that it satisfies constraints with all previously assigned vertices.
+   - If all vertices assigned, solution found.
+4. Output Format:
+   - result[31]: Validity bit (1 if solution found).
+   - result[2*i + 1:2*i]: Assigned value for vertex i (0=a, 1=b, 2=c).
+
+Timing:
+- start -> done: Within 10,000 cycles for N<=16.
+- Reset: Clears all registers, done=0, result=0.

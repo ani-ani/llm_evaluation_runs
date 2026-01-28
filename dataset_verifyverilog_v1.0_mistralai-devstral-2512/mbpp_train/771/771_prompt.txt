@@ -1,0 +1,42 @@
+Implement a Verilog module that checks if a character expression contains balanced parentheses, curly braces, and square brackets. The expression is a fixed-length ASCII string up to 16 characters long.
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing the expression
+- `expr`: Input expression as a packed array of 16 bytes (MSB is first character). ASCII codes: '('=0x28, ')'=0x29, '{'=0x7B, '}'=0x7D, '['=0x5B, ']'=0x5D.
+- `length`: 4-bit unsigned integer (0-16) indicating the actual number of valid characters in `expr`.
+
+**Outputs:**
+- `result`: 1-bit output. High (1) if the expression is balanced, low (0) otherwise.
+- `done`: 1-cycle pulse indicating processing is complete and `result` is valid.
+
+**Functionality:**
+1. The module must implement a stack-based algorithm.
+2. The stack must be able to hold up to 16 elements (worst case: all opening brackets).
+3. The stack should store the type of opening bracket (2 bits are sufficient: 00 for '(', 01 for '{', 10 for '[').
+4. Processing begins when `start` is asserted. Processing should complete within 100 clock cycles.
+5. The module must reset to a known state: stack empty, `result`=0, `done`=0.
+6. Valid inputs will only contain the 6 bracket characters. Non-bracket characters should be ignored (treated as no-op).
+7. During reset or before start, the stack pointer should be 0.
+
+**Algorithm:**
+- Initialize a stack pointer to 0 and `valid` flag to 1 (true).
+- Iterate through the `expr` bytes from index 0 to `length-1`.
+- For each character:
+  - If it's an opening bracket ('(', '{', '['), push its type code onto the stack and increment the stack pointer.
+  - If it's a closing bracket (')', '}', ']'):
+    - If the stack pointer is 0 (stack empty), set `valid` to 0 (false).
+    - Else, pop the top type code. If the popped type doesn't match the closing bracket (e.g., '(' vs ')'), set `valid` to 0.
+- After processing all characters, `result` should be high only if `valid` is still high AND the stack is empty (stack pointer == 0).
+- Set `done` high for one cycle when finished.
+
+**Timing:**
+- The module is sequential. State changes occur on `clk` rising edges.
+- Reset must clear the stack pointer and outputs within 2 cycles.
+- After `start` goes high, processing should proceed in one cycle per character (or faster if pipelined, but sequential is fine). `done` must assert after the last character is checked.
+
+**Interface Details:**
+- `expr` is a 128-bit wide bus (16 bytes * 8 bits).
+- `length` is a 4-bit integer.
+- The stack can be implemented as a register file or simple flip-flops.

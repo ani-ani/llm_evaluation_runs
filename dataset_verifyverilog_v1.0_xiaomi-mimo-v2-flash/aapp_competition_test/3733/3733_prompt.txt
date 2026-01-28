@@ -1,0 +1,34 @@
+Design a Verilog module that solves a simplified audio compression problem. The core idea is to minimize changes to an array so that it fits within a given bit budget, by selecting a range [l, r] to keep distinct values minimal.
+
+**Problem Adaptation:**
+- Input array size: 16 elements (n=16)
+- Value range: 0 to 255 (8-bit unsigned integers)
+- Disk size I: 1 byte (8 bits) total storage
+- Goal: Find minimal number of elements to change (clip to l or r) such that the number of distinct values K allows storage in 8 bits.
+
+**Algorithm:**
+1. **Sort Input:** Use a sorting network (odd-even transposition sort) to sort the 16 input values. This takes 16 clock cycles.
+2. **Count Distinct:** Iterate through the sorted array and count how many distinct values exist (since they are sorted, identical values are adjacent). Store the count of each distinct value in a frequency array `freq[0:15]`. 
+3. **Determine Max K:** Calculate maximum allowed distinct values `K_max`. Total bits available = 8. Bits per value `k = floor(8 / n)`. Since n=16, `k = 0`? Wait, problem states `k = ceil(log2 K)`. Total bits needed = `n * k`. We have `8` bits. `16 * k <= 8` implies `k <= 0.5`. Thus `k=0`, `K=1`. 
+   *Correction for HDL:* To make it meaningful, we must scale the disk size or reduce n. Let's assume `n=8` and `I=1` (8 bits). Then `8 * k <= 8` => `k <= 1`. So `K <= 2^1 = 2`. We can keep at most 2 distinct values.
+   *Final Scaling:* Let's use `n=8`, `I=1`. Max distinct values `K = 2`.
+4. **Sliding Window:** Iterate through the `freq` array (distinct counts). Use a window of size `K` (max 2). Calculate the sum of frequencies in the window. The maximum sum represents the number of elements we *keep* without changes. Elements outside the window are changed.
+5. **Output:** Result is `n - max_kept`.
+
+**Interface:**
+- Inputs:
+  - `clk`: Clock
+  - `rst_n`: Active-low reset
+  - `start`: Start processing pulse
+  - `data_in[7:0]`: 8-bit input value (one per cycle)
+- Outputs:
+  - `result[3:0]`: Minimal number of changes (0-8)
+  - `done`: 1-cycle pulse when calculation is complete
+
+**Implementation Details:**
+- **Sorting:** 8-stage pipeline (sorting network). Output sorted values to stage 2.
+- **Frequency Count:** Iterate sorted values. If `val[i] == val[i-1]`, increment count for current distinct group. If different, create new group. Store up to 8 groups.
+- **Sliding Window:** Since `K=2` (max), just compute sum of `freq[i] + freq[i+1]` for all valid i. Find max.
+- **Control:** FSM controlling sorting (16 cycles), counting (8 cycles), and windowing (8 cycles). Total latency < 64 cycles.
+
+**Constraint:** Array length is fixed at 8 for this implementation to fit within 1 byte (8 bits) with meaningful K (K=2). Values are 8-bit.

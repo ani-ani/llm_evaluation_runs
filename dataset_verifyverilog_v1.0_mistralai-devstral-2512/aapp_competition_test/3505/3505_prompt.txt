@@ -1,0 +1,60 @@
+Design a Verilog module that counts the number of triples (i, j, k) where i, j, k are pairwise distinct indices in a small array of integers, and a[i] + a[j] == a[k].
+
+**Adaptations for hardware**:
+1. Scale N to 16 (max elements) due to hardware array size limits
+2. Input integers range [-50000, 50000] → Scaled to 16-bit signed (Q0.16)
+3. Use iterative search with bounded loops (3 nested loops, 16³ = 4096 iterations max)
+4. Result can be up to C(16,3) = 560 → fits in 16 bits
+5. Use fixed-width 16-bit signed arithmetic for addition/comparison
+
+**Module Interface**:
+- **Clock/Control**:
+  - clk: System clock, rising edge
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start calculation
+  - done: 1-cycle pulse when calculation complete (asserted after reset or after 'start' completes)
+
+- **Input Array** (16 elements, each 16-bit signed):
+  - arr[0:15]: 16-bit signed inputs (Q0.16 format)
+  - Note: Elements are individual wires `arr_0` through `arr_15` (not a bus)
+
+- **Output**:
+  - result: 16-bit unsigned integer (max 560)
+  - valid: 1-bit flag (asserted simultaneously with done)
+
+**Behavior**:
+1. On reset (rst_n=0): result=0, done=0, valid=0, internal state=IDLE
+2. When start=1 (rising edge clk): begin calculation
+3. Iterative search: Use three nested loops for i, j, k from 0 to 15:
+   - Check i, j, k are pairwise distinct (i != j, i != k, j != k)
+   - Calculate sum = arr[i] + arr[j] (16-bit signed addition)
+   - Compare sum with arr[k] (16-bit signed comparison)
+   - If equal, increment result counter
+4. After loop completes (at most 4096 iterations): assert done=1 and valid=1 for one cycle, output final result
+5. If start is asserted while processing, ignore (single operation at a time)
+
+**Timing Constraints**:
+- Maximum latency: 200 cycles (including reset and processing)
+- Done signal asserted exactly one clock cycle after calculation completes
+- Result available and stable when done=1 and valid=1
+
+**Implementation Details**:
+- Use 16-bit registers for arr elements (16 registers)
+- Use 16-bit counter for result
+- Use state machine: IDLE → PROCESSING → DONE
+- For i, j, k loops: Use 4-bit counters (0-15)
+- Use comparator flags: distinct = (i != j) & (i != k) & (j != k)
+- Use 16-bit signed addition: sum = arr[i] + arr[j]
+- Use 16-bit signed equality: sum == arr[k]
+- **Critical**: All signals must be explicitly defined (no dynamic arrays)
+- **Array Access**: Use individual wires `arr_0`, `arr_1`, ..., `arr_15`
+
+**State Machine**:
+- state = 0: IDLE (done=0, waiting for start)
+- state = 1: PROCESSING (running loops)
+- state = 2: DONE (done=1, valid=1, hold for 1 cycle)
+
+**Reset Behavior**:
+- Synchronous with clock
+- Min 2 cycles of reset
+- On release: result=0, state=0, counters=0, done=0, valid=0

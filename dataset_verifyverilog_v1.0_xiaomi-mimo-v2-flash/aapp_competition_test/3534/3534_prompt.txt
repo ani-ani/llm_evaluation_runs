@@ -1,0 +1,43 @@
+Design a Verilog module that computes the optimal K and maximum matches for a scaled-down version of the problem. 
+
+**Scaling Requirements**:
+- N (sequence length): Up to 16 elements (instead of 10^6)
+- Values: 8-bit signed integers (instead of 32-bit)
+- K: 8-bit unsigned (range 0-255)
+- Output: Maximum matches (4-bit) and K (8-bit)
+
+**Algorithm**: 
+Implement an iterative FSM that processes the input sequence element by element. Since K is derived from differences between adjacent elements (a[i+1] - a[i]), and we only need to check integer K values that are differences between consecutive elements (or 0), we can restrict the search space. For the scaled version, we will consider all valid K candidates derived from the differences in the input sequence (clamped to 8-bit range). The module will iterate through each candidate K, simulating the playback and counting matches against the input sequence.
+
+**Module Interface**:
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to begin processing
+  - `seq_in`: 8-bit signed input data (streaming)
+  - `seq_valid`: Input data valid flag
+  - `seq_done`: 1-cycle pulse indicating end of input sequence
+- Outputs:
+  - `optimal_k`: 8-bit optimal K value
+  - `max_matches`: 4-bit maximum match count
+  - `done`: 1-cycle pulse indicating calculation complete
+
+**Timing**:
+- Reset: 2 cycles, sets `done=0`, `optimal_k=0`, `max_matches=0`
+- Processing: Starts on `start` high. Processes sequence stream. Computes results. `done` pulses when finished.
+- Throughput: Process within 2048 cycles for N=16.
+
+**Internal Logic**:
+1. **Input Buffer**: Store up to 16 elements in a register array.
+2. **FSM States**: 
+   - IDLE: Wait for start
+   - READ_SEQ: Read sequence into buffer until `seq_done`
+   - CALC_K: Generate list of candidate Ks from adjacent differences (excluding 0 and negatives, clamp to 0-255).
+   - CHECK_K: Iterate through candidates. For each K, simulate playback: start at a[0], then for i=1 to N-1, if a[i] > a[i-1] play +K, if < play -K, if == play same. Count matches where played equals a[i].
+   - UPDATE_BEST: Compare match count with `max_matches`, update if higher.
+   - DONE: Pulse `done` and output results.
+
+**Constraints**:
+- All arithmetic must be 8-bit for K and match counts.
+- Differences larger than 255 or smaller than -255 are clamped or ignored.
+- Sequence length N must be detected from `seq_done` or a separate `len` signal (use `seq_done`).

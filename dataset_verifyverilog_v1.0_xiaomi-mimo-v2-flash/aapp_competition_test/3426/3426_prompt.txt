@@ -1,0 +1,99 @@
+Design a Verilog module to solve a simplified minimum tunnel length constraint problem for a subway network.
+
+**Problem Adaptation:**
+- Network: 16 stations (nodes), max 32 tunnels (edges)
+- Each tunnel has: a_i, b_i (4-bit station IDs), l_i (16-bit length), c_i (1-bit cable flag)
+- '?': Marked by 'l_known=0', actual length becomes don't-care input
+- Unknown lengths must be assigned minimum value ensuring:
+  1. Cables (c=1) form a minimum spanning tree connecting all stations to station 1
+  2. Non-cable tunnels (c=0) lengths don't create cheaper cable paths
+
+**Core Algorithm (HW Adapted):**
+1. Identify cable edges (c=1). They must form a tree. Compute total cable length.
+2. For each unknown tunnel (l_known=0):
+   - Assume its length is minimal (1 unit)
+   - Check if this creates a shorter path to station 1 via non-cable edges
+   - If yes, length must be increased to prevent bypassing cables
+   - The minimal valid length is the maximum bottleneck value along paths
+
+**Simplified Approach for Verilog:**
+- Since N is small (16), use Floyd-Warshall for all-pairs shortest paths
+- Cable edges form a base MST (guaranteed connected)
+- For each unknown edge:
+  - If it's a cable edge: length must be at least the MST edge weight (use 1 if unknown)
+  - If it's non-cable: length must be >= shortest path distance between its endpoints using ONLY cable edges (to prevent creating cheaper alternative)
+- This is a constraint propagation problem solvable via BFS/DFS
+
+**Module Interface Specification:**
+Inputs:
+  - clk, rst_n: Standard clock/reset
+  - start: 1-cycle pulse to start computation
+  - N[3:0]: Number of stations (2-16)
+  - M[5:0]: Number of tunnels (1-32)
+  - For each tunnel i (0 to 31):
+    - a_i[3:0], b_i[3:0]: Station endpoints
+    - l_i[15:0]: Tunnel length (16-bit) if known, else don't care
+    - l_i_known: 1 if length known, 0 if unknown ('?')
+    - c_i: 1 if cable edge, 0 otherwise
+
+Outputs:
+  - result[15:0]: Minimum length for current unknown tunnel (valid when done=1)
+  - tunnel_idx[5:0]: Index of tunnel being computed (0-based)
+  - done: 1-cycle pulse when result is valid
+  - busy: 1 while computing
+
+**Operation Flow:**
+1. Start pulse initiates computation
+2. Internal FSM processes tunnels sequentially
+3. For each unknown tunnel (l_i_known=0):
+   - Compute minimal valid length based on cable tree constraints
+   - Output result on result port
+   - Increment tunnel_idx
+   - Pulse done
+4. Computation completes after processing all unknown tunnels
+
+**Timing Constraints:**
+- Reset: All outputs 0, min 2 cycles
+- Start->first done: ≤ 1000 cycles
+- Full computation: ≤ 2048 cycles (128 cycles/tunnel * 16 tunnels max)
+- Result valid only when done=1
+
+**Implementation Notes:**
+- Use 16x16 adjacency matrix for cable-only graph
+- BFS/DFS from station 1 to compute distances via cables only
+- For each unknown non-cable edge (u,v): minimum length = cable_distance[u][v]
+- For unknown cable edge: minimum length = 1 (or use known min edge weight logic)
+- Store results in internal buffer, output sequentially
+- Edge cases: If cable_distance[u][v] is 0 (u=v), use 1; if unreachable, use large value
+
+**Verilog Module Signature:**
+module subway_min_lengths (
+  input wire clk,
+  input wire rst_n,
+  input wire start,
+  input wire [3:0] N,
+  input wire [5:0] M,
+  // Tunnel inputs: 32 entries max
+  input wire [3:0] a [0:31],
+  input wire [3:0] b [0:31],
+  input wire [15:0] l [0:31],
+  input wire l_known [0:31],
+  input wire c [0:31],
+  output reg [15:0] result,
+  output reg [5:0] tunnel_idx,
+  output reg done,
+  output reg busy
+);
+
+**Required Submodules/Logic:**
+1. Input buffer for all tunnels
+2. Cable graph adjacency matrix (16x16)
+3. BFS/DFS module to compute distances from node 1 via cables
+4. Constraint check module for each unknown edge
+5. Result pipeline and output control
+
+**Testing Requirements:**
+- Test with varying N (2-16), M (1-32)
+- Verify cable graph connectivity from station 1
+- Validate minimum length constraints
+- Handle sequential unknown tunnel processing

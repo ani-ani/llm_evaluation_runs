@@ -1,0 +1,26 @@
+Design a Verilog module to compute the minimum number of cells to block to prevent any path from (0,0) to (H-1,W-1) on an HxW grid, moving only right or down, with cells marked as blocked (1) or open (0). The solution requires finding if 0, 1, or 2 blocking cells are sufficient.
+
+The algorithm:
+1. First, perform a forward pass to find all cells reachable from (0,0) using BFS/DP.
+2. Then, perform a backward pass from (H-1,W-1) to find cells that can reach the destination.
+3. The intersection of these sets represents cells on valid paths.
+4. The problem reduces to finding vertex separators in the induced subgraph. In a grid with only right/down moves, the minimum vertex cut size is either 0 (if no path exists initially), 1 (if there is a single cell that all paths must pass through), or 2.
+
+Simplified Hardware Implementation:
+- Use two 16x16 bit arrays (256 bits total) to store reachability from start and to destination.
+- Since n*m <= 1000 in the problem but we scale down to 16x16=256 cells, we can process the grid row-by-row.
+- Input: 16x16 grid flattened into 256 bits, plus start/stop signals.
+- Output: 2-bit result (0, 1, or 2).
+- Process: 
+  a. Compute `from_start` DP: `from_start[i][j] = grid[i][j] & (from_start[i-1][j] | from_start[i][j-1])`
+  b. Compute `to_end` DP: `to_end[i][j] = grid[i][j] & (to_end[i+1][j] | to_end[i][j+1])`
+  c. Count cells where `from_start[i][j] && to_end[i][j]` for each diagonal (i+j = k).
+  d. If any diagonal has count == 1, answer is 1. Else if `from_start[H-1][W-1]` is true, answer is 2. Else 0.
+
+Interface:
+- Inputs: clk, rst_n, start, grid_in (256-bit vector), H (4-bit), W (4-bit)
+- Outputs: result (2-bit), done (1-bit)
+- Timing: Combinational datapath with pipeline registers. Done asserted after H*W cycles (max 256).
+- Constraints: H and W <= 16. Grid cell '0' means open, '1' means blocked.
+
+Implement the module `min_block_cells` with the above logic, handling reset and control signals properly.

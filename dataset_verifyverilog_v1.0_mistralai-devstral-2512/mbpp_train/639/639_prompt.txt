@@ -1,0 +1,38 @@
+Write a Verilog module that filters names based on specific criteria and sums their lengths. The module must handle up to 6 names, each exactly 8 bytes (ASCII characters) with null termination (0x00).
+
+**Interface Specification:**
+Inputs:
+  - clk: rising edge (if sequential; use combinational if possible)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start processing (optional; can be combinational)
+  - names[0:5][7:0]: 6 names, each 8 bytes (MSB to LSB: byte0, byte1, ... byte7)
+  - len: 4-bit input (0-6) indicating number of valid names (others ignored)
+Outputs:
+  - result: 16-bit total length of filtered names
+  - done: 1-cycle pulse when result is valid (if sequential; else unused)
+
+**Functional Specification:**
+For each name i (0 to len-1):
+  1. Check if first character (byte0) is uppercase letter (A-Z, ASCII 65-90)
+  2. Check if all remaining characters (byte1 to byte7 until null) are lowercase letters (a-z, ASCII 97-122) or null (0x00)
+     - Note: The actual string length is determined by the position of the first null terminator (0x00) in the 8-byte array
+     - If no null, assume all 8 bytes are valid characters (but only count up to first null)
+  3. If both conditions met, add the actual string length (number of non-null bytes before first null) to the sum
+
+**Constraints:**
+- Maximum 6 names × 8 bytes = 48 bytes total
+- Each name length ≤ 8 (max 8 chars before null)
+- Total result fits in 16 bits (max 48 bytes)
+- Implementation: Use combinational logic for simplicity; no clock required
+- If sequential implementation, done signal indicates completion (within 10 cycles)
+
+**Example Test Cases:**
+1. ['sally', 'Dylan', 'rebecca', 'Diana', 'Joanne', 'keith'] → Filtered: 'Dylan'(5), 'Diana'(5), 'Joanne'(6) → Total 16
+2. ['php', 'res', 'Python', 'abcd', 'Java', 'aaa'] → Filtered: 'Python'(6), 'Java'(4) → Total 10
+3. ['abcd', 'Python', 'abba', 'aba'] → Filtered: 'Python'(6) → Total 6
+
+**Implementation Notes:**
+- Names are provided as 6 × 8-bit arrays (or single 48-bit array)
+- Null terminator (0x00) marks end of string; count bytes until first null
+- Edge cases: Empty name (first byte null) → length 0, not filtered
+- Must handle mixed case appropriately

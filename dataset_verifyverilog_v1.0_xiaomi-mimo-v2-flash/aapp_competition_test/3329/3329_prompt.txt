@@ -1,0 +1,41 @@
+Implement a Verilog module that computes the number of distinct starting circular binary sequences of length N (N=3..100) that transform into the same target sequence after K (K=1..10) steps of a specific cellular automaton rule. The transformation rule: For each position i in the circle, the new value at i is the XOR of its two neighbors (left and right) in the previous configuration. The circle is periodic (indices modulo N).
+
+Your module must handle the following constraints:
+1. Input: N (3 to 100), K (1 to 10), target sequence (100-bit shift register, only first N bits used)
+2. Output: 16-bit count (assuming result fits in 16 bits for given constraints)
+3. The transformation is linear over GF(2) (XOR operations)
+4. Two circles are considered identical if they are rotations of each other
+5. You must compute T^K where T is the N×N circulant matrix with T[i][i-1]=1, T[i][i+1]=1 (mod N)
+6. Then find the number of solutions to T^K * x = target (or any rotation of target)
+7. Use iterative matrix exponentiation with binary representation of K
+8. Implement matrix-vector multiplication over GF(2)
+9. Count distinct solutions considering rotational symmetry
+
+Interface:
+Inputs:
+  - clk: system clock (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to begin computation
+  - N: 7-bit input (3-100, unused bits ignored)
+  - K: 4-bit input (1-10, unused bits ignored)
+  - target_seq: 100-bit vector (only first N bits significant)
+Outputs:
+  - result: 16-bit output (number of distinct starting circles)
+  - done: 1-cycle pulse indicating result is valid
+
+Timing: The computation should complete within 2000 clock cycles after start is asserted. Reset should clear all internal state and set result=0, done=0.
+
+Implementation approach:
+1. Store target sequence and compute all N possible rotations
+2. Initialize identity matrix I (N×N bits)
+3. For each bit in K (0 to 3):
+   - If K[b] is set: I = I × T^(2^b)
+4. T^(2^b) is computed by repeated squaring: T, T², T⁴, T⁸...
+5. For each unique target rotation:
+   - Solve T^K × x = target_rotation
+   - Use Gaussian elimination over GF(2) to find null space dimension
+   - Count solutions: 2^(null_space_dim)
+6. Sum counts from all distinct target rotations (avoid double counting)
+7. Output the total count
+
+Note: Matrix operations must be optimized for hardware. Use bit-vector packing for rows (100 bits per row). Implement XOR reduction trees for matrix multiplication.

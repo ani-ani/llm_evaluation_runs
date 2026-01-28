@@ -1,0 +1,53 @@
+Implement a Verilog module that processes a list of string pairs, converting numeric strings to 16-bit fixed-point values (Q16.16) and keeping alphabetic characters as-is.
+
+Module Interface:
+- Inputs:
+  clk: clock (rising edge)
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start processing
+  pair_0_str_0: 8-bit ASCII array (characters '0'-'9', '.', or 'a'-'z')
+  pair_0_str_1: 8-bit ASCII array
+  pair_1_str_0: 8-bit ASCII array
+  pair_1_str_1: 8-bit ASCII array
+  pair_2_str_0: 8-bit ASCII array
+  pair_2_str_1: 8-bit ASCII array
+  pair_3_str_0: 8-bit ASCII array
+  pair_3_str_1: 8-bit ASCII array
+  Each string input is 8 bytes (64 bits) where bytes 0-7 hold ASCII characters, padded with spaces if shorter.
+
+- Outputs:
+  result_pair_0_val_0: 32-bit (fixed-point Q16.16 if numeric, else top 8 bits = ASCII code of first char, bottom 24 bits = 0)
+  result_pair_0_val_1: 32-bit (same encoding)
+  result_pair_1_val_0: 32-bit
+  result_pair_1_val_1: 32-bit
+  result_pair_2_val_0: 32-bit
+  result_pair_2_val_1: 32-bit
+  result_pair_3_val_0: 32-bit
+  result_pair_3_val_1: 32-bit
+  done: 1-cycle pulse when all pairs processed
+
+- Behavior:
+  On start, process all 4 pairs in parallel or sequentially (design choice). Each string (8 bytes) is parsed character-by-character. If all characters are digits (0-9) or include a single '.', convert to fixed-point integer: e.g., "12.34" = 12.34 * 65536 = 808464 (Q16.16). If any character is a letter (a-z), store the ASCII value of the first character in the top 8 bits of the 32-bit output (shift left 24 bits), lower bits zero.
+  The conversion must be done within 256 clock cycles after start.
+  Reset: done = 0, all outputs = 0, takes 2 cycles.
+  No external memory: use combinational logic or small FSMs (max 256 cycles).
+  Edge cases: Empty strings (treated as numeric 0), single digit (e.g., "3" -> 3.0), decimal without leading digit (e.g., ".5" -> 0.5). Assume valid input strings (no negative, no multiple dots).
+  Max 4 pairs, max 8 chars per string. Use fixed-size registers. Output should be stable when done=1.
+  Timing: start -> done <= 100 cycles.
+
+- Example mapping (input ASCII to output value):
+  "3" -> 3.0 * 65536 = 196608
+  "26.45" -> 26.45 * 65536 = 1733564 (round as needed)
+  "7.32" -> 7.32 * 65536 = 479744
+  "abc" -> 97 << 24 = 1627389952 (if 'a' is 97)
+  Strings shorter than 8 chars are space-padded from the left? or right? Clarify: Pad from the left with spaces (ASCII 32). The ASCII value of space is 32, but for alpha detection, only 'a'-'z' count as alpha; spaces are ignored (treated as end of string).
+  For simplicity, process only the non-space characters from left to right.
+
+- Constraints: Use only 32-bit registers, no floating-point units. Parsing must handle decimal point by tracking integer and fractional parts. Assume at most one decimal point. Fractional part up to 2 digits for simplicity (scaling to 100ths).
+  Bit widths: Decimal integer part up to 999 (10 bits), fractional part up to 99 (7 bits), total scaled by 100 then multiplied by 65536/100 = 655.36 (approx). Compute as (integer * 100 + fraction) * 65536 / 100.
+  Use integer arithmetic: result = ( (int_part * 100 + frac_part) * 65536 ) / 100.
+  For alphabetic, just output the first character's ASCII in high byte.
+
+  Implementation hint: Use a finite state machine with states: IDLE, PROCESSING, DONE. For each pair, have a small parser module (combinational with 8-cycle scan). Process pairs in sequence (to reduce hardware) or in parallel (4 parsers). Sequential is OK: 4 pairs * 8 chars * some cycles < 100.
+
+- Testbench will provide ASCII byte arrays for each string. Ensure your module correctly handles the byte order (byte 0 = first character).

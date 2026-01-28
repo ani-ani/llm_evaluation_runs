@@ -1,0 +1,71 @@
+Implement a Verilog module that computes the probability (p/q) for the 'Cups and Key' game problem, where p and q are modulo 10^9 + 7.
+
+Problem Analysis:
+The key starts under the middle cup. In each of n turns, the middle cup is swapped with a random outer cup. The probability that the key remains under the middle cup after n turns follows the recurrence: P(n) = (1/3) * P(n-1) + (2/3) * (1 - P(n-1)). Solving this yields P(n) = (2^n - (-1)^n) / (3 * 2^n).
+We need to output (p, q) such that P = p/q (mod 10^9 + 7), with gcd(p,q)=1.
+This corresponds to:
+- If n is even: p = (2^n + 1) / 3, q = 2^n
+- If n is odd: p = (2^n - 1) / 3, q = 2^n
+
+Given n = a_1 * a_2 * ... * a_k, where a_i are large (up to 10^18). We cannot compute n directly.
+We compute exponents modulo (10^9 + 6) because of Fermat's Little Theorem for modular exponentiation and division.
+Specifically, we need:
+1. Compute n_mod = (a_1 * ... * a_k) mod (MOD - 1).
+2. Check if n is even (OR of any a_i being even).
+3. Compute pow2 = 2^n mod MOD using n_mod.
+4. Compute denominator q = pow2 * inv(2) mod MOD (which is 2^(n-1) mod MOD).
+5. Compute numerator p = (q + flag) * inv(3) mod MOD, where flag = 1 if n is even, -1 (which is MOD-1) if n is odd.
+
+Inputs:
+- k: Number of elements (1 to 10^5, but in hardware we will handle a stream).
+- a_i: Array elements (up to 10^18). We need 60 bits to represent them.
+
+Outputs:
+- x: p mod MOD (32-bit integer).
+- y: q mod MOD (32-bit integer).
+
+Constraints:
+- Inputs are provided serially.
+- MOD = 10^9 + 7.
+- Fermat modulus for exponents = MOD - 1 = 10^9 + 6.
+- Bit widths: a_i < 2^60. Exponent accumulators < 2^30 (since MOD < 2^30). Results < 2^30.
+
+Module Interface:
+- Inputs: clk, rst_n, start (pulsed high to start processing), a_val (60-bit data), a_valid (input valid), input_done (indicates end of input stream).
+- Outputs: result_valid (pulsed high when x,y are ready), x (32-bit), y (32-bit).
+
+Implementation Logic:
+1. **Accumulation Phase**:
+   - On `start`, reset accumulators: `prod_mod = 1`, `parity = 0` (0 for odd, 1 for even).
+   - While `input_done` is low and `a_valid` is high:
+     - `prod_mod = (prod_mod * (a_val % (MOD-1))) % (MOD-1)`
+     - `parity = parity | (a_val[0] == 0)` (if LSB is 0, number is even).
+   - When `input_done` goes high, transition to calculation phase.
+
+2. **Calculation Phase**:
+   - Calculate `exp_val = prod_mod`. If `parity` is 0 (n is odd), `exp_val = (prod_mod - 1) % (MOD-1)`? 
+     Actually, simpler: 
+     `pow2_val = pow(2, prod_mod, MOD)`
+     If `parity` is 0 (n is odd): `q = pow2_val * inv2 % MOD`. `x = (q - 1 + MOD) * inv3 % MOD`.
+     If `parity` is 1 (n is even): `q = pow2_val * inv2 % MOD`. `x = (q + 1) * inv3 % MOD`.
+   - This requires a modular exponentiation unit (2^exp) and modular multiplication unit.
+
+3. **Fixed Constants**:
+   - `inv2 = 500000004` (inverse of 2 mod 10^9+7)
+   - `inv3 = 333333336` (inverse of 3 mod 10^9+7)
+
+4. **Datapath**:
+   - Modular Exponentiation: Use sequential binary exponentiation (square-and-multiply) taking up to ~30 cycles (since exponent < 10^9).
+   - Modular Multiplication: Use standard multi-operand multiplication or recursive squaring.
+   - State Machine: IDLE -> ACCUMULATE -> CALC_POW2 -> CALC_RESULT -> DONE.
+
+Note: The input stream size k is large (10^5), but the operation per element is simple (modulo reduction and AND for parity). The calculation phase is bounded by O(log MOD) cycles. The total latency will be roughly k + 30 cycles.
+
+Verilog Interface:
+- clk, rst_n: Standard synchronous control.
+- start: 1-cycle pulse to reset and start accumulation.
+- a_val [59:0]: The current input number.
+- a_valid: High when a_val is valid.
+- input_done: High when input stream is finished.
+- result_valid: High when calculation is done.
+- x [31:0], y [31:0]: Result outputs.

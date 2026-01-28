@@ -1,0 +1,45 @@
+You are tasked with designing a Verilog module that determines if a given set of edges can be partitioned into two specific trees: a 'Left' tree rooted at node 1 (edges directed towards larger numbers) and a 'Right' tree rooted at node n (edges directed towards smaller numbers).
+
+**Problem Adaptation for Hardware:**
+Since the original problem supports n up to 100,000, we restrict the hardware implementation to **n <= 16** and a maximum of **2(n-1) <= 30 edges**. This allows the use of fixed-width signals (4-bit node indices) and bounded memory. The solution must be implemented as a deterministic finite state machine (FSM) or a pipeline.
+
+**Algorithm Suggestion:**
+1.  **Input:** Receive edges one by one over a clock cycle. Store them in a local buffer (e.g., a 30x8-bit array).
+2.  **Degree Calculation:** For each node, calculate the total degree (number of incident edges).
+    *   In the final solution, the Left Tree (rooted at 1) contributes `deg_L(u)` edges for each node `u`.
+    *   The Right Tree (rooted at n) contributes `deg_R(u)` edges for each node `u`.
+    *   Crucially, for a tree structure:
+        *   Node 1 must have `deg_R(1) = 0` (no edges from right tree pointing to smaller nodes).
+        *   Node n must have `deg_L(n) = 0` (no edges from left tree pointing to larger nodes).
+        *   Total degree `deg(u) = deg_L(u) + deg_R(u)`.
+3.  **Constraint Solving:**
+    *   We must assign every edge `(u, v)` (where `u < v`) to either L or R.
+    *   For the Left Tree: Every node `u > 1` must have exactly `deg_L(u) = 1` (exactly one parent edge, from a smaller node). Node 1 has `deg_L(1) = 0` (root).
+    *   For the Right Tree: Every node `u < n` must have exactly `deg_R(u) = 1` (exactly one parent edge, from a larger node). Node n has `deg_R(n) = 0` (root).
+    *   **Logic:**
+        *   If `deg(1) > (n-1)` or `deg(n) > (n-1)`, it's impossible (saturating bounds).
+        *   Use a greedy approach or simple iteration: Since edges are strictly `u < v`, we can process nodes from 1 to n.
+        *   For Left Tree: Node 1 is the root. Node 2 must have exactly 1 L-edge (from 1). Node 3 must have exactly 1 L-edge (from 1 or 2), etc.
+        *   For Right Tree: Node n is the root. Node n-1 must have exactly 1 R-edge (from n). Node n-2 must have exactly 1 R-edge (from n-1 or n), etc.
+    *   **Implementation:**
+        *   Maintain two arrays `l_assign_count[1:16]` and `r_assign_count[1:16]` initialized to 0.
+        *   Iterate through stored edges. Try to assign to L if `u < v` and `l_assign_count[v] < 1`. Else try R if `l_assign_count[u] < 1` (wait, checking R constraints: `r_assign_count[u] < 1`).
+        *   This is a classic bipartite matching or 2-SAT reduced to a fixed point for small N. A simple state machine checking all 2^E possibilities is too expensive for E=30. Instead, use the degree constraints:
+            *   For each edge (u, v):
+                *   Valid for L if `u` is a potential parent for `v` (always true if `u < v`) and `v` hasn't received an L-parent yet.
+                *   Valid for R if `v` is a potential parent for `u` (always true if `u < v`) and `u` hasn't received an R-parent yet.
+                *   **Crucial:** This problem is equivalent to finding an orientation of edges such that out-degree constraints are met (Left tree: out-degree of u is flexible, in-degree is 1 for u>1; Right tree: in-degree of u is flexible, out-degree is 1 for u<n). 
+        *   **Simplified Hardware Heuristic:**
+            *   Fill a 16x4bit matrix of edges.
+            *   State 0: Read all edges.
+            *   State 1: Initialize counters `used_L[16]`, `used_R[16]` to 0.
+            *   State 2: Iterate 1 to n. 
+                *   For L-tree: Ensure every node `i > 1` has exactly one incoming edge from `{1..i-1}`. Check available edges.
+                *   For R-tree: Ensure every node `i < n` has exactly one incoming edge from `{i+1..n}`.
+                *   Since we have a small bound (N=16), we can implement a backtracking solver with a bounded stack (e.g., 16 levels) inside the FSM, or use a randomized approach (Monte Carlo) if deterministic is too hard, but for HDL, a bounded exploration is better.
+            *   **Output:** An 8-bit `config` register indicating the state (0: idle, 1: reading, 2: solving, 3: done/failed). The output string is stored in a byte-array (30 bytes).
+
+**Interface:**
+*   Inputs: `clk`, `rst_n`, `start`, `edge_u` (4-bit), `edge_v` (4-bit), `edge_valid` (1-bit).
+*   Outputs: `result_string` (array of 8-bit chars, length 30), `valid` (1-bit), `impossible` (1-bit).
+*   Constraints: The module must handle up to 30 edges. It must finish within 2000 clock cycles.

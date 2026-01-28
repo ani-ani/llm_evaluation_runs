@@ -1,0 +1,51 @@
+Design a Verilog module that computes the product of an array of integers modulo n. The module must:
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle start pulse
+  - `arr_in`: 16-bit input for array elements (data arrives sequentially)
+  - `valid_in`: 1-cycle pulse when `arr_in` is valid
+  - `len`: 4-bit unsigned integer (number of elements, 1-16)
+  - `n`: 16-bit modulus
+- Outputs:
+  - `result`: 16-bit final remainder
+  - `done`: 1-cycle pulse when calculation complete
+  - `ready`: 1 when ready to accept start
+
+**Behavior:**
+- When `start` is high (and `ready`==1), load `len` and `n`
+- Accept `len` elements sequentially via `arr_in`/`valid_in`
+- Compute: ((arr[0] % n) * (arr[1] % n) * ... * (arr[len-1] % n)) % n
+- Store intermediate product in 16-bit register
+- Each multiplication: `temp = (temp * (arr[i] % n)) % n`
+- After `len` elements, assert `done` for 1 cycle
+- `result` valid when `done`=1
+
+**Constraints:**
+- Array size: 1-16 elements
+- Values: 0-65535 (16-bit)
+- Modulus: 1-65535
+- Timing: Complete within 256 cycles after start
+- No combinational multipliers > 16-bit
+- Use sequential multiplication with 16-bit registers
+
+**Implementation Notes:**
+- State machine: IDLE → LOAD → RECEIVE → COMPUTE → DONE
+- For each element: compute element % n (16-bit division)
+- Then multiply with accumulated product and mod by n
+- Division: implement as simple sequential subtraction (max 256 cycles)
+- Multiplication: use 16x16→32-bit intermediate, then mod n
+- All operations must fit in 16-bit registers for area efficiency
+
+**Timing Example:**
+- start=1 at cycle 0
+- ready=0 from cycle 1
+- After len elements received, compute takes ~len*16 cycles
+- done=1 at completion
+- result valid at same cycle as done
+
+**Reset:**
+- rst_n=0: all registers to 0, done=0, ready=1
+- min 2 cycles of reset required

@@ -1,0 +1,23 @@
+Design a Verilog module `rook_attacker` that computes the number of attacked fields after each move.
+
+### Inputs:
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to initiate operation.
+- `N`: 6-bit (board size N, scaled down to 64).
+- `K`: 4-bit (number of rooks, scaled down to 16).
+- `P`: 4-bit (number of moves, scaled down to 16).
+- `rook_r`, `rook_c`, `rook_x`: 6-bit inputs for initial rook positions (row, col) and power (6-bit value). These are streamed in sequentially over K cycles.
+- `move_r1`, `move_c1`, `move_r2`, `move_c2`: 6-bit inputs for a move. This is streamed in sequentially over P cycles.
+
+### Outputs:
+- `result`: 16-bit (total attacked fields).
+- `done`: 1-cycle high when result is valid.
+- `ready`: High when module is ready to accept inputs (rook or move).
+
+### Functionality:
+1. **Initialization**: Upon `start` high, reset internal state (RAMs for row_xor and col_xor). Wait for `K` cycles to load initial rooks via `rook_r`, `rook_c`, `rook_x`. In each cycle, XOR the power into the corresponding row and column RAM entry. (Only process input if `ready` is high).
+2. **Computation**: After loading K rooks, compute initial attacked field count using the formula: `N * (Zr + Zc) - 2 * Zr * Zc`, where `Zr` is number of rows with XOR sum 0, and `Zc` is number of columns with XOR sum 0. This computation should be done iteratively to avoid large multipliers (use sequential counter). Output result and assert `done`.
+3. **Move Processing**: For each of P moves, wait for `move_r1`, `move_c1`, `move_r2`, `move_c2` inputs (streamed in 1 cycle each). Update row/col RAMs by removing rook power from old location (read-modify-write) and adding to new location. Recompute `Zr`, `Zc`, and attacked count. Output new result and assert `done`.
+4. **Memory**: Use two 64x6-bit synchronous RAMs for `row_xor` and `col_xor`. They must support one read/write port per cycle. Since N≤64, we can iterate 0 to N-1 to count zeros.
+5. **Timing**: Input handling is sequential (one per cycle). Computation of attack count should complete within ~64 cycles per move. Total cycles bounded by (K + P*(~65)).

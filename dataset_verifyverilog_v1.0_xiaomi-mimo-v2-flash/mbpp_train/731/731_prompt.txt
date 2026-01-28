@@ -1,0 +1,26 @@
+Design a Verilog module that computes the lateral surface area of a cone given radius r and height h using fixed-point arithmetic.
+
+SPECIFICATION:
+- Use Q16.16 fixed-point format (16 integer bits, 16 fractional bits) for inputs, internal calculations, and output.
+- Inputs: r [15:0] and h [15:0] as unsigned 16-bit integers representing the integer parts of the radius and height (fractional parts are 0).
+- Output: area_q16 [31:0] representing the lateral surface area in Q16.16 format.
+- The module must be combinational (no clock/reset) for simplicity in benchmarking the core math.
+
+IMPLEMENTATION STEPS:
+1.  **Preprocessing**: Convert r and h to Q16.16 by appending 16 zero bits (left shift by 16).
+2.  **Squared Radius and Height**: Calculate r2 = r * r and h2 = h * h using 32x32->64 bit multiplication. Take the upper 32 bits of the result to stay in Q16.16 (since inputs are integers, product fits in upper 32 bits).
+3.  **Slant Height (l)**: Calculate `l_squared = r2 + h2`. Compute `l = sqrt(l_squared)`.
+    *   *Constraint*: Assume a built-in core (`sqrt_fixed`) exists that takes a 32-bit Q16.16 input and returns a 32-bit Q16.16 result. If implementing from scratch, use a small lookup table or binary search limited to 8-16 iterations for the specific range (max input approx 19^2+17^2 = 650). Focus on the multiplication and summation logic.
+4.  **Pi Constant**: Define `PI_Q16 = 32'h0003243F` (3.14159 * 2^16 ≈ 205887).
+5.  **Area Calculation**: `area_q16 = (r * PI_Q16 * l) >> 16`. Perform the multiplications sequentially to manage bit growth (32x32->64, then truncate, then multiply by l).
+6.  **Output**: Output the 32-bit result.
+
+MODULE INTERFACE:
+- Module name: `cone_lsa_calc`
+- Inputs:
+  - `r [15:0]`: Integer radius
+  - `h [15:0]`: Integer height
+- Outputs:
+  - `area [31:0]`: Lateral surface area in Q16.16 format
+
+Timing: Combinational (max delay < 100ns). No clock/reset required for this specific computational module.

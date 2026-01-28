@@ -1,0 +1,34 @@
+You are to design a Verilog module that computes the minimum cost to make a sequence of scores alternating (positive/negative/non-zero) using two operations: 1) Flip the sign of any element (cost C), 2) Remove any element (cost R). 
+
+You are given a scaled problem where:
+- Number of elements N is fixed at 16.
+- Each score is an 8-bit signed integer (range -128 to 127).
+- Costs C and R are 16-bit unsigned integers.
+
+The module must compute the minimum cost. You should implement a simplified dynamic programming approach. Since the full DP table is large, use a pipelined state machine or a systolic array structure.
+
+**Interface Specification:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low asynchronous reset
+- `start`: Input valid signal (pulse high for 1 cycle to start processing)
+- `c_in [15:0]`: Cost per account flip (unsigned 16-bit)
+- `r_in [15:0]`: Cost per report/remove (unsigned 16-bit)
+- `s_in [7:0]`: Current score input (signed 8-bit). Input is serial, one score per clock cycle when `start` is asserted. You must store these in an internal buffer.
+- `result [23:0]`: Minimum cost output (unsigned 24-bit)
+- `done`: Output valid signal (high when calculation is complete)
+
+**Algorithm (Simplified):**
+1. Load 16 scores serially into an internal buffer `s_mem[0:15]`.
+2. Perform Dynamic Programming:
+   - State 0: Sequence can end with a positive number.
+   - State 1: Sequence can end with a negative number.
+   - State 2: Sequence is empty (removed all).
+   - At each step i (0 to 15), calculate new costs:
+     - Cost to remove current: min(cost_prev_0, cost_prev_1, cost_prev_2) + R
+     - Cost to keep as positive: if s[i] > 0: min(cost_prev_1, cost_prev_2) else min(cost_prev_1, cost_prev_2) + C
+     - Cost to keep as negative: if s[i] < 0: min(cost_prev_0, cost_prev_2) else min(cost_prev_0, cost_prev_2) + C
+3. Result is min(final_cost_pos, final_cost_neg, final_cost_empty).
+
+**Constraint:** Use a Finite State Machine (FSM) to iterate through the 16 elements. The DP state (3 values) must be updated sequentially or in parallel if resources allow. The implementation must fit within typical FPGA resources (Block RAM for score storage, Registers for DP state).
+
+**Timing:** Processing 16 elements should take approx 20-50 clock cycles.

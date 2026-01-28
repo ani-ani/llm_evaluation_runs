@@ -1,0 +1,27 @@
+Implement a Verilog module to simulate a simplified version of Aladin's machine with fixed constraints.
+
+**Problem Adaptation:**
+1. **Scale:** Maximum array size is 1024 elements (index 0 to 1023). N input is ignored; we operate on a fixed window.
+2. **Operations:**
+   - Type 1 (Update): Set range [L, R] (1-based, 1..1024) to sequence `(X - L + 1) * A % B`. Since we cannot compute modulo directly in hardware easily without a divider, and to keep it combinatorial, we will compute the sequence value `(k * A)` where `k = 1..(R-L+1)` and clamp the result to `B-1` if it exceeds B (simulating modulo via logic, but actually just output `(k*A)` as the value since exact modulo requires division, which is resource heavy. *Correction for HDL:* Since the prompt asks for simulation of the device, we will compute `(k * A)` and assign it. To simulate modulo, we will use a fixed-point approach where `A` and `B` are 16-bit. The user specifies `B`, so we will output `(k * A) % B` by performing the multiplication and using a comparator/difference logic if needed, but simpler is to just store `(k * A)` and let the modulo happen in software. *Constraint:* To fit in HDL, we will compute the value `val = (k * A)` and store it. If `val >= B`, we subtract `B` once (simplified modulo for small B) or just clamp. Let's implement the sequence generation directly: for i in range(len): `arr[L+i] = ((i+1) * A) % B`.
+   - We will assume `A` and `B` are 16-bit integers. The product `k*A` fits in 32-bit. We will store the result in a 16-bit register, performing the modulo operation by checking if `(k*A) >= B` and subtracting `B` if so (one subtraction only, suitable for small values).
+   - Type 2 (Query): Calculate sum of `arr[L..R]`. Result fits in 32-bit (1024 * 65535 < 2^32).
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock
+  - `rst_n`: Active-low reset
+  - `start`: 1-cycle pulse to initiate operation
+  - `op_type`: 1-bit (0 for Update, 1 for Query)
+  - `L`, `R`: 10-bit unsigned (0..1023, mapping 1-based input to 0-based index)
+  - `A`, `B`: 16-bit unsigned
+- **Outputs:**
+  - `result`: 32-bit unsigned (Sum or unused)
+  - `done`: 1-bit, high for 1 cycle when finished
+
+**Internal Logic:**
+- Use a single BRAM for `arr` (1024 x 16 bits).
+- Update operation: Iterate `i` from `L-1` to `R-1`. Calculate `k = i - (L-1) + 1`. Compute `val = (k * A)`. If `val >= B`, `val = val - B` (simulated modulo). Write to BRAM.
+- Query operation: Iterate `i` from `L-1` to `R-1`. Accumulate `arr[i]` into `result`.
+- **Timing:** Start asserted, waits for `done`. Update takes `(R-L+1)` cycles. Query takes `(R-L+1)` cycles.
+- **Constraints:** Max window size 1024. Max A, B 16-bit.

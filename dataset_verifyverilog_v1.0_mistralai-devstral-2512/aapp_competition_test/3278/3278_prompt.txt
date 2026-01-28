@@ -1,0 +1,27 @@
+Implement a Verilog module that solves a simplified frog tower problem. You are given up to 8 frogs, each with an initial position (0-255) and a jump distance (2-31, prime). The goal is to find the smallest position where the maximum number of frogs can meet (i.e., form a tower).
+
+The frogs jump in turns. At each cycle, a frog jumps if its current position is less than the target position. The jump distance is fixed for each frog (given as input). 
+
+Interface:
+- Inputs: `clk` (system clock), `rst_n` (active-low reset), `start` (start computation, 1-cycle pulse)
+- Inputs: `frog_pos[0:7]` (8x8-bit array, initial positions 0-255)
+- Inputs: `frog_dist[0:7]` (8x5-bit array, jump distances 2-31)
+- Input: `num_frogs` (4-bit, number of active frogs, 1-8)
+- Outputs: `result_pos` (16-bit, smallest position of max tower), `result_size` (4-bit, size of the tower), `done` (1-cycle pulse when result is valid)
+
+Implementation details:
+1. The module should iterate through possible target positions starting from 0.
+2. For each target position `pos`, simulate the jumps of all `num_frogs` frogs.
+   - A frog at position `x` with distance `d` can reach `pos` if `(pos - x) % d == 0` and `pos >= x`.
+   - Since we need to find the position where the MAXIMUM number of frogs meet, we track the count of frogs that can reach `pos`.
+3. Optimization: Since the product of unique distances is small (in original problem), here we simply scan `pos` from 0 to 255 (or a bit higher, e.g., 512) to find the solution.
+4. State Machine:
+   - `IDLE`: Wait for `start`. Initialize `pos = 0`, `max_count = 0`, `best_pos = 0`.
+   - `SCAN`: Increment `pos`. For each `pos`, check all frogs. Use a counter to accumulate valid frogs for this `pos`.
+   - `COMPARE`: Update `max_count` and `best_pos` if current `pos` count > `max_count`.
+   - `CHECK_LIMIT`: If `pos` reaches max limit (e.g., 512), go to `DONE`. Else, back to `SCAN`.
+   - `DONE`: Latch results and assert `done`.
+5. Constraints: Use efficient combinational logic for modulo check (since distances are small, comparators are fine).
+6. Timing: Finish within 2048 cycles (scanning up to 256 positions with 8 frogs).
+
+Reset behavior: `result_pos`, `result_size`, `done` must be 0 during reset.

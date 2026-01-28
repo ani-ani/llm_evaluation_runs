@@ -1,0 +1,56 @@
+Verilog HDL Module Specification for Miniature Golf Ranking Problem
+
+**Problem Summary**: Given p players (2≤p≤500) and h holes (1≤h≤50), each player has scores per hole (≤1e9). For a given limit ℓ, total score is sum(min(score, ℓ)). Players want to minimize their rank (count of players with ≤ total score). Output minimum possible rank per player.
+
+**Hardware Adaptation**: 
+- p ≤ 512 (9-bit), h ≤ 50 (6-bit), scores clamped to 16-bit (max 65535, actual max sum ≤ 500*500=250k fits in 18 bits)
+- ℓ iteration: 1 to 500 (9-bit loop counter)
+- Algorithm: For each player i, iterate ℓ=1..500, compute total_i = sum(min(score[i][j], ℓ)), then compute rank_i = 1 + count of players k where total_k ≤ total_i. Track minimum rank_i across all ℓ.
+
+**Module Interface**:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - scores[512][50]: 512x50 array of 16-bit scores (only first p rows and h columns valid)
+  - p: 9-bit number of players (valid range 2-512)
+  - h: 6-bit number of holes (valid range 1-50)
+- Outputs:
+  - rank_out[512]: 512x9-bit array of minimum ranks (valid for indices 0..p-1)
+  - result_ready: 1-cycle pulse when all ranks computed
+
+**Timing & Control**:
+- After start=1, computation completes within 500 * (512*50 + 512*512) ≈ 135M cycles (≈1.35s at 100MHz)
+- Use pipelined loops: outer loop (ℓ), inner loops (sum, compare)
+- Reset: rank_out=0, result_ready=0, internal state=0
+
+**Implementation Details**:
+- Use BRAM for scores: 512x50x16 = 409600 bits (≈51KB)
+- Use FSM: IDLE→START_L→COMPUTE_SUMS→COMPARE_RANKS→UPDATE_MIN→NEXT_L→DONE
+- Partial sums: 512x18-bit registers (max sum 250k)
+- Rank counters: 512x9-bit registers
+- Minimum ranks: 512x9-bit registers
+- ℓ counter: 9-bit (0-500)
+- Score comparison: 16-bit clamped to ℓ before add
+- All operations within 32-bit arithmetic (safe for 250k sums)
+
+**Constraints**:
+- Clock frequency: 100MHz (10ns period)
+- Critical path: Sum accumulation (18-bit adder) and comparison (18-bit comparator)
+- BRAM latency: 1 cycle (assumed synchronous read)
+- No external memory access during computation
+- Internal loops must be bounded (≤500 iterations)
+
+**Verilog Module Declaration**:
+module golf_ranking (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [15:0] scores [511:0][49:0],  // 2D array
+    input wire [8:0] p,
+    input wire [5:0] h,
+    output reg [8:0] rank_out [511:0],
+    output reg result_ready
+);
+
+**Notes**: Scores are provided as 2D array; during simulation, populate only valid entries. Use case statements or FSM to control iteration bounds. Ensure all loops have fixed maximum iteration counts.

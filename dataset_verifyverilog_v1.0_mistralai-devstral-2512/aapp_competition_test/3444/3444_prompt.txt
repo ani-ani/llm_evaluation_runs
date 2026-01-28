@@ -1,0 +1,49 @@
+Implement a Verilog module that solves the ski slope probability problem.
+
+### Problem Adaptation
+- **N (nodes)**: Scaled from 300 to 16 (index 0-15).
+- **M (edges)**: Scaled to 32 max.
+- **Input**: Fixed 16 edges represented as 16 arrays of 16-bit packed data (source, dest, weight).
+- **Probability**: Q16.16 fixed-point (1 integer bit, 15 fractional bits). 0.5 = 32768.
+- **Algo**: Dynamic Programming (Bellman-Ford style) with iteration bounded by 16.
+
+### Module Interface
+```verilog
+module ski_probability (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    
+    // Configuration
+    input wire [3:0] node_count, // 0-16
+    input wire [4:0] edge_count, // 0-32
+    
+    // Input edges (16 slots, packed: [31:24]Src, [23:16]Dest, [15:0]Weight(Q16.16))
+    input wire [31:0] edge_data_i,
+    input wire [4:0] edge_idx_i, // 0-31
+    input wire edge_wr_en,
+    
+    // Output (K=0..15)
+    output reg out_valid,
+    output reg signed [31:0] prob_k, // Q16.16
+    output reg [3:0] k_idx // Current k being output
+);
+```
+
+### Implementation Logic
+1. **Store Edges**: On `edge_wr_en`, store `edge_data_i` into a register array `edges[0:31]`.
+2. **DP State**: Maintain `prob[node]` array (size 16) initialized to 0. Node 0 is 1.0 (1<<16).
+3. **Control**: When `start` goes high, run 16 iterations (k=0 to 15).
+4. **Update Rule**: For each iteration `k`, perform a relaxation step over all valid edges:
+   - If `src` is reachable (prob > 0), calculate `new_prob = prob[src] * (1 - fall_prob)`.
+   - If `new_prob > prob[dest]`, update `prob[dest]`.
+   - *Constraint*: Since we can walk, we strictly maximize probability. Walking allows directed edges both ways, but skiing only top-down (src < dest). We model this by treating edges as undirected for walking (cost 0 fall), but since we want max probability, we just maximize connectivity. *Simplified for HDL*: Assume edges are directed edges in the input that can be traversed if we walk. Maximize probability reaching N-1.
+5. **Output**: After each outer iteration `k`, output the probability of reaching `node_count-1` via `prob_k` and `k_idx`. Set `out_valid` high for one cycle.
+
+### Exact Logic Constraints
+- Fixed-point multiplication: `new_prob = (prob[src] * (65536 - weight)) >> 16`.
+- Overflow: Clamp probabilities to max Q16.16.
+- Timing: Must output 16 results within 2000 cycles.
+- If unreachable, output -1 (0xFFFFFFFF signed).
+
+Do not provide full implementation code, only the specification logic.

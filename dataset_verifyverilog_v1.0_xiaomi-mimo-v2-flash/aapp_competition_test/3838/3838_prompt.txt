@@ -1,0 +1,87 @@
+Implement a Verilog module to determine if Masha's permutation can be reached in exactly k moves from identity, with Masha's permutation never appearing before the k-th move, given a permutation q.
+
+## Core Logic
+Simulate the permutation application process using lookup tables. The game starts with identity permutation p = [1,2,...,n].
+In each move:
+- Heads: Apply q to p: new_p[i] = p[q[i]-1]
+- Tails: Apply q^{-1} to p: new_p[i] = p such that q[p-1] = i+1 (or more simply: new_p[q[i]-1] = p[i])
+
+Since n and k are bounded (n≤16, k≤16), we can use unrolled computation or FSM.
+
+## Interface
+
+Inputs:
+  clk: System clock (posedge)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  q[15:0]: Packed array of 4-bit values (n≤16, values 1..16)
+  s[15:0]: Packed array of 4-bit values (Masha's permutation)
+  n_in: 4-bit input for actual permutation length (1..16)
+  k_in: 4-bit input for number of moves (0..15)
+
+Outputs:
+  result: 1-bit (1=possible YES, 0=impossible NO)
+  done: 1-bit pulse when computation complete
+
+## Implementation Strategy
+
+1. **Lookup Tables**: Store q and its inverse q_inv as 16x4-bit arrays.
+   - q[i] = input value at index i
+   - q_inv[i] = inverse permutation: q_inv[q[i]-1] = i+1
+
+2. **Simulation FSM**: Use a state machine with states:
+   - IDLE: Wait for start
+   - CHECK_START: Check if s == identity (violates condition if k>0)
+   - SIMULATE: Run k moves, track all intermediate states
+   - VERIFY: Check if s appears exactly at move k
+
+3. **Parallel Simulation**: Since k≤16, we can simulate two parallel paths:
+   - Path A: Always apply q (all heads)
+   - Path B: Apply q inverse on first move, then q on rest
+   - Or more generally, track all reachable states for each move count
+
+4. **State Representation**: Each permutation state is 16x4-bit = 64 bits.
+   Since n≤16, we can store up to 17 states (for moves 0..16).
+
+5. **Verification Logic**:
+   - Check that s ≠ identity (when k>0)
+   - Check that s appears at some move i where i ≤ k
+   - Check that s does not appear at any move < k
+   - Check that parity matches (k mod 2 determines available sequences)
+
+## Detailed Module Requirements
+
+Use a 3-stage pipeline or FSM:
+
+**Stage 1: Parse Input**
+- Extract q values from packed array (4 bits each)
+- Compute q_inv: q_inv[value-1] = index+1 for each value
+
+**Stage 2: Simulation**
+- Initialize p_current = [1,2,...,n]
+- For move = 0 to k:
+  - Record p_current as visited state for this move
+  - If move < k: compute next states based on available moves
+- Track which move (0..k) first matches s
+
+**Stage 3: Decision**
+- If k == 0: return (s == identity)
+- If k > 0:
+  - If s == identity: return NO (violates condition)
+  - Find first_move = earliest move where state matches s
+  - Return YES if first_move == k
+  - Return NO otherwise
+
+## Constraints
+- n ≤ 16, k ≤ 16
+- All permutations are 1-indexed (1..n)
+- Use 4-bit indices for values (0..15) but store 1-indexed values
+- Clock period: 10ns
+- Start-to-done: ≤ 200 cycles
+
+## Edge Cases
+- n=1: trivial check
+- k=0: only valid if s is identity and it hasn't appeared before (always true)
+- Identity permutation at move 0: invalid if k>0
+
+Note: Due to HDL constraints, we must pre-compute q_inv and use bounded iteration. The solution should handle all test cases within 16×16 grid.

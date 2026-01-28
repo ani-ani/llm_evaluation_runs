@@ -1,0 +1,47 @@
+Implement a hardware module to solve the antique shopping problem with scaled constraints. 
+
+**Problem Scaling:**
+- Original: n (1-100) antiques, m (1-40) shops, k (1-40) limit.
+- Hardware Scale: n=8 antiques, m=8 shops, k=4 max.
+- Prices: 10^7 max. Use 32-bit integers (Q16.16 or simple 32-bit fixed point).
+
+**Algorithm:**
+Use Dynamic Programming (DP) with Bitmask.
+1. **State:** `dp[mask][i]` = Minimum cost to buy first `i` antiques using shops in `mask`.
+   - `mask`: 8-bit bitmask representing visited shops (1=visited).
+   - `i`: 0 to 8 (number of antiques processed).
+2. **Transitions:** For each antique `i` (0 to 7), try both options:
+   - Buy original: shop `a`, cost `p`. New mask = `mask | (1 << a)`.
+   - Buy knockoff: shop `b`, cost `q`. New mask = `mask | (1 << b)`.
+3. **Initialization:** `dp[0][0] = 0`, others = Infinity.
+4. **Result:** Minimum `dp[mask][n]` where `popcount(mask) <= k`.
+
+**Module Interface:**
+- Inputs:
+  - `clk`, `rst_n`: System clock and active-low reset.
+  - `start`: 1-cycle pulse to start computation.
+  - `antique_a [0:7]`: Array of 8x 3-bit shop indices (original shop).
+  - `antique_p [0:7]`: Array of 8x 32-bit prices (original cost).
+  - `antique_b [0:7]`: Array of 8x 3-bit shop indices (knockoff shop).
+  - `antique_q [0:7]`: Array of 8x 32-bit prices (knockoff cost).
+  - `k_limit`: 3-bit integer (max 4).
+- Outputs:
+  - `result`: 32-bit minimum total cost.
+  - `done`: 1-cycle pulse when result is valid. If impossible, output -1 (0xFFFFFFFF).
+
+**Timing:**
+- Startup: Reset state (2 cycles).
+- Processing: Iterate through antiques (0 to 7). For each antique, update DP table (256 entries). 
+- Total cycles: ~2000 cycles max.
+- `done` goes high when computation finishes.
+
+**Internal Implementation:**
+- Use Block RAMs for `dp_current` and `dp_next` (256 entries x 32-bit).
+- Use a Finite State Machine (FSM):
+  - IDLE -> SETUP (init RAM) -> ANTIQUE_LOOP (load current antique data) -> MASK_LOOP (iterate 256 masks) -> UPDATE (calculate new cost) -> STORE (write back to RAM) -> CHECK_RESULT (popcount check) -> DONE.
+- Comparator logic for min cost.
+- Popcount logic (8-bit) to check if visited shops <= k.
+
+**Edge Cases:**
+- If cost > 0xFFFFFFFF (overflow), clamp or handle as invalid (though 32-bit is sufficient for scaled values).
+- If no valid state found, output 0xFFFFFFFF (-1).

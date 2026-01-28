@@ -1,0 +1,51 @@
+Design a Verilog module that generates a lexicographically smallest string of length n with exactly k distinct lowercase letters, where no two adjacent characters are identical. If impossible, output -1.
+
+## Interface
+Inputs:
+  clk: Clock signal
+  rst_n: Active-low synchronous reset
+  start: 1-cycle high to start generation
+  n_in: 16-bit input, desired string length (scaled: 0-1000)
+  k_in: 8-bit input, number of distinct letters (scaled: 0-16)
+
+Outputs:
+  result: 128-bit packed output array, each 8-bit segment holds one ASCII character
+  done: 1-cycle high when generation completes (after start)
+  valid: Remains high when result is valid
+
+## Timing & Constraints
+- Reset: Clears all registers, done=0, valid=0, result=0
+- Start: Must be held high for 1 clock cycle; on rising edge, begin generation
+- Max cycles: Complete within 256 cycles after start
+- String format: ASCII characters 'a'-'z' (0x61-0x7A) or 0xFF for error
+- Result format: result[7:0] = first char, result[15:8] = second char, etc.
+- k_max: 16 distinct letters (scales from original 26)
+- n_max: 1000 characters (scales from 10^6)
+
+## Algorithm Logic
+1. Check impossibility: If k > n, or (k == 1 && n > 1), or k > 16 -> output error
+2. If n == 1 && k == 1: output 'a'
+3. Generate string:
+   - First part: n - k + 2 characters alternating 'a' and 'b' (lexicographically smallest)
+   - Remaining k-2 characters: 'c', 'd', ..., up to k distinct total
+4. Output packed 128-bit result (supports up to 16 chars) with valid=1
+5. For error: Set result to all 0xFF and valid=1
+
+## State Machine
+- IDLE: Wait for start=1
+- CHECK: Validate inputs (1 cycle)
+- GENERATE: Build string (<= 256 cycles)
+- DONE: Set done=1 for 1 cycle, then back to IDLE
+
+## Implementation Details
+- Use 8-bit registers for character storage
+- Use 16-bit counter for position tracking
+- Use alternating bit for 'a'/'b' selection
+- Pack result directly into 128-bit output
+- No external memory; compute on-the-fly
+
+## Assumptions
+- Input n, k are valid (0-1000, 0-16)
+- All arithmetic fits in 16-bit
+- Characters map: 0='a', 1='b', 2='c', ... (ASCII offset applied in testbench)
+- Error condition returns 0xFF for all characters

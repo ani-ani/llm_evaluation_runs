@@ -1,0 +1,29 @@
+Implement a Verilog module that solves the cow-horse chase game using a 4x16x16 state space (scaled down from 1000 to 15). The problem is modeled as a shortest path search in a directed graph where states are (cow1_pos, cow2_pos, horse_pos). Transitions are: 1) Cows move (±1 or 0), 2) Horse moves (±1 or ±2, constrained if cow collision), 3) Capture check.
+
+Module Interface:
+- Inputs: clk (1 bit), rst_n (1 bit), start (1 bit)
+  - All inputs are synchronous
+- Internal inputs (to be mapped in testbench): L (5 bits, 1-15), A (5 bits), B (5 bits), P (5 bits)
+- Output: result (8 bits, minutes until capture), done (1 bit, 1-cycle pulse)
+- Timing: start triggers calculation, done pulses high when result is valid (within 256 cycles)
+- Reset: Sync reset, min 2 cycles, sets done=0, result=0
+
+Implementation Requirements:
+1. State encoding: (cow1, cow2, horse) each 5 bits = 15-bit state vector
+2. Use a 16x16x16 lookup table (BRAM) for visited/distance bits (4096 entries)
+3. BFS queue: FIFO buffer with 128 entries, 15-bit width
+4. Logic: 
+   a. Parse inputs: always use L=15 (scaled), A/B/P within [0,L]
+   b. Initialize queue with start state, set distance 0
+   c. Loop: Dequeue state, generate moves (bounded by L), check if target, update queue
+   d. Horse optimal play: Compute minimum moves required for capture
+   e. Optimize: Use 4-state concurrent simulation per cycle
+5. Output: Capture time in minutes (0-255)
+
+Constraints:
+- Max cycles: 256
+- Bits: L=5 bits, positions=5 bits, state=15 bits
+- Memory: 4096 bits for visited (16x16x16)
+- Variables: queue head/tail indices (7 bits each)
+- Registers: current_state (15 bits), next_states[8] (15 bits each)
+- Ensure synchronous design with single-clock domain

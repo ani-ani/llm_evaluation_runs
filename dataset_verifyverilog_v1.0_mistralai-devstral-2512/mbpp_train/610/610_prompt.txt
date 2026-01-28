@@ -1,0 +1,57 @@
+Design a Verilog module that removes the k-th element from a fixed-size array.
+
+### INTERFACE SPECIFICATION
+
+**Module Name:** remove_kth_element
+
+**Parameters:**
+- `ARRAY_SIZE`: 16 (maximum number of elements)
+- `DATA_WIDTH`: 8 (bit width per element)
+- `INDEX_WIDTH`: 4 (bit width for index k, 0-15)
+- `RESULT_WIDTH`: 16 (15 elements * 8 bits)
+
+**Inputs:**
+- `clk`: System clock, rising edge active
+- `rst_n`: Active-low asynchronous reset
+- `start`: Start signal, 1-cycle pulse
+- `arr[15:0]`: 16x8-bit input array (arr[0] is first element)
+- `k`: 4-bit index of element to remove (1-indexed, 1 <= k <= 16)
+
+**Outputs:**
+- `result`: Packed 120-bit result (15 elements × 8 bits each)
+- `done`: Valid output indicator, 1-cycle pulse
+
+**Timing:**
+1. On `start` pulse, latch input array and k
+2. Pipeline latency: exactly 20 clock cycles (to accommodate shift)
+3. `done` asserts for 1 cycle when valid result available
+4. Result is packed: result[7:0] = element 1, result[15:8] = element 2, etc.
+5. After `done`, inputs can change for next operation
+
+**Reset:**
+- Asynchronous active-low
+- On reset: `done` = 0, `result` = 0
+- Minimum 2 cycles for complete reset
+
+**Functional Specification:**
+1. Given 16 elements in `arr[15:0]` and 1-indexed position `k`
+2. Remove element at position `k` (where position 1 is arr[0], position 16 is arr[15])
+3. Output 15 elements packed into 120 bits
+4. Elements after removed position shift left by one position
+5. No external memory required - use internal registers
+
+**Hardware Implementation Strategy:**
+- Use 16-element shift register
+- When k=1: don't copy first element, shift rest down
+- When k=N: copy first N-1 elements, skip last
+- General: copy elements 0 to k-2, shift elements k to N-1 down by 1
+- Pipeline: 1 cycle input register, 18 cycles shift/copy, 1 cycle pack
+- Control FSM with 3 states: IDLE, PROCESS, COMPLETE
+
+**Constraints:**
+- k input is 1-indexed (1 to 16)
+- k must be valid (1-16), assume valid input
+- Array size fixed at 16 elements
+- All arithmetic within 4-bit range
+- Use only synchronous logic, no combinational loops
+- Maximum clock frequency: 100MHz (10ns period)

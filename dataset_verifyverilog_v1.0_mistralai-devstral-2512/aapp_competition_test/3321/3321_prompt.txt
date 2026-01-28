@@ -1,0 +1,43 @@
+Implement a Verilog module that simulates the Frog Regent's rearrangement problem. The module must find a sequence of proclamations (IDs to leap) to transform a starting permutation to a target permutation using a bounded number of swaps.
+
+**Core Algorithm**: Use a simple permutation sorting approach. For each position `i` from 1 to N-1 (0-based), check if the frog at position `i` matches the target. If not, find the correct frog in the remaining array and bubble it to position `i` by repeatedly proclaiming its ID. This generates a sequence of proclamations.
+
+**Interface Specification**:
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous clock and active-low reset.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `start_seq [15:0] [7:0]`: Packed input array for the starting sequence (16 frogs, 8-bit IDs). Use 16x8bit array.
+  - `target_seq [15:0] [7:0]`: Packed input array for the target sequence (16 frogs, 8-bit IDs). Use 16x8bit array.
+  - `n [3:0]`: Number of frogs (N), valid range 3-16.
+- Outputs:
+  - `cmd_out [7:0]`: The ID of the frog to proclaim (8-bit).
+  - `cmd_valid`: High when `cmd_out` is valid.
+  - `done`: High for 1 cycle when the sequence is fully transformed (target reached).
+  - `busy`: High while processing.
+- Timing: Start asserted, `busy` goes high. `cmd_valid` pulses for each generated proclamation. `done` asserts when target sequence matches current sequence or max steps reached.
+- Constraints: 
+  - N ≤ 16 (hardcoded maximum array size).
+  - Max proclamations 100,000; use a counter to ensure termination.
+  - Use a 16x8-bit SRAM or registers to store current permutation.
+  - Logic: State machine (IDLE, FIND_FROG, BUBBLE, CHECK, DONE).
+  - BUBBLE state: Identify index of frog `cmd_out` in current array. Swap it with the element at `index-1`. Update `cmd_out` to `current_array[index]` (which moved forward). Repeat until the frog is at the correct position.
+
+**Implementation Details**:
+1. **Storage**: 16 registers `current [15:0] [7:0]`.
+2. **Initialization**: Load `start_seq` into `current` on `start`.
+3. **Logic**: 
+   - Loop `i` from 0 to N-2.
+   - If `current[i] != target[i]`: 
+     - Find `j > i` where `current[j] == target[i]`.
+     - While `j > i`:
+       - Output `cmd = current[j]`.
+       - Swap `current[j]` and `current[j-1]`.
+       - Decrement `j`.
+4. **Output**: Stream `cmd` values via `cmd_out` and `cmd_valid`.
+5. **Termination**: If `current == target`, assert `done`.
+
+**Signal Widths**:
+- `cmd_out`, `current`, `start_seq`, `target_seq`: 8 bits (IDs 1-16).
+- `n`: 4 bits.
+- `i`, `j`: 4 bits (0-15).
+- `step_count`: 17 bits (for 100k limit).

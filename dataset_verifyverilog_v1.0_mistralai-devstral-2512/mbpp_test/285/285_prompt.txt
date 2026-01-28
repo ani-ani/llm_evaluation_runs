@@ -1,0 +1,38 @@
+Implement a Verilog module that checks if a string contains the substring pattern 'ab{2,3}' (an 'a' followed by exactly 2 or 3 'b' characters). The module should scan a fixed-width input string array.
+
+Interface:
+- Inputs:
+  - clk: clock signal
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start scan
+  - text[0:15]: 16-element array of 8-bit ASCII characters (string to scan)
+  - length: 4-bit input indicating valid characters in text (0 to 16)
+- Outputs:
+  - result: 1-bit, high if pattern found
+  - done: 1-cycle pulse indicating scan completion
+
+Behavior:
+- On reset (rst_n=0), set result=0, done=0
+- On start=1, begin scanning text from index 0
+- Scan each character sequentially from 0 to (length-1)
+- Use a simple FSM to detect pattern:
+  - State 0: waiting for 'a'
+  - State 1: saw 'a', waiting for first 'b' (expect count=1)
+  - State 2: saw 'ab', waiting for second 'b' (expect count=2) -> if 'b' found, pattern valid (2 b's)
+  - State 3: saw 'abb', waiting for third 'b' (expect count=3) -> if 'b' found, pattern valid (3 b's)
+  - If any character breaks the sequence, reset to State 0
+- Pattern is valid if we reach State 2 with exactly 2 b's OR State 3 with exactly 3 b's
+- Output done=1 after scanning all characters or pattern found (early termination)
+- Result is sampled when done=1
+- Timing: start->done within 100 clock cycles
+
+Constraints:
+- String length ≤ 16 characters
+- Each character is 8-bit ASCII
+- Implement as sequential logic with clock
+- No dynamic memory allocation
+
+Testbench should verify cases:
+1. "ac" -> False (no 'a' followed by b's)
+2. "dc" -> False (no 'a')
+3. "abbbba" -> True (pattern 'abb' found at indices 1-3)

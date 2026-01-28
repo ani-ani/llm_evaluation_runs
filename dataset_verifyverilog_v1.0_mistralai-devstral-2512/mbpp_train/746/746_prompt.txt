@@ -1,0 +1,34 @@
+Design a Verilog module that computes the area of a circular sector given radius and angle in degrees. Use fixed-point arithmetic (Q16.16) for precision. The module must be synchronous with a clock and reset. It should accept inputs via start pulse, compute the area over a bounded number of cycles (≤256), and output the result with a done pulse. If the angle exceeds 360 degrees, the output should be invalid (result=0, done=0) and the module should indicate an error flag.
+
+Input Interface:
+  clk: system clock, rising edge active
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to initiate calculation
+  radius: 16-bit unsigned fixed-point (Q16.16), represents radius in meters (0.0 to 255.0)
+  angle: 16-bit unsigned fixed-point (Q16.16), represents angle in degrees (0.0 to 360.0)
+
+Output Interface:
+  result: 32-bit fixed-point (Q16.16), area of sector in square meters
+  done: 1-cycle pulse indicating valid result is ready (high only if angle <= 360)
+  error: 1-cycle pulse indicating invalid input (angle > 360)
+
+Behavior:
+- On reset (rst_n=0): All outputs low, internal state idle
+- On start pulse: Begin computation
+- Compute area = (π * r^2 * angle) / 360
+- Use pre-computed π fixed-point constant: 32'h3243F (approximately 3.14159265 as Q16.16)
+- Multiply steps: r_sq = r * r (32-bit), π * r_sq (64-bit), then multiply by angle (96-bit), divide by 360 (scale factor 32'h16800000 for Q16.16)
+- Division by 360 can be approximated using multiplication by reciprocal (1/360 ≈ 0.002777... Q16.16 = 32'h15E)
+- Pipeline the operations to meet timing, maximum 256 cycles
+- If angle > 360*2^16 (0x01680000): set error=1, done=0, result=0
+- Otherwise: done=1, result=32-bit Q16.16 area (upper 16 bits fractional, lower 16 bits integer), error=0
+
+Constraints:
+- Use 32-bit internal width for intermediate products
+- Avoid floating-point, all operations integer arithmetic
+- Max radius: 255.0 (0x01000000)
+- Max angle: 360.0 (0x01680000)
+- Area output should be clamped to 0-65535.0 (Q16.16) to fit 32-bit
+- If overflow in intermediate steps, saturate result
+- No external memory or recursion; implement as simple FSM (Idle, Compute, Done)
+- Pipeline multiplier/divider to 3-4 cycles per operation for 256 cycle max

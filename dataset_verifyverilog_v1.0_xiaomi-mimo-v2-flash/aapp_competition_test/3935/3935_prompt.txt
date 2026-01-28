@@ -1,0 +1,23 @@
+Implement a Verilog module that computes the minimum subset to remove from a set B to make the infinite graph bipartite. The graph has integer vertices, edges between i and j if |i-j| in B. A graph is bipartite iff all cycles have even length. The key insight is that the graph's connectivity depends on the parity (odd/even nature) of edges. Specifically, the problem reduces to grouping numbers by their highest power of 2 divisor (v2), as numbers with the same v2 parity behave similarly. The optimal solution is to keep the largest group (same v2) and remove all others. This is equivalent to the Python solution provided.
+
+Module Specification:
+- Input: Array of n numbers (n up to 200,000, but we scale to n=16 for HDL). Each number is up to 10^18, but we scale to 64-bit for HDL.
+- Output: An array of numbers to remove (subset to erase). The number of elements is up to n.
+- Algorithm: For each input number, compute v2 (exponent of highest power of 2 dividing it). Count frequencies per v2. Find v2 with maximum frequency. Output all numbers whose v2 is not this maximum.
+
+HDL Implementation:
+- Use a fixed-size array of 16 elements for input (scaled down from 200k).
+- Each element is 64-bit (to handle large numbers).
+- Compute v2 for each element: count trailing zeros (using a loop of max 64 iterations per element).
+- Use a histogram (frequency counter) for v2 values (0 to 63). The histogram can be stored in an array of size 64, each entry 4-bit (since max count is 16).
+- Find the v2 with maximum frequency (use priority encoder or comparator logic).
+- Output: Pass through all numbers, but only output those whose v2 != max_v2.
+- Timing: Should complete within 1000 cycles (given n=16, 64 iterations per element, etc.).
+
+Interface:
+- Inputs: `clk`, `rst_n`, `start` (1-cycle pulse), `len` (4-bit, number of elements, <=16), `arr[0:15]` (16x64-bit array).
+- Outputs: `result[0:15]` (16x64-bit array of removed numbers), `result_len` (4-bit), `done` (1-cycle pulse when valid).
+- Reset: `done=0`, `result_len=0`, `result` all zeros. Min 2 cycles reset.
+- Timing: Start to done within 1000 cycles. Output valid when `done=1`.
+
+Note: This is a simplified version for HDL benchmarking. The core algorithm is preserved: compute v2, count frequencies, remove numbers not in largest frequency group.

@@ -1,0 +1,61 @@
+Implement a Verilog module that solves the maximum number of operations problem. The problem involves dividing pairs of numbers by their common divisors, which is equivalent to finding maximum matching in a bipartite graph of prime factors.
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: Clock signal, rising edge triggered
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate computation
+- `n`: Number of array elements (4-bit, max 16)
+- `m`: Number of good pairs (4-bit, max 16)
+- `arr[0:15]`: 16-element array of 32-bit unsigned integers (values ≤ 10^9, represented as 32-bit)
+- `pairs_i[0:15]`: 16-element array of 4-bit indices for pair i endpoints
+- `pairs_j[0:15]`: 16-element array of 4-bit indices for pair j endpoints
+
+**Outputs:**
+- `result`: 16-bit unsigned integer representing maximum operations count
+- `done`: 1-cycle pulse when computation completes
+
+**Functional Requirements:**
+1. **Preprocessing**: Factor each array element into prime factors. Since values ≤ 10^9, we only need primes up to sqrt(10^9) ≈ 31623, but for hardware scaling we'll use trial division with 16-bit primes (2 to 256). Each prime factor will be mapped to a node index.
+
+2. **Graph Construction**: Build a bipartite graph where:
+   - Left partition: prime factors from odd-indexed array elements (indices 1,3,5...)
+   - Right partition: prime factors from even-indexed array elements (indices 2,4,6...)
+   - Edge exists between left node i and right node j if they represent the same prime AND the corresponding indices form a good pair (i_k + j_k is odd)
+
+3. **Maximum Matching**: Implement Hopcroft-Karp or simpler augmenting path algorithm (DFS-based) to find maximum matching. Scale to 64 nodes maximum (32 left, 32 right).
+
+4. **Timing**: Computation must complete within 1000 clock cycles. The module should internally handle:
+   - Prime factorization state machine (64 cycles max)
+   - Graph construction (32 cycles)
+   - Matching computation (256 cycles)
+   - Result aggregation (16 cycles)
+
+**Implementation Details:**
+- Use 32-bit internal registers for prime factorization
+- Node mapping: 6-bit indices (0-63)
+- Matching arrays: 32-element 6-bit registers for left match and right match
+- Visited array for DFS: 64-bit register
+- States: IDLE, FACTORING, BUILD_GRAPH, MATCHING, DONE
+- The output is the count of matched pairs
+
+**Reset Behavior:**
+- On reset (rst_n=0), all internal states reset, done=0, result=0
+- Minimum 2 cycles of reset required
+
+**Clocking:**
+- All operations synchronized to rising edge of clk
+- start pulse must be held high for exactly 1 cycle
+
+**Note:** For hardware feasibility, we constrain:
+- n ≤ 10 (original 100), m ≤ 10 (original 100)
+- Numbers ≤ 2^16-1 (65535) for factorization
+- Maximum 32 prime factor nodes total
+- Prime list limited to first 64 primes (2 to 311)
+
+**Test Cases:**
+1. n=3, m=2, arr=[8,3,8], pairs=[(1,2),(2,3)] → Output: 0
+2. n=3, m=2, arr=[8,12,8], pairs=[(1,2),(2,3)] → Output: 2
+
+The module should perform maximum bipartite matching on the constructed prime factor graph and output the matching count as the maximum operations.

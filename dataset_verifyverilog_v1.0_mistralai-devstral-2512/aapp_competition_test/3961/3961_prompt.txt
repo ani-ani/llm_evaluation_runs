@@ -1,0 +1,48 @@
+Design a Verilog module that calculates the number of portal moves Vasya needs to reach room n+1.
+
+Problem Description:
+- n rooms (1 to n), Vasya starts at room 1, needs to reach room n+1.
+- Room i has two portals: (i+1) and p_i (where 1 <= p_i <= i).
+- Vasya's rule: If room has odd crosses, take second portal (p_i). If even crosses, take first portal (i+1).
+- A cross is painted upon entry. Initially room 1 has a cross.
+- Output total moves modulo 10^9 + 7.
+
+Algorithm (DP):
+Let dp[i] be the total moves to reach room i (for i from 1 to n+1).
+dp[1] = 2 (start at 1, move to 2).
+For i from 2 to n:
+  If p_i == i+1:
+    dp[i] = dp[i-1] + 2
+  Else:
+    dp[i] = (2 * dp[i-1] - dp[p_i] + 2) mod M
+Note: All values and intermediate calculations must be 32-bit wide and modulo M.
+
+Interface Specification:
+Inputs:
+  clk: Clock signal (rising edge active).
+  rst_n: Active-low synchronous reset.
+  start: 1-cycle pulse to start the computation.
+  p_i: 16-bit input for the portal target (1 to i). Valid when loading.
+  valid_in: 1-bit input indicating valid p_i on current cycle.
+  len: 10-bit input representing n (number of rooms, 1 <= n <= 1024).
+
+Outputs:
+  result: 32-bit output containing the final answer (mod 10^9+7).
+  done: 1-cycle high when result is valid.
+
+Timing:
+- On `start` asserted, module should reset and prepare to accept `p_i` values.
+- Module accepts `p_i` values sequentially over `valid_in` cycles until `len` values are received.
+- After receiving all inputs, module computes the DP table iteratively.
+- `done` is asserted when computation is complete.
+- Total cycles must be bounded by 4096.
+
+Implementation Details:
+- Use a 32-bit datapath for all calculations.
+- Modulo constant M = 1000000007.
+- Store p_i values in a block RAM (size 1024 entries, 16 bits wide).
+- Store DP values in a block RAM (size 1024 entries, 32 bits wide).
+- State Machine: IDLE -> LOAD -> COMPUTE -> FINISH.
+  - LOAD: Shift in p_i values.
+  - COMPUTE: Iterate i=1 to n, updating dp[i].
+- Ensure no signed arithmetic overflow: Use 33/34-bit adders and subtractors, then mask to 32 bits after modulo.

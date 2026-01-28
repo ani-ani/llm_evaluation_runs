@@ -1,0 +1,60 @@
+Create a Verilog module for Hamiltonian cycle finder on an N×M grid (N,M ≤ 8) using knight moves (Manhattan distance 2 or 3). The module must find a valid cycle visiting each cell exactly once, returning to start with valid distance. Scale down grid size for hardware feasibility.
+
+Interface:
+- Inputs: clk, rst_n (async reset), start (1-cycle pulse), N (4-bit), M (4-bit)
+- Outputs: result_x[63:0], result_y[63:0] (packed arrays for 64 cells of 4-bit coords), valid (1-cycle when found), no_solution (1-cycle when impossible)
+- Internal: Maximum 64 cells (8x8 grid), 12 cycles for distance-3 moves
+
+Implementation constraints:
+- Use DFS with backtracking on 8x8 grid maximum
+- Encode each cell as 4-bit: {row, col} where row=2 bits, col=2 bits
+- Store path in 256-bit register (64 cells × 4 bits each for x, y separately)
+- Cycle through starting positions from (0,0) to avoid symmetry
+- Knight move generation: 8 possible moves with Manhattan distance 2 or 3
+- State machine: IDLE → INIT → SEARCH → VALID/NO_SOLUTION
+- Output path when valid=1, for exactly N×M moves
+- Cycle closure: Check distance from last to first cell
+- Timeout: 256 cycles for search to avoid infinite loops
+
+Knight move constraints (Manhattan distance 2 or 3):
+- Valid moves: (±2,±1), (±1,±2), (±3,0), (0,±3), (±2,±2) (dist 4 not allowed)
+- Manhattan distance = |Δr| + |Δc| = 2 or 3
+
+Output format:
+- When valid=1, result_x[3:0] = row of cell 0, result_x[7:4] = row of cell 1, etc.
+- result_y similarly for columns
+- First cell must be (0,0) for consistency
+- Each coordinate is 0-indexed (0 to N-1, 0 to M-1)
+- For each cell, row = result_x[i*4 +: 4], col = result_y[i*4 +: 4]
+
+Timing:
+- start pulse initiates search
+- Search completes within 256 cycles
+- valid/no_solution pulses high for 1 cycle when done
+- On rst_n=0, clear all registers, done signals low
+
+States:
+- 00: IDLE (waiting for start)
+- 01: INIT (prepare first cell)
+- 10: SEARCH (DFS with backtracking)
+- 11: VALID (found cycle)
+- 12: NO_SOLUTION (impossible)
+
+Algorithm:
+1. Starting cell is always (0,0)
+2. For each step from 1 to N×M-1:
+   a. Try all 8 possible knight moves
+   b. Check bounds (0 ≤ row < N, 0 ≤ col < M)
+   c. Check if cell not visited
+   d. Check Manhattan distance = 2 or 3
+   e. If valid, mark visited and push to path
+   f. If no valid moves, backtrack
+3. After visiting all cells, check closure distance from last to first
+4. If closure valid, output path
+5. If all paths exhausted, output no_solution
+
+Memory constraints:
+- Visited array: 64 bits (1 bit per cell)
+- Path: 128 bits (64 cells × 2 bits each for (r,c) packed, or 256 bits for separate x,y)
+- Current depth: 6-bit counter
+- State: 4-bit register

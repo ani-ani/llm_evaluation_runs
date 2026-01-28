@@ -1,0 +1,25 @@
+Design a Verilog module to count vaults in a bank vault grid problem. The problem is scaled: grid spans from x=1 to L, and y=-A to B, where A, B ≤ 16, L ≤ 1024. Total vaults = L * (A + B + 1). Two guards at (0, -A) and (0, B) observe vaults. A vault is visible to a guard if the line segment from guard to vault doesn't pass through another vault at integer coordinates. This happens if and only if gcd(L, k) = 1 where k is the y-coordinate difference from the guard. Specifically:
+- For guard at (0, -A): visible if gcd(L, k) = 1 for k = y + A (1 ≤ k ≤ A + B)
+- For guard at (0, B): visible if gcd(L, m) = 1 for m = B - y (1 ≤ m ≤ A + B)
+
+A vault at (x, y) with 1 ≤ x ≤ L, -A ≤ y ≤ B:
+- Super-secure (both guards see it): gcd(L, y + A) = 1 AND gcd(L, B - y) = 1
+- Secure (one guard sees): exactly one of the above conditions true
+- Insecure (neither sees): both conditions false
+
+Count these categories for all L * (A + B + 1) vaults.
+
+Module Interface:
+- Inputs: clk (1-bit), rst_n (1-bit), start (1-bit, 1-cycle pulse), A (5-bit, 1-16), B (5-bit, 1-16), L (11-bit, 1-1024)
+- Outputs: insecure_cnt (22-bit), secure_cnt (22-bit), supersecure_cnt (22-bit), done (1-bit, 1-cycle pulse when calculation complete)
+
+Implementation Guidelines:
+1. Use a 16-stage pipeline to compute gcd for all k=1..32 (since A+B ≤ 32)
+2. For each k, compute gcd(L, k) using iterative Euclidean algorithm (≤ 11 iterations since L ≤ 1024)
+3. Maintain three counters: INS, SEC, SUP
+4. Process x=1..L in outer loop (≤ 1024 cycles)
+5. For each x, process all k=1..(A+B) in inner loop (≤ 32 cycles)
+6. For each k, compute y = k - A - 1 (so -A ≤ y ≤ B), then check visibility conditions using precomputed gcds
+7. Final counts = INS, SEC, SUP
+
+Timing: start→done within 1024 * 32 * 11 ≈ 360k cycles (allowed due to scaling). Reset must clear all counters and done=0. All outputs must be valid only when done=1.

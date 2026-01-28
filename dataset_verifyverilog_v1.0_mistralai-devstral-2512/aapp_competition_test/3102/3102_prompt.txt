@@ -1,0 +1,26 @@
+Implement a Verilog module that counts numbers in a range [L, R] that satisfy: 1) No digit '4', 2) Number of digits that are 6 or 8 equals number of digits that are not 6 or 8 (i.e., count of {6,8} equals count of other digits excluding 4). The range is given as two strings L and R, each up to 200,000 decimal digits long. Since Verilog cannot handle such large numbers natively, we process them as arrays of digits. The module should process the digits of R and L-1 separately using digit DP logic and return (count(R) - count(L-1)) mod (10^9+7).
+
+Interface:
+- Inputs: 
+  * clk: system clock
+  * rst_n: active-low async reset
+  * start: 1-cycle pulse to start computation
+  * L_digits, R_digits: arrays of up to 200,000 digits (each digit 0-9, 4 bits). Since fixed size is impractical, we assume streaming input. For the module spec, we'll use a simple interface: inputs are fixed to 16 digits max for benchmarking (scale down from 200k).
+  * len_L, len_R: length of L and R (up to 16).
+- Outputs:
+  * result: 32-bit result modulo 10^9+7
+  * done: 1-cycle pulse when done
+
+Timing: start->done within 5000 cycles.
+
+Implementation approach:
+1. Preprocess L-1 (subtract 1 from L, handle borrow).
+2. For each number (R and L-1), run digit DP.
+3. DP state: pos (0-16), tight (0/1), lead (0/1), diff (5-bit signed, -8 to +8).
+4. Transition: For each digit d (0-9), if d==4 skip. If lead=1 and d=0, lead stays 1, diff unchanged. Else lead=0, if d in {6,8} diff++, else diff--. Tight ensures d <= bound.
+5. At end, accept if diff==0.
+6. Sum counts modulo 10^9+7.
+
+Constraints: Max 16 digits, diff range -16 to 16 (use 6 bits). State size: 16*2*2*33 = ~2112 states. Use FSM to iterate over positions.
+
+Note: The problem is extremely large (200k digits), but for benchmarking we scale to 16 digits. The DP algorithm scales linearly with length.

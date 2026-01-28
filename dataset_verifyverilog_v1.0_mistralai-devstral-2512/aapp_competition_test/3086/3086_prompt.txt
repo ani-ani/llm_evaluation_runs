@@ -1,0 +1,51 @@
+Design a Verilog module to calculate event durations from telescope observations.
+
+**Problem Adaptation:**
+- Max 16 telescopes (N) and 16 event types (M)
+- Each year has exactly 365 days
+- Start/End dates converted to absolute day-of-year (0-364)
+- Event counts (F_i) are 8-bit unsigned (0-255)
+- Event durations are 8-bit unsigned (1-255)
+- Use bounded iterative search (max 256 cycles) to find valid durations
+
+**Inputs:**
+- `clk`: Clock signal
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `n_telem`: 5-bit input (number of telescopes, 1-16)
+- `m_types`: 5-bit input (number of event types, 1-16)
+- For each telescope i (0-15):
+  - `start_day_i`: 9-bit (0-364)
+  - `end_day_i`: 9-bit (0-364)
+  - `events_i_j`: 8-bit array (0-255) for each event type j (0-15)
+
+**Outputs:**
+- `result_j`: 8-bit array for duration of each event type j (0-15), valid when done=1
+- `done`: 1-cycle pulse when computation complete
+- `valid`: 1-bit indicating solution found (0 = no solution = -1)
+
+**Algorithm Specification:**
+1. On start, initialize search state
+2. For each event type j (0 to m_types-1):
+   - Iterate duration d from 1 to 255 (bounded)
+   - For each telescope i (0 to n_telem-1):
+     - Calculate observation interval length: `len = (end_day_i - start_day_i + 365) % 365`
+     - If len == 0, set len = 365
+     - Check: `len % d == events_i_j % d` (modulo congruence)
+     - If congruence fails for any telescope, try next d
+   - If valid d found, assign `result_j = d`
+   - If no d found (after 255 iterations), set `valid = 0`, `done = 1`, terminate
+3. If all event types have valid durations, set `valid = 1`, `done = 1`
+
+**Timing:**
+- Start->Done within 256 cycles (worst-case per event type)
+- Reset: result=0, done=0, valid=0, min 2 cycles
+- Input data must be stable before start pulse
+
+**Constraints:**
+- Fixed-size: N≤16, M≤16
+- All calculations use unsigned arithmetic
+- Output durations are 1-255 (0 is invalid)
+- Use internal FSM with states: IDLE, SEARCH, VALIDATE, COMPLETE
+- Bounded loops prevent infinite iterations
+- No external memory required, use registers

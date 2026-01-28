@@ -1,0 +1,46 @@
+Implement a Verilog module that computes the expected meeting time for two agents on a graph using absorbing Markov chain analysis.
+
+**Problem Adaptation:**
+- Scale: n ≤ 8 nodes, max 16 time steps simulation
+- Graph representation: 8x8 adjacency matrix (binary, Q0.0)
+- Expected time: Q16.16 fixed-point (16 integer, 16 fractional bits)
+- Algorithm: Iterative expectation propagation for at most 64 cycles
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: Clock signal
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `adj[0:7][0:7]`: 8x8 binary matrix (packed: 64-bit input per row, but accept 8-bit rows for simplicity)
+  - `start_s`: 4-bit initial node for Alice (0-7)
+  - `start_t`: 4-bit initial node for Bob (0-7)
+  - `n`: 4-bit number of active nodes (1-8)
+- Outputs:
+  - `expected_time`: 32-bit Q16.16 fixed-point value
+  - `done`: 1-cycle pulse when computation complete
+  - `never_meet`: 1-bit flag if they never meet
+- Timing: Computation completes within 1000 cycles after start
+- Reset: All outputs zero, done=0, never_meet=0
+
+**Implementation Guide:**
+1. Store adjacency matrix in 8x8 register array (each entry 1-bit)
+2. Use state machine: IDLE → COMPUTE → DONE
+3. Compute joint state space: 8*8 = 64 possible pairs (i,j)
+4. Absorbing states: where i==j
+5. For each step: E_{t}(i,j) = 1 + (1/deg(i))*(1/deg(j)) * sum over neighbors
+6. Use fixed-point arithmetic: add/subtract with Q16.16 format
+7. Convergence: stop when change < threshold or max cycles reached
+8. If no solution after max iterations, set never_meet=1
+
+**Key Constraints:**
+- Use only 32-bit registers for intermediate values
+- Division by degree: pre-compute or use approximation
+- Matrix multiplication must be bounded
+- No dynamic memory allocation
+- All operations must complete in fixed cycles
+
+**Example:**
+For sample: 3 nodes, edges 0-1, 1-2, start (0,2)
+Expected: 1.0 (Q16.16: 0x00010000)
+
+Do NOT write the Verilog code. Provide only the detailed specification including interface, state machine description, and algorithm steps.

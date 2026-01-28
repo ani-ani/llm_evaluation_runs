@@ -1,0 +1,29 @@
+Implement a Verilog module that calculates the probability of a specific contiguous sequence appearing in a random sequence of length n, where each symbol (R, P, S) is chosen uniformly at random. The module must handle s prediction strings (1 <= s <= 10, length <= 10) and output the predictions sorted by decreasing probability. Use fixed-point arithmetic for calculations.
+
+**Core Algorithm Adaptation:**
+1. Probability calculation for a sequence of length L in n trials is approximated as: P = 1 - (1 - (1/3)^L)^(n - L + 1). Use Q16.16 fixed-point (16 integer bits, 16 fractional bits).
+2. The probability of a single specific sequence appearing in a single position is (1/3)^L. Precompute this as a fixed-point value.
+3. Since n can be up to 10^6, exponentiation must be approximated or computed iteratively within a bounded cycle count (max 1024 cycles).
+4. Sorting: Implement a bitonic sorting network or simple bubble sort for up to 10 elements, as s <= 10.
+5. Input/Output: The module takes s fixed-width strings (10 chars max, mapped to 3-bit values: R=0, P=1, S=2). It outputs the sorted list of prediction indices.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: System clock (rising edge active).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start calculation.
+  - `n`: 20-bit input (scaling n to fit 10^6).
+  - `len`: 4-bit input (sequence length, max 10).
+  - `seq_0` to `seq_9`: 10 inputs of 30-bit each (representing 10 chars * 3 bits). Unused inputs should be 0.
+- Outputs:
+  - `result_idx`: 4-bit index of the currently output prediction (valid when `valid`).
+  - `valid`: 1-bit signal indicating output is valid.
+  - `done`: 1-cycle pulse when all s predictions have been output.
+- Timing: Calculation for one prediction takes ~500 cycles. Total time for s predictions: ~500 * s cycles.
+- Fixed-Point Format: Q16.16. `1.0 = 65536`. `(1/3) = 21845`.
+
+**Implementation Details:**
+1. **Probability Unit**: Use a state machine to compute `prob_L = (1/3)^L`. Then compute `prob_survival = 1 - prob_L`. Finally compute `P = 1 - (prob_survival)^(n - L + 1)` using binary exponentiation or iterative multiplication.
+2. **Sorting Unit**: Store probabilities in a register array (size 10). Perform sorting based on these 32-bit fixed-point values. Keep track of original indices to handle tie-breaking.
+3. **Control Logic**: Manage the pipeline: Load sequence -> Calculate Prob -> Store Result -> Sort -> Output.
+4. **Constraints**: Max cycle budget 4096 cycles. No recursion. All operations must fit within standard logic gates (no arbitrary precision libraries).

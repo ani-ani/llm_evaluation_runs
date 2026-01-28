@@ -1,0 +1,32 @@
+Design a Verilog module that computes the final height of the tallest house after infinite remodeling cycles.
+
+**Adaptation Strategy:**
+1. **Fixed-Point Math**: Use Q16.16 fixed-point representation for heights and k.
+2. **Bounded Iteration**: Limit simulation to 100 cycles (representing convergence).
+3. **Small N**: Support N=8 houses (max).
+4. **Algorithm**: Use a shift register to store heights. In each cycle, update 1 random house (sequentially for determinism) using the formula: h[i] = (h[i-1] + h[i+1]) / 2 + k. Boundary houses treat neighbors as 0.
+5. **Scale**: Heights and k are scaled by 2^16. Result is the max height divided by 2^16.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: Clock, rising edge.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start computation.
+  - `k_fixed`: 32-bit signed fixed-point (Q16.16) constant k.
+  - `h_init[0:7]`: 8x 32-bit signed fixed-point (Q16.16) initial heights. (Unused elements if N<8 are ignored).
+  - `n`: 4-bit unsigned integer for actual number of houses (1-8).
+- Outputs:
+  - `result`: 32-bit signed fixed-point (Q16.16) representing the final height of the tallest house.
+  - `done`: 1-cycle pulse when computation is finished (after 100 cycles).
+- Timing:
+  - Start assertion initiates the process.
+  - Process runs for exactly 100 clock cycles.
+  - `done` goes high for 1 cycle at the end.
+  - `result` is valid when `done` is high.
+- Logic:
+  - Implement a linear array of 8 registers (32-bit each) for heights.
+  - Cycle 0: Load `h_init` into registers (only indices 0 to n-1).
+  - Cycles 1-100: In each cycle, iterate i from 0 to n-1. For each i, calculate neighbor sum (h[i-1] + h[i+1]). Handle boundaries: treat h[-1] and h[n] as 0. 
+  - Calculate new_val = (sum / 2) + k. Note: Division by 2 is arithmetic shift right by 1.
+  - Update h[i] = max(h[i], new_val). Use saturation logic if values exceed 32-bit range (though unlikely with Q16.16).
+  - After 100 cycles, compute max of the 8 registers and assign to `result`.

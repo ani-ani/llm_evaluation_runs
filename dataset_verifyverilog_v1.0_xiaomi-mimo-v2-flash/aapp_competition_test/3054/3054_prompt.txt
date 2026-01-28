@@ -1,0 +1,57 @@
+Implement a Verilog module that reads an ASCII string and attempts to format it as a haiku. The input is provided as a sequence of characters, where words are separated by spaces. The syllable counting rules must be implemented using a finite state machine that tracks vowel/consonant status per word.
+
+Module Interface:
+Inputs:
+  clk: Clock signal (rising edge triggered)
+  rst_n: Active-low asynchronous reset
+  start: 1-cycle pulse to start processing
+  char_in: 8-bit ASCII input character (sampled when valid=1)
+  char_valid: Input data valid (1 cycle per character)
+  char_done: End of input signal (1 cycle)
+
+Outputs:
+  line1: First output line (8 x 16-char arrays, fixed width)
+  line2: Second output line (8 x 16-char arrays, fixed width)
+  line3: Third output line (8 x 16-char arrays, fixed width)
+  line1_len: Number of words in line 1 (4-bit)
+  line2_len: Number of words in line 2 (4-bit)
+  line3_len: Number of words in line 3 (4-bit)
+  valid: 1 when output is valid (haiku found)
+  invalid: 1 when output is invalid (can't make haiku)
+  done: 1-cycle pulse when processing complete
+
+Implementation Requirements:
+1. **Input Buffering**: Store input characters (200 chars max). Track word boundaries and store word data.
+2. **Syllable Counter FSM**: Process each word character by character:
+   - Track vowels (A,E,I,O,U,Y), with special handling for 'Y' following another vowel
+   - Track 'QU' as single consonant
+   - Implement silent 'E' rules (final E unless preceded by 'L' and another consonant)
+   - Implement 'ES' ending rule (no syllable unless 2+ consonants precede)
+   - Minimum 1 syllable per word
+3. **Line Splitter FSM**: Iterate through word syllable counts:
+   - Try to accumulate words until target sum reached (5/7/5)
+   - Use backtracking if exact split not found
+   - Store word indices for each line
+4. **Output Formatter**: Generate ASCII lines with spaces between words
+
+Constraints:
+- Maximum 16 words in input
+- Maximum 16 characters per word
+- Output arrays use 16-character fixed width (ASCII)
+- Syllable count per word: 4-bit (0-15)
+- Result processing within 256 cycles
+
+Behavior:
+1. On start=1, clear buffers and begin reading chars
+2. When char_done=1, calculate syllables for all words
+3. Attempt to split into 3 lines with 5/7/5 syllables
+4. Set valid=1 if successful, invalid=1 if not
+5. Output lines remain stable until next start
+
+Example:
+Input: "Blue Ridge mountain road. Leaves, glowing in autumn sun, fall in Virginia."
+Syllables: Blue(1) Ridge(1) mountain(2) road(1) = 5
+           Leaves,(1) glowing(2) in(1) autumn(2) sun,(1) = 7
+           fall(1) in(1) Virginia.(4) = 6 (invalid) - but processing continues
+
+The module must handle all edge cases including punctuation and multiple syllables per word.

@@ -1,0 +1,42 @@
+You are to design a Verilog module that extracts the last character from each string in an array of strings. Due to hardware constraints, inputs must be fixed-width arrays. Use parallel processing for efficiency.
+
+**Module Specification:**
+
+**Interface:**
+- **Clock and Reset:**
+  - `clk`: 100MHz clock, rising edge active
+  - `rst_n`: Active-low synchronous reset (minimum 2 cycles)
+- **Control:**
+  - `start`: 1-cycle pulse to begin processing
+  - `done`: 1-cycle pulse when processing is complete
+- **Data Inputs:**
+  - `num_strings`: 4-bit input (1-8 strings, 0 means 8 strings)
+  - `string_len`: 16-bit input for each string length (must be >= 1)
+  - `strings`: 8x128-bit packed array. Each 128-bit segment represents a string (16 characters × 8 bits each). Character order: index 0 is at bits [7:0], index 1 at [15:8], etc. Last character is at bits [(len-1)*8 + 7 : (len-1)*8]
+- **Data Output:**
+  - `result`: 8x8-bit array (each 8 bits contains the last character of each input string, packed). For empty positions, output 0.
+  - `valid`: 1-bit output indicating valid result
+
+**Implementation Requirements:**
+1. **Fixed-Width Adaptation:** Maximum 8 strings, each string max 16 characters (128 bits total per string)
+2. **Parallel Extraction:** For each of the 8 string slots, extract the last character based on the provided length. If length is 0 or exceeds max, clamp to 1-16
+3. **Simplification:** Extract character at position `string_len - 1` from each 128-bit segment. Use combinational logic for speed
+4. **Output Packing:** Pack the 8 extracted characters into an 8-byte array where result[i] = last char of string i
+5. **Signal Widths:**
+   - `string_len`: 4-bit (1-16)
+   - `result`: 8x8-bit array
+   - `strings`: 8x128-bit
+6. **Timing:** Process completes in 1 cycle after start (combinational). Output remains valid until next start
+7. **Reset State:** When `rst_n=0`, clear all outputs (result=0, valid=0)
+
+**Edge Cases:**
+- Length=1: Extract character at position 0
+- Length=16: Extract character at position 15
+- Length >16: Treat as 16
+- Length=0: Treat as 1 (minimum)
+
+**Example:**
+Input: 3 strings of lengths 4,3,2, with 'Mers', 'for', 'Vers' packed as 128-bit segments
+Output: result[0]='s', result[1]='r', result[2]='s'
+
+**Design Goal:** Create a synthesizable module that works for all 8 string slots in parallel.

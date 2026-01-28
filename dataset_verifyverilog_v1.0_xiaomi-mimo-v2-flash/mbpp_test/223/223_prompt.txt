@@ -1,0 +1,81 @@
+Design a Verilog module that checks if a given element is the majority element in a sorted array.
+
+**Problem Definition**: Given a sorted array of up to 16 elements (8-bit values), determine if the target element appears more than n/2 times. The array is guaranteed sorted in non-decreasing order.
+
+**Adaptation**: Since hardware cannot dynamically size arrays, use a fixed maximum size of 16 elements. The actual length `len` is an input parameter (4-bit). Binary search is implemented as a state machine with iteration bounds of 16 steps.
+
+**Interface Specification**:
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate operation
+  - `arr[15:0]`: 16-element array of 8-bit unsigned values (indexed 0-15)
+  - `len`: 4-bit input (0-15) indicating actual array length
+  - `target`: 8-bit input to search for
+- Outputs:
+  - `result`: 1-bit output (1 if majority, 0 otherwise)
+  - `done`: 1-cycle pulse indicating completion
+
+**Timing & Constraints**:
+- Maximum array size: 16 elements (len ≤ 15)
+- Binary search takes at most 16 iterations (4 bits for index)
+- Start-to-done latency: ≤ 100 cycles
+- After reset: `done=0`, `result=0`
+- Result is valid only when `done=1`
+
+**Algorithm**:
+1. On `start`, initiate binary search for `target` in the sorted array.
+2. Binary search state machine:
+   - State 0: Initialize `low=0`, `high=len-1`
+   - States 1-16: While `low ≤ high`, compute `mid = (low+high)/2` (integer division)
+   - Check if `arr[mid] == target` AND (`mid == 0` OR `arr[mid-1] < target`)
+   - If found, check if `mid + n//2 < len` and `arr[mid + n//2] == target`
+   - Update `low` or `high` based on comparison
+3. Majority check: If target found at position `i`, check if `i + n/2 < n` (using `len`), and element at `i + n/2` equals target.
+   - For even/odd n: Use `len >> 1` for n//2
+   - Example: n=7, n//2=3; n=8, n//2=4
+4. Set `result` and assert `done` for 1 cycle when complete.
+
+**State Machine**:
+- IDLE: Wait for `start`
+- SEARCH: Binary search loop (max 16 iterations)
+- CHECK: Verify majority condition after search completes
+- DONE: Assert `done` pulse
+
+**Signal Widths**:
+- `arr`: 16×8-bit array (128 bits total)
+- `len`: 4 bits (0-15)
+- `target`: 8 bits
+- `low`, `high`, `mid`: 4 bits each (indices 0-15)
+- `temp_mid_plus_n_div2`: 4 bits (for `mid + n//2`)
+- `result`: 1 bit
+- `done`: 1 bit
+
+**Edge Cases**:
+- Empty array (len=0): return 0 (no majority)
+- Target not in array: return 0
+- Target in array but not majority: return 0
+- n=1: target is majority if present
+- n=2: majority requires 2 occurrences
+
+**Implementation Notes**:
+- Use combinational logic for binary search comparisons
+- Use sequential logic for state transitions and index updates
+- Integer division by 2: `len >> 1` for n//2, `low + high >> 1` for mid
+- Clamp addition: `mid + (len >> 1)` must not exceed 4-bit range (max 15)
+- For `mid + n//2`, if sum ≥ len, majority condition fails
+
+**Example**: arr=[1,2,3,3,3,3,10], len=7, target=3
+- Binary search finds first occurrence at index 2 (0-indexed)
+- n//2 = 3 (7>>1)
+- Check if index 2+3=5 < 7 and arr[5]==3 → Yes → majority found
+
+**Verilog Module Requirements**:
+- Module name: `majority_checker`
+- Synchronous sequential logic
+- Single clock domain
+- No external memory access
+- Use non-blocking assignments for sequential logic
+- Use blocking assignments for combinational logic
+
+**Don't include**: Any specific implementation code in this response. Only provide the complete specification and testbench requirements.

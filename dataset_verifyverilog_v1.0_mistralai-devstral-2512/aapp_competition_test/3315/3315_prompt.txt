@@ -1,0 +1,28 @@
+Implement a Verilog module to find the maximum length of a subsequence of strings where each string starts and ends with the previous one. Constraints: N ≤ 16, each string length ≤ 16. Use fixed-width arrays for strings. Output the max length.
+
+Interface Specification:
+Inputs:
+  clk: Rising edge clock (optional, for sequential logic)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  strings_in[0:15][0:15]: 16 strings of 16-bit (each char is 5 bits, ASCII 'A'-'Z')
+  valid_inputs[0:15]: 16-bit mask indicating which strings are valid (set to 1 for N strings)
+Outputs:
+  result: 6-bit (max length is 16)
+  done: 1-cycle pulse when result is valid
+
+Implementation Logic:
+1. Parse input strings: Each string is stored as an array of 5-bit ASCII values. We will check prefix/suffix matches up to the minimum length of the two strings.
+2. Build Dependency Graph: For each pair (i, j) where i < j and string j starts with string i and ends with string i, set an edge in an adjacency matrix (16x16 bits).
+3. Longest Path in DAG: Use Dynamic Programming. For each node in topological order (we can just iterate i from 0 to N-1), update dp[j] = max(dp[j], dp[i] + 1) if edge i->j exists. Since the graph is naturally ordered by indices (i < j), we don't need explicit topological sort.
+4. Result: The maximum value in the dp array is the answer.
+
+Timing:
+- Start signal initiates the process.
+- Done is asserted after a fixed number of cycles (e.g., 200 cycles) where the computation happens.
+- Result holds the valid value while done is high.
+
+Reset behavior:
+- On reset, result is 0, done is 0, internal state is cleared.
+
+Note: This is a combinatorial-heavy problem transformed into a sequential FSM or pipelined datapath to fit hardware constraints. Given N <= 16 and string length <= 16, the logic fits within reasonable FPGA resources.

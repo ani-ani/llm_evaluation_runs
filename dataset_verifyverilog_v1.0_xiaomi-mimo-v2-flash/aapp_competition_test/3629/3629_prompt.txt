@@ -1,0 +1,32 @@
+Design a Verilog module that computes the probability of a boar completing a charge without hitting any trees.
+
+### Interface:
+- **Inputs**:
+  - `clk, rst_n`: Standard synchronous clock and active-low reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `b_radius`, `d_distance`: 24-bit integers (Q12.12 fixed-point)
+  - `tree_x[0:7]`, `tree_y[0:7]`, `tree_r[0:7]`: 8x24-bit arrays for tree positions and radii (Q12.12)
+  - `num_trees`: 4-bit integer (0-8)
+- **Outputs**:
+  - `result`: 32-bit output (Q16.16 fixed-point probability 0.0-1.0)
+  - `done`: 1-cycle pulse when result is valid
+
+### Behavioral Specification:
+1. **Input Validation**: If `num_trees == 0`, probability is 1.0 (immediate).
+2. **Direction Sampling**: Use 256 discrete angles (0-360° in 1.40625° increments) representing uniform distribution. For each angle `theta`:
+   - Calculate boar path end-point: `(d * cos(theta), d * sin(theta))`
+   - For each tree, check if the boar (disk radius `b`) collides with the tree (disk radius `r_i`) during the linear traversal.
+3. **Collision Detection (Simplified)**:
+   - For each tree, compute the minimal distance from the tree center to the boar's path segment (from (0,0) to (d*cos, d*sin)).
+   - Collision occurs if `min_distance < (b + r_i)`. 
+   - Optimization: Use fixed-point trigonometry. Pre-compute `cos` and `sin` for 256 angles as 24-bit Q12.12 values.
+   - Use a state machine to iterate through angles (0-255) and trees (0-7).
+4. **Probability Calculation**: Count safe angles (no collisions). Result = `safe_count / 256.0`. Implement division using fixed-point arithmetic (shift/add or iterative divisor).
+5. **Timing**: Computation should complete within 10,000 cycles for max 8 trees.
+6. **Reset**: Initialize all counters and states to zero.
+
+### Constraints:
+- Use Q12.12 fixed-point for geometry (supports range ±2048.0).
+- Use Q16.16 for final probability output.
+- Handle edge cases: `d = 0` (probability 1.0), `num_trees = 0` (probability 1.0).
+- No floating point; all math is integer fixed-point.

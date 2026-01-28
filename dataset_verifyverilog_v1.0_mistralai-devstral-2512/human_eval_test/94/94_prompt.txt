@@ -1,0 +1,40 @@
+Design a Verilog module that finds the largest prime number in an array and returns the sum of its digits. The input array is fixed at 16 elements, each 16 bits wide (unsigned). The module must support sequential processing via a start/done handshake.
+
+**Interface Specification:**
+- Inputs:
+  - clk: rising edge clock
+  - rst_n: active-low synchronous reset (assert for 2 cycles)
+  - start: 1-cycle pulse to initiate computation
+  - arr[0:15]: 16-element array of 16-bit unsigned integers (separate ports: arr_0, arr_1, ..., arr_15)
+  - len: 4-bit value indicating valid number of elements in arr (1 to 16, assume array is packed in first 'len' elements)
+
+- Outputs:
+  - result: 16-bit unsigned integer representing the sum of digits of the largest prime found. If no primes exist, return 0.
+  - done: 1-cycle pulse indicating result is valid (asserted on the cycle after the last operation)
+
+**Functionality:**
+1. On start=1, begin scanning the first 'len' elements of the array.
+2. For each element, check if it's prime. A number N is prime if:
+   - N > 1
+   - N is not divisible by any integer d where 2 <= d <= sqrt(N). Since max N is 16 bits (65535), sqrt max is 256. Use a 16-bit iteration up to min(N-1, 256).
+3. Track the largest prime found (initialize to 0).
+4. After scanning all elements, compute the sum of digits of the largest prime. To extract digits: repeatedly take N % 10, add to sum, then N = N / 10 until N == 0.
+5. Output result and assert done for 1 cycle.
+
+**Timing:**
+- Start to done: within 500 clock cycles (worst case: 16 numbers * 256 checks + digit sum).
+- Reset: when rst_n=0 for 2 cycles, done=0, result=0.
+- The module is purely combinational between start and done (sequential pipeline). State machine required for control.
+
+**Implementation Guidance:**
+- Use a finite state machine (FSM) with states: IDLE, SCAN, CHECK_PRIME, UPDATE_MAX, DIGIT_SUM, DONE.
+- For prime checking: use a loop counter 'd' (0-255) and 'is_prime' flag.
+- For digit sum: use a temporary register 'temp' to hold largest prime during extraction.
+- Use fixed-size registers for all internal calculations.
+- Do not instantiate external IPs; all logic should be RTL.
+
+**Constraint:**
+- Array input: Do not connect as a vector; use individual ports arr_0, arr_1, ... arr_15.
+- All signals must be defined on every cycle (no latches).
+
+Provide the complete Verilog module code adhering to these specifications.

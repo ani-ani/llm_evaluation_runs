@@ -1,0 +1,73 @@
+Implement a Verilog module that determines the winner of a string game for all positions k (0 to N-1).
+
+**Problem Analysis**:
+- Input string s of lowercase letters (a-z)
+- For each position k (0-indexed), the game starts with substring s[k:k]
+- Players take turns expanding the substring l..r such that l' <= l, r' >= r, and s[l':r'] < s[l:r] lexicographically
+- Ann moves first. Player who cannot move loses.
+- **Key Insight**: Ann wins at position k if and only if there exists a character in s[0..k-1] that is strictly less than s[k] (i.e., min(s[0..k-1]) < s[k]). Otherwise, Mike wins.
+
+**Constraints (Scaled for FPGA)**:
+- Max string length: 16 characters
+- Characters: Lowercase 'a'-'z' (5 bits sufficient, use 8-bit for alignment)
+- Output: 1-bit wire per position (1=Ann, 0=Mike) packed into 16-bit output
+
+**Module Interface**:
+- Inputs:
+  - `clk`: System clock (optional for sequential logic)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start calculation
+  - `char_in[7:0]`: Input character (ASCII 'a'-'z')
+  - `char_valid`: 1 indicates current char is valid
+  - `char_end`: 1 indicates end of string
+- Outputs:
+  - `result[15:0]`: Packed result bits, LSB = position 0, bit k = position k (1=Ann, 0=Mike)
+  - `done`: 1-cycle pulse when calculation complete (valid for 1 cycle)
+  - `valid`: Indicates result is valid (stays high after done until reset)
+
+**Implementation Requirements**:
+1. **Sequential Processing**: Use a state machine to process characters one per cycle
+2. **Minimum Tracking**: Maintain `current_min` (8-bit) of characters seen so far
+3. **Result Accumulation**: For each position k, compare incoming char with `current_min`:
+   - If `char_in > current_min`: Ann wins (set result bit to 1)
+   - Else: Mike wins (set result bit to 0)
+   - Update `current_min = min(current_min, char_in)`
+4. **Output Encoding**: Pack 16 bits into single 16-bit output (position 0 = LSB)
+5. **State Machine**: 
+   - IDLE: Wait for start
+   - PROCESS: Read chars, update min, accumulate results
+   - DONE: Assert done signal for 1 cycle
+6. **Bit Widths**:
+   - `char_in`: 8 bits (ASCII)
+   - `current_min`: 8 bits
+   - `result`: 16 bits (packed)
+   - `position_counter`: 4 bits (0-15)
+
+**Timing**:
+- After start, assert done within N+3 cycles (N = string length, max 16)
+- Result valid when done=1 (or valid=1)
+
+**Reset Behavior**:
+- `result = 0`, `done = 0`, `valid = 0`, `current_min = 8'h7F` (max ASCII)
+
+**Implementation Notes**:
+- Use `always @(posedge clk)` for sequential logic
+- Use `case` or `if` statements for state transitions
+- Ensure all signals are properly registered
+- The module should work for strings of any length up to 16 chars
+- Process one character per clock cycle
+
+**Example**:
+- For "abba" (N=4):
+  - k=0: Mike (default)
+  - k=1: 'b' > min('a')=1 => Ann
+  - k=2: 'b' > min('a','b')='a' => Ann
+  - k=3: 'a' <= min('a','b','b')='a' => Mike
+  - Result bits: Mike=0, Ann=1 => binary 1010 (0xA)
+
+**Edge Cases**:
+- Single character: All Mike (1 bit: 0)
+- String with all same chars: All Mike
+- String in increasing order: Mike, Ann, Ann, Ann...
+
+The module should be synthesizable and testable with cocotb.

@@ -1,0 +1,34 @@
+Implement a Verilog module to count valid name orderings based on prefix constraints.
+
+Problem Analysis: The rule states that for any two names sharing a prefix, all names between them must also share that prefix. This is equivalent to counting valid linearizations of a trie where each node represents a prefix. For a node with children (sub-tries), the sub-tries must be ordered contiguously, and the total count is the multinomial coefficient (total nodes)! / (product of subtree sizes!).
+
+Module Specification:
+- Input: `clk`, `rst_n` (active-low)
+- Input: `start` (1-cycle pulse)
+- Input: `name_in` (24-bit ASCII chars, fixed 8-bit each)
+- Input: `valid_in` (1-bit, indicates name is valid and next)
+- Input: `done_in` (1-bit, indicates all names processed)
+- Output: `result` (32-bit, modulo 1,000,000,007)
+- Output: `ready` (1-bit, module ready for new name)
+- Output: `done` (1-bit, computation complete)
+
+Implementation Constraints:
+1. Build a trie with a maximum of 16 nodes (supports N ≤ 3,000 via compression, but hardware limit is 16 nodes for practical synthesis).
+2. Each node stores: `child_id` (5-bit, 0-31), `is_end` (1-bit), `count` (16-bit subtree size).
+3. Use a finite state machine (FSM) with states: IDLE, READ_NAME, BUILD_TRIE, CALCULATE, OUTPUT.
+4. For `CALCULATE` state, implement iterative DP:
+   - Process nodes in reverse topological order (leaves to root).
+   - Compute `comb_factor = factorial(total) / (prod factorial(subtree_sizes))` using precomputed factorials up to 16.
+   - Multiply results from all children at each node.
+5. Fixed-size arrays: `trie_children[16][26]` (5-bit index per child), `trie_count[16]` (16-bit), `trie_is_end[16]` (1-bit).
+6. Scaling: Since N can be large (3000), but hardware limits to 16 nodes, compress the trie: merge paths where a prefix has only one child and no end markers in between. This is valid because such nodes don't affect the combinatorial count.
+7. Timing: Within 256 cycles for 16 names max. The calculation uses lookup tables for factorials and modular inverses (precomputed for 0..16).
+8. Modular arithmetic: Use 32-bit operations with modulo 1,000,000,007. Implement multiply and divide via repeated addition and subtraction (since divisors are small).
+
+Interface Detail:
+- Name input: `name_in` holds one character per 8-bit slice (e.g., bits 7:0 = char 0, bits 15:8 = char 1, etc.).
+- `valid_in` pulses high when a full name is on `name_in`. `done_in` pulses when all names are fed.
+- The module processes names one by one, building the trie. After `done_in`, it computes the result.
+- `ready` is high when waiting for input. `done` is high for one cycle when result is valid on `result`.
+
+Hardware Limits: The algorithm's complexity is O(N*L) where L is name length, but for hardware, we cap N=16 and L=16 chars. This is acceptable as it captures the core logic for benchmarking.

@@ -1,0 +1,42 @@
+Design a Verilog module that computes the minimum number of transactions required to settle debts among a group of people, given receipts of payments. The problem is NP-hard; implement a brute-force search optimized for hardware.
+
+### Core Algorithm (Hardware Adaptation)
+1. **Debt Calculation**: Parse receipts to compute net balance for each person. `balance[i]` = total paid for others - total paid by others.
+2. **Subset Search**: Since M (people) is typically small (scaled to 8 for hardware), we can iterate through all possible subsets of people who will be settled together. We compute the minimum number of transactions needed to zero out the balances.
+3. **State Representation**: 
+   - M (max 8 people) -> 8-bit integer indices.
+   - Balances: scaled 16-bit integers (Q16.0, range -32768 to 32767).
+4. **FSM Approach**:
+   - **State 0 (Reset)**: Initialize balances and masks.
+   - **State 1 (Parse)**: Accumulate balances from receipts (simulated via input vectors).
+   - **State 2 (Search)**: Iterate through all subsets of indices. For each subset, check if the sum of balances in that subset is zero (valid transaction group). Update minimum transaction count.
+   - **State 3 (Output)**: Return minimum transactions found.
+
+### Interface Specification
+Inputs:
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low asynchronous reset.
+- `start`: 1-cycle pulse to start processing.
+- `receipts_valid`: Input stream handshake.
+- `receipts_a`, `receipts_b`: 3-bit indices (0-7) for payer and receiver.
+- `receipts_p`: 16-bit payment amount.
+- `m`: 4-bit number of people (0-15).
+- `n`: 8-bit number of receipts (0-255).
+
+Outputs:
+- `result`: 8-bit minimum transaction count.
+- `done`: 1-cycle pulse when result is valid.
+
+### Timing & Constraints
+- **Max People**: 8 (M <= 8).
+- **Max Receipts**: 256 (N <= 256).
+- **Clock Cycles**: Start-to-done within 200,000 cycles (brute-force search on 2^8 subsets).
+- **Data Width**: 16-bit signed for balances.
+- **Reset**: Clear all balances and FSM state.
+
+### Implementation Notes
+- Use a lookup table or iterative logic to compute subset sums efficiently.
+- The core logic is a pipeline: Parse all receipts, then iterate subsets.
+- Since M is small (8), you can enumerate all 2^8 = 256 subsets.
+- For each subset, sum the balances of the included indices. If sum is zero, it's a valid transaction group.
+- The goal is to cover all non-zero balance indices with the minimum number of disjoint zero-sum subsets.

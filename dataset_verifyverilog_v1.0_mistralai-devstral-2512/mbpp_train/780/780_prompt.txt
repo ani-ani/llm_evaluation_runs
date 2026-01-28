@@ -1,0 +1,49 @@
+Design a Verilog module that generates all possible pairwise sum combinations from a list of 2D coordinate tuples. The module takes an array of 2D coordinates (x,y pairs) and outputs all unique pairwise sums.
+
+**Interface Requirements:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `coords[0:7]`: Array of 8 elements, each element is a 2D tuple represented as two 16-bit values (coord_x[i], coord_y[i])
+  - `num_coords`: 4-bit input (0-15, actual 4-8 for valid test cases)
+- **Outputs:**
+  - `result_pairs`: Array of 8 elements, each element is a pair of 16-bit sums (sum_x, sum_y)
+  - `num_results`: 4-bit output (number of valid result pairs)
+  - `done`: 1-cycle pulse when calculation is complete
+  - `valid`: High when result_pairs contains valid data
+
+**Functionality:**
+1. On `start` pulse, generate all unique combinations of 2 distinct tuples from the input array
+2. For each combination (pair of tuples), compute element-wise sum: (a.x + b.x, a.y + b.y)
+3. Output results sequentially to result_pairs array
+4. For n input tuples, output n*(n-1)/2 result pairs (e.g., 4 inputs → 6 pairs)
+5. Maximum capacity: 8 input tuples → 28 output pairs (but module output array limited to 8 for simplicity, so consider truncation or error flag)
+
+**Timing:**
+- `start` to `done`: ≤ 128 cycles (for 8 inputs)
+- Reset: done=0, valid=0, result_pairs=0, num_results=0 (min 2 cycles)
+- `done` pulse is 1 cycle only, while `valid` remains high until next start
+
+**Implementation Guidelines:**
+- Use sequential state machine (not combinational loops)
+- Implement combination generation as nested loops: outer loop i from 0 to n-2, inner loop j from i+1 to n-1
+- Use registers to store input coordinates and intermediate results
+- Clamp all sums to 16-bit (0-65535)
+- If output array size is exceeded (more than 8 pairs), assert `overflow` flag
+- Use 16-bit fixed-point style for coordinates
+
+**Example:**
+Input: num_coords=4, coords=[(2,4), (6,7), (5,1), (6,10)]
+Output: 6 result pairs: [(8,11), (7,5), (8,14), (11,8), (12,17), (11,11)]
+
+**Edge Cases:**
+- num_coords < 2: set done=1, num_results=0, valid=1
+- Overflow when n*(n-1)/2 > 8: set overflow=1, done=1
+
+**Implementation Strategy:**
+1. Store inputs in 8x2 register array
+2. Use finite state machine with states: IDLE, LOAD, COMPUTE, OUTPUT, DONE
+3. COMPUTE state iterates through combination generation
+4. OUTPUT state writes results to output array
+5. All operations must complete within reasonable cycle budget (≤200 cycles)

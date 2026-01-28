@@ -1,0 +1,75 @@
+Implement a Verilog module to simulate colored chameleons on a stick.
+
+**Problem Adaptation:**
+- N (Chameleons): Max 16 (input via array `d`, `b`, `dir`)
+- K (Colors): Max 8 (output `total_trip` array of size 8)
+- L (Stick Length): Max 256
+- Positions: Fixed-point Q8.8 (8 integer bits, 8 fractional bits)
+- Time: Fixed-point Q16.16 for trip accumulation
+- Output: Total trip distance per color as fixed-point Q16.16 (High 16 bits integer, Low 16 bits fractional)
+
+**Input Interface:**
+- `clk`, `rst_n`: Standard synchronous signals
+- `start`: 1-cycle pulse to begin simulation
+- `inputs_valid`: Indicates `d`, `b`, `dir` arrays are populated
+- `d[i]`: 16-bit array (Q8.8) for positions (0 to L-1)
+- `b[i]`: 3-bit array for color (0 to K-1)
+- `dir[i]`: 1-bit array (0=L, 1=R)
+- `len`: 4-bit input (number of chameleons N)
+
+**Output Interface:**
+- `total_trip[k]`: 32-bit array (Q16.16) for accumulated distance per color (k=0 to K-1). Valid when `done` is high.
+- `done`: 1-cycle pulse when simulation is complete.
+
+**Algorithm Specification:**
+1. **Initialization:**
+   - Store chameleon positions (Q8.8), colors (3-bit), directions (1-bit) in registers/arrays.
+   - Initialize `total_trip` array (size K) to 0.
+
+2. **Simulation Loop:**
+   - Iterate until all chameleons have left the stick (position < 0 or position > L).
+   - **Collision Detection:**
+     - Identify the pair with the smallest time to collision `dt`.
+     - Iterate through all pairs `(i, j)`.
+     - Calculate relative velocity `dv` and distance `dx`.
+     - If `dir[i] != dir[j]` and `dv != 0`: `dt = dx / dv`.
+     - Ensure `dt > 0` (future collision).
+   - **Boundary Detection:**
+     - For each chameleon, calculate time to fall off `dt_exit`.
+     - `dt_exit = (pos_left_limit - pos[i]) / vel[i]` for Left.
+     - `dt_exit = (pos_right_limit - pos[i]) / vel[i]` for Right.
+     - Ensure `dt_exit > 0`.
+   - **Step:**
+     - Determine `delta_t` as the minimum of `dt` (collision) and `dt_exit` (fall off). If no collisions/falls, break.
+     - Update all positions: `pos[i] = pos[i] + vel[i] * delta_t`.
+     - Update `total_trip[b[i]] += |vel[i] * delta_t|` (since vel is +/-1, just add `delta_t`).
+
+3. **Collision Handling:**
+   - Identify colliding pairs (distance < epsilon, velocity opposite).
+   - Swap directions: `dir[i] = !dir[i]`, `dir[j] = !dir[j]`.
+   - Update Colors:
+     - Let `b_i_old = b[i]`, `b_j_old = b[j]`.
+     - `b[i] = b_j_old` (Left one takes Right one's color? Wait, instructions say: 'chameleon moving to left ... takes color of chameleon moving to right'. Let's assume collision handling is symmetric or directional. The problem specifies specific color swaps based on direction before collision.
+       - 'Chameleon moving left ... takes color of chameleon moving right' -> `b[left] = b[right]`.
+       - 'Chameleon moving right ... takes color (a + b) mod K' -> `b[right] = (b[left] + b[right]) mod K`.
+       - Note: 'Left' and 'Right' refer to direction *before* collision.
+   - **Stick Removal:**
+     - If a chameleon position < 0 or > L, mark it as inactive (exclude from future updates).
+
+4. **Termination:**
+   - Stop when all chameleons are inactive or max cycles exceeded (e.g., 4096 cycles).
+   - Output `total_trip` values.
+
+**Implementation Notes:**
+- Use fixed-point arithmetic for all calculations (positions, time, distances).
+- Division `dx / dv` must be performed using a fixed-point divider.
+- `vel[i]` is typically +1 or -1 in fixed-point representation.
+- Max cycles: 4096 to prevent infinite loops.
+
+**Signal Widths:**
+- Positions/Q8.8: 16 bits
+- Colors: 3 bits
+- Directions: 1 bit
+- Distances/Time Q16.16: 32 bits
+- Total Trip Q16.16: 32 bits
+- Arrays: Indexed 0 to 15.

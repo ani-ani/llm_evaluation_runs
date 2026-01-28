@@ -1,0 +1,31 @@
+Implement a Verilog module that finds a binary vector of length k (k ≤ 20) that minimizes the maximum Hamming similarity to n input vectors. The module should accept n and k, and n binary strings, and output the optimal binary string.
+
+Module Interface:
+Inputs:
+  clk: System clock (rising edge)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  n_in: 8-bit input (since n ≤ 100000, but scaled to 8-bit for simulation, actual n used is min(n, 256))
+  k_in: 5-bit input (1 to 20)
+  data_in: 32-bit input bus used to stream in the n binary strings (k bits per string, packed into 32-bit words). Assume k bits are packed in the lower k bits of data_in.
+  data_valid: 1-bit input indicating data_in contains valid input string
+
+Outputs:
+  result: 32-bit output (the optimal binary vector packed into the lower k bits)
+  done: 1-cycle pulse indicating computation finished and result is valid
+
+Constraints:
+- k is 1 to 20. The input strings are provided via data_in one by one (data_valid high for each).
+- The module should compute the optimal character for Tira. The optimization criterion is to minimize the maximum similarity. Similarity between two vectors A and B is k - Hamming distance(A, B).
+- Since 2^k can be up to 1M, we cannot enumerate all possibilities in a small FPGA. However, for the benchmark, we scale n to a small number (e.g., n ≤ 8) or k to a small number (e.g., k ≤ 8) to allow exhaustive search in hardware. The spec should implement a state machine that iterates through possible candidate vectors (0 to 2^k - 1) and computes the max similarity for each against the stored input vectors.
+- Storage: Store n input vectors in a block RAM of size 32 bits x (scaled n). Since n can be large, for hardware feasibility, we assume n is limited to a small constant (e.g., 8) for the exhaustive search approach, or use a different algorithm like random sampling if n is large. Given the prompt's requirement for a specific solution, we will implement an exhaustive search for small k (k ≤ 10) and small n (n ≤ 8). The module should be parameterized by K_MAX (max features) and N_MAX (max players).
+- Algorithm: 
+  1. Reset and wait for start.
+  2. Accept n input vectors via data_in and store them.
+  3. Iterate candidate C from 0 to 2^k - 1.
+  4. For each C, compute max_sim = 0. Iterate through stored vectors V. Compute similarity = k - popcount(C ^ V). Update max_sim = max(max_sim, similarity).
+  5. Track the C with the minimum max_sim.
+  6. Output the best C when done.
+- Implementation details: Use a Look-Up Table (LUT) for popcount (8-bit or 16-bit). Use a FSM for the control flow. The loop over 2^k will take 2^k cycles. For k=10, this is 1024 cycles, which is acceptable.
+- Output format: result contains the binary vector in the lower k bits. The testbench will interpret it as a string.
+- Timing: done goes high once after computation is complete. Reset sets done=0, result=0.

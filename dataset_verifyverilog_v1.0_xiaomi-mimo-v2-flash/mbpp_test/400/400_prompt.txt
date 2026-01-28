@@ -1,0 +1,42 @@
+You are to design a Verilog module that computes the number of unique tuples in a list of 2-element tuples.
+
+### INTERFACE SPECIFICATION
+**Inputs:**
+- `clk`: Clock signal, rising edge active
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `tuple_arr`: 2D input array of 16 tuples. Each tuple contains 2 elements of 8 bits each. Structure:
+  - `tuple_arr[0:15]` is an array of 2-element arrays
+  - Each element: `tuple_arr[i][0]` (8-bit) and `tuple_arr[i][1]` (8-bit)
+- `len`: 4-bit input representing the actual number of tuples in the list (1 to 16)
+
+**Outputs:**
+- `result`: 8-bit count of unique tuples
+- `done`: 1-cycle pulse indicating result is valid (asserted on the cycle where result is ready)
+
+### LOGICAL BEHAVIOR
+1. **Sorting per Tuple**: For each tuple in the input array, sort the 2 elements in ascending order. Since each tuple has exactly 2 elements, this is a simple compare-and-swap operation.
+2. **Deduplication**: After sorting each tuple, compare the sorted tuples pairwise to count unique ones. A tuple is unique if no previous tuple in the list (after sorting) is identical.
+3. **Counting**: The output `result` should be the total count of unique tuples after sorting.
+4. **Timing**: The computation should complete within 256 clock cycles after `start` is asserted. `done` should be 1 for exactly one cycle.
+
+### IMPLEMENTATION GUIDELINES
+- **Data Widths**: 8 bits per element, 16 bits per tuple (packed or unpacked).
+- **Array Size**: Fixed for 16 tuples to keep logic bounded.
+- **Algorithm**: You may implement an iterative process: 
+  a. First, sort all tuples (2 elements each) in parallel or sequentially.
+  b. Then, perform a deduplication pass: compare each tuple with all previous tuples. If no match found, increment a counter.
+- **State Machine**: Use a finite state machine (FSM) to control the process. States could be: IDLE, SORT_TUPLES, COMPARE_TUPLES, DONE.
+- **Reset**: On `rst_n == 0`, set `result = 0`, `done = 0`, and return to IDLE state.
+
+### EXAMPLE
+Input: `tuple_arr` = [(3,4), (1,2), (4,3), (5,6)], `len` = 4
+1. Sort each tuple: [(3,4), (1,2), (3,4), (5,6)]
+2. Compare: (3,4) unique, (1,2) unique, (3,4) duplicate of first, (5,6) unique -> count = 3
+3. Output: `result` = 3, `done` = 1
+
+### CONSTRAINTS
+- No dynamic memory allocation.
+- Use bounded loops (max 16 iterations for outer loop, 16 for inner loop).
+- All logic must be synthesizable.
+- Result fits in 8 bits (max 16 unique tuples).

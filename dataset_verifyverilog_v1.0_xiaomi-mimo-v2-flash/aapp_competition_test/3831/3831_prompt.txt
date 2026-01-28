@@ -1,0 +1,43 @@
+Design a Verilog module that solves the Mayor's lawn demolition problem with constraints. Given n parts (1≤n≤16), each with initial road width s[i] (8-bit) and lawn width g[i] (8-bit), compute new road widths s'[i] where s[i] ≤ s'[i] ≤ s[i]+g[i], and consecutive s' differ by at most 1. Find maximal total demolition (sum of s'[i]-s[i]) or output -1 if impossible.
+
+Interface:
+- Inputs:
+  - clk, rst_n (active-low)
+  - start: 1-cycle pulse to begin computation
+  - n: 4-bit number of parts (1-16)
+  - s_arr[15:0], g_arr[15:0]: 16x8-bit arrays (index 0-15)
+- Outputs:
+  - result: 16-bit (total demolition, or -1 as 16'hFFFF)
+  - s_prime_arr[15:0]: 16x8-bit array of new widths
+  - done: 1-cycle pulse when valid
+
+Algorithm (pipelined):
+1. Forward pass: For i=0 to n-1:
+   - Determine interval [L_i, R_i] where L_i = s[i], R_i = s[i]+g[i]
+   - Propagate constraints: L_i = max(L_i, L_{i-1}-1), R_i = min(R_i, R_{i-1}+1)
+   - If L_i > R_i, flag impossible
+2. Backward pass: For i=n-2 down to 0:
+   - Propagate constraints: L_i = max(L_i, L_{i+1}-1), R_i = min(R_i, R_{i+1}+1)
+   - If L_i > R_i, flag impossible
+3. Choose s'[i] = R_i (maximal demolition)
+4. Compute total = sum(s'[i] - s[i])
+5. If impossible, output result=0xFFFF (65535 as -1), s_prime=0
+
+Timing:
+- Start->done: ≤256 cycles
+- Reset: done=0, result=0, s_prime=0
+- Data path: 8-bit for s/g, 16-bit for sums
+
+Implementation:
+- Use FSM with states: IDLE, FORWARD, BACKWARD, COMPUTE, DONE
+- Store arrays in 16x8-bit registers
+- Use 8-bit for L/R intervals, 16-bit for accumulation
+- Single cycle per element in each pass
+- Forward pass cycles: n, Backward: n, Compute: 1
+
+Constraints:
+- n ≤ 16 (4-bit)
+- s_i, g_i ≤ 255 (8-bit scaled)
+- s'_i ≤ 511 (9-bit, clamp to 8-bit for output)
+- Total demolition ≤ 16*255 = 4080 (12-bit)
+- Result: 16-bit, 0xFFFF = -1 indicator

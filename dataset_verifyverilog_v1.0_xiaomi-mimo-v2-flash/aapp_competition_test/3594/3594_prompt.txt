@@ -1,0 +1,42 @@
+Implement a Verilog module to simulate the prime game scoring for multiple rounds.
+
+**Core Logic:**
+- Input: Round index `round_idx` (0-999), `start_player` (2-bit: O=0, E=1, I=2), `start_num` (14-bit: 0-9999)
+- Pre-compute optimal scores for all numbers 1-10000 using dynamic programming on a host computer (since true DP requires O(N * log N) operations which is too heavy for pure RTL). The module will receive the result of this DP as lookup data.
+- For each round, simulate the 3-player optimal play: each player chooses move (add 1 or divide by prime) that minimizes their OWN lowest claimed number, with tie-breaking to smallest number.
+- Track each player's minimum claimed number during the round.
+- Output: Total scores for Odd, Even, Ingmariay accumulated over all rounds.
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Clock and active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing the rounds
+  - `dp_data_in`: 16-bit data from external DP lookup (pre-computed optimal move costs)
+  - `dp_addr_out`: 14-bit address for DP lookup
+  - `round_player_in`: 2-bit starting player for current round (0=O, 1=E, 2=I)
+  - `round_num_in`: 14-bit starting number for current round (0-9999)
+- Outputs:
+  - `score_odd`: 16-bit total score
+  - `score_even`: 16-bit total score
+  - `score_ing`: 16-bit total score
+  - `done`: 1-cycle pulse when all 1000 rounds processed
+  - `busy`: High while processing
+- **Timing:** Processing 1000 rounds, each round takes ~50 cycles (lookup + state machine), total ~50,000 cycles. Reset clears all scores and state.
+- **Algorithm:** 
+  1. Initialize: scores=0, round_counter=0, current_state={player, number, min_claimed[3]}
+  2. For each round:
+     - Load starting state
+     - While current number > 1:
+       - Query DP: get optimal move (add/divide) and resulting number
+       - Update player's min claim
+       - Switch to next player
+     - Assign scores based on min claims (or start_num if no move)
+  3. Accumulate scores across 1000 rounds.
+- **Constraints:** All values fit in 16 bits. State machine for turn logic. External DP lookup implies asynchronous memory access.
+
+**Hardware Constraints:**
+- Use iterative FSM for turn simulation
+- Fixed 1000 rounds maximum
+- 14-bit data bus for numbers (10000 fits in 14 bits)
+- 16-bit accumulator for scores
+- Output done signal when round_counter == 1000

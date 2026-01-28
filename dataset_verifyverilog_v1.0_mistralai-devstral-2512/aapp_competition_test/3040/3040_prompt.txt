@@ -1,0 +1,80 @@
+## Verilog Module Specification: Longest Repeated Substring
+
+### Functional Description
+Given a string of lowercase letters (a-z), find the longest substring that occurs more than once. The two occurrences can overlap. If multiple longest substrings exist, return the lexicographically smallest one.
+
+### Scaled Requirements
+- **Input String**: Max 16 characters, fixed-width 8-bit ASCII
+- **String Length**: 0-15 (4-bit value)
+- **Output**: Max substring length 15 characters
+- **Algorithm**: Brute-force check all possible substrings
+- **Clock Cycles**: ≤1000 (worst case 16*16*16*16 = 65536 comparisons)
+
+### Interface Definition
+
+#### Inputs
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing
+- `str_len`: 4-bit value indicating valid characters in `str`
+- `str[0:15]`: 16x8-bit array, ASCII characters ('a'=0x61 to 'z'=0x7A)
+
+#### Outputs
+- `result_len`: 4-bit length of longest repeated substring
+- `result_start`: 4-bit starting position in `str`
+- `result_str[0:15]`: 16x8-bit output substring
+- `done`: 1-cycle pulse when result is valid
+- `busy`: High while processing
+
+### Behavior Specification
+
+1. **Initialization**: Wait for `start` pulse. On rising edge after `start`, begin processing.
+
+2. **Algorithm**:
+   - Iterate substring length `L` from `str_len` down to 1
+   - For each `L`, iterate all starting positions `i` (0 to `str_len-L`)
+   - Extract substring `S_i = str[i:i+L]`
+   - Check if `S_i` appears at least twice in `str` (allowing overlap)
+   - Track maximum `L` and lexicographically smallest `S_i` for that `L`
+
+3. **Lexicographic Order**: Compare ASCII values byte-by-byte (0x61=\'a\' < 0x62=\'b\'...)
+
+4. **Output**: When done:
+   - `result_len` = length of found substring
+   - `result_start` = starting position of first occurrence
+   - `result_str[0:15]` = substring bytes (lower 8 bits), undefined for indices >= length
+   - `done` = 1 for one cycle
+   - `busy` = 0
+
+5. **Reset**: Initialize all registers. `done=0`, `busy=0`, result values undefined.
+
+### Timing Constraints
+- `start` pulse width: 1 cycle
+- `done` assertion: Within 1000 cycles of `start`
+- Result validity: Sample only when `done=1`
+- Reset: Minimum 2 cycles
+
+### Implementation Notes
+- Use iterative loops with state machine (FSM)
+- Store temporary substrings in registers
+- Compare strings using byte-wise comparison
+- Track best result with priority for lexicographic order when lengths equal
+- All inputs/outputs use unsigned binary representation
+
+### Example
+Input: "abcefgabc" (length 9)
+1. Check length 9: no repeats
+2. Check length 8: no repeats
+3. Check length 7: no repeats
+4. Check length 6: no repeats
+5. Check length 5: no repeats
+6. Check length 4: no repeats
+7. Check length 3: "abc" at positions 0 and 6 → found!
+8. Return: len=3, start=0, result_str="abc"
+
+## HDL Requirements
+- Module name: `longest_repeated_substring`
+- All signals are synchronous to `clk`
+- Use non-blocking assignments (`<=`) for sequential logic
+- Combinational logic for comparisons
+- No asynchronous paths from input to output

@@ -1,0 +1,59 @@
+Design a Verilog module that computes the number of regions formed by circles on a plane.
+
+**Core Problem (Simplified for Hardware):**
+- Given n (1-3) circles, each defined by center (x, y) and radius r.
+- x, y: -10 to 10 (5-bit signed) -> Scale to Q4.4 fixed-point (shift left by 4).
+- r: 1 to 10 (4-bit) -> Scale to Q4.4 fixed-point (shift left by 4).
+- We calculate pairwise relationships to determine a lookup key, then map to the result count.
+
+**Algorithm (Combinational Logic Flow):**
+1.  **Input Stage:**
+    - Accept `n` (2-bit), and arrays for circles `circ_x[2:0]`, `circ_y[2:0]`, `circ_r[2:0]` (all 8-bit Q4.4).
+    - Pre-calculate squared radii: `r_sq[i] = circ_r[i] * circ_r[i]` (16-bit).
+
+2.  **Distance Calculation:**
+    - For every pair (i, j) of active circles (where i < j < n):
+    - Calculate squared Euclidean distance: `dx = circ_x[i] - circ_x[j]`, `dy = circ_y[i] - circ_y[j]`.
+    - `dist_sq = dx*dx + dy*dy` (16-bit).
+
+3.  **Pair Classification (Combinational Block):**
+    - For each pair, determine the relationship status code (3-bit `rel_code`):
+      - `r_sum_sq = (circ_r[i] + circ_r[j]) * (circ_r[i] + circ_r[j])`
+      - `r_diff_sq = (circ_r[i] - circ_r[j]) * (circ_r[i] - circ_r[j])`
+      - **Disjoint (1):** `dist_sq > r_sum_sq`
+      - **Tangent Outside (2):** `dist_sq == r_sum_sq`
+      - **Disjoint One Inside Other (3):** `dist_sq < r_diff_sq`
+      - **Tangent Inside (4):** `dist_sq == r_diff_sq`
+      - **Intersecting (5):** `r_diff_sq < dist_sq < r_sum_sq`
+    - *Hardware Note:* Since inputs are integers (scaled), distance and radii are integers. Comparisons use simple `<` or `==` operators.
+
+4.  **Lookup Key Generation:**
+    - For n=1: Result is always 2.
+    - For n=2: Result is 3 if disjoint/tangent, 4 if intersecting.
+    - For n=3: Collect status codes for pairs (0-1, 0-2, 1-2). Sort them (using 3-comparator sorting network). This creates a sorted tuple `(s0, s1, s2)` where `s0 ≤ s1 ≤ s2`.
+    - Map the sorted tuple to an index for a lookup table. The tuple represents the global topological state.
+    - **Edge Case (3 Circles Intersection):**
+        - Calculate intersection points for the first pair (0-1) using standard formulas (requires square root, approx. via integer lookup or checking `dist_sq` against `r_diff_sq` and `r_sum_sq` logic).
+        - Check if intersection points lie on circle 2. If all 3 circles pass through the same points, decrement result by 1 (regions merge).
+
+5.  **Result Mapping:**
+    - Use a ROM/Lookup Table (LUT) to map the sorted tuple `(s0, s1, s2)` to the base region count (2 to 8).
+    - Output the final count (3-bit or 4-bit).
+
+**Verilog Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to trigger calculation.
+  - `n`: 2-bit input (1, 2, or 3).
+  - `circ_x[0:2]`, `circ_y[0:2]`, `circ_r[0:2]`: 3x 8-bit arrays (Q4.4 fixed-point).
+- **Outputs:**
+  - `result`: 4-bit integer (max 8 regions).
+  - `done`: 1-cycle pulse when calculation finishes.
+
+**Timing:**
+- Latency: 10-20 cycles (pipelined distance calculation + LUT access).
+- Throughput: 1 operation per 20 cycles.
+
+**Constraint Handling:**
+- All math stays in 16-bit range (`r` up to 10, `x` up to 10, so `r*r` is 100, `dx*dx` is ~400, sum < 1024).
+- No dynamic memory; use fixed registers and logic.

@@ -1,0 +1,45 @@
+Implement a Verilog module to solve the counting problem of non-similar worlds built by operations adding vertices to an initial s-t edge.
+
+**Problem Analysis**:
+The problem requires counting graphs constructed by n operations, where each operation adds a vertex connected to an existing edge. The constraint is that the min-cut capacity is m. The solution involves a Dynamic Programming approach over the number of operations (nodes) and the cut capacity.
+
+**Module Interface**:
+- **Inputs**:
+  - `clk`: System clock.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start computation (input n, m are valid at this time).
+  - `n_in`: 6-bit input (0-50), number of operations.
+  - `m_in`: 6-bit input (0-50), minimum cut capacity.
+- **Outputs**:
+  - `result`: 32-bit output (result modulo 10^9+7).
+  - `done`: 1-cycle pulse indicating result is valid.
+
+**Algorithmic Specification (Hardware Adaptation)**:
+1.  **Pre-computation**: Since the algorithm requires modular inverse of integers 1..50 and powers of 2, these should be pre-computed or computed iteratively. Given the constraints, a sequential approach is preferred over large combinational logic.
+2.  **State Machine**: Implement a multi-stage FSM to handle the loops.
+    - **Stage 0: Initialization**: Reset DP tables `f` and `s`. `f` is a 2D array of size [51][51], `s` is [51][51].
+    - **Stage 1: Outer Loop (node)**: Iterate `node` from 1 to `n`.
+    - **Stage 2: Inner Loop (cut)**: Iterate `cut` from 1 to `n`.
+    - **Stage 3: Calculation**: Compute `tmp` by iterating `ln` (0 to node-1) and `lc` (0 to cut-1). 
+        - `tmp += f[ln][lc] * s[node - ln - 1][cut - 1]` (if lc == cut - 1)
+        - `tmp += f[ln][lc] * f[node - ln - 1][cut - 1]` (otherwise)
+        - Perform all operations modulo `MOD = 1000000007`.
+    - **Stage 4: Combination**: If `tmp` is non-zero, calculate `cnt` and update `f`. 
+        - `cnt` is calculated as a product of terms: `cnt = product((tmp + i - 1) * inv(i))` for i from 1 up to a limit (scaled down or bounded). The original Python code uses complex nested loops for this, which suggests a combinatorial expansion. For hardware, we must bound the inner loops or use a sequential multiplier for the product.
+        - Update `f` table: The code uses a temporary table `g` to accumulate updates, then adds to `f`. This must be done sequentially.
+    - **Stage 5: Update S**: After finishing `cut` loop for a specific `node`, update `s[node][cut]` as the suffix sum of `f[node][cut]`.
+3.  **Memory Implementation**: Use Block RAM or Distributed RAM for `f` and `s` arrays (51x51 entries). Each entry needs to be 32-bit (to hold modulo values).
+4.  **Arithmetic**:
+    - **Multiplication**: 32-bit x 32-bit -> 64-bit product, then modulo reduce to 32-bit.
+    - **Modulo**: Since MOD is a prime, we can use standard reduction logic.
+    - **Division/Inverse**: Since we need `inv(i)` for i=1..50, we can store these in a small ROM (lookup table) initialized at reset.
+5.  **Scaling**: The original Python code has O(N^4) complexity due to nested loops in the combination stage. This is too high for direct combinational hardware. We will unroll the `ln` and `lc` loops into sequential streams (using counters) to iterate over the DP table cells, trading parallelism for area and latency.
+
+**Timing**:
+- The module should assert `done` after approximately `N^4` clock cycles (worst case), which for N=50 is ~6.25M cycles. At 100MHz, this is ~60ms.
+
+**Verilog Module Structure**:
+- Internal registers for counters (node, cut, ln, lc).
+- Dual-port RAM for `f` and `s` (read in one cycle, write in next).
+- Combinational path for arithmetic operations (add, mul, mod).
+- Control logic to sequence the FSM stages.

@@ -1,0 +1,60 @@
+Implement a Verilog module that performs the `sort_third` operation on a fixed-length array of 8-bit signed integers. The module should take an array of up to 16 elements (indexed 0-15) and sort only the elements at indices divisible by 3 (0, 3, 6, 9, 12, 15), while preserving all other elements in their original positions.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `arr[0:15]`: 16-element array of 8-bit signed integers (arr_0 through arr_15)
+  - `length`: 4-bit input indicating actual array length (1-16, 0 = unused)
+
+- **Outputs:**
+  - `result[0:15]`: 16-element array of 8-bit signed integers
+  - `done`: 1-cycle pulse indicating completion
+
+**Behavioral Requirements:**
+1. On `start` pulse, latch input array values.
+2. Sort only indices where (index % 3 == 0) in ascending order.
+3. Other indices (1, 2, 4, 5, 7, 8, 10, 11, 13, 14) remain unchanged.
+4. Use bubble sort algorithm with a finite state machine.
+5. Maximum processing time: 100 clock cycles.
+6. After `done` pulse, `result` array contains the sorted output.
+7. During processing, `result` should maintain stable values.
+8. When `length` < 16, only the first `length` elements in the output are meaningful; others can be zero.
+
+**Implementation Details:**
+- Use a 4-bit counter for array indices.
+- Use a 2-bit state machine: IDLE → SORTING → DONE.
+- Bubble sort: Compare adjacent "third" elements (positions 0-3, 3-6, 6-9, etc.) and swap if out of order.
+- Only 6 positions max need sorting: indices 0, 3, 6, 9, 12, 15 (6 elements).
+- Bubble sort requires up to 5 passes (worst case: 6 elements).
+- Each pass processes all adjacent third indices (0-3, 3-6, 6-9, 9-12, 12-15).
+- Internal registers: `temp_array[0:15]` for intermediate values, `sort_indices[0:5]` mapping third positions.
+- Sign handling: 8-bit signed values, use comparison logic for signed numbers.
+
+**Reset Behavior:**
+- On reset, all `result` outputs = 0, `done` = 0, state = IDLE.
+
+**Timing:**
+- `start` must be high for one clock cycle.
+- `done` pulses for one cycle when sorting complete.
+- Result is valid when `done` pulses.
+
+**Example:**
+Input: [5, 6, 3, 4, 8, 9, 2] (length 7)
+Indices: 0:5, 1:6, 2:3, 3:4, 4:8, 5:9, 6:2
+Third indices: 0:5, 3:4, 6:2 → Sorted: 2, 4, 5
+Output: [2, 6, 3, 4, 8, 9, 5]
+
+**Verilog Module Header:**
+module sort_third(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr_0, arr_1, arr_2, arr_3, arr_4, arr_5, arr_6, arr_7,
+    input wire [7:0] arr_8, arr_9, arr_10, arr_11, arr_12, arr_13, arr_14, arr_15,
+    input wire [3:0] length,
+    output reg [7:0] result_0, result_1, result_2, result_3, result_4, result_5, result_6, result_7,
+    output reg [7:0] result_8, result_9, result_10, result_11, result_12, result_13, result_14, result_15,
+    output reg done
+);

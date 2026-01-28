@@ -1,0 +1,61 @@
+Implement a Verilog module that performs string encryption as specified:
+
+**Problem**: Given an input string, shift each character by `2 * 2 = 4` positions in the alphabet (a-z), wrapping around. Return the encrypted string.
+
+**Example**: 'hi' → 'lm' (h+4=l, i+4=m)
+
+**Module Interface**:
+- Inputs:
+  - `clk`: system clock (rising edge)
+  - `rst_n`: active-low synchronous reset
+  - `start`: 1-cycle pulse to start encryption
+  - `char_in[7:0]`: input character (ASCII 'a'-'z' only, lowercase)
+  - `char_valid`: indicates current char_in is valid
+  - `char_done`: 1-cycle pulse indicating end of input string
+- Outputs:
+  - `char_out[7:0]`: output encrypted character
+  - `char_valid_out`: 1-cycle pulse when char_out is valid
+  - `done`: 1-cycle pulse when full encryption complete
+
+**Constraints**:
+- Input string length: max 16 characters
+- All characters are lowercase letters 'a'-'z' only
+- ASCII values: 'a'=97, 'z'=122
+- Shift amount: 4 (2*2)
+- Wrap around alphabet: (char - 'a' + 4) % 26 + 'a'
+- Timing: Process each character over 2-4 clock cycles
+- Use fixed-width arrays for internal storage (16 chars × 8 bits)
+
+**Algorithm**:
+1. Wait for `start` pulse
+2. For each `char_in` with `char_valid=1`, compute:
+   - `val = char_in - 97` (convert to 0-25)
+   - `shifted = (val + 4) % 26`
+   - `out = shifted + 97`
+3. When `char_done=1`, set `done=1`
+4. Output `char_out` with `char_valid_out=1` for each character
+
+**Implementation Notes**:
+- Use combinational logic for shift calculation (multiply by 4 is shift left 2 bits)
+- Store characters in FIFO or array (size 16)
+- Process in sequential manner to avoid deep combinational paths
+- All arithmetic modulo 26 (6 bits sufficient for values 0-25)
+- Use Q4.2 fixed-point logic for multiplication by 4 (actually just bit-shift)
+- State machine: IDLE → READING → PROCESSING → DONE
+
+**Timing**:
+- `start` to first `char_valid_out`: 2-4 cycles
+- `char_done` to `done`: 1 cycle
+- Total processing: `n + 4` cycles for n characters (n ≤ 16)
+
+**Reset Behavior**:
+- On reset: `done=0`, `char_valid_out=0`, internal state cleared
+- `char_out` can be undefined when not valid
+
+**Bit Widths**:
+- ASCII char: 8 bits
+- Alphabet index (0-25): 6 bits
+- Shift amount (4): 4 bits
+- Array index: 4 bits (supports 16 chars)
+
+**Note**: Assume input characters are always valid lowercase letters. No error checking needed.

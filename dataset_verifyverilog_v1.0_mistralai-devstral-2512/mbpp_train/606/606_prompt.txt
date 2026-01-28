@@ -1,0 +1,39 @@
+Design a Verilog module that converts degrees to radians using fixed-point arithmetic.
+
+**Interface:**
+- Inputs:
+  - clk: rising edge clock
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start conversion
+  - degree_in: 16-bit signed fixed-point Q8.8 (range -256 to 255.996)
+- Outputs:
+  - radian_out: 32-bit signed fixed-point Q16.16 (range -2^15 to 2^15-1)
+  - done: 1-cycle pulse indicating valid output
+
+**Functional Specification:**
+1. Formula: radians = degrees × π/180
+2. Fixed-point constants:
+   - π approximation: 0x3243F6A8 (Q16.16 format, 3.141592653589793)
+   - 1/180: 0x0002E14F (Q16.16 format, 0.005555555555556)
+3. Computation: radian_out = (degree_in × π_constant) >>> 16 then multiply by (1/180) and shift appropriately
+4. Pipeline: 2-cycle multiplication with intermediate results
+5. Reset: done=0, radian_out=0
+
+**Timing Constraints:**
+- start pulse must be 1 cycle
+- done appears 3 cycles after start
+- Throughput: 1 conversion per 3 cycles
+
+**Implementation Notes:**
+- Use 32-bit internal multiplication: degree_in (16-bit) × π (16-bit) = 48-bit result
+- Shift right by 16 bits to get Q16.16 result
+- Second multiplication with 1/180 constant
+- Support degree range -256 to +255.996 degrees
+- Output valid when done=1
+
+**Example Values:**
+- 90° → 1.5708 rad (0x00018F8A in Q16.16)
+- 60° → 1.0472 rad (0x000111D1 in Q16.16)
+- 120° → 2.0944 rad (0x000223A2 in Q16.16)
+
+Design as a multi-cycle FSM with clear state transitions.

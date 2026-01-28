@@ -1,0 +1,69 @@
+You are to implement a Verilog module that computes the maximum lifespan extension achievable by taking anti-aging pills. Given the constraints, we scale the problem to fixed-point arithmetic and bounded iterations.
+
+### Problem Adaptation
+- Time values (n, t_i) are scaled down by factor 1024 to fit 32-bit fixed-point Q16.16
+- Maximum pill count p is bounded to 8
+- Maximum base lifespan n is clamped to 32768 seconds (15 bits)
+- The optimization becomes: find optimal sequence of up to 8 pills from available options
+- Use iterative DP with fixed-point arithmetic
+
+### Module Interface
+Inputs:
+  clk: Clock signal (rising edge)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  n_scaled: 16-bit input (Q8.8 format, n / 1024)
+  c_scaled: 16-bit input (c / 1024)
+  pill_count: 4-bit input (number of pills, ≤8)
+  pill_t[0:7]: 8x32-bit array (times, Q16.16)
+  pill_x[0:7]: 8x8-bit array (x values, scaled by 8)
+  pill_y[0:7]: 8x8-bit array (y values, scaled by 8)
+
+Outputs:
+  result: 32-bit output (Q16.16, maximum lifespan in seconds)
+  done: 1-cycle pulse when computation completes
+  valid: Bit indicating result validity
+
+### Implementation Requirements
+1. **Data Representation**:
+   - Time values: Q16.16 fixed-point (16 integer, 16 fractional bits)
+   - Ratios: Scale x/y by 8, store as 8-bit integers (0-255)
+   - Intermediate calculations: Use 64-bit accumulators to prevent overflow
+
+2. **Algorithm** (Iterative DP with bounded states):
+   - State 0: No pill (baseline aging: 1 second per 1 second)
+   - For each pill combination (up to 8 pills in sequence):
+     - Calculate aging factor: effective_aging = y * (state_duration) / x
+     - Add switch cost c when changing pills
+     - Track maximum total time before reaching n
+   - Use fixed-point arithmetic throughout
+   - Maximum iterations: 256 cycles per test case
+
+3. **Control Flow**:
+   - On start: Initialize DP table
+   - Cycle 1-32: Evaluate all pill sequences (bounded combination)
+   - Cycle 33-64: Compute final maximum
+   - Set done=1 for 1 cycle when finished
+
+4. **Clock Domain**:
+   - Single clock domain, synchronous design
+   - Reset clears all registers and sets done=0
+
+5. **Timing**:
+   - start to done: ≤256 cycles
+   - After done=1, result holds for next cycle
+
+6. **Reset Behavior**:
+   - All internal registers reset to 0
+   - done=0, result=0, valid=0
+
+### Testbench Requirements
+Write a cocotb testbench that:
+1. Tests with sample inputs (scaled appropriately)
+2. Verifies result within 0.01 absolute error for fixed-point
+3. Handles array assignment correctly (element-by-element)
+4. Uses timeout handling for done signal
+5. Tests edge cases: single pill, no pills, maximum pills
+6. Clamps input values to appropriate bit widths
+
+Note: The actual implementation should use bounded search rather than continuous optimization. The testbench should provide pre-scaled inputs that represent the original problem scaled by 1024 for time and 8 for ratios.

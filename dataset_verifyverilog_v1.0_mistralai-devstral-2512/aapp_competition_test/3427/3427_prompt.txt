@@ -1,0 +1,47 @@
+Implement a Verilog module that finds the maximum number of rooms protectable by replacing a single door in a building graph.
+
+**Problem Scaling & Constraints:**
+- Building modeled as undirected graph with N ≤ 16 nodes (rooms 0-15)
+- Outside node treated as node 16 (special index)
+- M ≤ 32 edges (doors)
+- Graph is connected (all rooms reachable from outside)
+- Replace one edge; count nodes that become unreachable from outside without that edge
+- Output: maximum protected rooms count (0-16)
+
+**Module Interface:**
+- Inputs:
+  - clk: rising edge clock
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - N: 4-bit number of rooms (1-15)
+  - edges[0:31]: 32 edges, each as 2x5-bit pairs (u, v)
+    - u/v range: -1 (outside) to 15
+    - outside = 16 (internal representation)
+  - valid_edges: 5-bit count of valid edges (0-31)
+
+- Outputs:
+  - result: 4-bit maximum protected rooms count
+  - done: 1-cycle pulse when result valid (within 256 cycles)
+  - error: 1-bit if invalid input (N=0 or invalid edges)
+
+**Implementation Requirements:**
+1. Convert outside (-1) to internal node 16
+2. Build adjacency matrix: 17x17 bit array (0-16 nodes)
+3. For each edge, temporarily remove it and compute reachability from outside (node 16) using BFS
+4. Count reachable rooms (0-15) for each edge removal
+5. Track maximum count across all edges
+6. Must complete in ≤256 clock cycles
+7. Reset: result=0, done=0, error=0
+
+**Algorithm:**
+- Initialize adjacency matrix
+- For each edge i from 0 to valid_edges-1:
+  - Remove edge i from adjacency matrix
+  - Perform BFS from node 16
+  - Count reachable nodes in [0,N-1]
+  - Update maximum
+  - Restore edge
+- Output maximum count
+
+**Timing:** start->done within 256 cycles
+**Data Widths:** node indices 0-16 (5 bits), counts 0-16 (4 bits)

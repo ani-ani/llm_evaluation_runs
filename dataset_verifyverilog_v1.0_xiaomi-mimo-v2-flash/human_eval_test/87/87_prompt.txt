@@ -1,0 +1,24 @@
+Design a Verilog module that searches for a target value `x` in a fixed-size 2D matrix. The input is a flat 128-bit array (16 rows * 8 bits per row) representing the jagged matrix, along with a 4-bit row length array indicating valid columns per row. The target `x` is an 8-bit value. The module must return up to 16 coordinate pairs (row, col), sorted by row ascending, and within each row by column descending.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `matrix_flat[127:0]`: 128-bit flat array representing 16 rows of 8-bit values. Row `r` corresponds to bits `(r*8 + 7) : (r*8)`.
+  - `row_lengths[63:0]`: 64-bit array of 16 4-bit values indicating valid column count per row. Row `r` uses bits `(r*4 + 3) : (r*4)`.
+  - `target[7:0]`: 8-bit value to search for.
+- **Outputs:**
+  - `result_packed[255:0]`: 256-bit packed array of up to 16 coordinate pairs. Each pair is 16 bits: `result_packed[15:0]` for first pair, `result_packed[31:16]` for second, etc. Each 16-bit pair: `[15:8]` = row index (0-15), `[7:0]` = column index (0-15).
+  - `result_count[4:0]`: 5-bit count of valid pairs found (0 to 16).
+  - `done`: 1-cycle pulse asserted when search and sort complete.
+- **Timing:** Process within 1024 clock cycles (worst case 16 rows * 16 columns * 16 sort operations).
+- **Reset Behavior:** On reset, `done`=0, `result_packed`=0, `result_count`=0.
+
+**Implementation Notes:**
+- Use a Finite State Machine (FSM) with states: IDLE, SCAN_ROW, SCAN_COL, SORT_INSERT, FINISH.
+- Scan matrix row by row (0 to 15). For each row, scan columns 0 to `row_lengths[row]-1`.
+- When `target` matches, store coordinate pair in a temporary buffer.
+- Perform insertion sort on the buffer to achieve required sorting: primary key row asc, secondary key col desc. Since max 16 pairs, use a bounded comparator loop.
+- Output packed result and count when done.
+- Ensure all values are clamped to bit widths during assignment.

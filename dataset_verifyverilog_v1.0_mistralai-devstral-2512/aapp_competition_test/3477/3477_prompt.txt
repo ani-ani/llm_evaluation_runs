@@ -1,0 +1,26 @@
+Implement a Verilog module that computes the minimum weighted sum of squared distances for 1D k-means clustering. The module takes an array of photon counts (8-bit) for n=8 energy bins (indices 0..7) and m=3 simulation energies (centroid indices 0..2). The goal is to choose m centroids to minimize sum_{i=0}^{n-1} k_i * min_j((i - c_j)^2), where c_j is the optimal centroid for the cluster. The optimal centroid for a cluster [l, r] is the weighted average of indices in that cluster: c = sum(i*k_i)/sum(k_i). The cost for a cluster [l, r] is sum_{i=l}^r k_i*(i - c)^2.
+
+Interface:
+- Inputs: clk (rising edge), rst_n (active-low sync reset), start (1-cycle pulse)
+- Inputs: k[0:7] (8-bit array, photon counts for energies 0..7)
+- Inputs: m (2-bit, number of simulation energies, 1 <= m <= 3)
+- Outputs: result (16-bit fixed-point Q8.8, representing the minimal sum), done (1-cycle pulse when valid)
+
+Constraints:
+- n is fixed at 8.
+- k_i values <= 255 (clamped to 8-bit).
+- Result is Q8.8 fixed-point (8 integer bits, 8 fractional bits). Multiply sums by 256 before division.
+- Latency: <= 200 cycles.
+- Reset: done=0, result=0, m=0, all k=0.
+
+Algorithm:
+1. Precompute prefix sums: sum_k[i] = sum_{j=0}^{i-1} k_j (16-bit)
+2. Precompute weighted sum: sum_w[i] = sum_{j=0}^{i-1} j*k_j (24-bit)
+3. DP: dp[i][j] = min cost to cover first i bins with j centroids.
+   dp[0][0] = 0.
+   dp[i][j] = min_{t=0..i-1} (dp[t][j-1] + cost(t, i-1))
+   where cost(l, r) is cost for cluster covering bins l to r.
+   cost(l, r) = (sum_k[r+1]-sum_k[l]) * (sum_w[r+1]-sum_w[l])^2 / (sum_k[r+1]-sum_k[l])^2
+              = ((sum_w[r+1]-sum_w[l])^2) / (sum_k[r+1]-sum_k[l])
+   Use integer arithmetic: cost = (delta_w * delta_w * 256) / delta_k
+4. Output dp[n][m] >> 8 (convert back to Q8.8).

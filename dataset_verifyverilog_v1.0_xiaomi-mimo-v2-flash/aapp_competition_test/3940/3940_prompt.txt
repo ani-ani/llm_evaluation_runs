@@ -1,0 +1,47 @@
+Design a Verilog module that implements the Alyona's Mexican array problem with scaled constraints for hardware implementation.
+
+**Problem:** Given n subarray intervals (l_i, r_i), find the minimum length among all intervals. The maximum minimum mex is equal to this minimum length. Generate an array of n elements where a[i] = i % k (with k being the minimum interval length).
+
+**Scaled Parameters:**
+- n: 8-bit input (0-63)
+- m: 8-bit input (0-31)
+- l_i, r_i: 8-bit values (0-63)
+- Array values: 8-bit unsigned (0-255)
+
+**Module Interface:**
+- Inputs:
+  - clk: system clock, rising edge
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - n_val: [7:0] - number of array elements
+  - m_val: [7:0] - number of subarray queries
+  - l_in: [7:0] - left index of current query (1-cycle pulse when loading)
+  - r_in: [7:0] - right index of current query (1-cycle pulse when loading)
+  - load_done: 1-cycle pulse indicating all queries loaded
+
+- Outputs:
+  - min_length: [7:0] - minimum interval length found
+  - result_array: [7:0] - array output at current index (indexed by addr)
+  - done: 1-cycle pulse when computation complete
+  - addr: [5:0] - current array index for output reading (0 to n_val-1)
+
+**Behavior:**
+1. On start, initialize min_length to max value (255)
+2. During query loading phase (after start, before load_done):
+   - On each clock cycle where l_in/r_in are valid, compute length = r_in - l_in + 1
+   - Update min_length = min(min_length, length)
+3. After load_done, compute result_array values:
+   - For each index i from 0 to n_val-1: result_array[i] = i % min_length
+4. Set done when all array values are ready
+5. Reset: min_length = 0, done = 0, addr = 0
+
+**Timing:**
+- Start -> done: within (m + n) cycles
+- Result valid when done=1, or available at addr during computation
+- Reset takes 2 cycles
+
+**Constraints:**
+- All arithmetic uses unsigned 8-bit logic
+- Handle wrap-around for modulo operation
+- Module must be synthesizable (no dynamic loops, fixed-size state machine)
+- Use parameterizable bit widths where appropriate

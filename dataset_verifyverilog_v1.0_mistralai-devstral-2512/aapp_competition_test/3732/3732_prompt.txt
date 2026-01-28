@@ -1,0 +1,31 @@
+Implement a Verilog module to solve the problem of finding the minimum number of operations to make a pair of integers (x, y) m-perfect. An operation replaces one number with the sum of the pair. The inputs x, y, and m are 64-bit signed integers but will be scaled to 16-bit fixed-point values (Q8.8 format, where the lower 8 bits represent the fractional part) for hardware simulation. This scaling implies a finite range and resolution, limiting the precision but ensuring bounded loop iterations.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock (rising edge).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to initiate the computation.
+  - `x_in`: 16-bit signed input (scaled fixed-point).
+  - `y_in`: 16-bit signed input (scaled fixed-point).
+  - `m_in`: 16-bit signed input (scaled fixed-point).
+- **Outputs:**
+  - `result`: 32-bit signed integer representing the minimum operation count (or -1 if impossible).
+  - `done`: 1-cycle pulse indicating computation is complete and `result` is valid.
+
+**Behavior:**
+1. Wait for `start` signal.
+2. On `start` high, sample `x`, `y`, `m`.
+3. **Logic:**
+   - If `max(x, y) >= m`, set `result = 0`.
+   - Else if `y <= 0` (assuming `y` is the larger value), set `result = -1` (impossible).
+   - Else, perform iterative addition:
+     - If `x < 0` (and `y > 0`), calculate steps to make `x` non-negative: `steps = ceil(|x| / y)`. Update `x = x + steps * y`. Add `steps` to count.
+     - While `y < m` (and `x < m`):
+       - `x, y = y, x + y` (Fibonacci step).
+       - Increment operation count.
+       - **Safety:** Implement a counter that asserts an error/timeout flag if the loop exceeds 1024 iterations (approximate limit for this scaled problem).
+4. When finished, assert `done` for one cycle with `result` valid.
+5. **Reset:** Clears `result`, `done`, and internal state.
+
+**Timing:** Operations complete within 1024 clock cycles after `start`.
+**Constraints:** Ensure all arithmetic handles 16-bit signed overflow correctly by using intermediate registers (e.g., 32-bit for sums). The logic must detect the impossible case (`y <= 0` while `m > y`) and return -1.

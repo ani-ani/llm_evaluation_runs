@@ -1,0 +1,54 @@
+Implement a Verilog module that solves the Minesweeper corner puzzle for n up to 1000 (4004 red cells). The module should identify which red cells (indexed 1-4n+4 clockwise) are guaranteed safe.
+
+**Core Logic**: A red cell is safe if it cannot contain a mine. This occurs when:
+1. Corner red cells (indices 1, n+1, 2n+1, 3n+1) are always safe (their adjacent 1s have unique adjacent mines).
+2. For edge red cells, safety depends on parity: Cells at even positions (2, 4, 6...) are safe when n is odd; cells at odd positions are safe when n is even.
+
+**Interface Specification**:
+- Inputs:
+  - `clk`: Rising edge clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `n`: 10-bit input (range 1-1000)
+- Outputs:
+  - `done`: 1-cycle pulse when computation complete
+  - `result_count`: 13-bit output (number of safe cells, max 4004)
+  - `result_indices`: 13-bit array [0:4003] of safe indices (valid when done=1)
+  - `result_valid`: 1-bit flag indicating result is ready
+
+**Implementation Requirements**:
+1. Compute `4*n + 4` to get total red cells (max 4004)
+2. Corner indices are always safe: 1, n+1, 2n+1, 3n+1
+3. For edge cells (between corners):
+   - For each edge of length n-1 cells:
+     - If n is odd: cells at even positions (2, 4, 6...) are safe
+     - If n is even: cells at odd positions (1, 3, 5...) are safe
+4. Output must be sorted in increasing order
+5. Computation must complete within 1000 cycles
+
+**Hardware Constraints**:
+- Use fixed-size arrays (max 4004 elements)
+- No dynamic memory allocation
+- Use combinational logic for parity checks
+- Pipeline the computation if needed
+- All indices fit in 13 bits
+
+**Example**: For n=3 (16 red cells):
+- Corners: 1, 4, 7, 10 are safe
+- n is odd, so even positions on edges: 2, 6, 8, 12, 14 are safe
+- Wait, re-evaluate: For n=3, output shows 8 safe cells at odd positions: 1,3,5,7,9,11,13,15
+- Pattern: All odd indices are safe for n=3
+- General pattern: Safe cells are at odd positions (1,3,5...) for odd n
+- For even n, safe cells are at even positions
+
+**Implementation Plan**:
+1. Calculate n mod 2 (parity)
+2. Iterate i from 1 to 4n+4
+3. Check if i is odd: safe when n%2==1
+4. Check if i is even: safe when n%2==0
+5. Store safe indices in output array
+6. Count safe cells
+7. Assert done and result_valid
+
+**Timing**: start→done within 100 cycles for n≤1000
+**Reset**: result_count=0, result_valid=0, all result_indices=0

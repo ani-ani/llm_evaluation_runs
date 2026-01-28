@@ -1,0 +1,42 @@
+Verilog Module Specification: `poly_distance_calculator`
+
+**Task**: Compute the minimum distance from point (0,0) to any line segment defined by vertices of up to 4 polygons (contours). Each polygon has 4 vertices (scaled from input). Coordinates are 16-bit fixed-point (Q8.8 format).
+
+**Inputs**:
+  - `clk`: System clock, rising edge active.
+  - `rst_n`: Active-low synchronous reset. When low, `done` goes 0, `result` goes 0.
+  - `start`: 1-cycle pulse to start computation.
+  - `polygon_cnt`: 4-bit integer (1-4 polygons).
+  - `vertex_x[3:0][15:0]`: 4D array (4 polygons x 4 vertices) of 16-bit signed X coordinates in Q8.8 format.
+  - `vertex_y[3:0][15:0]`: 4D array (4 polygons x 4 vertices) of 16-bit signed Y coordinates in Q8.8 format.
+
+**Outputs**:
+  - `result`: 32-bit fixed-point (Q16.16) representing minimum squared distance.
+  - `done`: 1-cycle high pulse when result is valid. Stays 0 otherwise.
+
+**Behavior**:
+1. On `start` pulse, reset internal state and begin processing.
+2. Iterate through all valid polygons (0 to `polygon_cnt-1`).
+3. For each polygon, iterate through its edges (from vertex i to vertex i+1, wrapping last to first).
+4. For each edge, calculate squared distance from origin (0,0) to the line segment.
+   - Formula: Let A be vertex i, B be vertex i+1. Project origin onto line AB (parameter t). Clamp t to [0,1]. Closest point P = A + t*(B-A).
+   - Compute dist2 = Px^2 + Py^2 using 32-bit Q16.16 arithmetic.
+5. Track global minimum squared distance across all edges.
+6. Set `result` to global minimum squared distance.
+7. Set `done` high for one cycle.
+8. If `polygon_cnt` is 0, `result` should be 0.
+
+**Constraints**:
+  - Coordinates are 16-bit signed (Q8.8). Max magnitude ~32767. Squared magnitude fits in 32-bit (Q16.16).
+  - Max vertices per polygon: 4 (hardcoded).
+  - Max polygons: 4.
+  - Timing: `start` to `done` within 512 cycles (worst case 4*4=16 edges, ~32 cycles/edge).
+  - Reset: `done` = 0, `result` = 0.
+
+**Interface**:
+  - `input wire clk, rst_n, start`
+  - `input wire [3:0] polygon_cnt`
+  - `input wire signed [15:0] vertex_x [0:3][0:3]`
+  - `input wire signed [15:0] vertex_y [0:3][0:3]`
+  - `output reg [31:0] result`
+  - `output reg done`

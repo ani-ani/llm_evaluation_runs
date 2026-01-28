@@ -1,0 +1,40 @@
+You are to design a Verilog module that computes the intersection area of two sets of points. The core problem is simplified as follows:
+
+**Simplification:**
+- Maximum trees per species: 8 (P, A ≤ 8). Input real coordinates are scaled to Q16.16 fixed-point integers (32-bit).
+- The 'area covered by a species' is approximated by its convex hull polygon. We need the intersection area of the two convex hulls.
+- The algorithm will be a sweep-line or polygon clipping approach (e.g., Sutherland-Hodgman) implemented as an FSM.
+- The output area must be in Q16.16 format, representing square metres.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: Clock signal (100 MHz assumed).
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle pulse to start calculation.
+  - `pine_pts_x[0:7]`: 8x 32-bit inputs (Q16.16) for Pine X coordinates.
+  - `pine_pts_y[0:7]`: 8x 32-bit inputs (Q16.16) for Pine Y coordinates.
+  - `aspen_pts_x[0:7]`: 8x 32-bit inputs (Q16.16) for Aspen X coordinates.
+  - `aspen_pts_y[0:7]`: 8x 32-bit inputs (Q16.16) for Aspen Y coordinates.
+  - `pine_count`: 4-bit input (actual number of points, 1-8).
+  - `aspen_count`: 4-bit input (actual number of points, 1-8).
+- Outputs:
+  - `area_out`: 64-bit output (Q32.32 or Q16.16 depending on scale). Use 64-bit for precision.
+  - `done`: 1-cycle pulse indicating valid output.
+
+**Implementation Details:**
+1. **FSM States:** IDLE, COMPUTE_HULL_PINE, COMPUTE_HULL_ASPEN, CLIP_POLYGONS, COMPUTE_AREA, FINISHED.
+2. **Convex Hull:** Implement Graham Scan. Needs stack and sorting logic. Use insertion sort for hardware simplicity (8 elements is small).
+3. **Intersection:** Sutherland-Hodgman algorithm. Input polygon is one hull, clip against edges of the other hull.
+4. **Arithmetic:** All coordinate math uses 64-bit internal wires to prevent overflow during multiplication (32-bit * 32-bit). 
+5. **Timing:** Must complete within 10,000 cycles for 8 points.
+
+**Verilog Spec Prompt:**
+Design a Verilog module `geo_area_intersect` using the interface above. Implement the FSM to:
+1. Receive fixed-point coordinates.
+2. Calculate the convex hull for the Pine points.
+3. Calculate the convex hull for the Aspen points.
+4. Calculate the intersection polygon of the two hulls using a clipping algorithm.
+5. Calculate the area of the resulting intersection polygon.
+6. Output the result and assert `done`.
+
+Handle the fixed-point arithmetic carefully to maintain precision. Use internal buffers sized for 8 vertices (max convex hull size). The output should be the area in Q16.16 format (scaled integer).

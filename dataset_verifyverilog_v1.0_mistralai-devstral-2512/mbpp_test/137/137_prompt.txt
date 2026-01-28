@@ -1,0 +1,48 @@
+Design a Verilog module that computes the ratio of zeros to non-zeros in an integer array.
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `arr[0:7]`: 8-bit integer array (support max 8 elements for simplicity)
+  - `len`: 4-bit integer indicating valid elements in `arr` (1 to 8)
+- Outputs:
+  - `result`: 32-bit fixed-point output (Q16.16 format: 16 integer bits, 16 fractional bits)
+  - `done`: 1-cycle pulse asserted when computation is complete
+
+**Behavior:**
+1. On `start` pulse, reset internal counters and state machine.
+2. Count zeros (`zero_cnt`) and non-zeros (`nonzero_cnt`) by iterating through `arr` up to `len`.
+3. Compute ratio = `zero_cnt / (nonzero_cnt)` as a fixed-point value.
+   - If `nonzero_cnt == 0`, output `0` (or handle as max ratio).
+   - Use integer division: compute `(zero_cnt * 2^16) / nonzero_cnt`.
+   - Implement division via iterative subtraction or a lookup table for small values (max `len=8`).
+4. Assert `done` when result is valid.
+
+**Constraints:**
+- Timing: `start` to `done` within 256 clock cycles.
+- State Machine: Include IDLE, COUNT, DIVIDE, DONE states.
+- Reset: `done` and `result` clear to 0.
+- Data Widths: `zero_cnt` and `nonzero_cnt` max 4 bits (since max 8 elements). Result is 32 bits.
+
+**Hardware Notes:**
+- Use fixed-point arithmetic for division to maintain precision.
+- Division can be implemented as a loop (max 16 iterations for 16-bit denominator).
+- Ensure no division by zero; if `nonzero_cnt == 0`, set `result = 0`.
+- Output `result` only when `done` is high.
+
+**Verilog Spec:**
+```verilog
+module zero_ratio (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr [0:7], // 8-element array of 8-bit inputs
+    input wire [3:0] len,
+    output reg [31:0] result,
+    output reg done
+);
+// Implement state machine and logic as described.
+endmodule
+```

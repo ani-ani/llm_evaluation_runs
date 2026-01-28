@@ -1,0 +1,34 @@
+Design a Verilog module to count rectangles in a matrix derived from a string of decimal digits. The matrix B_{ij} = s_i * s_j (product of digits). A rectangle is defined by (x, y, z, t) with x≤y, z≤t, summing elements where i in [x,y], j in [z,t].
+
+Interface:
+  Inputs:
+    clk: clock, active on rising edge
+    rst_n: active-low synchronous reset
+    start: 1-cycle pulse to initiate computation
+    target_a[31:0]: 32-bit unsigned target sum (0 ≤ a ≤ 10^9)
+    len[5:0]: length of string (1-64, clamped)
+    s[0:63][3:0]: 64-element array of 4-bit digit values (0-9)
+  Outputs:
+    result[31:0]: 32-bit count of rectangles with sum == target_a
+    done: 1-cycle pulse indicating result is valid
+
+Algorithm Constraints:
+  - Scale: String length ≤ 64 elements (64 cycles max for prefix sum)
+  - Data: Digits 0-9 (4-bit). Prefix sums fit in 12-bit (max 64*9=576).
+  - 2D Sums: The sum of a rectangle = (row_prefix[y+1]-row_prefix[x]) * (col_prefix[t+1]-col_prefix[z]).
+    Wait, this is a matrix B_{ij} = s_i * s_j. The sum over rectangle is sum_{i=x..y} sum_{j=z..t} s_i * s_j = (sum_{i=x..y} s_i) * (sum_{j=z..t} s_j).
+    This simplifies to finding pairs of 1D subarray sums (from the digit string) whose product equals 'a'.
+  - Implementation:
+    1. Compute all 1D subarray sums of 's'. There are n*(n+1)/2 such sums (max 2080 for n=64). Store them in a lookup table (FIFO or buffer) and also build a frequency map (Counter).
+    2. If 'a' is 0: The result is count of pairs where at least one sum is 0. If S0 is count of zero-sums and S_total is total subarrays, result = S0*S_total*2 - S0*S0 (pairs with exactly one zero + both zero).
+    3. If 'a' > 0: Find divisors of 'a' (scaling 'a' is not needed since a is small). Iterate through stored subarray sums. If a sum 'v' divides 'a' and 'a/v' exists in frequency map, multiply frequencies.
+    4. Optimization: Since max sum is small (576), we can use a fixed-size array (e.g., 577 entries) for frequency counts instead of a hash map.
+  - Reset: All internal counters and buffers must reset. done=0, result=0.
+  - Timing: start->done within 2000 cycles for n=64.
+
+Implementation Details:
+  - Use a Finite State Machine (FSM) for control.
+  - Use a loop (0 to len-1) for subarray generation.
+  - Frequency array size: 1024 x 16-bit registers (covers sums 0-576).
+  - Division: Simple comparator loop for divisors up to 576.
+  - Output: Result clamped to 32-bit.

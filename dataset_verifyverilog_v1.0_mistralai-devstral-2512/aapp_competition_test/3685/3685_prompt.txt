@@ -1,0 +1,47 @@
+Verilog Module Specification: Stealth Navigation with Patrolling Masters
+
+1. **Problem Adaptation**
+   - Grid: Fixed 16x16 (max 256 cells). Walkable=1, Blocked=0.
+   - Child: 1 agent moving 1 step (N/S/E/W) or staying put per clock cycle.
+   - Masters: Up to 4 masters, each with a pre-defined patrol path of max 8 points. They move along the path forward and backward, repeating indefinitely.
+   - Detection: Simplified. Instead of real-time ray tracing, pre-compute a 'danger_map' for each clock cycle modulo the combined path length. A master detects the child if the child is on the same row or column AND there is NO blocked cell between them (Manhattan line of sight). Since grids are small, we can compute this in hardware.
+   - Goal: Child starts at (start_r, start_c) at cycle 0. Must reach (target_r, target_c) at any cycle T. Output minimum T.
+
+2. **State Representation**
+   - Time is discrete cycles. Max cycles = 1024.
+   - State: (child_r, child_c, time_mod_lcm). Where time_mod_lcm tracks position in master cycles to determine master locations.
+   - Visited array: 16x16x64 (states) = 256 * 64 = 16,384 bits. Feasible for FPGA BRAM.
+
+3. **Algorithm**
+   - **Phase 1: Master Position LUT**
+     Generate a LUT `master_pos[time][id]` storing (r, c) for each master ID (0-3) at specific times. Depth = LCM of path lengths (max 8*7=56, but we limit to 64 for simplicity).
+   - **Phase 2: Danger Map Generation**
+     For each time step (0 to 63), generate a `danger_grid[16][16]`. 
+     Logic: For each cell, check if visible by any master. 
+     Visibility check (simplified): If cell row or col matches master row/col, check 1D obstruction. To save logic, we can pre-compute this in a separate block or simplify to "If child shares row/col with master AND distance < threshold AND no walls in between (pre-fetched)".
+   - **Phase 3: BFS Search**
+     Standard synchronous BFS using an internal queue (implemented as dual-port RAM).
+     Cycle 0: Enqueue (start_r, start_c, 0).
+     Cycle N: Dequeue state. Check if (r, c) matches target. If yes, output N.
+     Else, generate neighbors (stay, N, S, E, W). Check bounds and walkable.
+     Check if state (nr, nc, (time+1)%64) is visited. If not, enqueue.
+
+4. **Interface (Ports)**
+   - `input wire clk`: System clock.
+   - `input wire rst_n`: Active low reset.
+   - `input wire start`: High to load configuration and start search.
+   - `input wire [3:0] start_r, start_c`: Start coordinates (0-indexed).
+   - `input wire [3:0] target_r, target_c`: Target coordinates.
+   - `input wire [255:0] grid_flat`: 16x16 map packed into 256 bits. 1=walkable, 0=blocked.
+   - `input wire [3:0] num_masters`: 0-4 active masters.
+   - `input wire [63:0] path_data [0:3]`: Array of 4 words, each word packs path points (x,y) for a master. (e.g., [15:12]=r1, [11:8]=c1...)
+   - `output reg [9:0] result`: Minimum turns (0-1023). `10'h3FF` indicates IMPOSSIBLE (1023).
+   - `output reg done`: High when search complete or timeout.
+
+5. **Timing & Constraints**
+   - Frequency: 50 MHz.
+   - Reset: 2 cycles.
+   - Max Cycles: 1024 cycles for search.
+   - Result valid: Set `done` when target found or max cycles reached.
+   - Depth: Path length max 8. Max cells 256. Max Masters 4.
+   - Warning: The safety check (line of sight) is the most expensive part. It should be done via pre-computed LUTs for the fixed grid/map, not dynamic ray casting, to meet timing.

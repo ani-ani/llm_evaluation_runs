@@ -1,0 +1,33 @@
+Implement a Verilog module that computes the maximum number of circles (opponents) hit by a ray from origin. Input: n circles (n ≤ 10 max) with center (x, y) and radius r. Each circle is represented as: x, y are 16-bit signed fixed-point Q8.8 (1 sign bit, 8 integer, 8 fractional), r is 16-bit unsigned Q8.8. Module computes angular intervals [θ_start, θ_end] for each circle where ray strictly intersects (not tangent). Use angular sweep: collect all interval endpoints, sort by angle, sweep counting active intervals. Output: maximum overlap count (max hits) as 4-bit integer.
+
+Interface:
+- clk, rst_n: standard synchronous reset
+- start: 1-cycle pulse to start computation
+- inputs: n (4-bit), and arrays x_arr[0:9], y_arr[0:9], r_arr[0:9] each 16-bit
+- outputs: result (4-bit max hits), done (1-cycle pulse when valid)
+- Timing: Within 256 clock cycles after start
+- Reset: done=0, result=0
+
+Algorithm steps:
+1. For each circle i (0 to n-1):
+   - Compute distance d = sqrt(x^2 + y^2) in Q8.8 fixed-point (use 32-bit intermediate)
+   - If d <= r: circle contains origin (invalid per problem, skip)
+   - Compute angle to center: α = atan2(y, x) in Q8.8 (use lookup or approximation)
+   - Compute angular half-width: Δ = asin(r/d) in Q8.8
+   - Interval: [α - Δ, α + Δ] modulo 2π
+   - Represent angles as 16-bit integers (0 to 65535 corresponding to 0 to 2π)
+2. Collect all interval starts and ends (max 20 points) with type (start=+1, end=-1)
+3. Sort these points by angle (simple bubble sort, max 20 elements)
+4. Sweep: sort points by angle, increment counter for start, decrement for end, track max
+5. Handle wrap-around: if max angle > 65535, wrap to 0 (use modulo)
+
+Constraints:
+- Max n = 10 circles → 20 angular points
+- Fixed-point arithmetic: use 32-bit intermediate for sqrt/atan/asin
+- Output max hits 0-10 (4 bits sufficient)
+- No floating-point: all operations in fixed-point or integer
+- Sort must be stable for ties (angle equality)
+
+Implementation hint: Use combinational logic for geometric calculations, FSM for sweep. Assume external sqrt/atan/asin modules or LUT approximations provided (not needed to implement).
+
+Example: Circle at (5,0) with r=1: d=5, α=0°, Δ=asin(1/5)≈11.5°, interval [-11.5°, 11.5°] → wrap to [348.5°, 360°]∪[0,11.5°].

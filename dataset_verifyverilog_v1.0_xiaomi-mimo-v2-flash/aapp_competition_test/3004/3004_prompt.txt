@@ -1,0 +1,44 @@
+You are to design a Verilog module that solves a scaled-down version of the fence painting problem. The fence has 16 sections (numbered 0 to 15). There are up to 12 offers. Each offer has a color (represented by a 2-bit ID: 0=Red, 1=Blue, 2=Green, 3=Yellow), and a start and end section (A, B, 0 <= A <= B <= 15).
+
+The module must find the minimum number of offers to accept such that:
+1. Every section (0-15) is covered by at least one accepted offer.
+2. The total number of distinct colors used in the accepted offers is at most 3.
+
+If no solution exists, output a special flag.
+
+**Inputs:**
+- `clk`: System clock (rising edge triggered).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to initiate the calculation.
+- `num_offers`: 4-bit input (1-12) indicating how many offers are valid.
+- `offer_color[11:0]`: 12x2-bit array, where `offer_color[i]` is the color of offer i.
+- `offer_start[11:0]`: 12x4-bit array, start section of offer i.
+- `offer_end[11:0]`: 12x4-bit array, end section of offer i.
+
+**Outputs:**
+- `min_offers`: 4-bit output (0-12). Valid when `done` is high. Represents the minimum count. If `impossible` is high, this value is undefined.
+- `impossible`: 1-bit output. High if no valid set of offers exists. Valid when `done` is high.
+- `done`: 1-cycle pulse indicating calculation is complete.
+
+**Implementation Constraints:**
+- The algorithm must compute the result within 2000 clock cycles.
+- Use combinational logic for subset generation and validation, controlled by a finite state machine (FSM).
+- Since `N` is small (<=12), you can iterate through all possible subsets of offers. There are 2^12 = 4096 subsets.
+- For each subset, check if the union of intervals covers 0-15 and if the number of distinct colors <= 3.
+- Track the minimum size found.
+- Use `reg` arrays for internal state.
+
+**Design Hint:**
+- Create a state machine with states: IDLE, GENERATE_SUBSET, CHECK_SUBSET, UPDATE_MIN, FINISH.
+- `GENERATE_SUBSET`: Iterate `i` from 0 to 4095. Use `i` as the bitmask for the subset.
+- `CHECK_SUBSET`:
+    1. Count set bits in `i` (population count). If >= current `min_offers`, skip.
+    2. Check colors: Extract colors for set bits, count unique (max 4 bits needed). If > 3, skip.
+    3. Check coverage: Initialize `cover_mask` to 0. For each set bit, OR the coverage of that offer (generate a 16-bit mask where bits A to B are 1). Finally, check if `cover_mask == 16'hFFFF`.
+- `UPDATE_MIN`: Update `min_offers` if valid subset is found.
+- `FINISH`: Assert `done`.
+
+**Interface Spec:**
+Inputs: clk, rst_n, start, num_offers, offer_color[11:0], offer_start[11:0], offer_end[11:0]
+Outputs: min_offers, impossible, done
+Timing: start -> done within 2000 cycles.

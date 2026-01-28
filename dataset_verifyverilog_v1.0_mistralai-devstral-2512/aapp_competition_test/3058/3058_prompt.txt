@@ -1,0 +1,57 @@
+You are to implement a hardware module that solves a simplified version of the Parallel Evolution problem using fixed-width data structures.
+
+**PROBLEM ADAPTATION**:
+- Each genome string is max 16 characters (A, C, M).
+- We have 1 target genome (current species) and up to 8 fossil genomes.
+- Evolution is modeled as a chain where each subsequent string is formed by inserting exactly 1 character into the previous string (maintaining relative order).
+- The target genome must be reachable from the root via two disjoint paths (sequence of fossils).
+
+**TASK**:
+Given the target genome and a list of fossils, output two sequences (paths) of fossil indices such that:
+1. Each path forms a valid insertion chain ending at the target.
+2. Every fossil appears in exactly one path.
+3. If impossible, output -1.
+
+**INPUT INTERFACE**:
+- `clk`, `rst_n`: Standard synchronous control
+- `start`: 1-cycle pulse to begin processing
+- `target[0:15]`: 16x8-bit array (ASCII codes for A=65, C=67, M=77, padded with 0)
+- `fossils[0:7][0:15]`: 8x16x8-bit array of fossil genomes
+- `num_fossils`: 4-bit integer (1-8)
+
+**OUTPUT INTERFACE**:
+- `result_valid`: High when result is ready
+- `path1_len`, `path2_len`: 4-bit lengths
+- `path1_idx[0:7]`: 8x4-bit array of fossil indices for path 1
+- `path2_idx[0:7]`: 8x4-bit array of fossil indices for path 2
+- `status`: 2-bit (0=success, 1=impossible, 2=processing)
+
+**IMPLEMENTATION CONSTRAINTS**:
+1. **String Comparison**: Must verify if `src` can become `dest` by inserting 1 char. Use comparator FSM.
+2. **Insertion Check**: For each fossil pair (i,j), verify if fossil i -> fossil j is valid insertion. Precompute 8x8 adjacency matrix.
+3. **Path Search**: Use DFS/BFS bounded by 8 nodes. Must track visited nodes.
+4. **Two Path Constraint**: Partition fossils into two sets, each forming a chain to target. Try all valid splits (2^8 = 256 possibilities).
+
+**ALGORITHM**:
+1. Compute adjacency matrix `adj[i][j]` where `adj[i][j]=1` if fossil i can evolve to fossil j via 1 insertion.
+2. For each fossil, verify it can evolve to target (or is target-like).
+3. Try partitioning fossils into two sets.
+4. For each set, verify it forms a valid chain ending at target.
+5. Output first valid partition.
+
+**TIMING**:
+- Start to done: < 1024 cycles
+- Reset clears all registers
+- No external memory
+
+**EDGE CASES**:
+- Single fossil: Check if it can reach target
+- Empty path (0 fossils) is valid if others cover all
+- Identical strings in fossils (filtered by input constraints)
+- Max 8 fossils = 3-bit index
+
+**VERILOG SPEC**:
+- Use combinational logic for string comparison
+- FSM for overall control
+- Register arrays for storing paths
+- Output status immediately when found

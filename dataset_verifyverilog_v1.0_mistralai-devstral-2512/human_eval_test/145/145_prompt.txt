@@ -1,0 +1,15 @@
+Implement a Verilog module that sorts an array of 8 numbers based on digit sum, with stable tie-breaking by original index. The algorithm uses a sorting network (bitonic) with 16 stages. Digit sum for signed numbers is calculated by absolute value, then summing decimal digits (max 3 digits for 8-bit numbers). Numbers are 8-bit signed. Use a fixed 8-element input array. Outputs sorted array. No dynamic memory needed.
+
+Interface:
+- Inputs: clk, rst_n, start (1-cycle pulse), in_0 to in_7 (8-bit signed each)
+- Outputs: out_0 to out_7 (8-bit signed), done (1-cycle when valid, within 100 cycles)
+- Timing: start goes high for 1 cycle. Computation takes <= 100 cycles. When done is 1, outputs are valid.
+- Reset: 2 cycles of rst_n low. All outputs zero. done=0.
+- Note: Process the 8 numbers. For each, compute digit sum of absolute value. Use stable sorting: if digit sums equal, preserve original order. Use a comparator with two criteria: (digit_sum, original_index).
+- Pipeline: 2-stage pipeline for digit sum (2 cycles) + sorting network (16 cycles). Total ~20 cycles.
+- Numbers are signed 8-bit (-128 to 127). Digit sum for 127 is 1+2+7=10. For 128 (abs is 128) digit sum 1+2+8=11.
+- Implementation: FSM with states: IDLE, CALC_DIGIT, SORTING, DONE.
+- Sorting network: 8-element odd-even transposition sort (7 rounds of 8 comparisons). Each comparison checks (digit_sum_a, index_a) vs (digit_sum_b, index_b).
+- Store digit sums in a register array (8x5 bits, since max digit sum for 999 is 27). Store indices (3 bits). Sort pairs of (value, digit_sum, index).
+- Output the sorted values.
+- No external memory, all registers.

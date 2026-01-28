@@ -1,0 +1,125 @@
+Design a Verilog module `flight_review_planner` that solves the minimum cost review route problem.
+
+**Problem Analysis:**
+- N airports (1 to N), Stockholm is node 1.
+- R flights to review (mandatory edges).
+- F additional flights (optional edges).
+- Goal: Start at node 1, traverse all mandatory edges (at least once), return to node 1, minimize total cost.
+
+**Adaptations for Hardware:**
+1. **Graph Representation:** Use a cost matrix `cost[N][N]` (N=13, fixed size). Initialize with `INF` (e.g., 16'hFFFF).
+2. **Mandatory Edges:** Store as a boolean matrix `mandatory[N][N]`. The requirement "traverse all mandatory edges" is equivalent to visiting all nodes incident to mandatory edges (or ensuring connectivity). Since we must traverse edges, we can model the requirement as visiting all "required nodes". However, the strictest interpretation is that every mandatory edge must be covered. 
+   - *Simplification:* Since edges must be traversed, we ensure all nodes involved in mandatory edges are visited. If an edge is isolated (e.g., 4-5 in sample), we must visit both 4 and 5. 
+   - *Hardware Logic:* We identify the set of nodes that are "required". A node is required if it appears in any mandatory edge. The path must visit all required nodes.
+3. **Shortest Paths:** Precompute all-pairs shortest paths (APSP) using Floyd-Warshall (N=13, small).
+4. **TSP Solver:** Use Dynamic Programming (DP) with bitmask.
+   - `dp[mask][u]`: Minimum cost to visit the set of nodes in `mask`, ending at node `u`.
+   - `mask`: 13-bit integer (bit i set if node i+1 visited).
+   - `target_mask`: Bitmask of all required nodes.
+   - Start state: `dp[1][0] = 0` (Node 1 is index 0).
+
+**Interface Specification:**
+- **Clock & Reset:** Standard synchronous design.
+- **Configuration:** 
+  - `cost_matrix`: 13x13 array of 16-bit integers (169 ports or flattened). 
+  - `required_nodes`: 13-bit mask indicating which nodes must be visited.
+  - `start`: Pulse to initiate computation.
+- **Output:**
+  - `result`: 16-bit total minimum cost.
+  - `done`: High when computation finishes.
+
+**Implementation Details:**
+- **Phase 1 (Floyd-Warshall):** Run for k, i, j loops (max 13 iterations). Update cost matrix.
+- **Phase 2 (DP):** Iterate over masks from 1 to (1<<N). For each mask, iterate over current node `u`. If `dp[mask][u]` is valid, try to extend to next node `v` (where `v` is not in `mask`). Update `dp[mask | (1<<v)][v]`.
+- **Phase 3 (Result):** After DP fills all states, find the minimum cost to return to node 0 (Stockholm) from any node `u` in the `target_mask`: `min(dp[target_mask][u] + dist[u][0])`.
+- **State Machine:** Use `FSM` states: `IDLE`, `FLOYD_INIT`, `FLOYD_LOOP`, `DP_INIT`, `DP_MASK_LOOP`, `DP_NODE_LOOP`, `RESULT`, `DONE`.
+- **Constraints:** N=13 implies 8192 masks. 13 nodes. Loop iterations: 13^3 (Floyd) + 8192*13 (DP) ≈ 110k cycles. Max cycles: 200,000. Widths: Cost 16-bit (max path cost < 13*10000 = 130k < 65535? Wait, 130k > 65535. 
+  *Correction:* Max cost might exceed 16-bit. 13 nodes * 10000 = 130,000. 16-bit max is 65535. Need 17 bits. Use 24-bit for safety (Q24.0).
+  *Refined widths:* Cost width = 24 bits. Address widths: Node index 4 bits (0-12). Mask 13 bits (use 16-bit reg).
+
+**Module Header:**
+```verilog
+module flight_review_planner (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    // Cost matrix input (flattened or sequential load recommended for HDL)
+    // For simplicity, assume input interface for loading costs
+    input wire [3:0] node_idx_i, node_idx_j,
+    input wire [23:0] cost_in,
+    input wire cost_write,
+    input wire [12:0] required_mask_input,
+    input wire load_done,
+    output reg [23:0] result,
+    output reg done
+);
+```
+**Memory:**
+- `reg [23:0] dist [0:12][0:12];` (169x24 bit)
+- `reg [23:0] dp [0:8191][0:12];` (106k entries). *Too large for FPGA BRAM usually.*
+  *Optimization:* DP state space reduction. Since we only need the previous mask iteration? No, standard TSP DP requires all masks. 
+  *Alternative:* Use BRAM. 8192 * 13 * 24 bits ≈ 2.5 Mbits. Acceptable for larger FPGAs. 
+  *Fallback:* If memory is too tight, reduce N to 8 (256 masks). The problem says N≤13. We will implement for N=8 to fit BRAMs, or use a single cycle multiplier logic for the sequential update.
+  *Decision:* Implement for **N=8** (max 256 masks) to fit standard Block RAM (36kbit). This covers the "feasible" subset. 
+  *Constraint Update:* The prompt says N≤13, but hardware scales poorly. I will specify N=8 in the module for the benchmark, acknowledging the scaling limit. 
+  *Wait:* The prompt says "Extract core concepts... Scale to 16-32 bit... Max length constraints". I will stick to N=13 but use a serial BRAM interface or reduce memory depth. 
+  *Let's try N=13 with Block RAM:* 8192 * 13 = 106k entries. 24 bits wide. Total bits ~2.5M. Modern FPGAs have MBs of BRAM, so it's fine. 
+  *Instruction:* Use Block RAM inference for `dp` and `dist` arrays.
+
+**Final Spec:**
+1. **Inputs:** Clock, Reset, Start.
+2. **Config Loading:** Serial interface to load `dist` matrix and `required_mask`. (To avoid 169 * 24 ports).
+3. **Compute:** 
+   - Run Floyd-Warshall on `dist`.
+   - Run TSP DP.
+4. **Output:** `result` (24-bit).
+
+**State Machine States:**
+- `IDLE`: Wait for start.
+- `LOAD`: Accept configuration data.
+- `FLOYD_K`, `FLOYD_I`, `FLOYD_J`: Compute APSP.
+- `DP_START`: Initialize DP state.
+- `DP_ITERATE`: Main DP loop (Mask 1 to 2^N - 1).
+- `DP_EXTEND`: Try extending path to next node.
+- `FINISH`: Compute final result (min loopback).
+- `DONE`: Output result.
+
+**Verilog Logic Snippets:**
+- `dist` array initialized with INF (24'hFFFFFF).
+- `dp` array initialized to INF.
+- `dp[1][0] = 0`. (Mask 1 = {node 0}).
+
+**Testbench:**
+- Generate graph with N=8 (simpler for testing).
+- Load matrix.
+- Verify result.
+
+**Prompt Refinement:**
+Write a Verilog module for the Flight Review Planner. It solves the Traveling Salesman Problem variant on a graph of N=8 nodes. 
+- **Interface:** 
+  - `clk`, `rst_n`, `start`
+  - `config_addr` [2:0], `config_data` [23:0], `config_valid` 
+  - `result` [23:0], `done`
+- **Algorithm:**
+  1. Load graph costs into `dist` matrix (size 8x8).
+  2. Compute APSP (Floyd-Warshall).
+  3. DP TSP: `dp[mask][u]`.
+  4. Return to node 0 from required nodes.
+- **Constraints:**
+  - N=8 (Nodes 0..7, Node 0 is Stockholm).
+  - Max cycles: 100,000.
+  - Cost width: 24-bit.
+  - Use BRAM for `dist` and `dp` arrays.
+
+**Testbench Strategy:**
+- Use the sample input logic but scaled to N=8 (or N=13 if we allow sparse test).
+- Since Python example uses N=5 and N=6, we will map to N=8.
+- Input format in testbench: Construct adjacency matrix, run Floyd-Warshall in Python (host) or pass pre-computed shortest paths to the DUT to isolate the TSP logic. 
+  *Better:* Host computes APSP, DUT does TSP DP. Or DUT does both. 
+  *Decision:* DUT does both. Testbench loads the raw edge list (as adjacency matrix).
+
+**Testbench Code Generation:**
+- We need `write_array` helper for 2D arrays.
+- Since we use serial loading in the prompt spec, the testbench will write to `config_addr`, `config_data`, `config_valid`.
+- Check `done` signal.
+- Read `result`.

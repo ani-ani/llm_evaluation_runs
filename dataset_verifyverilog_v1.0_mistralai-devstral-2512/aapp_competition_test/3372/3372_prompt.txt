@@ -1,0 +1,37 @@
+Design a Verilog module that implements a BFS-based shortest path finder for a graph with up to 16 airports (0-15). The graph is defined per airport using either 'N' (direct adjacency list) or 'C' (complement adjacency list where edges are present to all except listed nodes). Given source s and target t (both 4-bit), compute the minimum number of flights (edges) required. If no path exists, output 'impossible' (conceptually via result signal with invalid flag).
+
+### Interface Specification:
+- **Inputs**:
+  - `clk`: Single clock, rising edge
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `s[3:0]`: Source airport (4-bit)
+  - `t[3:0]`: Target airport (4-bit)
+  - For each airport i (0-15):
+    - `type_i`: 1-bit (0=N, 1=C)
+    - `len_i[3:0]`: 4-bit (0-15, number of entries in list)
+    - `list_i[63:0]`: 64-bit packed array representing up to 16 airports (4 bits each), where list_i[j*4+3:j*4] is the j-th airport in the list (padded with zeros for unused entries). Note: The sum of all len_i across airports is limited by 2e5 in software, but in hardware we only need the current airport's list (max 16 entries).
+
+- **Outputs**:
+  - `result[4:0]`: Minimum number of flights (0-15) if path found. Valid when `done=1` and `valid=1`.
+  - `valid`: 1-bit, indicates result is valid (0 if no path found)
+  - `done`: 1-cycle pulse when computation is complete
+
+### Algorithm Requirements:
+1. **Graph Representation**: Internally maintain a 16x16 adjacency matrix (1-bit per edge). Initialize on `start` pulse.
+2. **BFS Implementation**: Use a fixed-size FIFO queue (depth 16) for BFS traversal.
+3. **Distance Calculation**: Maintain a distance array (16x5-bit) initialized to all 16 (infinity).
+4. **Iteration**: Process nodes in BFS order, explore outgoing edges based on type (N=direct, C=complement).
+5. **Bounded Cycles**: Complete BFS within 256 clock cycles (max 16 nodes * 16 edges).
+6. **Result**: Set `valid=0` if target unreachable after BFS, else set `result` with distance and `valid=1`. Assert `done` for 1 cycle.
+
+### Timing Constraints:
+- `start` to `done`: ≤256 cycles
+- Reset: `done=0`, `valid=0`, `result=0`, hold `rst_n=0` for 2 cycles
+- No combinatorial loops - pipeline BFS steps
+
+### Notes:
+- Only need to process one airport's list at a time (current node in BFS).
+- Use 4-bit indices for all airport numbers.
+- Output "impossible" is represented by `valid=0` when `done=1`.
+- Implementation must be synthesizable; use iterative loops with bounded counters.

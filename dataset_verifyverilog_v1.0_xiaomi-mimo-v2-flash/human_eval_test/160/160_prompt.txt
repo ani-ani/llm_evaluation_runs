@@ -1,0 +1,42 @@
+Design a Verilog module that evaluates algebraic expressions using two lists: operators and operands. Constraints: operator list length N, operand list length N+1. Maximum 8 operands. All numbers are 8-bit unsigned integers (0-255). Use fixed-point arithmetic with 16-bit integers (Q8.8 format for intermediate calculations). Implement sequential evaluation left-to-right (no operator precedence). Operations: Addition (+), Subtraction (-), Multiplication (*), Floor division (//), Exponentiation (**) (exponentiation limited to small values). Output: 16-bit result. Interface:
+
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start calculation
+  operator[2:0]: 3-bit binary encoded operation (0=+, 1=-, 2=*, 3=//, 4=**)
+  operand[7:0]: 8-bit operand value (8 consecutive inputs for 8 operands)
+  operator_index[2:0]: operator selector for current operation
+  operand_index[2:0]: operand selector for current operand
+  config_done: pulse indicating all inputs loaded
+
+Outputs:
+  result[15:0]: 16-bit fixed-point result
+  done: 1-cycle pulse when calculation complete
+  error: 1-bit flag for division by zero or overflow
+
+Control Flow:
+  1. Load operands and operators sequentially using index signals
+  2. When config_done=1, assert start to begin evaluation
+  3. Perform operations in sequence (operand[0] op[0] operand[1] op[1] ... operand[N])
+  4. Output result when done=1
+
+Timing:
+  - Reset clears all registers (done=0, result=0, error=0)
+  - Configuration phase: 8 clock cycles maximum
+  - Calculation: maximum 100 cycles
+  - Total timeout: 200 cycles
+
+Architecture:
+  - Use finite state machine (FSM) with states: IDLE, LOAD, CALCULATE, COMPLETE
+  - Use 16-bit accumulator register
+  - Use 16-bit temporary registers for intermediate results
+  - Implement division and exponentiation with cycle-bounded loops (max 8 cycles)
+  - Detect overflow/underflow and division by zero
+
+Note: All operations are performed left-to-right without precedence. For exponentiation, limit exponent to 8 maximum. For division, implement integer floor division. For multiplication, handle 16-bit result and clamp to 16 bits.
+
+Simplify exponentiation: Use iterative multiplication (exponent count limited to 8).
+Simplify division: Check divisor != 0, perform 8-bit integer division.
+
+Module name: algebra_evaluator

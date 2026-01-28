@@ -1,0 +1,70 @@
+You are to implement a Verilog module that simulates the FIFO queue and sensor data management system for an interplanetary probe. The system must determine if all sensor data can be transferred to Earth without data loss or remaining data after the last downlink window.
+
+## Constraints
+- Maximum 8 FIFO queues (q <= 8)
+- Maximum 8 sensors (s <= 8)
+- Maximum 16 downlink windows (n <= 16)
+- Sensor data values and queue capacities are scaled to 16-bit integers (values up to 65535 after scaling from 10^6)
+- Queue capacity is fixed at 8192 units (scaled from 10^6 to fit 16-bit)
+- Downlink bandwidth per window scaled to 16-bit (up to 65535)
+
+## Module Interface
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: Start pulse (1 cycle high) to begin simulation
+- `sensor_queue_map[7:0]`: 8-bit array, mapping of sensor to queue index (0-7). Use only first s sensors.
+- `queue_capacity[7:0]`: 8-bit array, queue capacities in KB (scaled down: 10^6 -> 8192)
+- `downlink_bandwidth[15:0]`: Array of 16 downlink window bandwidths (scaled, 16-bit each)
+- `sensor_data[7:0]`: 8-bit array of 16-bit values (packed as 128-bit total), representing sensor data for current window
+
+**Outputs:**
+- `result`: 1-bit, 1 if possible, 0 if impossible
+- `done`: 1-bit, pulses high for 1 cycle when simulation complete
+- `status`: 2-bit debug status (0=idle, 1=processing, 2=overflow_error, 3=success)
+
+## Implementation Details
+
+1. **FIFO Simulation**: Maintain 8 queue fill levels (16-bit each). Initially zero.
+2. **Sensor Data Ingestion**: For each window, add sensor data to respective queues. Check capacity constraints.
+3. **Downlink Transfer**: Subtract bandwidth from queues, prioritizing high-index queues first (simple scheduler).
+4. **Validation**: After last window, check all queues empty (status 3 = success). If overflow occurs, status 2.
+5. **Timing**: Must complete within 256 cycles (16 windows * 16 cycles max).
+
+## Required Operations
+- `add_data(queue_index, amount)`: Check if queue_fill[queue_index] + amount <= queue_capacity[queue_index]. If not, overflow.
+- `transfer_data(bandwidth)`: For i from 7 downto 0: remove min(queue_fill[i], remaining_bandwidth) from queue_fill[i], update remaining.
+
+## State Machine
+- IDLE: Wait for start
+- PROCESS: Iterate through windows, update queues
+- DONE: Output result, pulse done
+
+## Interface for Testbench
+All arrays must be accessible element-by-element. Use individual signals for each queue/sensor where possible, or packed arrays.
+
+For sensor_data input: provide as 16 separate 16-bit signals (sensor_data_0 to sensor_data_15) or packed into a 128-bit vector.
+
+For downlink_bandwidth: provide as 16 separate 16-bit signals (bandwidth_0 to bandwidth_15) or packed.
+
+## Critical Requirements
+- Use 16-bit widths for all data values (sensor data, queue levels, bandwidth)
+- Queue capacity is constant 8192 (16-bit value)
+- Clock period: 10ns (100 MHz)
+- Reset: Assert for minimum 2 cycles
+- Done signal: 1-cycle pulse when final validation complete
+- Result valid only when done=1
+
+## Test Case Examples (scaled values)
+Example 1: 2 windows, 2 queues, 2 sensors
+- Sensor to queue mapping: [0, 1]
+- Queue capacities: [8192, 8192] (scaled from 3,3)
+- Window 0: bandwidth=5120 (scaled from 5), sensor_data=[2560, 2560] (scaled from 2,2)
+- Window 1: bandwidth=5120, sensor_data=[2560, 2560]
+- Expected: Possible (result=1, status=3)
+
+Example 2: Same but window 0 bandwidth=1024 (scaled from 1)
+- Expected: Impossible (result=0, status=2)
+
+Implementation must handle up to 16 windows, 8 sensors, 8 queues within 256 cycles.

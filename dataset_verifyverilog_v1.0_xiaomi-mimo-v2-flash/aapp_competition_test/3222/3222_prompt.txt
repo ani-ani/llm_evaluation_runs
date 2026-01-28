@@ -1,0 +1,26 @@
+Design a Verilog module that partitions a directed graph into vertex-disjoint cycles (including self-loops) covering all N nodes, or determines impossibility. Constraints: N ≤ 16 nodes, M ≤ 64 edges.
+
+**Interface:**
+- Inputs: `clk`, `rst_n` (active-low), `start` (1-cycle pulse)
+- Data Input: `graph[0:15][0:15]` (16x16 binary adjacency matrix, stored as 16 sequential inputs for rows)
+- N input: `num_nodes` (4-bit, 1-16)
+- Outputs: `result_valid` (1-bit), `output_done` (1-bit)
+- Output Data: `trips[0:15]` (16 slots, each slot: 8-bit node ID + 4-bit trip ID + 1-bit last flag). Use 8-bit packed format: {trip_id[3:0], node_id[3:0], last[0]}
+- Trip Output: `trip_count` (4-bit), `nodes_per_trip[0:15]` (16 slots, each 4-bit count)
+
+**Behavior:**
+1. On `start`, load graph matrix from sequential inputs over 16 cycles
+2. Use iterative DFS to find cycles covering all nodes
+3. For each unvisited node, try to form a cycle
+4. If graph has nodes with zero in-degree or zero out-degree (except self-loops), impossible → set `result_valid=0`
+5. If successful, pack trip data into output arrays
+6. Assert `output_done` for 1 cycle when complete
+
+**Timing:** Start → Done within 1000 cycles. Reset sets all outputs to 0.
+
+**Implementation Notes:**
+- Use 16-bit visited mask for tracking
+- Store edges in 16x16 BRAM or shift registers
+- Output packing: trips are stored consecutively in `trips` array with `last` flag for end of each trip
+- Self-loop (i→i) counts as valid trip of size 1
+- If any node cannot be included in a cycle, set `result_valid=0`

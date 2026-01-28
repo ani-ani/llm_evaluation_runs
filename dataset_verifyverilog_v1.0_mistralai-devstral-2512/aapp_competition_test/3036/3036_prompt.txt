@@ -1,0 +1,74 @@
+Implement a Verilog module that counts the number of valid dinner combinations given constraints on dish compatibility and shared ingredients.
+
+## PROBLEM SCALING (For Hardware)
+- Ingredients: 1..r, scaled to 8-bit (0-255)
+- Brands per ingredient: 1..100, scaled to 7-bit (0-127)
+- Dishes: s, m, d <= 25 each, total dishes <= 75
+- Each dish has 1..20 ingredients
+- Incompatible pairs: n <= 2000
+- Result: 64-bit maximum (use 32-bit output, clamp > 2^31 to 'too many')
+- Output 'too many' encoded as 32-bit value 0xFFFFFFFF
+
+## INTERFACE SPECIFICATION
+Inputs:
+  clk: single-cycle control
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to initiate computation
+  load_brands: 1-cycle pulse when loading brand counts
+  load_dish: 1-cycle pulse when loading dish data
+  load_compat: 1-cycle pulse when loading compatibility pairs
+  data_in: 8-bit data value for loading
+  addr: 8-bit address for RAM-like input
+
+Outputs:
+  result: 32-bit result (or 0xFFFFFFFF for "too many")
+  done: 1-cycle pulse when computation complete
+  busy: high while processing
+
+## MODULE BEHAVIOR
+State Machine:
+1. IDLE: Wait for start
+2. LOAD_BRANDS: Load brand counts for ingredients (r times)
+3. LOAD_DISHES: Load dish ingredient lists (s+m+d dishes)
+4. LOAD_COMPAT: Load incompatible pairs (n pairs)
+5. COMPUTE: Iterate all valid (starter, main, dessert) triples
+6. DONE: Pulse done signal
+
+## COMPUTATION LOGIC
+For each valid triple (S, M, D) where:
+- No pair (S,M), (S,D), (M,D) is in incompatibility list
+- For each ingredient appearing in 1+ dishes, brand choice is consistent
+- Total combinations = product of brand counts for unique ingredients
+
+Algorithm:
+- Use 3D array of bools: incompat[s][m+d] where 0..s-1 are starters, s..s+m-1 mains, s+m..s+m+d-1 desserts
+- For each starter S (0..s-1):
+  - For each main M (0..m-1):
+    - Check incompat[S][M+s]
+    - For each dessert D (0..d-1):
+      - Check incompat[S][D+s+m] and incompat[M+s][D+s+m]
+      - If valid: compute product of brands for union of ingredients
+      - Accumulate in 32-bit counter
+      - If > 0x7FFFFFFF, set done=1, result=0xFFFFFFFF (too many)
+
+## BRAND CALCULATION
+- For triple (S,M,D), compute set of unique ingredients
+- For each ingredient in the set, multiply its brand count
+- Since max ingredients per dish is 20, union is at most 60, but realistically < 30
+- Max product: 100^60 >> 2^32, but we clamp early
+
+## IMPLEMENTATION DETAILS
+- Store brand counts in 8-bit RAM (256 entries)
+- Store dish ingredient lists in 32-bit registers (5 bits per ingredient ID * 20 = 100 bits, but use separate arrays)
+- Store incompatibility as bit matrix: 75x75, 75*75/8 = 563 bytes, but use packed structure
+- Use iterative approach with bounded counters
+- Clock frequency: 100MHz, timeout after 1000 cycles
+
+## CONSTRAINTS
+- Max ingredients: 255 (8-bit)
+- Max dishes: 25 per type
+- Max iterations: 25*25*25 = 15,625 triples
+- Each triple: compute product in < 100 cycles
+- Total cycles: < 2M, within 1000 cycle timeout for testbench (scale down for actual test)
+
+Provide the Verilog module code.

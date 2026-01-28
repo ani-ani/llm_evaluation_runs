@@ -1,0 +1,34 @@
+Design a Verilog module that counts the number of pairs in an array where XOR result is even. XOR is even only when both numbers have same parity (both even or both odd). This simplifies the problem to: count pairs where A[i] and A[j] have same LSB.
+
+Module Specification:
+- Interface: Synchronous design with start/done handshake
+- Input: Array of 8-bit numbers, max 16 elements
+- Output: 16-bit result count
+- Logic: Use parity bits (LSB) of each element
+- Optimization: Count number of even (E) and odd (O) elements, pairs = C(E,2) + C(O,2) = E*(E-1)/2 + O*(O-1)/2
+- Constraints: E, O <= 16, safe in 16-bit arithmetic
+
+Interface Details:
+- clk: input clock, rising edge
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to start calculation
+- arr: array of 16 elements, each 8-bit (use 0 for unused entries)
+- len: 4-bit input specifying valid elements (1-16)
+- result: 16-bit output, valid when done=1
+- done: 1-cycle output pulse when calculation complete
+
+Implementation Details:
+1. On start: capture array and length
+2. First cycle: count even and odd elements (use parity = LSB)
+3. Second cycle: compute E*(E-1)/2 and O*(O-1)/2 using shift for division
+4. Third cycle: sum results into 16-bit accumulator
+5. Done pulses when result is valid
+6. Reset: all outputs 0, done=0
+7. Timing: 3-4 cycles max after start
+
+For the test cases:
+- [5,4,7,2,1]: 3 odd, 2 even → C(3,2)=3 + C(2,2)=1 = 4
+- [7,2,8,1,0,5,11]: 4 odd, 3 even → C(4,2)=6 + C(3,2)=3 = 9
+- [1,2,3]: 2 odd, 1 even → C(2,2)=1 + C(1,2)=0 = 1
+
+Use blocking assignments for combinational logic in always blocks. Make sure to handle multiplication properly - E*(E-1) fits in 16 bits for E<=16 (max 16*15=240). Division by 2 is arithmetic right shift.

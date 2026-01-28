@@ -1,0 +1,44 @@
+Implement a Verilog module for a coin change problem with the goal of maximizing coin usage. Given a price P and counts of 1, 5, 10, 25-cent coins, find the maximum number of coins to pay exactly P.
+
+**Simplifications for Hardware:**
+1. Scale inputs: Price P and coin counts are clipped to 16-bit unsigned (0-65535). If inputs exceed this, they are saturated to max value.
+2. Coin denominations are fixed: 1, 5, 10, 25 cents.
+3. Algorithm: Use a dynamic programming (DP) approach stored in a lookup table (LUT) in Block RAM. The state tracks the maximum coins for a specific amount.
+4. Iteration: Iterate through amounts from 0 to P. For each amount, iterate through coin denominations.
+5. Complexity: P is bounded to 65535. The DP table size is P+1.
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock.
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle high to initiate calculation.
+  - `P_in`: 16-bit input price.
+  - `N1_in`, `N5_in`, `N10_in`, `N25_in`: 16-bit input coin counts.
+- Outputs:
+  - `result`: 16-bit maximum coin count. 0 if impossible or during calc.
+  - `done`: 1-cycle high when calculation finishes. Set to 0 if impossible.
+
+**Behavior:**
+1. On reset, `done` is 0, `result` is 0.
+2. On `start` pulse, load inputs. Initialize DP array of size `P_in + 1` to -1 (infinity), except DP[0] = 0.
+3. Process amounts iteratively. For each amount `a`, check if DP[a] is valid. If so, try adding coins: 
+   - 1c: `new_a = a + 1`. If `new_a <= P_in` and `count_1_used < N1_in`, update DP[new_a] = max(DP[new_a], DP[a] + 1).
+   - 5c: `new_a = a + 5`. If `new_a <= P_in` and `count_5_used < N5_in`, update DP[new_a]...
+   - 10c, 25c similarly.
+   - *Note for HW:* Since exact coin counts are bounded, we track usage per state. However, a simpler hardware-friendly approach is to process denominations sequentially: 
+     * Pass 1: Only 1c coins. DP[a] = max coins using only 1s (capped at N1).
+     * Pass 2: Mix 5s with 1s. For each multiple of 5, add 5c coin and fill remainder with 1s from remaining count.
+     * Pass 3, 4: Add 10s and 25s similarly.
+     * *Alternative (DP)*: Use a 2D table or iterative update. Given the constraints (P <= 65535), a 1D array iterating through coins is feasible in a State Machine.
+
+4. **State Machine:**
+   - IDLE: Wait for start.
+   - INIT: Clear DP array (requires P cycles or block write).
+   - CALC_1: Update DP using only 1c coins.
+   - CALC_5: Update DP using 5c coins (allowing combination with 1s).
+   - CALC_10: Update DP using 10c coins.
+   - CALC_25: Update DP using 25c coins.
+   - CHECK: Verify if DP[P] is valid (not -1).
+   - DONE: Set `done` high, output result.
+
+5. **Output:** If `DP[P]` remains -1 (impossible), `done` remains 0 and `result` 0 (indication of failure). If valid, `result` = `DP[P]`, `done` = 1.

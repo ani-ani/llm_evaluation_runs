@@ -1,0 +1,70 @@
+Implement a sequential module to compute the nth number in the Newman-Conway sequence.
+
+### Interface
+
+**Inputs:**
+- `clk`: Clock signal
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `n_in`: 4-bit input (1-indexed, support n=1..15)
+
+**Outputs:**
+- `result`: 16-bit output value (n-th sequence number)
+- `done`: 1-cycle pulse when result is valid
+
+### Function Specification
+
+The Newman-Conway sequence is defined as:
+- S(1) = 1, S(2) = 1
+- For n > 2: S(n) = S(S(n-1)) + S(n - S(n-1))
+
+Example values: S(1)=1, S(2)=1, S(3)=2, S(4)=2, S(5)=3, S(6)=4, S(7)=4, S(8)=4, S(9)=5, S(10)=6
+
+### Implementation Requirements
+
+1. **Approach**: Convert recursive to iterative using dynamic programming
+2. **Memory**: Store sequence in a 16-element array (16-bit each)
+3. **State Machine**: 
+   - IDLE: Wait for start
+   - INIT: Initialize S(1)=1, S(2)=1
+   - COMPUTE: Calculate S(3) through S(n) iteratively
+   - DONE: Latch result and pulse done
+4. **Timing**: Complete within 256 clock cycles max
+5. **Constraints**: n_in ≤ 15, all result values fit in 16 bits
+6. **Reset Behavior**: On reset, result=0, done=0, internal state=IDLE
+
+### Implementation Details
+
+**State Encoding (4 states):**
+- `S_IDLE` = 2'b00
+- `S_INIT` = 2'b01  
+- `S_COMP` = 2'b10
+- `S_DONE` = 2'b11
+
+**Data Flow:**
+1. When start=1, capture n_in and transition to S_INIT
+2. In S_INIT: Set sequence[1] = 1, sequence[2] = 1, initialize counter=3
+3. In S_COMP: For current index i:
+   - Read sequence[i-1] (since we fill sequentially, this is valid)
+   - Compute S(i-1) from sequence array
+   - Compute S(i - S(i-1)) from sequence array
+   - Store sum in sequence[i]
+   - Increment counter, loop until i == n_in
+4. In S_DONE: Set result = sequence[n_in], pulse done for 1 cycle, return to IDLE
+
+**Edge Cases:**
+- n_in = 1: Return 1 immediately (handle in IDLE or early transition)
+- n_in = 2: Return 1 immediately
+- n_in > 2: Full computation
+
+**Signal Widths:**
+- `n_in`: 4 bits (0-15, but only 1-15 used)
+- `sequence[0:15]`: 16-bit each
+- `i` (counter): 4 bits
+- `temp_idx`, `s_prev`, `s_sub`: 16-bit intermediates
+- `result`: 16 bits
+
+### Verification
+
+Test with n = 1, 2, 3, 4, 10 (should match: 1, 1, 2, 2, 6)
+Maximum computation: n=15 takes ~12 cycles (as shown in Python test)

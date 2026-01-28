@@ -1,0 +1,65 @@
+Verilog HDL Specification: Triangle Set Equality Detector
+
+Problem: Determine if two sets of non-intersecting triangles cover the same region on a 2D plane.
+
+SCALED REQUIREMENTS:
+- Coordinate range: 0..15 (4-bit signed) representing 16x16 grid
+- Max triangles per set: 8
+- Max area difference: 16 pixels (10% tolerance)
+- Method: Signed area sampling on integer grid
+
+MODULE INTERFACE:
+Inputs:
+  clk: Clock, rising edge
+  rst_n: Active-low async reset
+  start: Start operation (1-cycle pulse)
+  setA_tri_n: Array[0:7] of 48-bit packed triangle data (6x4-bit = 24 bits total, padded to 48)
+  setB_tri_n: Array[0:7] of 48-bit packed triangle data
+  setA_count: 4-bit, number of valid triangles in setA (0..8)
+  setB_count: 4-bit, number of valid triangles in setB (0..8)
+
+Outputs:
+  same: 1-bit result (1=same, 0=different)
+  done: 1-bit, asserted for 1 cycle when computation complete
+
+DATA FORMAT:
+Packed triangle: {x1,y1,x2,y2,x3,y3} each 4-bit signed (2's complement)
+  Bits [3:0]: x1
+  Bits [7:4]: y1
+  Bits [11:8]: x2
+  Bits [15:12]: y2
+  Bits [19:16]: x3
+  Bits [23:20]: y3
+  Bits [47:24]: unused (padded)
+
+ALGORITHM:
+1. For each pixel (x,y) in 16x16 grid (0..15,0..15):
+   - Compute signed area contribution for setA: sum over triangles of point-in-triangle test
+   - Compute signed area contribution for setB: sum over triangles of point-in-triangle test
+   - Accumulate total area difference
+2. If |difference| <= threshold (16 pixels), return same=1 else same=0
+
+ARCHITECTURE:
+- FSM with states: IDLE, LOAD_A, LOAD_B, COMPUTE, DONE
+- 2-cycle latency per pixel computation
+- Point-in-triangle: Edge function method
+- Max cycles: 16*16*2 + overhead = 512 cycles
+
+EDGE FUNCTION (signed area):
+For triangle (x1,y1)-(x2,y2)-(x3,y3), point (px,py):
+  e1 = (x2-x1)*(py-y1) - (y2-y1)*(px-x1)
+  e2 = (x3-x2)*(py-y2) - (y3-y2)*(px-x2)
+  e3 = (x1-x3)*(py-y3) - (y1-y3)*(px-x3)
+  Inside = (e1>=0 && e2>=0 && e3>=0) || (e1<=0 && e2<=0 && e3<=0)
+
+TIMING:
+- Reset: 2 cycles, all outputs 0
+- Start->Done: max 600 cycles
+- Sample result on done=1
+
+TEST COVERAGE:
+- Identical triangles
+- Different partitions of same area
+- Disjoint sets
+- Boundary conditions
+- Empty sets

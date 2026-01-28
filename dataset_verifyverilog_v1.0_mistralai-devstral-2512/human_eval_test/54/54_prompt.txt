@@ -1,0 +1,42 @@
+Implement a Verilog module that checks if two strings have exactly the same character frequencies (character multiset equality). The module should handle strings up to 16 characters, with each character being an 8-bit ASCII value.
+
+**Interface:**
+- Inputs:
+  - `clk`: Clock signal (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `s0_len`: 4-bit input (0-15) indicating length of first string
+  - `s1_len`: 4-bit input (0-15) indicating length of second string
+  - `s0_char_0`, `s0_char_1`, ... `s0_char_15`: 16 ports, each 8-bit, representing characters of first string (index 0-15)
+  - `s1_char_0`, `s1_char_1`, ... `s1_char_15`: 16 ports, each 8-bit, representing characters of second string (index 0-15)
+
+- Outputs:
+  - `result`: 1-bit output, 1 if strings have same character frequencies, 0 otherwise
+  - `done`: 1-cycle pulse indicating result is valid
+
+**Behavior:**
+1. When `start` is high, begin computation
+2. First, check if `s0_len == s1_len`. If not equal, result=0 immediately.
+3. Build character frequency histogram for s0 (count occurrences of each 8-bit char)
+4. Build character frequency histogram for s1
+5. Compare histograms element by element (0-255 positions)
+6. If all 256 histogram entries match exactly, result=1, else result=0
+7. Output `done` pulse when complete
+
+**Constraints:**
+- Maximum computation time: 200 cycles (including histogram building)
+- Use 9-bit counters for histogram (supports counts 0-512)
+- Only process characters up to `s0_len` and `s1_len` respectively
+- Strings shorter than 16 chars have unused entries ignored
+- Reset: `result=0`, `done=0`
+
+**Implementation Approach:**
+- Use sequential FSM with states: IDLE, CHECK_LENGTH, COUNT_S0, COUNT_S1, COMPARE, DONE
+- Two 256-entry x 9-bit block RAMs for histograms (one for s0, one for s1)
+- Process characters one per cycle
+- Comparison: iterate through all 256 histogram positions
+- Pipelined for efficiency
+
+**Timing:**
+- start -> done: within 200 cycles
+- Sample result when done=1

@@ -1,0 +1,45 @@
+Verilog module specification for counting distinct good programming plans:
+
+## PROBLEM
+Count the number of ways to assign m lines to n programmers such that total bugs ≤ b. Each programmer i has a_i bugs per line.
+
+## INPUTS
+- clk: system clock (rising edge)
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to start computation
+- a_i[0:99]: array of 100 elements, 9-bit values (0-500) - bugs per line for each programmer
+- n[6:0]: 7-bit value (1-100) - number of programmers
+- m[8:0]: 9-bit value (1-500) - number of lines
+- b[8:0]: 9-bit value (0-500) - max total bugs
+- mod[29:0]: 30-bit value (1-10^9+7) - modulo
+
+## OUTPUTS
+- result[29:0]: 30-bit value - answer modulo mod
+- done: 1-cycle pulse when result is valid
+
+## IMPLEMENTATION DETAILS
+- Use dynamic programming: dp[lines][bugs] = number of ways
+- Initialize: dp[0][0] = 1, dp[i][j] = 0 for others
+- For each programmer k (0 to n-1):
+  For lines m from 1 to max_lines:
+    For bugs b from 0 to max_bugs:
+      dp[lines][bugs] += dp[lines-1][bugs - a_k] if bugs >= a_k
+- Optimize: Use 2-row buffer to save memory (rolling DP)
+- Use FSM with 3 states: IDLE, CALCULATING, DONE
+- Timing: start->done within 500,000 cycles (worst case: 100*500*500)
+- Reset: result=0, done=0, dp buffer cleared
+
+## CONSTRAINTS
+- All operations modulo mod
+- Handle modulo=0 case (not possible per problem)
+- A_i values are 0-500, use 9 bits
+- Intermediate sums can be large, use 30-bit storage for dp values
+- Index ranges: lines 0-500, bugs 0-500
+
+## INTERFACE
+Inputs: clk, rst_n, start, a_i[99:0][8:0], n[6:0], m[8:0], b[8:0], mod[29:0]
+Outputs: result[29:0], done
+FSM states: IDLE (0), CALCULATING (1), DONE (2)
+Start trigger: 1-cycle pulse
+Done: 1-cycle pulse after calculation completes
+Reset: Clears dp buffer, sets result=0, done=0

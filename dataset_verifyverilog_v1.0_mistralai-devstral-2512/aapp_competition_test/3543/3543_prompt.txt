@@ -1,0 +1,15 @@
+Implement a Verilog module that computes the minimum keystrokes to type a target word using an autocorrect dictionary. The dictionary is a trie of words (max 16 chars each), where each node stores the best word (lowest keystroke cost) for its prefix. The algorithm computes for each prefix length L of the target word: (1) Type L chars (cost L), (2) If prefix exists in trie, press tab to autocomplete to best word W (cost 1), then backspace len(W)-L chars (cost len(W)-L), then type remaining chars of target (cost len(T)-L). Total = L + 1 + (len(W)-L) + (len(T)-L) = len(T) + 1 + len(W) - 2L. Also consider typing without autocorrect (cost len(T)).
+
+Interface:
+- Inputs: clk, rst_n (active-low), start (1-cycle pulse)
+- Dictionary: dict_word_addr [0:15] (16 words), each has dict_word [0:15] (16 chars, fixed width 8 bits per char), valid flag
+- Target: target_word [0:15] (16 chars, fixed width 8 bits), target_len (5 bits)
+- Outputs: result (16-bit keystrokes), done (1-cycle pulse)
+
+Implementation Details:
+1. Build implicit trie in combinational logic: For each target prefix length L (0 to target_len), check if prefix matches any dictionary word prefix. Match = first L chars equal. If matched, find best (min keystrokes) word W that has this prefix. Best word selection: precompute cost for each dictionary word W and target T: cost = len(T) + 1 + len(W) - 2L (where L is prefix length of match). Actually, W must start with prefix of length L, so we need to find for each L, the dictionary word W that gives minimum cost among all words with prefix matching first L chars of T. Simplified: For each L, search dictionary for words with prefix of T[0:L-1], compute min cost. Total min over L=1..target_len and no-autocorrect.
+2. Use bounded loops: L loop (0 to 16), dictionary word loop (0 to 16). Compute all possibilities in parallel or sequentially.
+3. Output min keystrokes.
+4. Timing: start to done within 256 cycles. Reset: result=0, done=0.
+
+Note: For hardware simplification, dictionary words are provided as inputs (not built dynamically). The module computes the minimum keystrokes by iterating through all dictionary words and all prefix lengths of the target word.

@@ -1,0 +1,33 @@
+Design a Verilog module to find the minimum positive x such that the polyline (0,0) -> (x,x) -> (2x,0) -> (3x,x) -> ... passes through point (a,b).
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start calculation (valid when `rst_n=1`)
+  - `a_in`, `b_in`: 32-bit unsigned inputs (scaled as Q16.16 fixed-point)
+- Outputs:
+  - `result`: 32-bit fixed-point Q16.16 output (or -1 encoded as 0xFFFFFFFF)
+  - `done`: 1-cycle pulse indicating result is valid
+
+**Constraints:**
+- Fixed-point format: Q16.16 (16 integer bits, 16 fractional bits)
+- Inputs `a` and `b` are provided as integers 1..10^9. Convert to fixed-point internally: `input_fixed = integer_input << 16`.
+- Iterations: The algorithm requires checking k values (loop counter). Implement a bounded loop with maximum 64 iterations (sufficient for 32-bit inputs).
+- Arithmetic: All calculations must use Q16.16 fixed-point. Division is integer division of `numerator << 16` by `denominator`.
+- Logic: 
+  1. If `b > a`, return -1 (0xFFFFFFFF).
+  2. If `a == b`, return `a` as fixed-point.
+  3. Iterate `k` from 1 to 64:
+     - Check if `k * 2 * b <= a - b`. If valid, calculate `x1 = (a - b) / (2 * k)`. Keep the minimum valid `x1`.
+     - Check if `k * 2 * b <= a + b`. If valid, calculate `x2 = (a + b) / (2 * k)`. Keep the minimum valid `x2`.
+  4. Return the minimum of `x1` and `x2`. If no valid `x` found, return -1.
+- Timing: Start -> Done within 100 cycles.
+- Reset: Initialize `result=0`, `done=0`.
+
+**Implementation Details:**
+- Use state machine: IDLE, COMPUTE, DONE.
+- Store minimum x in a register (32-bit Q16.16). Initialize to -1 (0xFFFFFFFF).
+- Division operation: Implement a combinational divider or sequential divider (16 cycles max).
+- Constraints: Avoid division by zero. `b` is positive.
+- No external memory. Use registers for intermediate values.

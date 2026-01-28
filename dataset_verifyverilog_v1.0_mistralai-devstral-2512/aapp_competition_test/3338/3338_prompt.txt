@@ -1,0 +1,33 @@
+Design a Verilog module that computes the maximum diversity d(S) of a set of partners after awakening at most k partners. The problem maps to finding the size of the longest chain of non-dominated partners (maximum chain length in partial order). Since n=16 is small and k=4 is small, we can use a hardware-friendly approach:
+
+1. **Input Interface**:
+   - Clock (`clk`) and active-low reset (`rst_n`)
+   - `start`: 1-cycle pulse to start computation
+   - `partner_frag[15:0][15:0]`: 16 partners, 16-bit Frag values
+   - `partner_step[15:0][15:0]`: 16 partners, 16-bit Step values
+   - `partner_awake_frag[15:0][15:0]`: 16 partners, 16-bit awakened Frag (0 if not awakenable)
+   - `partner_awake_step[15:0][15:0]`: 16 partners, 16-bit awakened Step (0 if not awakenable)
+   - `n[3:0]`: number of valid partners (0-15)
+   - `k[2:0]`: max awakenings allowed (0-4)
+
+2. **Output Interface**:
+   - `result[3:0]`: 4-bit result (max diversity, 0-16)
+   - `done`: 1-cycle pulse when result is valid
+
+3. **Algorithm (Simplified Hardware)**:
+   - **Step 1: Partner Expansion**. For each partner i, generate 2 states: (frag, step, cost) if unawakened, and (frag_a, step_a, 1) if awakenable. Total states ≤ 32.
+   - **Step 2: Sort by Frag**. Sort all states by frag ascending using a bubble-sort network (depth O(n²)=256).
+   - **Step 3: DP**. Compute longest chain length subject to cost constraint. Use a 2D table `dp[i][c]` = max chain length ending at state i with exactly c awakenings (0..k). Update: for each state i, look at all previous states j where state j < state i (frag_j < frag_i AND step_j < step_i). Update dp[i][c] = max(dp[i][c], dp[j][c-cost_i] + 1). Initialize dp[i][cost_i] = 1.
+   - **Step 4: Result**. Find max over all dp[i][c] for c≤k.
+
+4. **Scaling & Constraints**:
+   - Values: 16-bit signed (or unsigned) for frag/step. Saturate inputs > 65535.
+   - States: 32 maximum. DP table size: 32x5 (5 = k+1). Each cell is 5-bit (max length 16).
+   - Timing: Sequential computation. Expect finish within ~32*32*5 ≈ 5120 cycles. Set timeout accordingly.
+   - Reset: done=0, result=0.
+
+5. **Testbench Requirements**:
+   - Populate inputs using `clamp_to_width(val, 16)` for all values.
+   - Use `pack_array` or individual assignment for the 2D array interface (or use flattened 1D interface).
+   - Assert `start` for 1 cycle, then wait for `done`.
+   - Verify `result` matches expected diversity (0-16).

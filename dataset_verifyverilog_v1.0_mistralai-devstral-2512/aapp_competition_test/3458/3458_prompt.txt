@@ -1,0 +1,38 @@
+Design a Verilog module that computes the maximum XOR subset sum for a list of up to 16 numbers, each up to 64 bits.
+
+### Problem Adaptation
+You are given N numbers (1 ≤ N ≤ 16), each represented as a 64-bit vector. The goal is to find the maximum possible XOR sum of any subset of these numbers. This is equivalent to finding the maximum number that can be formed by XORing any subset, which is the basis vector with the highest value.
+
+### Algorithm
+1. Use Gaussian Elimination to build a linear basis of the input numbers.
+2. Start with the highest bit (bit 63) and work downwards.
+3. For each bit position, if a number has that bit set and is not yet in the basis, add it to the basis and eliminate that bit from all other numbers.
+4. After constructing the basis, the maximum XOR sum is obtained by greedily XORing basis vectors to maximize the result (starting from the most significant bit).
+
+### Interface Specification
+**Inputs:**
+- `clk`: System clock (rising edge trigger).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start the calculation.
+- `num_count`: 4-bit input indicating the number of valid inputs (1 to 16).
+- `data_in`: 64-bit input carrying one number at a time. Data is presented serially.
+
+**Outputs:**
+- `result`: 64-bit output holding the maximum XOR sum.
+- `done`: 1-cycle pulse indicating calculation is complete and `result` is valid.
+
+**Control Signals:**
+- `input_ready`: Output signal indicating the module is ready to accept the next `data_in`.
+- `input_accept`: Input signal (optional, or assume `data_in` is valid when `input_ready` is high). For simplicity, assume `data_in` is valid whenever `input_ready` is high and `start` is low after reset.
+
+### Timing & Operation
+1. **Reset:** Assert `rst_n` low for at least 2 cycles. On reset, `done` goes low, `result` is cleared to 0, and the module enters the idle state.
+2. **Input Phase:** After `start` is asserted, the module enters the input phase. It asserts `input_ready`. The external logic must present `num_count` numbers sequentially on `data_in`. The module samples `data_in` on the rising edge of `clk` when `input_ready` is high.
+3. **Calculation Phase:** Once all numbers are received, the module automatically begins Gaussian elimination. This phase takes a fixed number of cycles (e.g., up to 64 * 16 cycles).
+4. **Output Phase:** When calculation is done, `result` is updated, and `done` is asserted for one cycle. The module returns to idle state.
+
+### Implementation Details
+- **Data Width:** Numbers are 64-bit unsigned integers.
+- **Array Size:** Maximum 16 numbers.
+- **Logic:** Implement the linear basis as an array of 64 registers (64-bit each). Use a finite state machine (FSM) to control the sequential steps.
+- **Assumptions:** No external memory; all basis vectors fit in internal registers.

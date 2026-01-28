@@ -1,0 +1,47 @@
+You are to implement a module that determines if an undirected connected graph can be oriented to remain strongly connected (reachability from any node to any other).
+
+**Core Algorithm:**
+An undirected connected graph can be oriented to be strongly connected if and only if it is 2-edge-connected (has no bridges). If no bridges exist, we can orient edges along any spanning tree (rooted at node 1) away from the root, and all other edges can be oriented arbitrarily (e.g., from lower index to higher index).
+
+**Hardware Simplification:**
+1. Scale N ≤ 8, M ≤ 28 (max edges for 8 nodes)
+2. Use adjacency matrix for bridge detection (Tarjan's algorithm adapted for hardware)
+3. Use DFS stack (size 16) for traversal
+4. Fixed 16-bit counters for discovery times and low values
+5. Output orientation as M pairs of 8-bit integers (node indices 1-8)
+
+**Module Interface:**
+Inputs:
+  - clk: system clock, rising edge
+  - rst_n: active-low asynchronous reset
+  - start: 1-cycle pulse to begin computation
+  - N: 4-bit, number of nodes (1-8)
+  - M: 6-bit, number of edges (1-28)
+  - edge_u[0:27]: 28x4-bit array of source nodes
+  - edge_v[0:27]: 28x4-bit array of destination nodes
+
+Outputs:
+  - result: 1-bit, 1=possible (YES), 0=impossible (NO)
+  - done: 1-cycle pulse indicating valid result
+  - out_u[0:27]: 28x4-bit array for oriented source nodes
+  - out_v[0:27]: 28x4-bit array for oriented destination nodes
+
+**Timing:**
+- Within 1000 clock cycles from start pulse
+- done asserted for exactly 1 cycle when result valid
+- After reset: done=0, result=0, out arrays cleared
+
+**Implementation Notes:**
+1. Use adjacency matrix adj[0:7][0:7] (8x8 bits) to store graph
+2. For bridge detection: maintain stack of DFS edges (max 28)
+3. Compute spanning tree using BFS/DFS from node 1
+4. For orientation: tree edges point away from root (1), non-tree edges point from lower to higher node index
+5. All intermediate values must be clamped to specified widths
+6. Avoid combinatorial loops - use registered outputs
+
+**Expected Behavior:**
+- When start=1, begin analysis
+- First check for bridges using DFS with discovery time tracking
+- If bridge found, set result=0
+- If no bridges, set result=1 and compute orientation
+- Set done=1 for one cycle when complete

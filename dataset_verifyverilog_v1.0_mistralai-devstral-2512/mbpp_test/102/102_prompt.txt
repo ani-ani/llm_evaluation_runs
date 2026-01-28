@@ -1,0 +1,67 @@
+Implement a Verilog module that converts snake_case strings to CamelCase.
+
+### Interface Specifications:
+**Inputs:**
+- `clk`: Clock, rising edge
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start conversion
+- `input_str`: 16x8-bit array (16 characters, ASCII, 0x5F='_' reserved)
+- `len`: 4-bit input length (0 to 15)
+
+**Outputs:**
+- `output_str`: 16x8-bit array output (CamelCase result)
+- `done`: 1-cycle pulse when conversion complete
+- `result_len`: 4-bit output length
+
+### Functionality:
+- Input string uses ASCII encoding (e.g., 'p'=0x70, '_'=0x5F)
+- Convert snake_case to CamelCase:
+  - Characters remain unchanged except 'underscore' (0x5F)
+  - When underscore is encountered, next character is capitalized
+  - Underscores are removed from output
+  - All letters retain their ASCII codes (no case conversion for non-letters)
+- Output length will be ≤ input length (underscores removed)
+- Process each character in sequence, one per clock cycle
+- Start by loading input_str into internal registers
+- Output registers must be initialized to 0
+
+### Timing Requirements:
+- start asserted for exactly 1 cycle
+- Done asserted exactly when conversion completes
+- result_len valid when done=1
+- output_str valid when done=1
+- Conversion completes within 32 clock cycles maximum
+
+### Reset Behavior:
+- When rst_n=0 for 2+ cycles:
+  - done=0, result_len=0
+  - All output_str entries = 0
+  - Internal state machine reset to idle
+
+### Implementation Notes:
+- Use FSM with states: IDLE, LOAD, CONVERT, DONE
+- Internal buffer: 16x8-bit register array for input
+- Internal output buffer: 16x8-bit register array for result
+- Logic: Character-by-character processing
+  - If char == 0x5F (underscore): set flag for next char, skip output
+  - Else: output char (if capitalization flag set, convert to uppercase: 0x20 → 0x20, 0x61→0x41)
+    - Note: Only letters (0x41-0x5A, 0x61-0x7A) need case conversion
+    - Numbers/symbols remain unchanged
+  - Increment pointers appropriately
+- State transitions:
+  - IDLE → LOAD on start
+  - LOAD → CONVERT after loading len characters
+  - CONVERT → DONE when processing complete
+  - DONE → IDLE on next cycle
+
+### Constraints:
+- Maximum clock cycles for conversion: 32
+- No dynamic memory allocation
+- No recursion
+- All signals use proper bit widths (8-bit for chars, 4-bit for lengths)
+
+### Example:
+Input: 'python_program' (14 chars, len=14)
+Expected Output: 'PythonProgram' (13 chars, result_len=13)
+
+Write a complete, synthesizable Verilog module implementing this conversion.

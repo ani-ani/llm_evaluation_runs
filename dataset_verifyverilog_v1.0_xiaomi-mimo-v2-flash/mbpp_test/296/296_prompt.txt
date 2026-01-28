@@ -1,0 +1,40 @@
+You are to design a Verilog module that counts inversions in an array. An inversion is a pair of indices (i, j) where i < j and arr[i] > arr[j]. The array has a fixed maximum size of 16 elements. The module should be sequential (uses clock and reset) and implement a state machine to compare all pairs.
+
+### Interface:
+- **Inputs (synchronous to `clk`, active-low reset `rst_n`)**:
+  - `start`: 1-cycle pulse to start the operation. When `start` is high, the input array must be valid.
+  - `arr`: A 2D array signal. This should be defined as `reg [7:0] arr [0:15]` (16 elements, 8-bit each).
+  - `len`: 5-bit unsigned integer representing the actual number of valid elements in `arr` (range 0-16).
+
+- **Outputs**:
+  - `result`: 16-bit unsigned integer representing the inversion count (supports up to 120 inversions for 16 elements, so 16 bits is safe).
+  - `done`: 1-cycle pulse indicating the operation is complete and `result` is valid.
+
+### Behavior:
+1. **Reset**: On `rst_n` low, `done` must be 0, `result` must be 0. The FSM should return to an idle state.
+2. **Idle State**: Wait for `start` pulse.
+3. **Processing**: 
+   - Upon `start`, load the input array into internal storage (or read directly if the interface implies it remains stable).
+   - The FSM must perform a nested loop over the indices `i` from 0 to `len-1` and `j` from `i+1` to `len-1`.
+   - For each pair, compare `arr[i]` and `arr[j]`. If `arr[i] > arr[j]`, increment the inversion counter.
+   - Since hardware is parallel, you can implement this as an FSM with two loops (Outer Loop: `i`, Inner Loop: `j`).
+   - *Alternative*: Implement a parallel comparator tree if resources allow, but a sequential FSM is more area-efficient for this problem.
+4. **Completion**: 
+   - After all pairs are compared, assert `done` for one clock cycle. `result` must remain valid while `done` is high.
+   - Return to idle state.
+
+### Timing Constraints:
+- The operation must complete within 256 clock cycles of `start` going high (worst case for 16 elements is 120 comparisons, plus overhead).
+- `start` must be held high for exactly 1 cycle.
+
+### Implementation Notes:
+- **State Machine**: Implement states like `IDLE`, `LOAD`, `COMPARE`, `NEXT_J`, `NEXT_I`, `DONE`.
+- **Registers**: You will need registers to store `i`, `j`, `result_count`, and potentially a local copy of the array elements being compared.
+- **Verilog Syntax**: Use non-blocking assignments (`<=`) for sequential logic and blocking (`=`) for combinational logic.
+  
+### Example Sequence:
+1. `rst_n` goes high.
+2. Assert `start` for 1 cycle. `arr` has values. `len` is valid.
+3. Module processes...
+4. After N cycles, `done` goes high for 1 cycle.
+5. `result` shows the count.

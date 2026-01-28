@@ -1,0 +1,51 @@
+Implement a Verilog module `tram_explosions` that calculates the number of explosions in a simplified tram scenario.
+
+**Problem Adaptation:**
+- Grid size fixed to 8x8 (R=8, C=8). Valid indices 0-7.
+- Inputs provided as flat arrays of 64 bytes (char: 0='.', 1='X', 2='L').
+- Only count explosions. A collision occurs if an 'X' and an 'L' have the **same minimal squared Euclidean distance**.
+- Distance between `(r1,c1)` and `(r2,c2)` is `(r1-r2)^2 + (c1-c2)^2`. (Use integer math).
+- Process each 'X' (Passenger):
+  1. Find the 'L' (Seat) with the **minimum distance**.
+  2. Check if any other 'X' targets the **same** 'L' with the **same minimum distance**.
+  3. If a collision is detected (2+ 'X's targeting same 'L' with equal min distance), increment explosion count.
+  4. The 'L' is then considered 'used' (destroyed) and removed from future consideration.
+- The specific assignment rule (who gets the seat if distances differ) doesn't affect the explosion count, so we can simply count valid collisions based on the state of the grid.
+
+**Simplified Algorithm (Hardware Friendly):**
+1. Iterate through all 'L' positions. For each 'L', find the closest 'X' distance (`d_min`).
+2. Count how many 'X's have distance `d_min` to this specific 'L' (`collision_count`).
+3. If `collision_count > 1`, this is an explosion. Increment result.
+4. Mark this 'L' as handled.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`, `rst_n`: System clock and active-low async reset.
+  - `start`: 1-cycle high to start processing.
+  - `grid_data[63:0]`: 64 bytes of grid data. `grid_data[i*8+7:i*8]` is the character at flat index `i`. (0-79 in decimal, 'X'=1, 'L'=2, '.'=0).
+- Outputs:
+  - `explosions`: 8-bit unsigned integer (max 64 explosions possible).
+  - `done`: 1-cycle pulse indicating valid output on `explosions`.
+
+**Implementation Details:**
+- State Machine: IDLE -> PROCESS -> DONE.
+- Processing Logic:
+  - Maintain counters for `current_L_index` (0 to 63).
+  - Inside `PROCESS` state, iterate `current_L_index`.
+  - For each `current_L_index`, if it is an 'L' (2):
+    - Initialize `min_dist` to max value (255).
+    - Initialize `collision_counter` to 0.
+    - Nested loop over all `X` positions (indices 0-63):
+      - If cell is 'X' (1):
+        - Calculate Row/Col for `L` and `X`. (`Row = index / 8`, `Col = index % 8`).
+        - Calculate `dist = (R_L - R_X)^2 + (C_L - C_X)^2`.
+        - If `dist < min_dist`: set `min_dist = dist`, `collision_counter = 1`.
+        - Else if `dist == min_dist`: increment `collision_counter`.
+    - After checking all `X`s: If `collision_counter > 1`, increment `explosions` register.
+  - Once all 64 cells processed, transition to DONE state.
+- Timing: Should complete within ~64 (L) * 64 (X) * logic cycles ≈ 4096 cycles.
+- Reset: `explosions` = 0, `done` = 0.
+
+**Constraints:**
+- Use sequential logic for the loops to keep state manageable.
+- Ensure no latch inference (default outputs).

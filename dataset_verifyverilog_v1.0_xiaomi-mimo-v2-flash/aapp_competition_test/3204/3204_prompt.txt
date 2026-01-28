@@ -1,0 +1,38 @@
+Design a Verilog module to solve the Bridge and Poker Committee scheduling problem. The module must compute the minimum total time the bridge is unavailable to road traffic while ensuring no boat waits more than 30 minutes (1800 seconds).
+
+**Constraints & Scaling:**
+- Maximum input boats: N = 32 (scaled down from 4000 for hardware feasibility).
+- Input times: 16-bit unsigned integers (0 to 65535).
+- Raising/Lowering time: 60 seconds.
+- Boat passage time: 20 seconds.
+- Max wait time: 1800 seconds.
+- Arrivals are sorted and spaced >= 20 seconds apart.
+
+**Interface:**
+Inputs:
+  - clk: System clock
+  - rst_n: Active-low synchronous reset
+  - start: Start processing pulse (1 cycle)
+  - N: 5-bit input indicating number of boats (valid range 1-32)
+  - boat_time_in: 16-bit input for boat arrival time (valid when 'load_en' is active)
+  - load_en: Pulse to load a boat's arrival time into internal memory
+
+Outputs:
+  - result: 16-bit output for total unavailable time
+  - done: Active-high signal indicating calculation is complete (valid for 1 cycle)
+
+**Protocol:**
+1. Reset initializes internal memory.
+2. Assert `load_en` and present `boat_time_in` for each of the N boats in sorted order.
+3. Assert `start` to begin calculation.
+4. The FSM computes the minimum time using an iterative DP approach (checking all valid raising intervals).
+5. When `done` asserts, `result` contains the valid output.
+
+**Implementation Logic (Hardware Optimized):**
+- Store arrival times in an internal array (32 entries, 16-bit wide).
+- Use a state machine to iterate through boat indices.
+- For each boat 'i', calculate the earliest possible time the bridge can start lowering after serving boats from 'i' to 'j' (for all valid 'j').
+- Enforce the constraint: (Waiting Time = Start Lowering Time - Arrival Time) <= 1800s.
+- Use an internal DP array to store minimum cost for suffixes.
+- Optimization: Since inputs are small (N <= 32), unroll loops or use sequential iteration over the N^2 search space.
+- Time Complexity: O(N^2) cycles max (approx 1024 cycles), well within timeout.

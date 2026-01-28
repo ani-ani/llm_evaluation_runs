@@ -1,0 +1,50 @@
+Design a Verilog module that computes the minimum Unterwave distance between a human and an alien star system based on a simplified graph model.
+
+**Inputs:**
+- `clk`: System clock, rising edge active.
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to initiate computation.
+- `gravity[15:0][15:0]`: 16x16 array (flattened) of 16-bit unsigned gravity values. Index corresponds to system ID (0-15). Zeros for unused nodes.
+- `adj_matrix[15:0][15:0]`: 16x16 flattened array of 1-bit adjacency bits. `adj_matrix[i*16 + j] = 1` if direct link exists between i and j.
+- `types[15:0]`: 16-bit array where bit `i` is 1 for human, 0 for alien.
+- `num_nodes`: 4-bit integer (1-16).
+
+**Outputs:**
+- `result`: 32-bit unsigned integer (minimum distance).
+- `done`: 1-cycle pulse indicating valid result.
+
+**Algorithm Requirements:**
+1.  **Graph Representation:** Assume a connected graph of 1 to 16 nodes. Direct links are bidirectional.
+2.  **Distance Calculation (per path):**
+    For a path sequence `G = (g1, g2, ..., gk)`:
+    - Compute `Cap` sequence: `[g2+g1, g3+g2, ..., gk+gk-1]` (16-bit add, saturate)
+    - Compute `Pot` sequence: `[g2-g1, g3-g2, ..., gk-gk-1]` (16-bit sub, unsigned absolute)
+    - Compute `Ind` sequence: `[g2*g1, g3*g2, ..., gk*gk-1]` (16x16 bit multiplier, result truncated to 16 bits)
+    - Compute `Term1`: `Cap * Cap` (element-wise multiply, 16-bit)
+    - Compute `Term2`: `Term1 - Ind` (element-wise sub, 16-bit)
+    - Compute `Prod`: `Pot * Term2` (element-wise multiply, 32-bit)
+    - Sum all elements of `Prod` (32-bit accumulator).
+3.  **Optimization:**
+    - Iterate over all pairs `(u, v)` where `types[u] != types[v]` (human vs alien).
+    - Find the shortest path (fewest hops) between `u` and `v` using BFS (since edge weights are dynamic based on gravity, but path cost is non-local, we must enumerate simple paths up to length `num_nodes`).
+    - *Simplification for Hardware:* Due to depth constraints, restrict path exploration to **direct neighbors only** (1-hop) and **2-hop paths** via a common neighbor. Calculate distance for these paths.
+4.  **Gravity Dispersal Device:**
+    - The device can be placed on any single node `d` (0 to `num_nodes-1`).
+    - Original gravity `g_i` becomes `g_i - 1` (saturate to 1).
+    - Neighbors of `d` (where `adj_matrix[d][j] == 1`) become `g_j + 1` (saturate to 65535).
+    - Evaluate paths for **all** possible device placements (including no device).
+5.  **Implementation Strategy:**
+    - Use a finite state machine (FSM) to iterate through source nodes, destination nodes, and device placement nodes.
+    - Use a comparator tree to find the minimum distance across all valid paths.
+    - All arithmetic operations (add, sub, mul) must be handled within standard combinational logic or pipelined stages, ensuring no overflow for 32-bit results (values capped at 16-bit inputs).
+
+**Constraints:**
+- Max clock frequency 100MHz.
+- Maximum path length for calculation: 3 hops (2 edges). This covers direct connections and single intermediate system.
+- Zero distance is possible (Sample 2).
+
+**Testbench Specification:**
+- The testbench will initialize the `gravity` and `adj_matrix` interfaces with a graph of max 16 nodes.
+- It will verify the `result` against a Python reference implementation.
+- Reset sets `done` to 0 and `result` to 0.
+- `start` triggers the calculation, which must complete within 2000 cycles.

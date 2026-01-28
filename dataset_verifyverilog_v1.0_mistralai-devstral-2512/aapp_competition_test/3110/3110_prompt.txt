@@ -1,0 +1,59 @@
+Design a Verilog module to solve a constrained matrix completion problem. The module must fill in missing digits (0s) in a 6x6 grid with digits 1-9 satisfying:
+
+1. **Input Interface**:
+   - clk, rst_n: Standard synchronous interface
+   - start: 1-cycle pulse to initiate search
+   - grid[6][6]: 8-bit array for input digits (0-9, 0=unknown)
+   - m, n: 4-bit values (3-6) for dimensions
+
+2. **Output Interface**:
+   - result: 16-bit integer count of valid completions
+   - done: 1-cycle pulse when computation complete
+   - found: 1-bit flag (optional) indicating at least one solution
+
+3. **Constraints**:
+   - Each row must contain digits 1-9 without repetition
+   - For each cell (i,j) where i>0 and j<n-1:
+     Let u = cell[i-1][j] (above), l = cell[i][j], r = cell[i][j+1] (right)
+     At least one must hold: u = l*r, u = l+r, u = |l-r|, u = l/r (if divisible), u = r/l (if divisible)
+   - Input is guaranteed consistent with constraints
+
+4. **Scaling**:
+   - Grid size: 6x6 maximum (36 cells)
+   - Digits: 8-bit values (0-9, only 1-9 valid)
+   - Unknown count: Maximum 18 (half of 36)
+   - Result count: 16-bit (max 65535)
+   - Timeout: Complete within 2^20 clock cycles (~1 million)
+
+5. **Implementation Requirements**:
+   - Use iterative backtracking with depth-first search
+   - Implement constraint checking pipeline
+   - Use finite state machine (FSM) with states: IDLE, INITIALIZE, VALIDATE_ROW, VALIDATE_L_RULE, NEXT_CELL, COMPLETE, DONE
+   - Store current grid state in registers
+   - For unknowns, try digits 1-9 sequentially
+   - Check constraints before recursing
+   - Count valid completions
+
+6. **Hardware Optimizations**:
+   - Row uniqueness: Use 9-bit bitmask per row to track used digits
+   - L-rule check: Compute all 4 operations in parallel (sum, product, diff, quotients)
+   - Early pruning: Fail immediately on constraint violation
+   - State tracking: Keep current cell position (row, column) and tried digits
+
+7. **Signal Widths**:
+   - grid cells: [6:0][6:0] packed array or 36 individual 8-bit ports
+   - row_used[6][9]: 9-bit masks for each row
+   - current_state: 3-bit FSM
+   - depth counter: 5-bit (max 18 unknowns)
+   - result counter: 16-bit
+   - position counters: 3-bit each (0-6)
+
+8. **Testbench Requirements**:
+   - Initialize grid with known values
+   - Set dimensions m, n
+   - Assert start
+   - Wait for done signal
+   - Verify result count matches expected
+   - Test with at least 3 cases including provided examples
+   - Use 10ns clock period
+   - Timeout: 100ms simulation time

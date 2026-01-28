@@ -1,0 +1,59 @@
+Implement a Verilog module that solves the card game betting problem using dynamic programming. The game has n rounds, with k rounds where Gladstone is distracted (Donald wins). Donald wants to maximize the minimum possible final coins.
+
+## Inputs:
+- clk: 100MHz clock
+- rst_n: Active-low synchronous reset
+- start: 1-cycle pulse to start computation
+- d_init[9:0]: Donald's initial coins (0-1000)
+- g_init[9:0]: Gladstone's initial coins (0-1000)
+- n[5:0]: Total rounds (0-50)
+- k[5:0]: Distracted rounds (0-n)
+
+## Outputs:
+- result[10:0]: Maximum guaranteed Donald coins (0-1000)
+- done: 1-cycle pulse when computation complete
+
+## Algorithm:
+Use DP with state (rounds_played, distractions_used, d_coins, g_coins). Since max coins is 1000, use 10-bit states.
+
+1. Initialize DP table for 0 rounds: dp[0][0][d][g] = d for all d≤d_init, g≤g_init
+2. For rounds 1 to n:
+   - For distractions_used 0 to k:
+     - For d_coins 1 to 1000:
+       - For g_coins 1 to 1000:
+         - If Donald can win (distracted round):
+           - Bet amounts b where min(d_coins, g_coins) >= b >= 1
+           - dp[r][k][d][g] = max_{b} dp[r-1][k-1][d+b][g-b]
+         - If Gladstone wins (normal round):
+           - Donald loses: dp[r][k][d][g] = dp[r-1][k][d-b][g+b]
+           - Donald must survive worst-case bet
+           - For each possible bet b, Donald gets dp[r-1][k][d-b][g+b] if d-b >=0, else -infinity
+           - dp[r][k][d][g] = min_{b} dp[r-1][k][d-b][g+b]
+
+3. Result is dp[n][k][d_init][g_init]
+
+## Implementation Notes:
+- Use iterative pipelined computation over rounds
+- 4D DP array compressed: use 2D arrays per round state
+- Bet amount loop unrolled or FSM with bounded iterations (max 1000 bets per state)
+- Since n≤50 and coins≤1000, total states ≈ 50*50*1000*1000 = 2.5B, too large for FPGA
+- **Optimization**: Since only final round matters, compute backwards from terminal states
+- **Alternative**: Use minimax with memoization, bounded by 16 iterations of bet search
+- **Final approach**: For each round, compute new DP from previous using bounded bet loop (100 iterations max)
+- Clock domain: 100MHz, timeout: 50ms max
+
+## Reset:
+- done=0, result=0 after reset
+- min 2 cycles reset
+
+## Timing:
+- start->done: ≤100,000 cycles (50 rounds * 100 bets * 20 cycles per iteration)
+- Sample result when done=1
+
+## Constraints:
+- Use 11-bit result (max 1000)
+- Bet values clamped to 1-1000
+- Handle edge cases: Donald/Gladstone < 1 coin ends game immediately
+- If Donald cannot guarantee any win, return current coins
+
+Example: d=2,g=10,n=3,k=2 -> result=4

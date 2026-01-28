@@ -1,0 +1,48 @@
+Implement a Verilog module to solve the 'Lava' pathfinding problem. The module should perform two simultaneous Breadth-First Searches (BFS) to determine if Elsa and her Father can reach the goal 'G' from 'S' given a grid map.
+
+**Interface Specifications:**
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `step_elsa`: 8-bit unsigned (max 255, scaled from input)
+  - `step_father`: 8-bit unsigned (max 255, scaled from input)
+  - `map_in`: 8-bit data representing the current character ('S'=0, 'W'=1, 'G'=2, 'B'=3). Use a 16x16 grid (max 256 cells). You will load the map by iterating through addresses.
+  - `map_addr`: 8-bit address for map input (0 to 255).
+  - `map_write`: 1-bit write enable for map loading.
+
+- Outputs:
+  - `result`: 2-bit integer. 0: NO WAY, 1: SUCCESS, 2: GO FOR IT, 3: NO CHANCE.
+  - `done`: 1-bit signal, high for 1 cycle when result is valid.
+
+**Algorithm Details:**
+1.  **Map Storage:** Use an internal 256x2 BRAM to store the map (16x16 grid). The top-left cell is (0,0), bottom-right is (15,15). The rest of the grid should be filled with 'B' (lava/invalid) if the actual map is smaller.
+2.  **BFS Implementation:** Implement two separate BFS engines (Elsa and Father) that run in parallel or interleaved on the FPGA fabric.
+    - **Elsa's Movement:** Can move to any cell `(nx, ny)` within Euclidean distance `sqrt((nx-x)^2 + (ny-y)^2) <= step_elsa`.
+    - **Father's Movement:** Can move to any cell `(nx, ny)` within Manhattan distance `|nx-x| + |ny-y| <= step_father`.
+    - **Valid Moves:** Target cell must be 'W' or 'G'. 'B' and 'S' (unless start) are invalid.
+3.  **State Machine:**
+    - `IDLE`: Wait for `start`.
+    - `LOAD`: Accept map data via `map_in` and `map_addr`.
+    - `COMPUTE`: Run BFS for both players.
+        - Use 2 FIFOs (queues) for BFS levels (Max depth ~256 cycles).
+        - For each cell in the current queue, check all 16x16 grid neighbors.
+        - If valid and unvisited, mark visited and push to next queue.
+        - Stop if 'G' is found.
+    - `DONE`: Compare steps taken (depth) by Elsa and Father.
+        - If both found G: If `depth_elsa == depth_father`, output 1 (SUCCESS). Else if `depth_elsa < depth_father`, output 2 (GO FOR IT). Else 3 (NO CHANCE).
+        - If only Elsa found G: Output 2.
+        - If only Father found G: Output 3.
+        - If neither found G: Output 0 (NO WAY).
+4.  **Bit Widths:**
+    - Coordinates: 4-bit (0-15).
+    - Distances: 8-bit (0-255).
+    - Step lengths: Scaled to 8-bit.
+    - Grid data: 2-bit encoding (0=S, 1=W, 2=G, 3=B).
+
+**Timing Constraints:**
+- The `done` signal must go high within 50,000 clock cycles after `start`.
+- `rst_n` clears all logic and sets `done=0`.
+
+**Implementation Strategy:**
+Since the grid is small (16x16), you can unroll the neighbor checking logic or use a small loop state machine (iterating x=-1 to 1, y=-1 to 1) to generate potential moves. Euclidean distance check for Elsa can be done using pre-computed square roots or integer comparison of squared distances (max 15^2 + 15^2 = 450, fits in 9 bits).

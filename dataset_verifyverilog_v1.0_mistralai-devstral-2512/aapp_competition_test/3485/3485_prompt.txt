@@ -1,0 +1,32 @@
+Design a Verilog module `stop_counting` to compute the maximum average of a sequence of cards where a contiguous middle segment can be skipped. The module uses a brute-force approach over all possible skip segments (0 to N cards) and counts all remaining cards (prefix + suffix).
+
+**Interface Requirements:**
+- Inputs: 
+  - `clk`, `rst_n`: Standard synchronous control signals.
+  - `start`: 1-cycle pulse to start calculation.
+  - `N`: 4-bit input (number of cards, max 16).
+  - `cards[0:15]`: Array of 16 32-bit signed integers. Values are provided up to N.
+- Outputs:
+  - `result_frac`: 64-bit output representing the fractional part of the maximum average (scaled by 2^32).
+  - `result_int`: 32-bit signed output representing the integer part of the maximum average.
+  - `done`: 1-cycle pulse asserted when calculation is complete.
+
+**Implementation Logic:**
+1. **State Machine**: Use a Finite State Machine (FSM) with states: IDLE, CALCULATING, OUTPUT.
+2. **Calculation Loop**: 
+   - The calculation should iterate through all possible skip start indices `i` (0 to N) and skip end indices `j` (i to N).
+   - For each pair `(i, j)`, calculate the sum of cards from `0` to `i-1` (prefix) and `j` to `N-1` (suffix).
+   - Count the number of cards in these ranges: `count = i + (N - j)`.
+   - If `count > 0`, calculate the average: `sum / count`. Since division is complex, calculate `(sum * 2^32) / count` to get a fixed-point representation.
+   - Track the maximum average found.
+3. **Hardware Constraints**:
+   - Since N is small (16), unroll the loops into a pipeline or sequential logic with a bounded number of cycles (e.g., max 16*17/2 * 16 cycles approx 2000 cycles).
+   - Use 32-bit arithmetic for sums and 64-bit for intermediate products to prevent overflow.
+   - The `result_frac` should hold the lower 32 bits of the scaled average, and `result_int` the upper 32 bits (or signed integer part).
+4. **Reset**: On reset, `done` is 0, `result_int` and `result_frac` are 0.
+
+**Testbench Requirements:**
+- The testbench must generate random sequences of 16 numbers.
+- It must drive `start` and verify `done`.
+- It must read `result_int` and `result_frac` and compare against a Python reference model.
+- Must handle signed arithmetic correctly.

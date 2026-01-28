@@ -1,0 +1,70 @@
+Implement a Verilog module that solves a scaled-down version of the problem: finding the minimum energy to achieve at least a target probability, using 0/1 Knapsack logic.
+
+**Scaling Constraints:**
+- N: Fixed to 8 boxes.
+- Probabilities: Scaled to 8-bit integers (range 0-255). Input probabilities are given as `p_i[7:0]` where `p_i = raw_value / 255`. The target probability `P` is provided as `P_val[7:0]` scaled similarly.
+- Energy: 8-bit integers (0-255).
+- Total Energy: Up to 2048 (11-bit), but we will cap the DP table to 2048 for the implementation.
+
+**Inputs:**
+- `clk`: System clock (Rising Edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start calculation. When high, input arrays must be valid.
+- `e_i[7:0]`: Array of 8 energies (index 0 to 7). Packed into a single 64-bit input or handled via 8 separate 8-bit inputs (preferred: `e_0` to `e_7`).
+- `p_i[7:0]`: Array of 8 probabilities (index 0 to 7). Packed or separate.
+- `P_target[7:0]`: Target probability threshold.
+
+**Outputs:**
+- `result`: 11-bit integer (minimum energy).
+- `done`: 1-cycle high when calculation is complete.
+
+**Implementation Logic:**
+1. **State Machine:** Use an FSM with states `IDLE`, `CALC`.
+2. **DP Table:** Implement a lookup table (LUT) or Block RAM for DP states. Since N=8 and Max Energy=2048, we can use a 2D array logic or iterative update. To save resources, use a 1D array `dp[2048]` representing the max probability achievable for a given energy cost. Initialize `dp[0] = 255` (100% probability at 0 energy, assuming one specific box has the parrot? Wait, standard knapsack: we want to minimize energy for prob >= P).
+   *Actually, the problem is: minimize E such that sum(prob) >= P.*
+   *Let's invert the logic:* We want to find the maximum probability achievable for a given energy cost `E`. If we can achieve `max_prob[E] >= P_target`, then `E` is a valid answer. We want the smallest such `E`.
+   
+   **DP Definition:**
+   `dp[i][e]` = max probability sum using first `i` items with total energy `e`.
+   Since N=8, we can iterate `i` from 0 to 7.
+   
+   **Hardware Optimization:**
+   Since N is small (8), we can unroll the loops or use a small FSM.
+   We can maintain a single array `max_prob[0:MAX_ENERGY]` (size 2048, 8-bit wide).
+   Initialize: `max_prob[0] = 255` (Wait, probability is the sum of probabilities of *selected* boxes. If we pick a box with prob 0.5 (128), sum is 128. We need sum >= P_target).
+   
+   Algorithm:
+   1. Reset `max_prob` array to 0. `max_prob[0] = 0`.
+   2. For each box `i` (0 to 7):
+      Iterate energy `e` from `MAX_ENERGY - e_i` down to `0`:
+         `max_prob[e + e_i] = max(max_prob[e + e_i], max_prob[e] + p_i)`
+   3. After processing all boxes, scan `max_prob` from 0 upwards. The first index `e` where `max_prob[e] >= P_target` is the answer.
+
+   **Resource Constraints:**
+   - `max_prob` array: 2048 entries * 8 bits = 16Kb. Acceptable in FPGA BRAM.
+   - Loop counters: 3 counters (box_idx, energy_idx).
+   
+   **Interface Details:**
+   - Inputs `e_0`...`e_7` and `p_0`...`p_7` should be registered on `start` pulse.
+   - `P_target` registered on `start`.
+   
+   **Verilog Module Definition:**
+   ```verilog
+   module polly_finder (
+       input clk,
+       input rst_n,
+       input start,
+       // Energy inputs (8 boxes)
+       input [7:0] e_0, e_1, e_2, e_3, e_4, e_5, e_6, e_7,
+       // Probability inputs (8 boxes, scaled 0-255)
+       input [7:0] p_0, p_1, p_2, p_3, p_4, p_5, p_6, p_7,
+       input [7:0] P_target,
+       output reg [10:0] result,
+       output reg done
+   );
+   
+   // Implementation details...
+   // State definition: IDLE, LOAD, CALC_BOXES, FIND_RESULT
+   // Memory: reg [7:0] dp_mem [0:2047]; // Probabilities
+   // Control logic to handle the nested loops.
+   ```

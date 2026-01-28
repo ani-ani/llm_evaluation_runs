@@ -1,0 +1,34 @@
+Implement a Verilog module that computes the minimum cost to connect 4 city pairs in a railway network. The design must handle a graph of up to 16 cities (hard constraint) using a 16x16 adjacency matrix where edge weights are 16-bit unsigned integers. The module should process 4 specific source-destination pairs and output the total minimum cost.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: System clock (positive edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `valid_input`: 1-bit input indicating current city/route data is valid
+  - `city_idx`: 4-bit index (0-15) for city names (used during initialization)
+  - `city_name`: 8-bit ASCII character for city name (used during initialization)
+  - `edge_src`: 4-bit source city index for route
+  - `edge_dst`: 4-bit destination city index for route
+  - `edge_cost`: 16-bit cost for route
+  - `assignment_idx`: 2-bit index (0-3) for current assignment being loaded
+  - `assignment_src`: 4-bit source city for assignment
+  - `assignment_dst`: 4-bit destination city for assignment
+
+- Outputs:
+  - `result`: 16-bit total minimum cost
+  - `done`: 1-cycle pulse indicating computation complete
+  - `ready`: 1-bit flag indicating module is ready for new input
+
+**Behavior:**
+1. Initialization Phase: Wait for `valid_input` pulses to load city-to-index mappings, route costs into adjacency matrix, and 4 assignment pairs.
+2. Computation Phase: When `start` pulses, calculate minimum cost to connect all 4 assignment pairs simultaneously using shared routes where possible.
+3. Algorithm: Since n≤16, use dynamic programming over subsets: Precompute all-pairs shortest paths (Floyd-Warshall), then evaluate combinations of paths for the 4 assignments minimizing total cost.
+4. Timing: Computation completes within 1000 clock cycles. `done` pulses when result is valid.
+5. Reset: Clears all internal states; `done`=0, `result`=0, `ready`=1.
+
+**Constraints:**
+- City names: ASCII, max 20 chars - use hash to map to 4-bit indices (first 16 cities)
+- Graph: Max 16 nodes, 1000 edges (scaled to 16x16 matrix)
+- Costs: 16-bit unsigned, max 65535 (scaled from 10000)
+- Output: Total cost as 16-bit integer (scaled from potential 40000+ original)

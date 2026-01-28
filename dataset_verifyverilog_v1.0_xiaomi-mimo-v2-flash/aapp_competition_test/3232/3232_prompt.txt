@@ -1,0 +1,35 @@
+Implement a Verilog module that rearranges a fixed-length string of N letters (2 ≤ N ≤ 16, N even) such that all substrings of length N/2 are distinct. If impossible, output -1.
+
+**Interface Specifications:**
+
+**Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle start pulse
+  - `str_in[0:127]`: Input string as packed 16x8-bit ASCII characters (8 bits each)
+  - `N[3:0]`: Number of characters (N, 2 to 16, even)
+
+**Outputs:**
+  - `str_out[0:127]`: Output string (packed 16x8-bit)
+  - `result_valid`: 1-cycle pulse indicating valid output
+  - `impossible`: High if no solution found
+
+**Behavior:**
+1. On `start` rising edge, begin processing.
+2. Extract N characters from `str_in` into internal buffer.
+3. **Impossibility Check**: If any character frequency exceeds N/2 + 1, output `impossible` = 1, `result_valid` = 1, `str_out` = all -1s (0xFF).
+4. **Search**: Try up to 3 distinct rearrangements:
+   a. Original input (if valid)
+   b. Reversed string
+   c. Sorted (lexicographically) string
+5. For each candidate, check all N/2+1 substrings of length N/2 for uniqueness. Store signatures (e.g., 16-bit hash) in a 16-entry memory.
+6. If a unique arrangement is found, pack it into `str_out`, set `impossible` = 0, `result_valid` = 1.
+7. If none work after 3 attempts, set `impossible` = 1, `result_valid` = 1.
+8. Timing: Complete within 1000 cycles. `result_valid` pulses for 1 cycle.
+
+**Implementation Notes:**
+- Use a FIFO or shift register for substring extraction.
+- Hash function: Simple sum of characters (mod 2^16).
+- Sorting/Reversing: Implement as finite-state processes with max 256 cycles.
+- Memory: 16 x 16-bit array for substring signatures.
+- Reset: Clear all buffers, set `impossible` = 0, `result_valid` = 0.

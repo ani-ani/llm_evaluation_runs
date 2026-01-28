@@ -1,0 +1,37 @@
+You are to design a Verilog module that maximizes the average grade over N subjects given T hours total. The grade function for each subject is f_i(t) = a_i * t^2 + b_i * t + c_i. Since hardware cannot handle continuous fractions, we will discretize time into 100 steps per hour (100 * T total steps). The solution uses a greedy approach: at each step, allocate the next time unit to the subject that gives the maximum marginal gain. The marginal gain for subject i at time t (in steps) is: delta_i(t) = f_i((t+1)/100) - f_i(t/100). Since f_i is concave (a_i < 0), the marginal gains are non-increasing, making greedy optimal.
+
+Constraints:
+- N: 1 to 10
+- T: 1 to 240 hours
+- Each hour has 100 steps, so total steps M = T * 100 (max 24000)
+- a_i, b_i, c_i are real numbers with 4 decimal places
+- Use fixed-point Q16.16 format for calculations (16 integer bits, 16 fraction bits)
+- Output average grade as Q16.16 fixed-point
+
+Module Interface:
+- Inputs:
+  clk: system clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  N: 4-bit unsigned (1-10)
+  T: 9-bit unsigned (1-240)
+  a[0:9], b[0:9], c[0:9]: 10 inputs each, Q16.16 format (signed)
+- Outputs:
+  result: Q16.16 fixed-point average grade
+  done: 1-cycle pulse when computation complete
+
+Implementation Plan:
+1. Store coefficients in registers (10 subjects, each with a,b,c)
+2. Use a state machine with states: IDLE, INIT, ALLOCATE, CALC_RESULT
+3. ALLOCATE state performs T*100 iterations (max 24000):
+   - For each subject i, calculate marginal gain delta_i
+   - Find subject with maximum delta_i (use comparison tree)
+   - Increment its time counter (100 steps/hour, 16-bit counter per subject)
+4. After allocation, calculate final grades using f_i(t_i) for each subject
+5. Sum grades, divide by N, output result
+6. Use fixed-point arithmetic throughout:
+   - Multiplication: Q16.16 * Q16.16 = Q32.32, truncate to Q16.16
+   - Addition/Subtraction: straightforward
+   - Division by N: multiply by precomputed 1/N in Q16.16
+7. Timing: ALLOCATE state takes 24000 cycles max, then 100 cycles for final calc
+8. Optimize marginal gain calculation: compute delta_i = 2*a_i*t/100 + b_i/100 + a_i/10000 + a_i/10000 (constant term cancels). Actually simpler: delta_i(t) = f_i((t+1)/100) - f_i(t/100) = a_i*((t+1)^2 - t^2)/10000 + b_i/100 = a_i*(2t+1)/10000 + b_i/100. Store t in Q0.16 format (integer steps).

@@ -1,0 +1,36 @@
+Implement a module that solves the vertex deletion problem using max flow (Dinic) on a scaled graph.
+
+**Inputs:**
+- `clk`: clock
+- `rst_n`: active-low reset
+- `start`: 1-cycle pulse to start computation
+- `N`: number of vertices (4-bit, 1-16)
+- `M`: number of edges (4-bit, 1-16)
+- `A[i]`: 16-bit fixed-point costs (8.8 format) for vertex i (i=0..15)
+- `B[i]`: 16-bit signed fixed-point values (8.8 format) for vertex i
+- `edge_u[i]`, `edge_v[i]`: edge endpoints (4-bit) for i=0..15
+
+**Outputs:**
+- `profit`: 32-bit signed result
+- `done`: 1-cycle pulse when result valid
+
+**Functionality:**
+1.  Scale N to max 16 vertices.  Inputs for A_i and B_i are provided as 16-bit fixed-point numbers (8 integer, 8 fractional bits).
+2.  Construct a flow network:
+    -   Source, Sink, and 16 node pairs (i_in, i_out) -> total nodes = 2 + 32 = 34.
+    -   Add edges:
+        -   Source -> i_in : capacity = |B_i| (scaled to integer if B_i < 0)
+        -   i_in -> i_out : capacity = A_i (scaled to integer)
+        -   i_out -> Sink : capacity = |B_i| (scaled if B_i > 0)
+        -   For each graph edge (u, v): 
+            -   u_out -> v_in : capacity = infinity (use large constant)
+            -   v_out -> u_in : capacity = infinity
+3.  Run Dinic's algorithm to compute max flow (Min Cut).
+4.  Profit = (Sum of |B_i|) - MaxFlow.
+5.  Return 32-bit signed profit.
+
+**Constraints:**
+-   Max 34 nodes (Source, Sink, 16 pairs).
+-   Max edges: ~200 (handles 16 nodes with edges).
+-   Use 32-bit integers for flow (sufficient for scaled inputs).
+-   Latency: < 1000 cycles.

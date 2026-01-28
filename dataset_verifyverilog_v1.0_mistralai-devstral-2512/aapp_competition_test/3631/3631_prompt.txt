@@ -1,0 +1,37 @@
+Implement a Verilog module that determines the number of rider messages needed to light all beacons in a kingdom. Given up to 16 beacons and up to 16 mountain peaks (modeled as circles), compute the number of connected components in the visibility graph where two beacons are connected if the line segment between them does not intersect any mountain peak.
+
+Interface Specification:
+- Inputs:
+  - clk: System clock (rising edge triggered)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - n: 4-bit input for number of beacons (1-16)
+  - m: 4-bit input for number of mountains (0-16)
+  - beacon_x[0:15], beacon_y[0:15]: 16x16-bit arrays for beacon coordinates (0-10000)
+  - mountain_x[0:15], mountain_y[0:15], mountain_r[0:15]: 16x16-bit arrays for mountain centers and radii (0-10000, 1-5000)
+- Outputs:
+  - result: 4-bit integer (number of connected components, 1-16)
+  - done: 1-cycle pulse when computation is complete
+
+Algorithm:
+1. Represent graph with adjacency matrix (16x16 bits)
+2. For each pair of beacons (i, j), check if they are visible:
+   - Two beacons are visible if line segment between them does NOT intersect any mountain circle
+   - Intersection check: For each mountain center (cx, cy) with radius r, compute minimum distance from circle center to line segment. If distance < r, line is blocked
+   - Use fixed-point arithmetic (Q16.16) for distance calculations to avoid floating point
+3. Build connectivity graph using BFS/DFS (bounded to 16 nodes)
+4. Count connected components (result = number of messages needed)
+5. Output result and set done=1
+
+Constraints:
+- Clock frequency: Assume sufficient for 1000-2000 cycles
+- Fixed-point operations for geometry
+- Bounded arrays (max 16 elements)
+- Result must be valid when done=1
+- Start pulse triggers reset and start of computation
+- Minimum 2 cycles of reset
+
+Timing:
+- start -> done: within 10000 cycles
+- Result valid only when done=1
+- Reset state: done=0, result=0

@@ -1,0 +1,36 @@
+Design a Verilog module that calculates the maximum profit Sleazy Bob can obtain from a broken vending machine with up to N=16 positions. Each position i (0-indexed) has:
+- f[i]: destination position (0-15) when buying from i
+- p[i]: purchase price (16-bit)
+- m[i]: market price (16-bit)
+- s[i]: snack count (8-bit)
+
+The machine works as: buying from position i costs p[i], vends from f[i], and Bob can sell that snack for m[f[i]]. The profit per snack from buying at i is (m[f[i]] - p[i]) * s[f[i]], but he can only use each snack position once (s[i] is inventory).
+
+Since f is a function, the graph is a collection of cycles with trees feeding into them. For maximum profit:
+1. If a position is part of a cycle, Bob can buy all snacks in that cycle (sum of s[i] for i in cycle) and get profit equal to sum of (m[f[i]] - p[i]) * s[i] for i in cycle.
+2. For positions feeding into cycles, he can only buy from them if the target position (f[i]) has snacks available after buying from the cycle itself.
+3. The optimal strategy is to find the cycle with maximum total profit per available snack, then allocate remaining snacks to profitable tree paths.
+
+Input Interface:
+- clk, rst_n: synchronous reset
+- start: 1-cycle pulse to start calculation
+- cfg_en: 1-cycle pulse to configure each node
+- cfg_idx: 4-bit index (0-15)
+- cfg_f: 4-bit destination
+- cfg_p, cfg_m: 16-bit prices
+- cfg_s: 8-bit stock
+
+Output Interface:
+- result: 32-bit maximum profit
+- done: 1-cycle pulse when calculation complete
+
+Implementation Requirements:
+1. Store f, p, m, s arrays in 16x16 RAM or registers
+2. Use iterative algorithm: find all cycles, calculate profit for each
+3. For nodes not in cycles, calculate maximum profit path to a cycle
+4. Handle up to 16 nodes in ≤1000 cycles
+5. No dynamic memory; use fixed-size buffers
+6. Use 32-bit arithmetic for accumulation
+7. Internal state machine: IDLE → CONFIG → CALC → DONE
+
+Timing: Configuration requires N cycles, calculation requires ≤100 cycles

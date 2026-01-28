@@ -1,0 +1,39 @@
+Implement a Verilog module that converts RGB to HSV. Use fixed-point arithmetic (Q8.8 format) for all calculations. Input RGB values are 8-bit unsigned integers (0-255). Output HSV values are 16-bit signed integers scaled to: H (0-360), S (0-100), V (0-100). Use a sequential FSM with a start signal. Compute max/min using comparators. Divide using a dedicated combinational divider or lookup table for 0-255 range. The H calculation involves multiplication by 60 and conditional offsets. Ensure all operations clamp to 16-bit widths. The design should be pipelined or iterative to fit within a reasonable resource usage. Clock and reset are mandatory. Done signal indicates valid output.
+
+Inputs:
+  clk: system clock, rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start conversion
+  r: 8-bit unsigned, red channel
+  g: 8-bit unsigned, green channel
+  b: 8-bit unsigned, blue channel
+
+Outputs:
+  h: 16-bit signed integer (Q8.8 fixed-point, scaled 0-360)
+  s: 16-bit signed integer (Q8.8 fixed-point, scaled 0-100)
+  v: 16-bit signed integer (Q8.8 fixed-point, scaled 0-100)
+  done: 1-cycle pulse, asserted when result is valid
+
+Internal Requirements:
+  1. Normalize RGB to 0-1 range by dividing by 255. Use shift logic or lookup.
+  2. Find max(mn) and min(mx) of r_norm, g_norm, b_norm using comparators.
+  3. Calculate delta = mx - mn.
+  4. If mx == 0, S = 0. Else S = (delta/mx)*100.
+  5. V = mx * 100.
+  6. H calculation: If mx == mn, H = 0. Else based on which channel is mx:
+     - mx == r: H = (60 * ((g-b)/delta) + 360) % 360
+     - mx == g: H = (60 * ((b-r)/delta) + 120) % 360
+     - mx == b: H = (60 * ((r-g)/delta) + 240) % 360
+  7. All intermediate values should be kept in fixed-point format.
+  8. Use an FSM with states: IDLE, CALCULATE_MAX, CALCULATE_DELTA, CALCULATE_HSV, OUTPUT.
+  9. Ensure division is handled carefully; use a sequential divider or pre-computed lookup tables for 8-bit numerator/denominator.
+  10. Final outputs should be truncated/scaled to 16-bit Q8.8 representation.
+
+Timing:
+  - Start to Done: within 100 clock cycles.
+  - Reset: assert rst_n for at least 2 cycles, done=0, result=0.
+
+Interface Definition:
+  - All ports are positive logic.
+  - Result valid only when done=1.
+  - If start is asserted while processing, undefined behavior (tester will ensure start is held low).

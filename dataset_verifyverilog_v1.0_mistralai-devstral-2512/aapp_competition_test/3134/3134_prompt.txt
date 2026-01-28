@@ -1,0 +1,47 @@
+Implement a Verilog module that reconstructs a binary matrix from row and column parity constraints. 
+
+**Constraints**: 
+- Matrix dimensions: n (rows) <= 16, m (columns) <= 16
+- Row parities: input as 16-bit vector (LSB = row 1)
+- Column parities: input as 16-bit vector (LSB = column 1)
+- Algorithm: Greedy approach to maximize 1s while satisfying parity constraints
+- If reconstruction impossible, output special flag
+
+**Module Interface**:
+- Inputs:
+  - clk: system clock (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - row_parity[15:0]: 16-bit vector, bit 0 = row 1 parity, bit 1 = row 2 parity, etc.
+  - col_parity[15:0]: 16-bit vector, bit 0 = column 1 parity, bit 1 = column 2 parity, etc.
+  - n[3:0]: number of rows (1-16)
+  - m[3:0]: number of columns (1-16)
+- Outputs:
+  - matrix_out[255:0]: 256-bit packed matrix output (row-major order, row 1 at bits [255:240], row 2 at [239:224], etc., padded to 16x16)
+  - valid: 1 when reconstruction successful
+  - done: 1-cycle pulse when computation complete
+  - impossible: 1 when reconstruction is impossible
+
+**Timing**: start->done within 500 cycles
+
+**Algorithm Details**:
+1. Initialize all entries to 0
+2. For each row i (1 to n): if row_parity[i-1] == 1, set matrix[i-1][m-1] = 1 (maximizes binary value)
+3. For each column j (1 to m): calculate current parity, if mismatch, set matrix[n-1][j-1] = 1
+4. Validate: all row/col parities must match
+5. If valid: output matrix_out and valid=1
+6. If invalid: valid=0, impossible=1
+
+**Output Format**:
+- When done=1 and valid=1: matrix_out contains the reconstructed matrix
+- Bit mapping: For 16x16 matrix, row i (0-indexed) occupies bits [(15-i)*16 + 15 : (15-i)*16]
+- Example: 4x4 matrix with rows 0110, 0111, 1110, 1111 maps to matrix_out[15:0] = 0110 (MSB), etc.
+
+**Reset Behavior**: On reset (rst_n=0), valid=0, done=0, impossible=0, matrix_out=0
+
+**Implementation Notes**:
+- Use FSM for state machine
+- Use combinational logic for parity calculation
+- Use pipelining for n,m up to 16
+- Output matrix_out is always 256 bits, but only first n*m bits are valid
+- When impossible=1, ignore matrix_out value

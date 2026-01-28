@@ -1,0 +1,38 @@
+Implement a Verilog module that removes all whitespace characters from an input string. The input string is provided as a fixed-length array of 8-bit ASCII bytes. Whitespace characters include space (0x20), tab (0x09), newline (0x0A), and carriage return (0x0D).
+
+**Input Interface:**
+- `clk`: System clock (active rising edge)
+- `rst_n`: Active-low asynchronous reset
+- `start`: 1-cycle pulse to start processing
+- `input_str`: Input string as 16-element array of 8-bit reg/wire. Indexed [15:0]. Each element is 8 bits (ASCII byte). The string is valid up to `length` characters; remaining bytes are padded with nulls (0x00).
+- `length`: 4-bit unsigned input indicating the valid character count in `input_str` (0 to 15).
+
+**Output Interface:**
+- `output_str`: Output string as 16-element array of 8-bit logic. Indexed [15:0]. Contains the filtered string without whitespace, left-aligned (nulls at the end). 
+- `output_len`: 4-bit unsigned output indicating the number of valid characters in `output_str` (0 to 16).
+- `done`: 1-cycle pulse indicating completion. Outputs are valid when `done` is high.
+
+**Behavior:**
+- Upon `start` assertion, the module reads `input_str` and `length`.
+- It filters out any byte equal to 0x20 (space), 0x09 (tab), 0x0A (newline), or 0x0D (carriage return).
+- The remaining bytes are copied to `output_str` in order, starting from index 0.
+- Any positions after the last valid character in `output_str` must be set to 0x00.
+- `output_len` is the count of non-whitespace characters found.
+- `done` is asserted exactly one cycle after the last byte is processed. Total cycles should be proportional to `length` (max 16).
+
+**Constraints:**
+- Input length <= 15 chars.
+- Output length <= 16 chars (input length minus whitespace count).
+- Module must be synthesizable and use sequential logic (FSM or pipeline).
+- Reset: `done` low, `output_len` 0, `output_str` all zero.
+- Timing: `start` to `done` <= 100 cycles. Sample `output_str` and `output_len` when `done` is high.
+
+**Simplified Logic:**
+- No need for regex engine. A simple byte comparator for whitespace characters is sufficient.
+- Use a Finite State Machine (FSM) with states: IDLE, READ_INPUT, WRITE_OUTPUT, COMPLETE.
+- During READ_INPUT, iterate through indices 0 to `length-1`. Check each byte against whitespace values. If non-whitespace, increment a write pointer and store the byte in a temporary buffer or directly to `output_str`.
+- During WRITE_OUTPUT, copy the buffered non-whitespace bytes to `output_str` indices.
+- Set `output_len` to the count of non-whitespace bytes.
+- Set `done` high for one cycle after WRITE_OUTPUT completes.
+
+**Note:** The module should handle the case where the input contains only whitespace (output_len = 0, output_str all zeros).

@@ -1,0 +1,45 @@
+Design a Verilog module named 'steward_support' that calculates the number of stewards with strength strictly between the minimum and maximum strengths in a list.
+
+**INPUTS:**
+- `clk`: System clock, rising edge triggered
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate computation
+- `values`: Array of 16 elements, each 32-bit unsigned integer
+- `n`: Number of valid elements in `values` (4-bit, range 1-16)
+
+**OUTPUTS:**
+- `result`: 16-bit output indicating count of valid stewards
+- `done`: 1-cycle pulse asserted when computation is complete
+
+**BEHAVIOR:**
+1. Upon `start` assertion, the module must:
+   - Identify the minimum value `min_val` across the valid elements (indices 0 to n-1)
+   - Identify the maximum value `max_val` across the valid elements
+   - Count how many elements `val[i]` satisfy: `(min_val < val[i]) && (val[i] < max_val)`
+2. The result must be available by the time `done` is asserted.
+3. If `n <= 2`, `result` must be 0 (insufficient distinct elements for strict between).
+4. If all values are identical (`min_val == max_val`), `result` must be 0.
+5. Timing: `start` to `done` within 256 clock cycles.
+
+**IMPLEMENTATION DETAILS:**
+- Use combinational logic for min/max detection or a sequential FSM.
+- For hardware efficiency, use a loop (max 16 iterations) or parallel comparators.
+- `result` width is sufficient for n<=16.
+- Reset state: `done = 0`, `result = 0`.
+
+**STARTUP PHASE:**
+- Initialize `min_val` to `values[0]` and `max_val` to `values[0]`.
+- Iterate from `i = 0` to `n-1`.
+- Update `min_val` and `max_val` if `values[i]` is lower/higher.
+- Reset the loop counter for the counting phase.
+
+**COUNTING PHASE:**
+- Iterate from `i = 0` to `n-1`.
+- Check condition: `(values[i] > min_val) && (values[i] < max_val)`.
+- If true, increment the counter.
+
+**FSM STATES (Suggested):**
+- `IDLE`: Wait for start.
+- `SCAN_MIN_MAX`: Compute min and max (16 cycles max).
+- `COUNT`: Count valid stewards (16 cycles max).
+- `DONE`: Assert `done` signal for 1 cycle.

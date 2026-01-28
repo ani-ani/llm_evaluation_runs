@@ -1,0 +1,41 @@
+Implement a Verilog module named `petra_add` that computes the minimum steps to make two numbers addable without carries. The inputs are two fixed-length ASCII strings representing decimal integers (max 16 digits each). The module should process these strings to compute the result on clock edges.
+
+**Interface:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `a_str`: Array of 16 8-bit inputs (ASCII digits), index 0 is LSB digit (right-aligned)
+- `b_str`: Array of 16 8-bit inputs (ASCII digits), index 0 is LSB digit (right-aligned)
+- `result`: 32-bit output (result modulo 2^32)
+- `done`: 1-cycle pulse indicating result is valid
+
+**Functionality:**
+1. On reset: `result` = 0, `done` = 0.
+2. When `start` is high: Begin processing. Convert ASCII digits to integer values (0-9). Ignore leading zeros.
+3. Compute `min_steps` such that `(a + steps) % 10 + (b - steps) % 10 < 10` for all digit positions, where `steps` is the number of adjustments applied to both numbers (adding to one, subtracting from the other). Since the operation effectively shifts the carry condition, the solution is found by checking the minimum `k` where adding `k` to `a` and subtracting `k` from `b` (or vice versa) results in no carries. For simplicity, assume the adjustment is applied to the larger number to minimize steps.
+4. The core algorithm: 
+   - Convert both strings to integer values `A` and `B` (16-bit max).
+   - Let `D = |A - B|`. The goal is to find the smallest `k` such that adding `k` to the smaller number and subtracting `k` from the larger number results in two numbers whose digit-wise sum has no carries. 
+   - For this problem, the condition simplifies to finding the smallest `k >= 0` such that for every digit position `i`, `(a_i + k_i) + (b_i - k_i) < 10` (mod 10 logic applies). The efficient solution for 16-bit numbers is to compute `k` iteratively. However, since we have a fixed 32-bit result width, we will compute `k` by checking digit pairs from LSB to MSB.
+   - Actually, the problem is: given `A` and `B`, find smallest `t` such that `A + t` and `B - t` (assuming `A > B`) have digit-wise sum `< 10` per position. This is equivalent to `t` being the minimum number such that no carry occurs. For the scaled version, we will implement a digit-iterative solution: 
+     - Compute `A` and `B` from string inputs.
+     - Iterate `t` from 0 to 65535 (or until found). For each `t`, check if `(A + t) + (B - t)` has carries. 
+     - Optimization: The condition `(A + t) + (B - t) == A + B` is constant, so carries depend on the digit sums. The target is to make `(a_i + t_i) + (b_i - t_i) < 10`. The minimal `t` is determined by the digit where the sum is highest. 
+     - Simplified logic for HDL: Compute `A` and `B`. Let `sum = A + B`. The number of steps `k` is the value that, when added to the smaller number, resolves the carry chain. For the scope of this benchmark, we will implement a simple finite-state machine that computes `k` by checking the digit sum of `A` and `B` at each position. 
+     - **Algorithm**: 
+       1. Parse `a_str` and `b_str` into 16-bit integers `val_a` and `val_b`.
+       2. If `val_a < val_b`, swap them to ensure `val_a >= val_b`.
+       3. Compute `diff = val_a - val_b`.
+       4. The minimal steps `k` is the smallest value such that adding `k` to `val_b` and subtracting `k` from `val_a` removes all carries. 
+       5. In this simplified version, we will compute `k` by simulating the addition of `val_a` and `val_b` and identifying the positions of carries. The number of steps is then calculated based on the most significant carry position. 
+       6. Specifically, `k = (10^m - (val_a % 10^m)) % 10^m` where `m` is the position of the first carry from LSB. 
+       7. Output `result = k` (capped at 2^32-1).
+   - **FSM States**: IDLE, PARSE_A, PARSE_B, CALCULATE, DONE.
+   - **Timing**: Computation must finish within 1000 cycles after `start`.
+
+**Constraints:**
+- `a_str` and `b_str` are packed as 16x8-bit arrays.
+- ASCII digits '0'-'9' are valid.
+- Leading zeros are ignored.
+- Result is 32-bit unsigned integer.
+- `done` pulses for one cycle when `result` is valid.

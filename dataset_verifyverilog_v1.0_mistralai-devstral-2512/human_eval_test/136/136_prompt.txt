@@ -1,0 +1,39 @@
+Design a Verilog module that implements the core logic of finding the largest negative integer and smallest positive integer from a fixed-size input array.
+
+## Specification
+
+**Inputs:**
+- `clk`: System clock, rising edge active
+- `rst_n`: Active-low asynchronous reset
+- `start`: 1-cycle pulse to start processing
+- `len`: 4-bit unsigned integer representing the number of valid elements in the input array (0 to 15)
+- `arr`: 16-element array of 8-bit signed integers (values in range -128 to 127). Elements beyond `len` are ignored.
+
+**Outputs:**
+- `neg_val`: 8-bit signed integer representing the largest negative integer found (valid when `neg_valid` is high)
+- `neg_valid`: 1-bit flag indicating a valid negative integer was found
+- `pos_val`: 8-bit signed integer representing the smallest positive integer found (valid when `pos_valid` is high)
+- `pos_valid`: 1-bit flag indicating a valid positive integer was found
+- `done`: 1-cycle pulse indicating processing is complete and outputs are valid
+
+**Behavior:**
+1. On `start` pulse, the module begins scanning the array from index 0 to `len-1`.
+2. **Negative Integers:** Find the largest (closest to zero) negative integer (e.g., -3 is larger than -10). If no negative integers are found, `neg_valid` remains 0.
+3. **Positive Integers:** Find the smallest positive integer (closest to zero). If no positive integers are found, `pos_valid` remains 0.
+4. Zero (0) is ignored for both categories.
+5. The process completes within `len` clock cycles plus a final cycle. Total latency ≤ 20 cycles.
+6. **Reset:** Assert `rst_n` low to reset. `done` goes low, `neg_valid`/`pos_valid` go low, values are undefined.
+
+**Implementation Hints:**
+- Use a 4-bit counter to iterate through indices `0` to `len-1`.
+- Use two registers: `max_neg` (8-bit signed) initialized to -128 (minimum possible), and `min_pos` (8-bit signed) initialized to 127 (maximum possible).
+- Use two valid flags: `neg_found` and `pos_found` initialized to 0.
+- At each cycle, check the current array element `arr[idx]`:
+  - If `arr[idx] < 0` and (`!neg_found` OR `arr[idx] > max_neg`), update `max_neg = arr[idx]` and `neg_found = 1`.
+  - If `arr[idx] > 0` and (`!pos_found` OR `arr[idx] < min_pos`), update `min_pos = arr[idx]` and `pos_found = 1`.
+- When counter reaches `len`, assert `done` for 1 cycle and copy internal registers to output ports.
+
+**Constraints:**
+- No external memory required. State machine or iterative loop acceptable.
+- Ensure safe handling of signed arithmetic (Verilog 2001/2005 compatible).
+- Timing: Start to Done latency must be deterministic and bounded.

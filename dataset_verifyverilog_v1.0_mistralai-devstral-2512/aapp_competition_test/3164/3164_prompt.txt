@@ -1,0 +1,50 @@
+Implement a Verilog module that finds the longest consecutive sub-array where each element appears exactly twice. Use fixed-point arithmetic for numeric comparisons and a sliding window approach with FSM.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `arr[0:255]`: 256-element array of 16-bit integers (scaled down from 10^5)
+  - `len`: 6-bit input for actual array length (max 64 for this scaled version)
+- **Outputs:**
+  - `result`: 16-bit output for longest sub-array length found
+  - `done`: 1-cycle pulse when result is valid
+
+**Algorithm Requirements:**
+1. Scale input values: Divide each original value by 1000 to fit in 16-bit range (0-1000)
+2. Implement sliding window with FSM states:
+   - IDLE: Wait for start
+   - SETUP: Initialize pointers and frequency counter array
+   - SCAN: Expand window right, track frequencies
+   - VALIDATE: Check if current window satisfies "exactly twice" condition
+   - OPTIMIZE: Shrink window from left to find minimal valid window
+   - COMPLETE: Move to next starting position
+3. Use Q16.16 fixed-point for intermediate calculations if needed
+4. Frequency tracking: Use 8-bit counters for each value (max count 2)
+5. Valid check: All elements in window must have frequency == 2
+6. Optimization: For each valid window, try shrinking from left while maintaining validity
+7. Maximum operations: 256 cycles per window, 64 windows total = 16384 cycles max
+
+**Implementation Details:**
+- Internal memory: Frequency array of 256 entries, 8-bit each
+- Window state: `left_ptr`, `right_ptr` (6-bit each)
+- State machine: 6 states (IDLE, SETUP, SCAN, VALIDATE, OPTIMIZE, COMPLETE)
+- Result tracking: Keep max length and current window length
+- Fixed-point scale factor: 1000 (≈2^10 = 1024)
+- Use combinational logic for frequency validation
+- Clock frequency: 100MHz, timeout: 16384 cycles
+
+**Timing:**
+- start pulse → done pulse within 16384 cycles
+- Reset: 2 cycles minimum
+- Result valid only when done=1
+- All signals synchronized to clock
+
+**Constraints:**
+- N ≤ 64 (scaled from 10^5)
+- Values ≤ 1000 (scaled from 10^5)
+- Output length ≤ 64
+- Use 16-bit width for all data paths
+- Frequency counters: 8-bit (max count 2)
+- Pointer counters: 6-bit (max 64 positions)

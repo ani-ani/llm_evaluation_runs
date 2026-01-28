@@ -1,0 +1,36 @@
+You are to implement a module that calculates the minimum number of presentations required for a book circle. The problem is equivalent to finding the number of connected components in a bipartite graph where boys and girls are nodes, and books read are edges connecting a boy and a girl.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock, rising edge triggered.
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle pulse to start processing.
+  - `num_boys`: 4-bit unsigned integer (0-15, max 1000 scaled to 4 bits for benchmark).
+  - `num_girls`: 4-bit unsigned integer (0-15).
+  - `book_edges`: Packed array of 24 edges, each edge is a 4-bit source (boy index) and 4-bit destination (girl index), total 8 bits per edge. Use `book_edges[0:7]`, `book_edges[8:15]`, ..., `book_edges[184:191]` (24 edges * 8 bits = 192 bits).
+- Outputs:
+  - `result`: 8-bit unsigned integer (minimum number of presentations, max 16).
+  - `done`: 1-cycle pulse indicating result is valid.
+
+**Implementation Requirements:**
+1. **Scaling:** The algorithm must handle up to 16 nodes (8 boys, 8 girls) and up to 24 edges (books). Input `num_boys` and `num_girls` indicate the actual number of nodes to process, but the hardware is fixed for 16 nodes.
+2. **Algorithm:** Use an iterative Breadth-First Search (BFS) or Depth-First Search (DFS) on an adjacency matrix representation.
+   - Build a static 16x16 adjacency matrix (logical array of 256 bits). Only the first `num_boys` + `num_girls` nodes are relevant. Nodes 0-7 represent boys, nodes 8-15 represent girls.
+   - Iterate through all nodes (0 to `num_boys + num_girls - 1`). If a node is unvisited, increment component count, and traverse all connected nodes (BFS/DFS) marking them visited.
+   - The result is the number of connected components.
+3. **Timing:**
+   - Reset: Minimum 2 cycles. `done` must be 0, `result` 0.
+   - Start: `start` is high for 1 cycle. Internal processing begins on the rising edge after `start`.
+   - Processing: Should complete within 1024 cycles (benchmark constraint).
+   - Done: Assert `done` for 1 cycle when the count is finalized.
+4. **Data Structure:**
+   - `visited[15:0]`: 16-bit register to track visited nodes.
+   - `adjacency_matrix[15:0][15:0]`: 256-bit array (or packed 16x16 logic). Initialize to 0, populate from `book_edges`.
+   - `queue`: Implement a simple FIFO for BFS (max depth 16).
+5. **Control Flow:**
+   - State Machine: IDLE -> POPULATE_MATRIX -> FIND_COMPONENTS -> FINISHED.
+   - FIND_COMPONENTS state iterates through node indices. For each unvisited node, trigger a sub-FSM for traversal.
+6. **Constraints:**
+   - No dynamic memory allocation.
+   - Fixed bit-widths: Indices 4-bit, Data 8-bit.
+   - ASCII handling is not required in hardware (inputs are pre-encoded).

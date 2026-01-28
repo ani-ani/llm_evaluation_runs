@@ -1,0 +1,56 @@
+Implement a Verilog module to solve the string prefix swap problem. The module should find a sequence of operations to make one string all 'a's and the other all 'b's using prefix swaps.
+
+**Constraints:**
+- Strings length: max 16 characters
+- Characters: 'a' or 'b' (ASCII 97, 98)
+- Max operations: 64
+- Target: Minimize operations (approximate greedy approach)
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: Clock and active-low reset
+  - `start`: 1-cycle pulse to start computation
+  - `s_char_i`: 8-bit input for current character of string s
+  - `t_char_i`: 8-bit input for current character of string t
+  - `len_s`: 4-bit length of string s (0-15)
+  - `len_t`: 4-bit length of string t (0-15)
+- Outputs:
+  - `done`: 1-cycle pulse when solution is ready
+  - `op_count`: 6-bit count of operations (0-63)
+  - `op_s_len`: 4-bit prefix length for s (for operation output)
+  - `op_t_len`: 4-bit prefix length for t (for operation output)
+  - `valid_op`: 1-bit indicating current operation output is valid
+
+**Behavior:**
+1. On `start`, load strings s and t into internal buffers (16x8-bit arrays)
+2. Execute a greedy algorithm:
+   - Scan from end to find mismatched characters
+   - When s ends with 'b' and t ends with 'a', or vice versa
+   - Swap appropriate prefixes to move 'a's to one string and 'b's to the other
+3. Output operations sequentially on valid_op when requested
+4. Set `done` when solution is complete or max ops reached
+
+**Implementation Details:**
+- Use internal state machine (IDLE, LOAD, COMPUTE, OUTPUT)
+- Store strings in 16x8-bit memories
+- Track current operation index
+- Greedy strategy: If s has 'b' at end and t has 'a' at end, swap prefix of s up to last 'a' with prefix of t up to last 'b', or similar heuristic
+- Limit total operations to 64
+- Output operation lengths when valid_op=1
+
+**Example Flow:**
+Input: s="bab" (len=3), t="bb" (len=2)
+Operation 1: s_prefix=1, t_prefix=0 → swap 'b' with empty
+Operation 2: s_prefix=1, t_prefix=3 → swap new 'a' with 'bb'
+Result: s="bbbb", t="a"
+
+**Test Requirements:**
+- Reset: done=0, op_count=0
+- Timing: start->done within 200 cycles
+- Output: Sequence of (op_s_len, op_t_len) pairs
+
+**Notes:**
+- The exact Python algorithm is complex; implement a simplified greedy version
+- Focus on correctness for small inputs (len ≤ 16)
+- If multiple solutions exist, any valid one is acceptable
+- Ensure operations are valid (prefix lengths ≤ current string lengths)

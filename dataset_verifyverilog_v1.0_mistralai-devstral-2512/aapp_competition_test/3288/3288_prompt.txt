@@ -1,0 +1,52 @@
+Design a Verilog module `nth_incremental_string` that computes the nth lexicographically smallest string meeting two criteria:
+
+1. **Double Free**: No two adjacent characters are identical.
+2. **k-Incremental**: For each j in 1..k, exactly one distinct character appears exactly j times. Total length = k(k+1)/2.
+
+### Interface:
+- **Inputs**:
+  - `clk`, `rst_n`: Synchronous control signals.
+  - `start`: 1-cycle pulse to initiate computation.
+  - `k[4:0]`: Unsigned 5-bit input (1 to 26).
+  - `n[63:0]`: 64-bit unsigned input (1 to 10^18).
+
+- **Outputs**:
+  - `done`: 1-cycle pulse indicating valid result.
+  - `result_valid`: High when result is valid (stays high until next start).
+  - `result_char[4:0]`: 5-bit output representing the current character (0-25 for 'a'-'z'). Valid when `done` or `result_valid` is high.
+  - `result_idx[8:0]`: 9-bit index (0 to 350) of the current character in the output string. Valid when `result_char` is valid.
+  - `finished`: High when the entire string has been output (or no string exists).
+  - `no_solution`: High if n exceeds the total number of valid strings.
+
+### Implementation Requirements:
+1. **Algorithm**: Use a depth-first search (DFS) with an iterative stack or FSM to generate strings in alphabetical order. Maintain:
+   - Current character counts for 26 letters.
+   - Previous character (to enforce double-free).
+   - Remaining counts to fulfill the k-incremental condition.
+   - A counter for the current rank `n`.
+
+2. **Constraints**:
+   - Max string length: 351 characters (for k=26).
+   - Max k: 26.
+   - n is up to 10^18, requiring 64-bit arithmetic.
+   - The module must output one character per cycle (or a burst) until `finished` is asserted.
+
+3. **Control Flow**:
+   - On `start`, load `k` and `n`.
+   - The FSM iterates through possible characters (0 to 25) for the next position.
+   - For each candidate, check validity (counts, adjacency).
+   - Calculate the number of valid completions for that branch.
+   - If `n` falls within this branch, select it and recurse/proceed. If not, subtract and try next.
+   - If no valid character is found for the current state, backtrack.
+   - If `n` is larger than total solutions, assert `no_solution`.
+
+4. **State Machine**:
+   - `IDLE`: Waiting for start.
+   - `PREPARE`: Calculate total possible strings or validate input k.
+   - `SEARCH`: Main loop to find the character at the current position.
+   - `OUTPUT`: Shift out the constructed string characters.
+   - `DONE`: Final state.
+
+5. **Output Format**: The `result_char` and `result_idx` signals will output the string one character at a time, starting from index 0. `result_idx` increments with each character output.
+
+6. **Performance**: Must complete within a reasonable number of cycles (e.g., 100,000 cycles) for k up to 10. For larger k, optimize using combinatorial logic for counting valid completions.

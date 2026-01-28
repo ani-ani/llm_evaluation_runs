@@ -1,0 +1,55 @@
+Implement a Verilog module `NephrenGame` that finds the k-th character of recursively defined strings f_n.
+
+**Definitions:**
+- f_0 = "What are you doing at the end of the world? Are you busy? Will you save us?" (75 chars)
+- f_i = "What are you doing while sending \"" + f_{i-1} + "\"? Are you busy? Will you send \"" + f_{i-1} + "\"?" for i>=1
+- Length formula: L(n) = 2 * L(n-1) + 68, where L(0)=75. For n>=55, L(n) > 10^18 (saturate to 2^62)
+
+**Interface:**
+- Inputs: 
+  * `clk`: system clock
+  * `rst_n`: active-low async reset
+  * `start`: 1-cycle pulse to start processing (sample n, k)
+  * `n[15:0]`: input parameter n (0 to 10^5)
+  * `k[63:0]`: input parameter k (1 to 10^18, binary)
+- Outputs:
+  * `result[7:0]`: ASCII character output (valid when done=1)
+  * `done`: 1-cycle pulse indicating valid result
+- Parameters:
+  * MAX_DEPTH = 55 (maximum recursion depth needed before lengths saturate)
+  * CLK_CYCLES = 1000 (max cycles to complete)
+
+**Behavior:**
+1. On start=1, latch n and k.
+2. Use a finite state machine to recursively descend:
+   - If n==0: check if k <= 75. If yes, output f_0[k-1] else '.'
+   - If n>=1: 
+     * If k <= 34: output prefix[k-1] ("What are you doing while sending \"")
+     * Else subtract 34; if k <= L(n-1): recurse to n-1 with updated k
+     * Else subtract L(n-1); if k <= 32: output middle[k-1] ("\"? Are you busy? Will you send \"")
+     * Else subtract 32; if k <= L(n-1): recurse to n-1 with updated k
+     * Else subtract L(n-1); if k <= 2: output suffix[k-1] ("\"?")
+     * Else: output '.'
+3. Pre-compute L(n) table for n=0 to 54 (store in ROM). For n>=55, use saturation value (2^62).
+4. When k > L(n), output '.' immediately.
+5. Set done=1 when result is valid.
+
+**Constraints:**
+- Use 64-bit arithmetic for k (unsigned).
+- Strings f_0, prefix, middle, suffix must be stored in block RAM as fixed-width (8-bit) byte arrays (access via index).
+- State machine requires ≤ 1000 cycles per query.
+- Result stays valid until next start.
+- Reset sets done=0, result=0.
+
+**Example:**
+- f_0[0] = 'W', f_0[74] = '?' (0-indexed)
+- f_1[1] = 'h' (from prefix), f_1[35] = 'W' (from f_0[0])
+
+**Testbench:**
+Cocotb testbench must:
+- Verify sequential start->done timing.
+- Test n=0 cases (k in range and out of range).
+- Test n=1 cases (k=1, k=34, k=35, etc.).
+- Test saturation for n>=55.
+- Verify character correctness against expected outputs from Python examples.
+- Handle large k values (up to 10^18).

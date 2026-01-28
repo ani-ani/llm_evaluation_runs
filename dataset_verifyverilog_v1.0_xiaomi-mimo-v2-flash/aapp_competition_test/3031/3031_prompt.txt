@@ -1,0 +1,94 @@
+Verilog Module Specification: Tree Good Nodes Finder
+
+Description:
+Find all 'good' nodes in a tree where every simple path starting from that node is rainbow (no two adjacent edges have the same color). In a tree, a node is good iff for every color, there is at most one edge of that color incident to the node, AND for any two edges of the same color incident to the node, the subtrees rooted at those edges must not contain any other edges of that color.
+
+SCALED REQUIREMENTS (must fit hardware):
+- Nodes: 1 to 16 (max 16 nodes)
+- Edges: 15 max (tree property)
+- Colors: 1 to 255 (8-bit value)
+- Node IDs: 0 to 15 (4-bit)
+
+Interface:
+Inputs (all sync to clk):
+  clk: Clock signal
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to initiate computation
+  num_nodes: 4-bit input (1-16)
+  
+  Edge inputs (packed for brevity, assume sequential loading):
+  edge_src[3:0]: 4-bit source node ID
+  edge_dst[3:0]: 4-bit destination node ID  
+  edge_color[7:0]: 8-bit color ID
+  edge_load_en: 1-bit load enable for current edge
+
+  query_node[3:0]: 4-bit node ID to check if good (after computation)
+
+Outputs:
+  done: 1-cycle pulse when computation complete
+  is_good: 1-bit result valid when done=1
+  result_count[3:0]: 4-bit count of good nodes (valid when done=1)
+  
+  Note: To read all good nodes, user must iterate query_node from 0 to num_nodes-1
+  and check is_good output for each after done pulse.
+
+Behavioral Specification:
+1. Reset State:
+   - done = 0, is_good = 0, result_count = 0
+   - Internal adjacency list cleared
+
+2. Load Phase (after start):
+   - Accept n-1 edges sequentially via edge_load_en
+   - Build adjacency list for 16 nodes (max)
+   - Each node stores list of (neighbor, color) pairs
+   - Load continues until all edges loaded (tracked internally)
+
+3. Computation Phase:
+   - For each node 0 to num_nodes-1:
+     * Check if node is good:
+       - Condition 1: For each color, count edges with that color incident to node
+         If any color appears >= 2 times -> NOT good
+       - Condition 2: If condition 1 passes, for each pair of edges with same color
+         (can't happen if condition 1 passes, so skip)
+         Actually, in a tree, if a node has multiple edges of same color,
+         it's automatically NOT good because adjacent edges share the node.
+       - Condition 3: Check subtrees. For each edge (u,v) with color C, 
+         check if subtree rooted at v contains any other edge of color C.
+         If any incident edge's subtree contains C again -> NOT good.
+   
+   - Note: The tree structure means a node is good iff:
+     a) No two incident edges have the same color (local check)
+     b) For each incident edge (u,v) of color C, the subtree at v 
+        contains no other edges of color C (subtree check)
+
+4. Implementation Strategy:
+   - Use iterative DFS/BFS per node
+   - Store tree as adjacency list (16 nodes, 15 edges)
+   - For each node, perform 2 checks:
+     1. Check local incident edge colors (frequency check)
+     2. For each incident edge, traverse subtree to check for duplicate colors
+   - Cycle budget: 16 nodes * 15 edges * 16 depth = ~4096 cycles max
+
+5. Output:
+   - done pulses for 1 cycle
+   - result_count valid when done=1
+   - To read which nodes are good: iterate query_node 0..15, check is_good
+   - is_good valid for 1 cycle after each query_node change
+
+Timing:
+- start -> done: within 5000 cycles
+- query_node -> is_good: within 100 cycles
+- Clock domain: Single clock, synchronous design
+
+Interface Details:
+- All signals positive-edge triggered
+- reset is active-low, synchronous
+- start must be 1 cycle minimum
+- edge_load_en must be pulsed for each edge (n-1 times)
+- num_nodes must be stable during load phase
+- query_node should be changed after done=1 to read results
+- is_good reflects status of current query_node
+
+Note: This is a simplified behavioral spec. The implementation should use
+BFS/DFS traversal for each node, checking for color conflicts locally and
+in subtrees. Hardware constraints: max 16 nodes, 15 edges, 8-bit colors.

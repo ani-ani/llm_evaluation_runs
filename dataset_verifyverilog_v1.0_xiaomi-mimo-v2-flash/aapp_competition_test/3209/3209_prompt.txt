@@ -1,0 +1,61 @@
+Implement a Verilog module that computes the minimum expected travel time between two stations given train schedules with probabilistic delays.
+
+**Interface:**
+- Inputs:
+  - `clk`: system clock
+  - `rst_n`: active-low synchronous reset
+  - `start`: 1-cycle start pulse
+  - `origin[79:0]`: 10-char string (80 bits) of origin station
+  - `dest[79:0]`: 10-char string (80 bits) of destination station
+  - `n[7:0]`: number of train connections (0-1000, scaled to 0-32)
+  - For each connection i (0-31):
+    - `conn_origin[i][79:0]`: 10-char origin string
+    - `conn_dest[i][79:0]`: 10-char destination string
+    - `conn_min[i][5:0]`: departure minute (0-59)
+    - `conn_t[i][8:0]`: travel time (1-300, 9 bits)
+    - `conn_p[i][6:0]`: probability % (0-100, 7 bits)
+    - `conn_d[i][6:0]`: max delay (1-120, 7 bits)
+  - `valid_in`: indicates input is valid
+
+- Outputs:
+  - `result[31:0]`: fixed-point Q16.16 expected duration in minutes
+  - `valid_out`: 1-cycle when result is valid
+  - `impossible`: 1 if destination unreachable
+
+**Functionality:**
+1. Map station names to node IDs (0-15 max) using string hashing/comparison
+2. Build adjacency list of trains (edges) with:
+   - From node, To node
+   - Departure minute, base time, probability, max delay
+3. Use Dijkstra-like algorithm on expected time graph:
+   - Expected time = base_time + (p/100) * (max_delay/2) since uniform delay [1,d]
+   - Add waiting time at each station based on departure times
+4. Compute minimum expected time from origin to destination
+5. Output fixed-point Q16.16 result or IMPOSSIBLE flag
+
+**Constraints:**
+- Clock period: 10ns
+- Max cycles: 256
+- Use iterative DP with 16 iterations max
+- Station names: 10 chars max (80 bits)
+- Fixed-point: Q16.16 (32-bit) for all floating-point calculations
+- Graph: 16 nodes, 32 edges max
+- Use lookup tables for expected values
+
+**Algorithm:**
+1. Reset: clear all tables
+2. Input phase: capture station names and connections
+3. Processing phase:
+   - Initialize cost array with infinity (0x7FFFFFFF)
+   - Origin cost = 0
+   - For iteration 0 to 15:
+     - For each edge: relax cost to destination
+     - New cost = current_cost + base_time + wait_time + expected_delay
+   - Wait_time = (departure_min - arrival_min) mod 60
+   - Expected_delay = (p * (d+1)) / 200 (midpoint of uniform [1,d])
+4. Output phase: set result or impossible flag
+
+**Timing:**
+- start pulse -> done within 256 cycles
+- Reset sets done=0, result=0, impossible=0
+- Input valid must be held until processing begins

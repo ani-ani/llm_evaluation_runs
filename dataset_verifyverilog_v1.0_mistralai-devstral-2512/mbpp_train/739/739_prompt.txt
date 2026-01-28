@@ -1,0 +1,40 @@
+Design a Verilog module that computes the index of the smallest triangular number with exactly n digits.
+
+**Mathematical Formula**: Triangular numbers are given by T(k) = k*(k+1)/2. The index k of the smallest triangular number with n digits satisfies T(k) ≥ 10^(n-1). Solving the quadratic gives k = ceil(sqrt(2*10^(n-1))) ≈ round(sqrt(2*10^(n-1))).
+
+**Interface Specification**:
+- **Inputs**:
+  - `clk`: clock signal (rising edge active)
+  - `rst_n`: active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate calculation
+  - `n`: 4-bit unsigned integer (1 to 9 digits, clipped to 1-9)
+- **Outputs**:
+  - `result`: 16-bit unsigned integer (index k)
+  - `done`: 1-cycle pulse indicating valid result
+
+**Constraints**:
+- Data width: 16 bits for arithmetic operations
+- Fixed-point representation: Use Q16.16 for intermediate calculations (16 integer bits, 16 fractional bits)
+- Input n is limited to 1-9 (but module should handle 0 gracefully)
+- Maximum output index: For n=9, k≈44721 (fits in 16 bits: 2^16-1=65535)
+- Timing: Calculation completes within 50 clock cycles
+- Reset: done=0, result=0, active for minimum 2 cycles
+
+**Implementation Requirements**:
+1. Compute 10^(n-1) using a lookup table (9 entries, 16-bit values)
+2. Multiply by 2 (shift left by 1)
+3. Compute square root using iterative Newton-Raphson method or sequential digit-by-digit algorithm
+4. Round the result: add 0.5 (in fixed-point) and truncate
+5. Use a finite state machine (FSM) with states: IDLE, COMPUTE, DONE
+6. No external memory required; all calculations within 16-bit registers
+
+**Example Test Cases**:
+- n=2: result=4 (T(4)=10)
+- n=3: result=14 (T(14)=105)
+- n=4: result=45 (T(45)=1035)
+
+**Port Names**:
+- Inputs: `clk`, `rst_n`, `start`, `n[3:0]`
+- Outputs: `result[15:0]`, `done`
+
+**Verification Note**: The module should handle the case n=0 by returning 0 (no digits).

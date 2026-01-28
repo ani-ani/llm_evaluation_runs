@@ -1,0 +1,47 @@
+Implement a Verilog module that solves the treasure hunting problem using a modified BFS (Breadth-First Search) approach optimized for hardware. The grid size is scaled down to 16x16 (N and M up to 16). Stamina K is up to 255 (8-bit).
+
+**Interface Requirements:**
+- Inputs:
+  - `clk`: System clock (rising edge active)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start the calculation
+  - `grid`: 256-element array of 8-bit values. Index `idx = row * 16 + col`. Values: 0=Empty/Walkable (.), 1=Forest (F), 2=Mountain (M), 3=River (#), 4=Start (S), 5=Goal (G). Note: S and G are effectively plain (cost 1).
+  - `K`: 8-bit stamina value.
+- Outputs:
+  - `result`: 8-bit output (minimum days, or 255 for impossible)
+  - `done`: 1-cycle pulse asserted when calculation is complete
+
+**Algorithm Description:**
+1. **State Storage:** Use internal BRAM-style arrays (Block RAM inferred) for the visited states. Since we need to track `(row, col, stamina)`, we can simplify for hardware:
+   - Use a `visited[row][col]` array storing the maximum remaining stamina seen at that cell. If we reach a cell with less stamina than previously recorded, we discard the path.
+   - Since the cost is deterministic, a standard Dijkstra/BFS is optimal.
+
+2. **Cost Logic:**
+   - Plain (.), S, G: Cost = 1
+   - Forest (F): Cost = 2
+   - Mountain (M): Cost = 3
+   - River (#): Cost = Infinity (blocked)
+
+3. **BFS Implementation:**
+   - Use a FIFO queue. Since this is hardware, we can simulate the queue using static arrays (e.g., `queue_row`, `queue_col`, `queue_stamina`, `queue_days`). Max queue depth ~1024 entries.
+   - The `start` signal triggers initialization: set start position, reset queue pointers, reset `visited` array.
+   - In every clock cycle (or state), pop an item from the queue.
+   - Check if it is the Goal (`G`). If yes, output days and assert `done`.
+   - Expand neighbors (Up, Down, Left, Right). For each neighbor:
+     - Check bounds (0 to 15).
+     - Check if it is a River. If so, skip.
+     - Calculate cost based on terrain type.
+     - If `current_stamina >= cost`:
+       - New stamina = `current_stamina - cost`
+       - New days = `current_days`
+     - Else (rest needed):
+       - New stamina = `K - cost`
+       - New days = `current_days + 1`
+     - Check `visited[neighbor_row][neighbor_col]`. Only proceed if `new_stamina > visited_value`. If valid, update `visited` and push to queue.
+   - If the queue empties before finding the goal, output -1 (represented as 255 for 8-bit output).
+
+4. **Constraints:**
+   - Grid size: 16x16 (Indices 0-15).
+   - Max cycles: 2048 (to ensure completion within reasonable simulation time).
+   - Use `reg` arrays for `visited` and FIFO storage.
+   - Input `grid` is provided as a parallel array during the `start` cycle or assumed pre-loaded. The prompt assumes `grid` is an input array.

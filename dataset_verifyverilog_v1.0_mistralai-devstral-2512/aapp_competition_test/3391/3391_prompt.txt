@@ -1,0 +1,41 @@
+Design a Verilog module for calculating the smallest axis-aligned square side length for a point range, allowing one point to be ignored.
+
+### Input/Output Interface:
+- **Clock & Reset**: `clk` (rising edge), `rst_n` (active-low synchronous reset)
+- **Control**: `start` (1-cycle pulse initiates calculation)
+- **Data Input**: 
+  - `x_in` (32-bit signed): Fixed-point X coordinate (Q16.16)
+  - `y_in` (32-bit signed): Fixed-point Y coordinate (Q16.16)
+  - `idx` (4-bit): Index of the current point (0 to 15)
+  - `valid_in` (1-bit): Indicates valid point data for current index
+- **Control Output**: 
+  - `done` (1-bit): High for 1 cycle when calculation complete
+  - `busy` (1-bit): High while processing
+- **Result Output**: 
+  - `side_len` (32-bit signed): Fixed-point side length (Q16.16)
+
+### Functional Requirements:
+1. **Buffer Storage**: Store up to 16 points in internal registers when `valid_in` is high during the initialization phase.
+2. **Calculation**: Upon `start` pulse (after points are stored), calculate:
+   - For each point `i` from 0 to N-1 (where N is number of points stored):
+     - Compute bounding box of all points except point `i`.
+     - Width = max_x - min_x (excluding point i)
+     - Height = max_y - min_y (excluding point i)
+     - Square side = max(width, height)
+   - Find minimum side length across all choices of ignored point.
+   - If N=1, side length is 0.
+3. **Bit Widths**: All coordinates and calculations use 32-bit signed fixed-point (Q16.16). Intermediate differences use 33-bit (with MSB sign extension) to prevent overflow before clamping.
+4. **Latency**: Must complete within 200 cycles after `start`.
+5. **Reset**: Clears buffer, sets `busy=0`, `done=0`, `side_len=0`.
+
+### Implementation Constraints:
+- Use combinational logic for min/max reduction trees.
+- Pipeline the 'ignore one' loops if needed to meet timing (max 200 cycles).
+- Ensure no state loss during calculation.
+
+### Example:
+Points: (1.0, 0.0), (0.0, 1.0), (1000.0, 1.0)
+Ignore point 3: Bounding box [0,1] x [0,1] -> Side 1.0
+Ignore point 2: Bounding box [1,1000] x [0,1] -> Side 999.0
+Ignore point 1: Bounding box [0,1000] x [0,1] -> Side 1000.0
+Min = 1.0

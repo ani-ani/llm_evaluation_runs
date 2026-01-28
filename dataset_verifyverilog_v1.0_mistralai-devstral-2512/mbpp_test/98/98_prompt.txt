@@ -1,0 +1,49 @@
+Create a Verilog module that computes the product of numbers in a list divided by the list length using fixed-point arithmetic.
+
+Module Requirements:
+- Clock and synchronous reset (active-low)
+- Input list: 16 elements, each 16-bit signed (range: -32768 to 32767)
+- Input length: 4-bit (0-15, non-zero)
+- Output: 32-bit signed fixed-point Q16.16 (16 integer, 16 fractional bits)
+- 1-cycle start pulse to initiate computation
+- Output valid flag (done) for 1 cycle when calculation completes
+
+Implementation Details:
+1. Use fixed-point Q16.16 arithmetic (multiply integers and divide by fixed divisor)
+2. Product calculation: Sequentially multiply all input values using 32-bit accumulator
+   - Start with 1.0 (1<<16)
+   - Multiply each input (interpreted as Q16.0) by accumulator
+   - Store as Q32.0 intermediate, then scale down to Q16.16
+   - Handle overflow: clamp to 32-bit signed range
+3. Division: Multiply by reciprocal of length (pre-computed LUT or shift-based approximation)
+   - For lengths 1-15: use integer division via bit-shifts and comparisons
+   - Result should maintain Q16.16 precision
+4. Pipeline stages: Counter (0 to length-1) drives multiplication, final stage performs division
+5. Total cycles: length + 2 (multiplication + division + output)
+6. Reset: clears accumulator, sets done=0, result=0
+
+Interface:
+Inputs:
+  clk: clock (rising edge)
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  data_in[15:0]: 16-bit signed input (for each of 16 positions)
+  length[3:0]: 4-bit length (1-15, non-zero)
+Outputs:
+  result[31:0]: 32-bit signed Q16.16 result
+  done: 1-cycle pulse when computation complete
+
+Timing Specification:
+- On start=1, assert done=0 and begin computation
+- Compute product of first 'length' elements from data_in array
+- Divide product by length to get Q16.16 result
+- Output result on done=1 for 1 cycle
+- Minimum 2 cycles reset (done=0, result=0)
+- Maximum 18 cycles to complete (15 elements * 1 cycle + division + output)
+
+Constraints:
+- Array size: max 16 elements
+- Input bit width: 16-bit signed
+- Output precision: Q16.16 fixed-point
+- No external memory access
+- All calculations in hardware

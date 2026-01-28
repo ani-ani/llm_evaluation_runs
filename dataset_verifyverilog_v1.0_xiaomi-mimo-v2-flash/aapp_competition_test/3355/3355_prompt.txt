@@ -1,0 +1,66 @@
+Implement a Verilog module that computes the maximum points for a scavenger hunt problem using dynamic programming with bitmasks. The problem is scaled to support up to 16 tasks (locations 0-15) with fixed array sizes.
+
+**Problem Scaling & Constraints:**
+- n ≤ 16 tasks (locations 0-15)
+- T ≤ 256 minutes (scaled from 1440)
+- Points p_i ≤ 127 (7-bit)
+- Task times t_i ≤ 255 (8-bit)
+- Deadlines d_i ≤ 255 or -1 (8-bit, -1 encoded as 255)
+- Travel times ≤ 255 (8-bit)
+- Location indices: 0-15 for tasks, 16 for start, 17 for end
+- Total locations: 18 (5-bit index)
+
+**Algorithm:**
+1. Use DP with state: (mask, current_location) where mask is 16-bit bitmask of visited tasks
+2. dp[mask][i] = (min_time, max_points, prev_mask, prev_loc) for reaching task i
+3. Initialize: from start (loc 16) to each task j: dp[1<<j][j] = (travel_time[start][j] + t_j, p_j, 0, start)
+4. Transitions: from task i to unvisited task j: check deadline and total time ≤ T
+5. Final answer: from any task i to end (loc 17) within T minutes
+6. Handle multiple solutions by storing lexicographically smallest task set
+
+**Module Interface:**
+- Inputs:
+  - clk: rising edge clock
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - n_tasks: 4-bit input (actual number of tasks, 1-16)
+  - T_limit: 8-bit time limit (minutes)
+  - p_i[15:0]: 16x7-bit array of points
+  - t_i[15:0]: 16x8-bit array of task durations
+  - d_i[15:0]: 16x8-bit array of deadlines (255 = no deadline)
+  - travel[17:0][17:0]: 18x18x8-bit travel times (packed as 18 ports of 144-bit each)
+- Outputs:
+  - max_points: 12-bit result (max possible: 16*127 = 2032)
+  - task_mask: 16-bit bitmask of selected tasks (bit i set = task i+1 selected)
+  - done: 1-cycle pulse when computation complete
+  - valid: 1 if solution found (max_points > 0 or valid timeout)
+
+**Timing:**
+- Computation completes within 100,000 cycles (≈100K states × transitions)
+- Pipeline stages: init → compute → final → done
+- When done=1, read max_points and task_mask
+- Reset: done=0, valid=0, max_points=0, task_mask=0
+
+**Behavior:**
+- On start pulse, reset state machine and begin DP computation
+- Process all reachable states (mask 1..(2^n-1))
+- For each state, try all valid transitions to unvisited tasks
+- Always prefer: higher points first, then smaller task set (lexicographic)
+- After exploring all states, find best path to end node
+- Output should match: if max_points=0 (impossible), valid=1 but max_points=0, task_mask=0
+- If valid solution, valid=1, max_points > 0
+
+**Implementation Notes:**
+- Use 16-bit mask for visited tasks (bit i = task i visited)
+- Store DP states in embedded BRAMs (2^16 × 32-bit = 2MB, use 4 banks)
+- Use fixed-point arithmetic for time tracking (no floating point)
+- For lexicographic minimization: when comparing two solutions with equal points, keep the one with smaller task mask (bits packed as integer)
+- Deadlines: check arrival_time + t_j ≤ d_j when d_j ≠ 255
+- Total time check: arrival_time + t_j ≤ T_limit
+
+**Verilog Requirements:**
+- Complete module with always_ff blocks for DP state update
+- Synchronous reset handling
+- Output assignment when done=1
+- No combinatorial loops, sequential logic only
+- Clock and reset ports as specified

@@ -1,0 +1,41 @@
+Implement a Verilog module that checks if an input string represents a valid 'Goldbach Conjecture' output. The input is a stream of ASCII characters representing up to 1000 lines. The output is 1 if valid, 0 otherwise.
+
+**Constraints & Scaling:**
+1.  **Input:** Accept one ASCII character at a time (7 bits, or 8 bits including parity). Total input length is limited to 1024 characters for simulation.
+2.  **Tokens:** Valid tokens are strictly positive integers without leading zeros. Maximum integer value is 10^9 (requires 30 bits).
+3.  **Goldbach Validation:**
+    *   The first integer $N$ must be even and $3 < N \leq 10^9$.
+    *   The second integer $P$ and third integer $Q$ must be primes (we will implement a small prime checker for numbers $\leq \sqrt{10^9} \approx 31623$ using a hardcoded LUT or simple sequential check against small primes).
+    *   Must verify $P + Q = N$.
+4.  **Parsing Logic:**
+    *   Use a Finite State Machine (FSM) to iterate through the input characters.
+    *   States: `WAIT_FOR_NUM`, `IN_NUM`, `CHECK_EOF`.
+    *   Separate whitespace types: Spaces (32), Tabs (9), Newlines (10) are delimiters.
+    *   Detect invalid characters or empty tokens (leading zeros).
+    *   Count exactly 3 integers.
+
+**Interface Specification:**
+*   **Clock Domain:** Synchronous to `clk`, active low reset `rst_n`.
+*   **Inputs:**
+    *   `input_valid`: High when `char_in` is valid.
+    *   `char_in` [7:0]: The ASCII character being fed in.
+    *   `start`: Pulse high to reset the state and prepare for new input stream.
+*   **Outputs:**
+    *   `result`: 1-bit. Valid when `done` is high. 1 if input is a valid Goldbach output, 0 otherwise.
+    *   `done`: 1-bit. Pulses high for one cycle when the entire input stream has been processed and a decision has been made.
+
+**Implementation Details:**
+1.  **Buffering:** Store the three parsed integers in registers: `int_n`, `int_p`, `int_q` (32-bit wide).
+2.  **Counter:** A counter to track the number of integers parsed (0 to 3).
+3.  **Digit Accumulator:** Accumulate digits during the `IN_NUM` state. Handle overflow (if > 10^9, mark as invalid immediately).
+4.  **Prime Logic:** Since prime checking is heavy for Verilog, implement a small FSM that checks divisibility of $P$ and $Q$ by pre-stored small primes (e.g., 2, 3, 5, 7... up to 31623). For this benchmark, we can constrain the check to primes $\leq 1000$ (using a small LUT of 168 primes) to fit within reasonable logic resources, or implement a simple iterative divisor check starting from 2 up to $\sqrt{val}$.
+5.  **Goldbach Check:** Once 3 numbers are parsed and the input stream ends:
+    *   Check: `int_n == (int_p + int_q)`
+    *   Check: `int_n` is even and $> 3$.
+    *   Check: `int_p` and `int_q` are $> 1$.
+    *   Run prime check on `int_p` and `int_q`.
+
+**Simplifications for Bencharking:**
+*   Assume the input is continuous or `input_valid` is asserted for every character.
+*   The prime checker can be a sequential divider that runs over several cycles once the parsing is complete. 
+*   The state machine must handle the transition from `Parsing` to `Validation` phases.

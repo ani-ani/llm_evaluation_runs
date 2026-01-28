@@ -1,0 +1,50 @@
+Implement a Verilog module to find a Weakened Common Divisor (WCD) for a list of number pairs.
+
+**Problem**: Given n pairs of integers (a_i, b_i), find any integer d > 1 such that for every pair (a_i, b_i), either a_i % d == 0 or b_i % d == 0. If no such d exists, return -1.
+
+**Hardware Constraints & Adaptations**:
+- n (number of pairs) is provided, but processing is sequential (one pair per clock cycle).
+- Each a_i, b_i is a 32-bit unsigned integer (max ~2e9 fits in 32 bits).
+- We will compute prime factors of the first pair only (a_0, b_0). This yields a bounded set of candidates (max ~16 distinct primes for numbers <=2e9).
+- For subsequent pairs, we filter the candidate set: remove any prime that doesn't divide a_i or b_i.
+- The result is any remaining prime factor, or -1 if none remain.
+- If no prime factors exist from first pair (e.g., both 1, but inputs >=2), we still process.
+- Since max distinct prime factors for 32-bit numbers is small (e.g., product of first few primes: 2*3*5*7*11*13*17*19*23*29 > 2e9, so max ~9), we can store candidates in a fixed array of size 16.
+- We need a small state machine to compute prime factors of a 32-bit number. Use simple trial division up to sqrt(2^32) ≈ 65536, but we can unroll or limit to first 1000 primes for feasibility.
+- For Verilog, we will pre-compute primes up to 65536 (or use trial division by odd numbers).
+- The module will have a finite state machine (FSM) with states: IDLE, PRIME_FACTORS_A, PRIME_FACTORS_B, PROCESS_PAIRS, OUTPUT_RESULT.
+- We will assume input pairs are streamed in. For simplicity, we'll have a start signal and a valid_in signal for each pair.
+
+**Interface**:
+- Inputs:
+  - clk: system clock
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start processing (reset state)
+  - valid_in: indicates valid input pair on a_in and b_in
+  - a_in, b_in: 32-bit unsigned integers for current pair
+  - len: 4-bit integer indicating total number of pairs (0-15 for scalability)
+- Outputs:
+  - result: 32-bit signed integer. If WCD found, it's the prime factor (d). If no WCD, -1.
+  - done: 1-cycle pulse indicating result is valid.
+  - ready: indicates module is ready to accept new input pair (for streaming)
+- Timing: start triggers initialization. Then for each valid_in cycle, process one pair. After 'len' pairs processed, compute and output result. done pulses for 1 cycle.
+- Reset: done=0, result=0, ready=1.
+
+**Implementation Details**:
+- Use an FSM.
+- State IDLE: wait for start.
+- State GET_FACTORS: compute prime factors of a_in and b_in (first pair). Store in candidate array (size 16).
+- State PROCESS: for each subsequent pair (valid_in=1), check each candidate. If candidate doesn't divide a_in or b_in, mark for removal.
+- State OUTPUT: if candidates remain, output first one. Else output -1.
+- Prime factorization: Use a simple trial division loop (up to sqrt(n)) but bounded iterations (e.g., 1000 cycles) or a pre-computed small LFSR-based prime generator.
+- For scalability, we'll implement a trial division by odd numbers up to 65536. The loop should be unrolled or pipelined.
+- Candidate array: 16 slots, each 32-bit. A separate 16-bit valid mask.
+- Need internal counters for pair index and candidate index.
+- Constraints: 16 cycles per pair processing, ~2000 cycles for prime factorization (worst-case). Total cycles < 50,000.
+
+**Testbench**:
+- Test with provided examples.
+- Use Python to generate inputs and expected outputs.
+- Stream pairs into the module.
+- Verify done signal and result.
+- Handle cases with no answer.

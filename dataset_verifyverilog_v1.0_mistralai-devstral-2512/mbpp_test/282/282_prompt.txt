@@ -1,0 +1,54 @@
+Design a sequential Verilog module for element-wise subtraction of two lists. The module should handle signed 8-bit numbers and produce an output list of the same length.
+
+## Specification
+
+### Interface
+- **Inputs (Clock-Synchronous)**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate operation
+  - `len`: 4-bit unsigned input specifying array length (1-8 elements)
+  - `arr1[7:0]` and `arr2[7:0]`: 8-bit bus arrays, where each bit represents an element position
+  - `arr1[7]` = element 7, `arr1[6]` = element 6, etc. (or use individual ports if preferred)
+
+- **Outputs (Clock-Synchronous)**
+  - `result[7:0]`: 8-bit output array (element-wise subtraction result)
+  - `done`: 1-cycle pulse indicating valid result available
+
+### Functional Requirements
+1. **Clock Domain**: All operations synchronized to rising edge of `clk`
+2. **Reset Behavior**: After reset, `done=0`, `result[7:0]=0`, ready for new input
+3. **Operation**: When `start` is asserted, perform signed subtraction `result[i] = arr1[i] - arr2[i]` for i=0 to len-1
+4. **Data Format**: All values are signed 8-bit integers (range -128 to +127)
+5. **Timing**: Operation completes within 100 clock cycles
+6. **Output Valid**: `done` pulses for 1 cycle when result is ready
+7. **Array Length**: Max 8 elements, length specified by 4-bit input
+8. **Parallel Computation**: All array elements can be computed in parallel or sequential
+9. **Signed Arithmetic**: Must handle overflow/wrap-around per 8-bit signed semantics
+
+### Design Guidelines
+- Use sequential FSM or pipeline design
+- Implement signed subtraction using 2's complement arithmetic
+- For each array position (0-7), compute: `result = arr1 - arr2` with 8-bit signed precision
+- The `len` input determines how many elements to process (1-8)
+- Excess elements in result array can be zero or ignored
+- Ensure no timing violations, output stable when `done=1`
+
+### Timing Constraints
+- Start-to-done: max 100 cycles
+- Reset: min 2 cycles
+- Clock period: 10ns (100MHz)
+
+### Example Test Cases
+- Test 1: arr1=[1,2,3], arr2=[4,5,6], len=3 → result=[-3,-3,-3]
+- Test 2: arr1=[1,2], arr2=[3,4], len=2 → result=[-2,-2]
+- Test 3: arr1=[90,120], arr2=[50,70], len=2 → result=[40,50]
+
+### Implementation Notes
+- You may choose between parallel (unrolled) or sequential (iterative) implementation
+- For sequential: use a counter from 0 to len-1, compute one element per cycle
+- For parallel: compute all 8 elements simultaneously
+- Both approaches are valid; choose based on area/timing trade-offs
+- Ensure proper signed arithmetic handling (8-bit signed subtraction)
+
+The module should be synthesizable and implementable as a standalone unit.

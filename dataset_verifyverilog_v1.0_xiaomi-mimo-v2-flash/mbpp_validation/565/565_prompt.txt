@@ -1,0 +1,41 @@
+Write a Verilog module that splits a string into individual characters (bytes).
+
+### Specifications:
+- **Input**: `clk`, `rst_n` (active-low async reset), `start` (1-cycle pulse), `char_in[127:0]` (16-byte packed array, ASCII characters), `length[3:0]` (number of valid chars, 1-16)
+- **Output**: `char_out[7:0]` (8-bit character), `index_out[3:0]` (current character index), `valid` (high when `char_out` is valid), `done` (1-cycle pulse when all chars processed)
+
+### Behavior:
+1. On `start` pulse, register the 16-byte input and length.
+2. Extract characters sequentially over 16 cycles (max).
+3. For each cycle `i` from 0 to `length-1`:
+   - `char_out` = byte from position `i` (bits [i*8+7:i*8])
+   - `index_out` = `i` (0-based)
+   - `valid` = 1
+   - If `i == length-1`, set `done` = 1 on next cycle.
+4. After `done`, hold outputs at 0 until next start.
+5. Reset: `char_out=0`, `index_out=0`, `valid=0`, `done=0`.
+
+### Timing:
+- `start` to first `valid`: 1 cycle
+- Throughput: 1 char per cycle
+- Total latency: `length + 1` cycles (e.g., 6 chars → 7 cycles)
+- Max cycles: 17 (16 chars + 1)
+
+### Constraints:
+- Use combinational logic for char extraction.
+- No dynamic sizing; use fixed 16-byte buffer.
+- `length` > 16 treated as 16 (clamp).
+- Use `always @(posedge clk)` for state machine.
+
+### Module Definition:
+module split_string (
+    input clk,
+    input rst_n,
+    input start,
+    input [127:0] char_in,
+    input [3:0] length,
+    output reg [7:0] char_out,
+    output reg [3:0] index_out,
+    output reg valid,
+    output reg done
+);

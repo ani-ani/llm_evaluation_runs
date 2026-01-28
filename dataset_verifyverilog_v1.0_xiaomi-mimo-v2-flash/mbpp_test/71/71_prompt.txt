@@ -1,0 +1,43 @@
+Implement a Verilog module for sorting a fixed-size array (max 16 elements) using the comb sort algorithm. The algorithm iterates through gaps starting at the array size, shrinking by 1.3 each time until gap=1 and no swaps occur.
+
+**Interface Requirements:**
+- Inputs: clk (clock), rst_n (active-low reset), start (1-cycle pulse), data_in (8-bit), addr_in (4-bit index for loading array elements), load_done (1-cycle pulse to indicate loading complete)
+- Outputs: result (8-bit), index (4-bit), valid (1-cycle when result is output), done (1-cycle when sorting completes)
+
+**Implementation Details:**
+1. Store array as 16x8-bit memory internally (index 0 to 15).
+2. Only use up to 16 elements; unused entries ignored.
+3. Gap calculation: start gap = array_size (loaded via input), shrink by dividing by 1.3 each outer iteration; round to integer (use 13/10 = 1.3 -> multiply by 10 then divide by 13, rounding).
+4. Inner loop: iterate from i=0 to (gap + i < array_size); compare and swap adjacent elements separated by gap.
+5. Track swaps: if any swap occurred, continue; if no swaps and gap==1, done.
+6. Output sorted array sequentially via 'result' and 'index' when valid=1, each cycle. Sequence ends when done=1 after all outputs.
+7. Timing: sorting within 1000 cycles max, output within 500 cycles after sorting.
+8. Reset: clear memory, set done=0, valid=0, result=0, index=0.
+
+**State Machine:**
+- IDLE: wait for load_done then start
+- LOAD: load array into memory (index i cycles 0-15, data_in appears with addr_in)
+- SORT: execute comb sort loops (outer gap loop, inner scan loop)
+- OUTPUT: send sorted elements sequentially
+- DONE: wait for reset
+
+**Constraints:**
+- Array size: 4-bit, max 16
+- Data: 8-bit (0-255)
+- Gaps: calculated on-the-fly with integer arithmetic (Q0.0)
+- No floating point; use integer approximation of 1.3*gap = gap + (3*gap)/10, round down.
+- Swap comparator: if data[i] > data[i+gap], swap them in memory.
+- Cycle counts: gap loop max 20 iterations (for 16 elements), inner loop per gap max 16 iterations, total swaps <= 256.
+- Output: stream sorted array, one element per cycle, index from 0 to array_size-1.
+
+**Signals:**
+- All 8-bit values clamp to 0-255
+- Use non-blocking assignments for memory updates
+- Combinational logic for comparisons
+- Sequential for state transitions
+
+**Testing:**
+- Load array via 'addr_in' and 'data_in' cycles
+- Assert start after load_done
+- Monitor 'done' and 'valid' for completion and output
+- Verify sorted order in 'result' stream

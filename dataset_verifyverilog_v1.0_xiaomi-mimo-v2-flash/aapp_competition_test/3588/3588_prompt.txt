@@ -1,0 +1,54 @@
+You are an experienced investor who is investing in multiple companies. At the end of the year you are expected to file your taxes, which requires you to track and report the total number of shares you held during any of your trading days during the year.
+
+The records you have kept are sorted by company: for each company, you have a list of notes stating how many shares of that company you owned on a given day.
+
+Your tax accountant has asked you to produce a list of the total number of shares across all companies you have held on each of the days on which you have traded and recorded your holdings.
+
+-----Verilog Specification-----
+
+**Problem Adaptation:**
+- Max Companies: 5
+- Max Records per company: 10 (for simulation speed)
+- Max Day: 128
+- Max Shares per record: 512 (9 bits)
+- Total unique days: 16
+
+**Interface:**
+Inputs:
+  clk: Clock (rising edge)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  data_in: 9-bit vector (shares or day)
+  load_cmd: 1-bit flag (0=load shares, 1=load day)
+  data_valid: 1-bit input strobe for data_in
+
+Outputs:
+  result: 16-bit total shares for the current sorted day
+  day_out: 8-bit day index
+  output_valid: 1-cycle high when result/day_out are valid
+  done: 1-cycle high when all days processed
+  output_index: 4-bit index of the current output (0-15)
+
+**Logic Description:**
+The module must implement a hardware state machine that processes the stream of input records.
+1.  **Initialization:** Reset state waits for `start`. On `start`, clear internal buffers.
+2.  **Input Phase:** While `start` is high or `data_valid` is high, the module accepts data. The protocol is:
+    *   First `data_valid` with `load_cmd=0`: Stores `data_in` as `Shares`.
+    *   Next `data_valid` with `load_cmd=1`: Stores `data_in` as `Day`.
+    *   These pairs form a record.
+    *   The module accepts up to 10 records (50 in original spec, scaled down).
+    *   Accumulate `Sum_Shares` per `Day`. Use a memory array of 128 slots (128x16 bits).
+3.  **Sorting Phase:** Once input is full or stopped, sort the days.
+    *   Since max days are 16 (indices 0-15), use a simple Bubble Sort.
+    *   Compare `Day[i]` vs `Day[i+1]`. If `Day[i] > Day[i+1]`, swap both `Day` and `Sum_Shares` arrays.
+4.  **Output Phase:**
+    *   Iterate through sorted days (0 to 15). 
+    *   If `Day[i]` is valid (non-zero), output `Sum_Shares[i]` on `result`, `Day[i]` on `day_out`.
+    *   Set `output_valid` high for 1 cycle.
+    *   Increment `output_index`.
+5.  **Completion:** When all valid days are output, set `done` high for 1 cycle.
+
+**Timing Constraints:**
+- Start -> First output: < 256 cycles
+- Reset: 2 cycles minimum
+- Throughput: 1 output per cycle during readout

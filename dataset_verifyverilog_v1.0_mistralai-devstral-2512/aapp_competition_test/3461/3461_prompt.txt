@@ -1,0 +1,51 @@
+Implement a Verilog module to calculate the optimal expected number of hearings to attend.
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start computation.
+  - `n`: 4-bit input (number of hearings, max 16).
+  - `s_in`, `a_in`, `b_in`: 16-bit inputs for the current hearing's start, min, and max length. Valid when `start` is high and for `n` cycles after.
+- Outputs:
+  - `result`: 32-bit fixed-point Q16.16 result (the expected value).
+  - `done`: 1-cycle pulse indicating result is valid.
+
+**Functionality:**
+1. The module must accept `n` hearings sequentially. It stores them in a local array of size 16.
+2. Once all hearings are loaded, it must compute the optimal strategy using Dynamic Programming.
+3. Sort the hearings by start time `s` (ascending). Since the input is sorted by `s`, simple insertion is sufficient, but sorting logic is required if inputs might arrive out of order (assume sorted input for simplicity, but handle `n` correctly).
+4. The DP state `dp[i]` represents the maximum expected hearings starting from hearing `i` (0-indexed).
+5. The recurrence is: For hearing `i` with start `s_i`, duration `[a_i, b_i]`, and end time `e = s_i + t` where `t` is uniform over `[a_i, b_i]`:
+   `dp[i] = 1 + average_over_t( max( dp[k] for all k where s_k >= s_i + t ) )`
+   Since discrete summation is required: `dp[i] = 1 + (1/(b_i - a_i + 1)) * sum_{t=a_i}^{b_i} (max_next_expected(t))`
+   `max_next_expected(t)` is the value of `dp[j]` where `j` is the smallest index such that `s_j >= s_i + t`. If no such `j`, value is 0.
+6. Use fixed-point arithmetic (Q16.16). `1` is represented as `1 << 16` (65536).
+7. Calculations must be pipelined or iterative to fit timing. Iterate `i` from `n-1` down to `0`. For each `i`, iterate `t` from `a_i` to `b_i` (max range 256 for hardware feasibility).
+8. To find the next hearing index for a specific end time `t`, perform a binary search or linear scan on the sorted start times array (max 16 items, linear scan acceptable).
+9. `done` signal asserts when calculation is complete. `result` holds the Q16.16 value.
+
+**Constraints (Scaled):**
+- `n <= 16`
+- Time coordinates `s`, `a`, `b` scaled to 8-bit (max 256) or 16-bit (max 65535). If original values > 65535, divide by 16 before input.
+- Duration `(b-a)` must be bounded (e.g., <= 256) to prevent unbounded loops in hardware.
+- Store `s`, `a`, `b` for `n` hearings.
+
+**Example Logic Flow:**
+- Receive `n`.
+- Receive `n` triplets `(s, a, b)`.
+- Store in arrays `s_mem[0:15]`, `a_mem[0:15]`, `b_mem[0:15]`.
+- Initialize `dp[0:16]` to 0.
+- Loop `i` from `n-1` downto `0`:
+  - Calculate `sum_exp = 0`.
+  - Loop `t` from `a_mem[i]` to `b_mem[i]`:
+    - Calculate `end_time = s_mem[i] + t`.
+    - Find `next_idx`: first `k` where `s_mem[k] >= end_time` (or 0 if none).
+    - `sum_exp += dp[next_idx]`.
+  - `dp[i] = 1 << 16 + (sum_exp / (b_mem[i] - a_mem[i] + 1))` (Fixed-point division).
+- Output `dp[0]` as `result`.
+
+**Timing:**
+- `start` triggers loading sequence (wait for `n` cycles of data).
+- Computation phase triggers after loading.
+- Total cycles: `n + n * (max_duration)` approx. Ensure `max_cycles < 5000`.

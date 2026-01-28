@@ -1,0 +1,49 @@
+Implement a hardware module that processes an array of integers to convert valid digits (1-9) into their English word names.
+
+**Algorithm:**
+1. Input: Array of N integers (N ≤ 16)
+2. Filter: Keep only integers where value ∈ [1, 9] (ignore negatives, zero, >9)
+3. Sort: Ascending order of filtered values
+4. Reverse: Reverse the sorted array
+5. Map: Convert each digit 1-9 to corresponding name ("One", "Two", ..., "Nine")
+
+**Verilog Interface:**
+Inputs:
+  - clk: rising edge clock
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to start processing
+  - arr[15:0]: 16x8-bit input array (each element is 8-bit signed integer)
+  - len: 4-bit input (number of elements in arr, 0-15)
+
+Outputs:
+  - result[0:15]: 16x64-bit output array (each entry is 8-byte ASCII string: "One", "Two", etc.)
+  - done: 1-cycle pulse when processing complete
+  - result_len: 4-bit output (number of valid entries in result array)
+
+**Specifications:**
+- Data width: 8-bit signed integers, 64-bit fixed strings
+- Max array size: 16 elements
+- Use sorting network (odd-even transposition sort) for deterministic timing
+- Implement filtering logic before sorting
+- Use lookup table (LUT) for digit-to-name mapping
+- Pipeline stages: Filter → Sort → Reverse → Map
+- Timing: start->done within 256 clock cycles
+- Reset: done=0, result_len=0, all outputs 0
+
+**String Encoding (ASCII, 8-byte fixed width):**
+- "One\0\0\0\0\0"  = 0x4F6E650000000000
+- "Two\0\0\0\0\0"  = 0x54776F0000000000
+- "Three\0\0\0"    = 0x5468726565000000
+- "Four\0\0\0\0"   = 0x466F757200000000
+- "Five\0\0\0\0"   = 0x4669766500000000
+- "Six\0\0\0\0\0"  = 0x5369780000000000
+- "Seven\0\0\0"    = 0x536576656E000000
+- "Eight\0\0\0"    = 0x4569676874000000
+- "Nine\0\0\0\0"   = 0x4E696E6500000000
+
+**Implementation Requirements:**
+- Use FSM for control logic
+- Implement odd-even transposition sort network (16 stages max)
+- Filtering: combinatorial priority encoder to compact valid digits
+- LUT mapping: case statement for digit 1-9
+- No dynamic memory allocation - use fixed-size buffers

@@ -1,0 +1,20 @@
+Implement a Verilog module that computes the area of an equilateral triangle carpet given three distances from an interior point to the vertices. The core algorithm uses the formula: For a point inside an equilateral triangle with distances a, b, c to vertices, and side length s, the relation is 3*(a^4 + b^4 + c^4 + s^4) = (a^2 + b^2 + c^2 + s^2)^2. Solve for s^2 using iterative approximation (binary search) on fixed-point values. Inputs are 8-bit unsigned integers (scaled 0-100, resolution 0.39 units). The area of the equilateral triangle is (sqrt(3)/4) * s^2. Output is a 32-bit fixed-point Q16.16 number (integer part in upper 16 bits, fractional in lower 16 bits). If no valid triangle exists (distances violate triangle inequalities), output -1 (0xFFFFFFFF).
+
+Interface:
+Inputs:
+  clk: clock, rising edge
+  rst_n: active-low async reset
+  start: 1-cycle start pulse
+  a_in, b_in, c_in: 8-bit unsigned (scaled 0-100)
+Outputs:
+  result: 32-bit signed fixed-point Q16.16 (valid when done=1, or 0xFFFFFFFF for error)
+  done: 1-cycle pulse indicating result valid
+
+Behavior:
+1. On start, latch inputs a_in, b_in, c_in.
+2. Scale inputs to fixed-point: a_fp = a_in * 256 (Q8.0 to Q16.16 shift).
+3. Check validity: A valid interior point requires a + b + c > side length * sqrt(3) and triangle inequalities for distances? Actually, check if a^2 + b^2 + c^2 >= s^2 * something. Simpler: Check if (a^2 + b^2 + c^2) is within range such that s^2 is positive. Perform binary search for s^2 in range [0, 10000*256^2] (scaled). Iterate 16 times for convergence.
+4. Compute candidate area = (sqrt(3)/4) * s^2. Use precomputed sqrt(3)/4 in Q16.16 (approx 0.4330127 * 65536 = 28378).
+5. If solution invalid (s^2 not positive or check fails), output -1.
+6. Timing: start to done within 1000 cycles.
+7. Reset: Internal state clears, done=0, result=0.

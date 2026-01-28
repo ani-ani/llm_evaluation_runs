@@ -1,0 +1,57 @@
+Design a Verilog module that solves the battery allocation problem for the 'Power Supply' challenge. The goal is to find the minimal difference d such that we can assign 2*n*k batteries to n machines (2 chips per machine, k batteries per chip) where the difference in power outputs (minimum of k batteries) for chips in each machine is ≤ d.
+
+Simplifications for Hardware Implementation:
+- Scale power values: Use Q16.16 fixed-point representation or 32-bit integers after mapping to range [0, 1023]
+- n ≤ 4 (machines), k ≤ 4 (batteries per chip) for tractability
+- Total batteries ≤ 32 (2*4*4)
+- Sort input batteries numerically
+- Use a greedy pairing approach with binary search on d
+
+Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset (min 2 cycles)
+  start: 1-cycle pulse to start computation
+  n: 4-bit (number of machines, 1-4)
+  k: 4-bit (batteries per chip, 1-4)
+  batteries[0:31]: 32-bit array of power outputs (scaled to 0-1023)
+
+Outputs:
+  result: 16-bit (minimal d value)
+  done: 1-cycle pulse when computation completes
+  valid: 1-bit (0=invalid, 1=valid result)
+
+Timing Requirements:
+- Reset: done=0, valid=0, result=0 (2 cycles min)
+- Computation: start->done within 5000 cycles
+- Clock frequency: assume 100 MHz (10ns period)
+
+Algorithm Implementation:
+1. Input Stage: Read 2*n*k battery values into registers
+2. Sort Stage: Implement sorting network (bitonic or bubble) for up to 32 elements
+3. Binary Search Stage: Search d in range [0, max_power_diff] with 10 iterations
+4. Allocation Check: For each d, verify if batteries can be paired into n machines with max diff d
+   - Strategy: After sorting, try to pair adjacent batteries and check if we can form n valid pairs
+5. Output: Minimal d that satisfies condition
+
+Signal Widths:
+- power values: 32-bit (after scaling, max 1023)
+- d: 16-bit
+- index counters: 5-bit (0-31)
+- machine counter: 3-bit (0-4)
+- Iteration counter: 4-bit (0-15)
+
+Control Flow:
+- FSM with states: IDLE, READ_INPUT, SORT, BINARY_SEARCH, ALLOC_CHECK, DONE
+- ALLOC_CHECK is called repeatedly with different d values
+- Use pipeline registers for sorting comparisons
+
+Edge Cases:
+- n=1, k=1: single chip per machine
+- All batteries same power: d=0
+- All batteries different: compute minimal pairing
+
+Verification Note:
+- Input batteries must be scaled to 0-1023 range (Q16.16) before synthesis
+- The algorithm assumes batteries are sorted; sorting network must be correct
+- Binary search converges within 10 iterations for 16-bit values

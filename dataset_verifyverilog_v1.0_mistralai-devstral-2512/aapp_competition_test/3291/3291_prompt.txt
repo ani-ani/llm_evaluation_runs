@@ -1,0 +1,40 @@
+Design a Verilog module `ratio_splitter_network` that computes the interconnections for a network of splitters.
+
+**Problem Abstraction:**
+Given fixed ratio `a:b` (denoted as `A:B`) and target ratio `c:d` (denoted as `C:D`), determine the connection graph of at most 200 nodes (splitters) such that the global input connected to Node 0 distributes output in ratio `C:D` to global outputs -1 and -2.
+
+**Core Logic (Euclidean Algorithm):**
+1. Normalize `A:B` and `C:D` by dividing by `gcd(a,b)` and `gcd(c,d)`.
+2. Perform Euclidean-like reduction: 
+   - If `C >= A`: Subtract `A` from `C`, add a node that routes `A/(A+B)` to a sub-splitter handling `C-A:D`.
+   - Else: Subtract `B` from `D`, add a node that routes `B/(A+B)` to a sub-splitter handling `C:D-B`.
+3. Map the recursive solution to a linear array of nodes (0 to N-1).
+4. Output connections: `l_i` (left child) and `r_i` (right child). Node 0 is input.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous control.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `a_in [31:0]`, `b_in [31:0]`: Input ratio integers.
+  - `c_in [31:0]`, `d_in [31:0]`: Target ratio integers.
+- **Outputs:**
+  - `done`: 1-cycle pulse when solution is ready.
+  - `node_count [7:0]`: Number of splitters used (0-200).
+  - `left_child [7:0]`: Index of left child for current node.
+  - `right_child [7:0]`: Index of right child for current node.
+  - `output_valid`: High when `left_child` and `right_child` are valid for current node.
+  - `current_node [7:0]`: Index of node for which `left_child`/`right_child` are valid.
+
+**Implementation Details:**
+- Use a State Machine (FSM) to implement the Euclidean algorithm.
+- Use 32-bit registers for `C` and `D` accumulators.
+- Use a stack or counter to track node creation depth (max 200).
+- Clock frequency: 100 MHz. Execution time must complete within 20,000 cycles (for large inputs).
+
+**Output Format:**
+1. The system streams out the connection list. Monitor `output_valid`. When high, log `current_node`, `left_child`, `right_child`.
+2. When `done` is high, `node_count` holds the total number of nodes.
+
+**Constraint:**
+- Internal logic must handle 32-bit inputs.
+- No dynamic memory allocation; use static arrays for node storage.

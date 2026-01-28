@@ -1,0 +1,60 @@
+You are an AI assistant for HDL code generation. Convert the following Python problem into a Verilog module specification.
+
+**Problem**: Convert a list of GPA scores (floats 0.0 to 4.0) into letter grades based on thresholds. The table is:
+- 4.0 -> 'A+'
+- > 3.7 -> 'A'
+- > 3.3 -> 'A-'
+- > 3.0 -> 'B+'
+- > 2.7 -> 'B'
+- > 2.3 -> 'B-'
+- > 2.0 -> 'C+'
+- > 1.7 -> 'C'
+- > 1.3 -> 'C-'
+- > 1.0 -> 'D+'
+- > 0.7 -> 'D'
+- > 0.0 -> 'D-'
+- == 0.0 -> 'E'
+
+**Adaptation**: 
+1. Use fixed-point Q8.8 (8 integer, 8 fractional) for internal representation. Multiplied by 256.
+2. Input GPA values must be scaled to Q8.8 integers before input.
+3. Support up to 8 grades per cycle (array size limit).
+4. Letter grades encoded as 3-bit values: A+=0, A=1, A-=2, B+=3, B=4, B-=5, C+=6, C=7, C-=8, D+=9, D=10, D=11, D-=12, E=13. Output as 4-bit packed array (2 grades per 8-bit byte, or 4 grades per 16-bit word). 
+
+**Module Interface**:
+- **Inputs**:
+  - `clk`: System clock, rising edge active.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start processing.
+  - `gpa_array`: 8x8-bit array (packed as 64-bit vector). Each byte represents a Q8.8 GPA value (max 4.0 = 1024).
+  - `num_grades`: 3-bit (0-7) indicating number of active grades in array.
+- **Outputs**:
+  - `letter_grades`: 32-bit packed vector (each 4 bits per grade, up to 8 grades). Index 0 is grade 0.
+  - `done`: 1-cycle pulse when calculation is complete.
+
+**Behavior**:
+1. On `start` pulse, latch inputs.
+2. Process sequentially for `num_grades` cycles (max 8).
+3. For each GPA (Q8.8 integer):
+   - Compare to thresholds (256 * value):
+     - == 1024 (4.0): A+
+     - > 947 (3.7): A
+     - > 845 (3.3): A-
+     - > 768 (3.0): B+
+     - > 691 (2.7): B
+     - > 589 (2.3): B-
+     - > 512 (2.0): C+
+     - > 435 (1.7): C
+     - > 333 (1.3): C-
+     - > 256 (1.0): D+
+     - > 180 (0.7): D
+     - > 0: D-
+     - == 0: E
+   - Pack 4-bit code into `letter_grades` vector at position (i*4).
+4. Set `done` when all processed.
+
+**Constraints**:
+- Latency: <= 16 cycles.
+- Use combinational logic for threshold comparisons.
+- Reset initializes all outputs to 0.
+- Clock period: 10ns.

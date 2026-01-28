@@ -1,0 +1,45 @@
+Implement a Verilog module that counts subsets of a digit string whose digits can be rearranged (or subset) to form a number divisible by 3, modulo 10^9+7.
+
+**Core Logic**: 
+- Input is a string of digits (0-9). 
+- A subset is 'valid' if its elements sum to a multiple of 3 (necessary and sufficient condition for divisibility by 3 without leading zeros, provided the subset is non-empty and contains at least one non-zero digit).
+- Special handling for the digit '0': A subset containing only the digit '0' is valid (forms number 0, which is divisible by 3).
+- Any subset containing at least one non-zero digit and a sum divisible by 3 is valid.
+- Empty set is invalid.
+
+**Constraints & Scaling**:
+- Input string length N is reduced to N' = 16 (max 16 digits).
+- Modulo M = 10^9 + 7.
+- Use 32-bit arithmetic for modulo operations.
+
+**Module Interface**:
+- `clk`: System clock (posedge active).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle high pulse to start processing.
+- `data_in`: 8-bit bus. Transmits the digit string (ASCII '0'-'9') plus a null terminator. For N' < 16, pad with 0x00.
+- `len`: 4-bit input specifying actual digit count (1-16).
+- `result`: 32-bit output holding the count modulo 10^9+7.
+- `done`: 1-cycle high pulse when result is valid.
+
+**Implementation Details**:
+1. **State Machine**: Idle -> Load -> Compute -> Output.
+2. **Storage**: `digits[0:15]` array (4-bit each, stores integer 0-9). `count_mod3[0:2]` array (32-bit each) tracking number of valid subsets ending with sum % 3 == 0, 1, 2.
+3. **Algorithm**:
+   - Initialize `count_mod3[0] = 0`, `count_mod3[1] = 0`, `count_mod3[2] = 0`.
+   - For each digit `d` (0-9):
+     - Calculate `d % 3`.
+     - Create temporary new counts (copy current counts).
+     - If `d == 0`: The subset {0} is valid. Increment `new_counts[0]` by 1 (modulo M).
+     - For each existing remainder `r` in {0,1,2}:
+       - `new_rem = (r + d) % 3`
+       - `new_counts[new_rem] = (new_counts[new_rem] + count_mod3[r]) % M`
+     - Update `count_mod3`.
+   - Final result is `count_mod3[0]`.
+4. **Timing**: Process one digit per clock cycle. Total cycles = N' + latency overhead (approx 20 cycles).
+5. **Arithmetic**: All additions must be modulo 10^9+7. Since intermediate values are sums of counts, use 32-bit registers.
+
+**Verilog Spec Constraints**:
+- Max 16 digits.
+- 32-bit result width.
+- No external memory interfaces.
+- Synchronous logic only.

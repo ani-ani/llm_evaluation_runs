@@ -1,0 +1,76 @@
+Design a Verilog module that finds the minimum number of steps to reach a palindrome for a k-wheel counter (1 ≤ k ≤ 16). Each wheel is a digit 0-9. Incrementing a wheel advances it by 1 (9→0 carries to left). Starting from the current digit configuration, find the minimum number of increments needed to reach any palindrome configuration (including leading zeros).
+
+Interface:
+- Inputs: clk (rising edge), rst_n (active-low), start (1-cycle pulse)
+- Input array: digits_in[0:15] where each is 4-bit (0-9). Index 0 is most significant digit (leftmost).
+- Output: result[15:0] (16-bit unsigned), done (1-cycle pulse)
+- Timing: After start pulse, computation completes within 1000 cycles, result is valid when done=1.
+- Reset: On reset (rst_n=0), result=0, done=0.
+
+Algorithm Specification:
+1. The counter starts at the current digit values.
+2. A configuration is a palindrome if digits_in[i] == digits_in[k-1-i] for all i.
+3. To increment: choose a wheel position p (0 ≤ p < k) and increment it.
+   - Increment means adding 1: if digit[p] < 9, digit[p] += 1.
+   - If digit[p] == 9, it wraps to 0, and we must carry to digit[p-1] (if p > 0).
+   - Carrying continues leftward until no wrap or we reach position 0.
+4. Find the minimum number of increments (steps) from the initial configuration to ANY palindrome configuration.
+
+Key Constraints for Hardware:
+- Assume k = number of digits in the input (provided via the array).
+- Since k ≤ 16, we can enumerate possible palindrome targets reachable via a specific number of steps.
+- However, exhaustive BFS is impossible in hardware. Use a heuristic or bounded approach.
+- Simplification: The minimal steps are often small (examples show ≤54 for k=40, but here k≤16). We can iterate from steps = 0 upwards, checking if a palindrome is reachable in that many steps.
+- For a given step count S, we can generate reachable configurations. Since 10^k is huge, we need a different approach.
+- Alternative: The problem is essentially finding the distance to the nearest palindrome in a specific directed graph. In hardware, we can use a loop over possible target palindromes.
+- Heuristic: Iterate target palindrome values from the current value upwards (considering the counter as a number). For each target palindrome, calculate the number of increments required to reach it from the current value.
+  - The number of increments to go from A to B is (B - A) mod 10^k. Note that the counter wraps.
+  - Since we are looking for the minimum steps, we need to check the next few palindromes in the cycle.
+- Efficient approach: 
+  1. Convert digits_in to a single integer value (0 to 10^16 - 1).
+  2. Generate palindromes in increasing order of value starting from the current value.
+  3. For each palindrome, compute distance = (palindrome_value - current_value) mod 10^k.
+  4. Return the first distance that is non-negative (or handle wrap).
+  5. Since the cycle length is 10^k, and palindromes are sparse, we only need to check a few hundred next palindromes at most.
+
+Implementation Plan:
+- Store current digits in a register array.
+- Use a state machine:
+  IDLE -> PAL_CHECK -> UPDATE -> DONE
+- In PAL_CHECK state, generate the next palindrome from the current digit array.
+- Calculate the value of the current configuration and the palindrome.
+- Calculate the difference. Store minimum.
+- Loop until we find the minimum distance.
+- Since k is small (≤16), we can implement a loop that generates palindromes by manipulating digits.
+
+Verification:
+- Input: digits_in (array of 4-bit values).
+- Output: minimum steps.
+
+Examples:
+- Input 0 -> Output 0
+- Input 610 -> Output 4 (610 -> 611 -> 612 -> 613 -> 614? No, example says 610 -> 010 in 4 steps by incrementing 6 four times: 610->710->810->910->010. Wait, 010 is a palindrome? 0 1 0 -> reads same forwards and backwards. Yes. Distance: (10 - 610) mod 1000 = -600 mod 1000 = 400? No, wait. 610 -> 710 (1 step), 710->810 (2), 810->910 (3), 910->010 (4). Value 10. Distance 4.
+- Input 29998 -> Output 5.
+
+Detailed Algorithm for Module:
+1. Parse input digits into an array D[0:k-1].
+2. Convert D to integer CurrentVal (0 to 10^16-1).
+3. Initialize MinSteps = infinity.
+4. Generate next palindrome P starting from CurrentVal.
+   - To generate next palindrome: take first half of digits, mirror to second half. Check if result >= CurrentVal.
+   - If result < CurrentVal, increment the middle (or higher half) and mirror again.
+5. Calculate steps = (P - CurrentVal) mod 10^k. Note: if P < CurrentVal, P wraps, so steps = P + (10^k - CurrentVal).
+6. Update MinSteps = min(MinSteps, steps).
+7. Repeat for a bounded number of iterations (e.g., 1000), which is sufficient for k<=16.
+8. Output MinSteps.
+
+Verilog Interface:
+- Module: PalindromeCounter
+- Parameters: K = 16 (max digits)
+- Inputs:
+  - clk, rst_n, start
+  - digits_in [0:15] (4-bit vectors)
+- Outputs:
+  - result (16-bit)
+  - done (1-bit)
+- Internal: State machine, counter registers, temporary registers for calculation.

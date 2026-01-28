@@ -1,0 +1,43 @@
+Design a Verilog module that converts polar coordinates to rectangular coordinates using fixed-point arithmetic and lookup tables.
+
+**Interface Requirements:**
+- Inputs (16-bit Q16.16 fixed-point):
+  * polar_mag: magnitude r (0.0 to 65535.0)
+  * polar_phi: angle φ in radians (0 to 2π, represented as 0 to 65536)
+- Outputs (16-bit Q16.16 fixed-point):
+  * rect_x: real part x
+  * rect_y: imaginary part y
+- Control: start pulse (1 cycle), rst_n (active low), clk
+- Status: done (1 cycle when conversion complete)
+
+**Implementation Strategy:**
+1. Use Q16.16 fixed-point (16 integer, 16 fractional bits)
+2. Convert polar to rectangular: x = r * cos(φ), y = r * sin(φ)
+3. Implement sin/cos using 256-entry lookup tables (0 to π/2)
+4. Use quadrant mapping to compute full 360° range
+5. Use 32-bit intermediate multiplication (r * cos_val), then truncate to 16-bit
+6. Pipeline: 1 cycle for quadrant detection, 8 cycles for table lookup, 4 cycles for multiplication
+7. Total latency: ~16 cycles
+
+**Verilog Spec Details:**
+- Module name: polar_to_rect
+- Clock frequency: Assume 100MHz
+- Data widths: 16-bit input/output, 32-bit internal for multiplication
+- Lookup table: Initialize with 256 values for sin(0..π/2) in Q16.16 format
+- Quadrant handling:
+  * Q1 (0 to π/2): φ unchanged
+  * Q2 (π/2 to π): φ = π - φ
+  * Q3 (π to 3π/2): φ = φ - π
+  * Q4 (3π/2 to 2π): φ = 2π - φ
+- Use sign bit from quadrant for final x,y signs
+- Reset: done=0, outputs=0, state machine returns to IDLE
+- Timing: start to done within 16-20 cycles
+
+**Important:**
+- No floating point; use integer arithmetic only
+- Use lookup tables with pre-calculated values
+- Handle quadrant symmetry properly
+- Clamp outputs to 16-bit range
+- Provide a ready signal if needed
+
+Write only the module specification, not the implementation code.

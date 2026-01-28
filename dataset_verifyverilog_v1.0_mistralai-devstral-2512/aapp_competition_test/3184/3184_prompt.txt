@@ -1,0 +1,29 @@
+Design a Verilog module that solves a circular interval covering problem on a polygon with walls labeled 1 to N (1 <= N <= 16). The module receives N (number of walls), K (number of cameras), and K pairs of (start, end) wall indices (1-based, inclusive, wrapping allowed if start > end). Output the minimum number of cameras needed to cover all walls 1 to N. If impossible, output 0 (interpreted as impossible by the testbench).
+
+Interface Specification:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to initiate calculation
+  - n_in: 4-bit unsigned integer (N)
+  - k_in: 4-bit unsigned integer (K)
+  - cam_start_in[3:0]: 16 possible camera slots, each 4-bit (1-16)
+  - cam_end_in[3:0]: 16 possible camera slots, each 4-bit (1-16)
+  - cam_valid_in[15:0]: 16-bit mask indicating which camera slots are valid (1 if valid)
+- Outputs:
+  - result: 4-bit unsigned integer (min cameras, or 0 if impossible)
+  - done: 1-cycle pulse when valid result is ready
+  - error: 1-cycle pulse if input constraints violated (e.g., N<3)
+
+Constraints:
+- N is at least 3, max 16.
+- K is at most 16.
+- Wall indices are 1-based.
+- If start > end, it covers [start, N] and [1, end] (wrapping).
+- The module must be combinatorial or sequential with a max cycle count of 500.
+- State machine approach: Iterate through all possible subsets of cameras (0 to 2^K-1) since K<=16, check coverage, track minimum.
+- Coverage check: Create a 16-bit shift register (circular) representing walls. For each camera, set bits in the range.
+- Since N<=16, the 'circle' logic wraps simply. If start <= end: set bits start-1 to end-1. If start > end: set bits start-1 to N-1 and 0 to end-1.
+
+Implementation Hint:
+Use a Finite State Machine (FSM) to iterate through the power set of cameras (2^16 iterations). For each subset, generate a coverage bitmask. If the bitmask covers all N walls (i.e., lower N bits are all 1s), update the minimum count. Output the minimum found.

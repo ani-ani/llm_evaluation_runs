@@ -1,0 +1,49 @@
+Design a Verilog module that solves a simplified lifeguard positioning problem. Given up to 8 swimmers with 8-bit integer coordinates (range -128 to 127), find two 16-bit integer positions for the lifeguards such that the swimmers are divided into two equal groups (plus at most one shared swimmer) based on Manhattan distance comparison.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous control
+  - `start`: 1-cycle pulse to start computation
+  - `swimmer_x[0:7]`, `swimmer_y[0:7]`: 8 arrays of 8-bit signed integers (swimmer coordinates). Unused entries should be treated as (-128, -128) or ignored.
+  - `num_swimmers`: 4-bit integer (1-8, though logic handles up to 8)
+- **Outputs:**
+  - `lifeguard1_x`, `lifeguard1_y`: 16-bit signed integers
+  - `lifeguard2_x`, `lifeguard2_y`: 16-bit signed integers
+  - `done`: 1-cycle pulse indicating valid results are ready
+
+**Algorithm Logic:**
+1.  **Simplification:** We will fix `lifeguard1` at a specific coordinate (e.g., `(0, 0)`) to reduce complexity. 
+2.  **Positioning:** `lifeguard2` will be placed at a coordinate `(X, Y)` such that exactly half of the swimmers are closer to `lifeguard2` than to `lifeguard1`. 
+3.  **Implementation Strategy:**
+    -   Calculate Manhattan distance from all swimmers to `(0, 0)`: `d1[i] = |x[i]| + |y[i]|`.
+    -   We need to find `X` and `Y` such that the Manhattan distance `d2[i] = |x[i] - X| + |y[i] - Y|` satisfies the count condition.
+    -   **Hardware Constraint:** To avoid complex arithmetic in a single cycle, we can use a heuristic or iterative search. A simple valid heuristic for many inputs is placing lifeguard2 at a large offset. 
+    -   **Simplified Logic:** 
+        -   Sort swimmers by their distance to origin (0,0). 
+        -   Select the median swimmer index `m`.
+        -   Set `lifeguard1` at `(0, 0)`.
+        -   Set `lifeguard2` at `(swimmer_x[m] + 1, swimmer_y[m] + 1)` or a large offset like `(100, 100)`. 
+        -   **Better Deterministic Logic:** 
+            -   Compute sum of X and Y coordinates of all swimmers: `sum_x`, `sum_y`.
+            -   Set `lifeguard1` at `(0, 0)`.
+            -   Set `lifeguard2` at `(sum_x, sum_y)` or `(sum_x * 2, sum_y * 2)`.
+        -   **Verilog Implementation Detail:** Since full sorting is complex for 8 elements, we will implement a comparator tree or iterative bubble sort to find the median distance or simply iterate through potential offsets in a small range if `start` remains high.
+        
+    -   **Accepted Simplified Logic:**
+        1.  Place Lifeguard 1 at `(0, 0)`.
+        2.  Place Lifeguard 2 at `(1000, 1000)`. 
+        3.  This almost guarantees separation for random points, but to be exact: 
+        4.  Calculate `d1[i]` and `d2[i]` for all `i`.
+        5.  Count how many `d2[i] < d1[i]`. 
+        6.  If count is not equal to `n/2`, adjust `lifeguard2` position iteratively (e.g., shift X by 100) until the condition is met or timeout.
+
+**Timing:**
+- Start pulse initiates the state machine.
+- State machine reads inputs, calculates distances, and adjusts positions.
+- Operation must complete within 200 cycles.
+- `done` goes high for 1 cycle when valid positions are found.
+
+**Output Range:**
+- Input coordinates are 8-bit (-128 to 127).
+- Output coordinates must fit within 16-bit signed integers (-32768 to 32767).
+- Use fixed-point logic for distances if necessary, but Manhattan distance on 8-bit inputs fits in 9 bits, so 16 bits is sufficient for intermediate storage.

@@ -1,0 +1,51 @@
+Verilog HDL Module Specification: Remove Uppercase Characters
+
+Problem: Implement a module that removes all uppercase English letters (A-Z) from an input string. Lowercase letters and other characters remain unchanged.
+
+Interface:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start processing
+  - input_string[127:0]: 128-bit vector representing 16 ASCII characters (8 bits each). Input string is padded with null bytes (0x00) to fill 16 characters.
+  - input_length[3:0]: Number of valid characters in input_string (0-16).
+
+- Outputs:
+  - output_string[127:0]: 128-bit vector representing processed string (up to 16 chars). Lowercase and other chars are shifted left, removed uppercase chars result in empty slots padded with 0x00 at the end.
+  - output_length[3:0]: Number of valid characters in output_string.
+  - done: 1-cycle pulse when processing is complete. Result is valid when done=1.
+
+Behavior:
+1. On start pulse, begin sequential scan of input_string from index 0 to (input_length-1).
+2. For each character:
+   - Check if ASCII value is in range 65-90 (A-Z).
+   - If NOT uppercase: Copy to next position in output buffer.
+   - If uppercase: Skip character (do not copy).
+3. After scanning all characters, set output_length to count of copied characters.
+4. Pad any remaining positions in output_string with 0x00.
+5. Pulse done for 1 clock cycle.
+
+Implementation Constraints:
+- Sequential logic, sequential scan.
+- Use a loop with maximum 16 iterations (bounded by input_length).
+- Character comparison: Check if byte >= 65 AND byte <= 90.
+- Output buffer: Static 16-byte register array.
+- Latency: Acceptable up to 100 cycles (max 16 cycles for scan + overhead).
+- Reset: done=0, output_length=0, output_string=0.
+
+Timing:
+- start asserted for 1 cycle when rst_n=1.
+- done asserted for 1 cycle approximately (input_length * 4) cycles later.
+- When done=1, read output_string and output_length.
+
+Module Declaration:
+module remove_uppercase (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [127:0] input_string,
+    input wire [3:0] input_length,
+    output reg [127:0] output_string,
+    output reg [3:0] output_length,
+    output reg done
+);

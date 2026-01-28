@@ -1,0 +1,38 @@
+Design a Verilog module that calculates cumulative depth of nodes inserted into a Binary Search Tree (BST) from a sequence of distinct integers. Scale constraints: N≤16, values 1-256 (8-bit), depth sum fits in 16 bits.
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset (min 2 cycles)
+  start: 1-cycle pulse to trigger insertion of next value
+  val[7:0]: 8-bit value to insert (valid when start=1)
+Outputs:
+  result[15:0]: cumulative depth counter after insertion
+  done: 1-cycle pulse when insertion complete and result valid
+
+Algorithm (iterative, hardware-friendly):
+1. Maintain BST structure in internal registers/BRAM (max 16 nodes)
+2. Each node stores: value (8-bit), left_index (4-bit), right_index (4-bit)
+3. Use free_list to track available node slots
+4. On start pulse:
+   - If tree empty (root_idx=0): place value at root, depth=0
+   - Else: traverse from root
+     * Compare current node value with input val
+     * Move left if val < node.val
+     * Move right if val > node.val
+     * Stop when child pointer is 0 (empty)
+   - Allocate new node from free_list
+   - Update parent's left/right pointer
+   - Compute depth (traversal steps)
+   - Add depth to cumulative counter (result)
+   - Set done=1 for one cycle
+
+Timing:
+- start->done: within 16 cycles (one per tree level max)
+- Reset: result=0, done=0, tree empty
+
+Implementation notes:
+- Use 4-bit indices (supports 16 nodes max)
+- 8-bit values, 16-bit result
+- Combinational comparison for traversal
+- Registered outputs for timing
+- State machine: IDLE -> TRAVERSE -> ALLOCATE -> UPDATE -> DONE

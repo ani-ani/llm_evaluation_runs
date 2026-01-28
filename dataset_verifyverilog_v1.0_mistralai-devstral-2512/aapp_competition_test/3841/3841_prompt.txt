@@ -1,0 +1,29 @@
+Implement a Verilog module that computes the coefficients of a polynomial f(x) with non-negative integer coefficients < k such that f(x) ≡ p (mod (x+k)). This is equivalent to representing p in base (-k) with digits in [0, k-1].
+
+Algorithm:
+1. Initialize coefficient array `coeff` (max 32 elements), `idx = 0`, `current = p` (input).
+2. While `current != 0`:
+   - Compute remainder `rem = current % k`. Since Verilog's `%` can yield negative results for negative numbers, we must handle it carefully. We will use the property that for any integer `a`, `(a % k + k) % k` gives a non-negative remainder in `[0, k-1]` in Python, but in Verilog with 2's complement arithmetic for negative numbers, we need to compute `rem` correctly.
+   - In Verilog, for `current` which can be negative, we calculate `rem = current % k`. The result will be in `[-(k-1), k-1]`. We then adjust: if `rem < 0`, set `rem = rem + k`.
+   - Store `rem` in `coeff[idx]`.
+   - Update `current = (current - rem) / (-k)`. In integer division, `(current - rem) / (-k)` is equivalent to `-(current - rem) / k`. Since `current - rem` is divisible by `k`, we can compute `current = -((current - rem) / k)`.
+   - Increment `idx`.
+3. If `current == 0` and `idx > 0`, we have a solution. Output the coefficients `coeff[0]` to `coeff[idx-1]`.
+4. If `current` does not reach 0 within 32 iterations (or some max bound), output -1.
+
+Inputs:
+  clk: rising edge | rst_n: active-low sync reset
+  start: 1-cycle pulse | p[63:0]: input integer (1 to 10^18, fits in 64 bits) | k[15:0]: base (2 to 2000)
+Outputs:
+  coeff[0:31]: 32x16-bit array (coefficients a_0, a_1, ...)
+  len[5:0]: degree + 1 (0-32)
+  done: 1-cycle pulse when computation finishes
+  error: 1-bit flag set if no solution found (e.g., iteration limit reached)
+Timing: start->done within 200 cycles
+Reset: All outputs zeroed, done=0, error=0
+
+Notes:
+- Use 64-bit arithmetic for `current` to handle p up to 10^18.
+- k is up to 2000, so fits in 16 bits. Coefficients are < k, so 16 bits is sufficient.
+- Iteration limit: 32 (sufficient for 10^18 with k >= 2).
+- The logic must correctly handle the sign of `current` and the modulo operation in 2's complement.

@@ -1,0 +1,31 @@
+Design a Verilog module that generates a permutation of numbers 1..N where the longest monotone subsequence (increasing or decreasing) has length exactly K. For N and K where a solution exists, output the sequence one number per cycle. The algorithm is: if K=1 and N>1, no solution; if K=N, output 1,2,3,...,N; otherwise, partition numbers into K blocks (or K-1 blocks of decreasing sequences), where each block is a decreasing sequence, and blocks are ordered such that any increasing sequence can take at most one number from each block. Specifically, use the construction: create ceil(N/K) or similar blocks, output each block in decreasing order. For the classic solution, output groups: first group has numbers 1..(N/K), second group has (N/K+1)..(2N/K), etc., but each group in reverse order.
+
+Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset
+  start: 1-cycle pulse to start generation
+  N[23:0]: input N (max 1,000,000, uses 20 bits)
+  K[19:0]: input K (max N, uses 20 bits)
+Outputs:
+  data[15:0]: next number in sequence (1 to N, max 16 bits)
+  valid: 1 when data is valid (asserted for each number output)
+  done: 1-cycle pulse when entire sequence of N numbers is output
+  error: 1-cycle pulse if impossible (K=1 and N>1)
+
+Behavior:
+- On start, check if (K==1 && N>1) -> error=1, done=1, output nothing
+- Else if K==N -> output 1,2,3,...,N in order (valid=1 each cycle, done after N cycles)
+- Else: compute block_size = ceil(N/K). Output blocks in order, each block in decreasing order.
+  For block i (0-indexed): start = i*block_size + 1, end = min((i+1)*block_size, N)
+  Output numbers from end down to start.
+- Total output cycles: N (when valid) plus some idle cycles.
+- Timing: start->first valid within 10 cycles, then one number per cycle.
+- Reset: all outputs 0, state idle.
+- Use internal counters and state machine (5 states: idle, check, generate_block, output_block, finish).
+- Use block size calculation: block_size = (N + K - 1) / K (integer ceil).
+- Use saturating counters for numbers up to 10^6 (20 bits).
+- Output numbers 16-bit wide (sufficient for N<=10^6).
+- When done=1, sequence is complete. The sequence length N is N numbers, each valid=1.
+
+Note: The problem states 'longest monotone subsequence length exactly K'. The construction described ensures this property. For K=1 and N>1, impossible because any sequence of length >1 has a monotone subsequence of length at least 2. For K=N, trivial sorted order works. For other cases, the described block construction works.

@@ -1,0 +1,34 @@
+Implement a Verilog module to detect the shortest dependency cycle in a file dependency graph. The input is a graph where nodes represent files and edges represent imports. The module must find and output the nodes of the shortest cycle (by number of edges). If no cycle exists, output a 'SHIP IT' flag.
+
+**Interface Specifications:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `n`: 5-bit integer (1-500) representing number of files (scaled to 16 max for HW)
+  - `adj_matrix`: Packed 16x16x1-bit array representing adjacency matrix. `adj_matrix[i][j]` is 1 if file `i` imports file `j`. Use 256-bit vector where bit `i*16 + j` corresponds to edge from `i` to `j`.
+- Outputs:
+  - `result_valid`: 1-bit flag, high when cycle found and result is valid
+  - `ship_it`: 1-bit flag, high when no cycle found
+  - `cycle_nodes`: 16x5-bit array (packed as 80-bit vector) containing node IDs of the cycle (padded with 0s). Only valid when `result_valid` is high.
+  - `cycle_length`: 5-bit number of nodes in the cycle
+  - `done`: 1-cycle pulse indicating completion
+
+**Implementation Details:**
+1. **Algorithm**: Use BFS from each node to find shortest cycle starting and ending at that node. Limit BFS depth to 16 (max cycle length).
+2. **Memory**: Store adjacency matrix in a register array. Use a FIFO or shift register for BFS queue.
+3. **Timing**: Process completes within 1000 clock cycles. Reset clears all state, sets `done=0`, `result_valid=0`, `ship_it=0`.
+4. **Scaling**: Accept `n` up to 16 for hardware feasibility. For larger `n` (like 500), the module can be instantiated multiple times for subgraphs or the specification is for the scaled-down version.
+5. **Output Format**: The `cycle_nodes` vector packs up to 16 node IDs (each 5 bits) sequentially. If cycle length < 16, remaining bits are 0.
+
+**State Machine:**
+- IDLE: Wait for `start`. On `start`, initialize adjacency matrix from input (simulated via `adj_matrix` port).
+- PROCESS: Run BFS for each node. Track visited and parent nodes.
+- OUTPUT: If cycle found, set `result_valid=1`, `ship_it=0`, load `cycle_nodes` and `cycle_length`. If no cycle after all checks, set `ship_it=1`, `result_valid=0`.
+- DONE: Assert `done` for 1 cycle.
+
+**Constraints:**
+- No external memory. All data must fit in registers.
+- Fixed 16-node limit ensures fixed resource usage.
+- If `n` input is > 16, ignore edges beyond index 15.
+- Reset must be held for 2 cycles minimum.

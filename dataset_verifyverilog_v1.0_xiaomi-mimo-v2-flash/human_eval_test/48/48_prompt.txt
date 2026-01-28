@@ -1,0 +1,48 @@
+Implement a Verilog module that checks if an input string is a palindrome. The string should be provided as an array of 8-bit ASCII characters (fixed length 8). You must compare characters from start and end, moving inward, and return 1 if palindrome, 0 otherwise. The module should have a start signal to trigger the check and a done signal when complete.
+
+Requirements:
+- Input: 8-character string (8x8-bit array of ASCII values), 0-terminated or padded with zeros
+- Output: 1-bit result (1=palindrome, 0=not palindrome)
+- Timing: Check completes within 32 cycles
+- Use two-pointer approach: compare str[0] vs str[7], str[1] vs str[6], etc.
+- Handle empty string (all zeros) as palindrome
+- Reset state: result=0, done=0
+
+Interface Specification:
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset (minimum 2 cycles)
+  start: 1-cycle pulse to start palindrome check
+  str[0:7]: 8x8-bit input array (ASCII characters, 0-255)
+  len: 4-bit input indicating valid string length (0-8, 0 means empty)
+
+Outputs:
+  result: 1-bit output, valid when done=1
+  done: 1-cycle pulse indicating operation complete and result valid
+
+Behavior:
+1. When start=1 (during rising edge of clk), begin check on next cycle
+2. For empty string (len=0 or all characters are 0), set result=1
+3. For non-empty strings, compare characters from both ends:
+   - Compare str[i] with str[len-1-i] for i = 0 to floor(len/2)-1
+   - If any mismatch, result=0
+   - If all match, result=1
+4. Set done=1 for one cycle when check completes
+5. result is only valid when done=1
+
+Implementation Notes:
+- Use a state machine with states: IDLE, CHECKING, COMPLETE
+- Use counters for index i and comparison count
+- For len ≤ 8, maximum 4 comparisons needed
+- Clock period: 10ns
+- Start to done: ≤32 cycles
+- All signals should be registered
+
+Test Cases:
+- Empty string: str=[], len=0 → result=1
+- 'aba': str=['a','b','a'], len=3 → result=1
+- 'aaaaa': str=['a','a','a','a','a'], len=5 → result=1
+- 'zbcd': str=['z','b','c','d'], len=4 → result=0
+- 'xywyx': str=['x','y','w','y','x'], len=5 → result=1
+- 'xywyz': str=['x','y','w','y','z'], len=5 → result=0
+- 'xywzx': str=['x','y','w','z','x'], len=5 → result=0

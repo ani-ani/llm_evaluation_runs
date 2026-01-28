@@ -1,0 +1,47 @@
+Implement a Verilog module that replaces spaces in a string with '%20'. The input is a fixed-size array of ASCII characters (max 16 characters) where unused positions are filled with null bytes (0x00). The output should be another fixed-size array (max 24 characters) containing the transformed string.
+
+**Interface Specification:**
+- **Clock and Reset:**
+  - `clk`: System clock, rising edge triggered
+  - `rst_n`: Active-low synchronous reset
+- **Control Signals:**
+  - `start`: 1-cycle pulse to initiate operation
+  - `done`: 1-cycle pulse when operation completes (goes high for 1 cycle)
+- **Input:**
+  - `input_str[0:15][7:0]`: 16-byte array (8-bit ASCII characters) representing the input string. Unused positions should contain 0x00 (null). Index 0 is the first character.
+  - `input_len[3:0]`: 4-bit unsigned integer indicating the actual length of the input string (1-16 characters).
+- **Output:**
+  - `output_str[0:23][7:0]`: 24-byte array containing the transformed string. Fill unused positions with 0x00.
+  - `output_len[4:0]`: 5-bit unsigned integer indicating the length of the output string.
+
+**Algorithm Requirements:**
+- When `start` is asserted, the module should initiate the replacement process.
+- Scan through `input_str` from index 0 to `input_len-1`.
+- For each character:
+  - If it's a space (ASCII 0x20), replace it with three characters: '%' (0x25), '2' (0x32), '0' (0x30).
+  - Otherwise, copy the character as-is.
+- Write the result to `output_str` starting at index 0.
+- The process must complete within 100 clock cycles after `start` is asserted.
+- On completion, set `done` high for 1 cycle and present the correct `output_len`.
+
+**Reset Behavior:**
+- On reset (`rst_n=0`), clear `output_str` (all bytes to 0x00), set `output_len=0`, and set `done=0`.
+
+**Implementation Notes:**
+- You may use a state machine (IDLE, READ_CHAR, WRITE_OUTPUT, COMPLETE) to control the flow.
+- Use an internal pointer to track the current position in input and output arrays.
+- Since this is a hardware implementation, assume the input string length is known (passed via `input_len`) and the output buffer is pre-allocated.
+- The module should be purely combinational or use a simple sequential process with bounded iteration (max 16 input chars → max 24 output chars).
+
+**Expected Timing:**
+- Start → Done: ≤100 cycles
+- Reset → Ready: 2 cycles
+
+**Example:**
+- Input: `input_str = "My Name is Dawood"` (length 17), `input_len = 17`
+- Output: `output_str = "My%20Name%20is%20Dawood"` (length 22), `output_len = 22`
+
+**Constraints:**
+- Maximum input length: 16 characters
+- Maximum output length: 24 characters (worst case: all 16 spaces → 48 chars, but we cap at 24 for feasibility)
+- Data width: 8-bit ASCII

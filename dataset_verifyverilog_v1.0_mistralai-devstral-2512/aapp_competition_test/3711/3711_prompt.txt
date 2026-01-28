@@ -1,0 +1,57 @@
+Implement a Verilog module that computes the maximum possible area of the smallest piece when cutting an n x m chocolate bar exactly k times. The solution involves checking feasibility (k <= n + m - 2) and evaluating two strategies: horizontal cuts first vs vertical cuts first. Use 32-bit unsigned arithmetic for n, m, k and intermediate calculations. The module should be combinational or use a simple FSM with bounded loops (max 2 iterations). 
+
+Inputs:
+  n: 32-bit unsigned
+  m: 32-bit unsigned
+  k: 32-bit unsigned
+  valid_in: 1-bit, indicates valid inputs
+
+Outputs:
+  result: 32-bit unsigned (area of smallest piece, or 0xFFFFFFFF for -1)
+  valid_out: 1-bit, indicates valid output
+
+Timing: The module computes in 2-3 clock cycles. Assume a clock input 'clk' and active-low reset 'rst_n'. Use a simple FSM: IDLE -> CHECK -> CALC -> DONE. 
+
+Logic:
+1. Check if k > n + m - 2. If true, set result = 32'hFFFFFFFF, valid_out = 1.
+2. Else, compute two values:
+   a. If k < n: val1 = (n / (k + 1)) * m (integer division)
+      else: val1 = m / (k - n + 2)
+   b. If k < m: val2 = (m / (k + 1)) * n
+      else: val2 = n / (k - m + 2)
+   result = max(val1, val2)
+3. Valid_out goes high when result is stable.
+
+Constraints:
+- Division is integer division (floor).
+- Multiplication result can be up to 10^18, but we scale down to 32-bit by dividing or using saturation. Given the output examples, intermediate values might exceed 32-bit; implement with 64-bit internal accumulators or saturate to 32-bit if > max 32-bit value (0xFFFFFFFF). For simplicity, assume 64-bit internal width for calculations but output 32-bit.
+- For k <= n-1 and k <= m-1 cases, the product n/(k+1)*m is computed. Since n and m are up to 10^9, n/(k+1)*m is up to 10^18, which is >2^32. To fit in 32-bit, we can output the product modulo 2^32 or saturate. However, from the problem context, the answer is usually within 10^9 or 10^12; but some test cases show ~10^12 (e.g., 809900000000000000). 809900000000000000 is 8e17, which is >2^32 (4e9). Wait, the output for 10^9 10^9 1 is 500000000000000000 (5e17). This is huge. 
+
+Correction: The original Python code prints this. This means the Verilog output must be able to represent at least 64-bit values, or we must assume the problem is simplified for HDL. Since the user asked for a 'simplified version', I will scale down the inputs or limit the output to 32-bit. However, the examples include huge numbers. 
+
+Re-evaluation: The problem statement says 'Output a single integer'. In competitive programming, Python handles big integers. In hardware, we have limits. The prompt allows 'Large numbers: scale to 16-32 bit'. I will scale the inputs (n, m, k) down to 16-bit max for the HDL version, or limit the output to 32-bit. 
+
+Better approach: Keep 32-bit inputs, but for the huge results (like 5e17), the hardware module will return a saturation value (e.g., 0xFFFFFFFF) or modulo 2^32. To make it meaningful, let's assume the hardware deals with 32-bit outputs and the testbench will check against a truncated or scaled version of the expected result for large cases. 
+
+Wait, the user wants 'Benchmarking LLM HDL code generation'. Including a 64-bit multiplier and divider is complex but doable with a small FSM. I will specify a 32-bit result output, but internally use 64-bit for calculation. If the result > 2^32-1, saturate to 0xFFFFFFFF (error/saturation). 
+
+Revised Logic for Hardware:
+1. Inputs are 32-bit.
+2. Perform check: if k > n + m - 2 -> result = 0xFFFFFFFF.
+3. Calculate val1 and val2 using 64-bit intermediate results.
+4. Compare val1 and val2.
+5. If max(val1, val2) > 0xFFFFFFFF, result = 0xFFFFFFFF, else result = max(val1, val2).
+6. Valid_out pulse.
+
+FSM States: IDLE, CHECK, CALC_VAL1, CALC_VAL2, COMPARE, DONE.
+Cycles: ~6 cycles.
+
+Verilog Interface:
+- Inputs: clk, rst_n, valid_in, n[31:0], m[31:0], k[31:0]
+- Outputs: result[31:0], valid_out
+
+Implementation details:
+- Division: Use a simple iterative subtractor (since divisor is small usually, but can be large). Or use combinational div if synthesis allows (size constraint). Given the 'bounded loops' principle, use a max-iteration loop (e.g., 32 cycles for 32-bit division).
+- Multiplication: Use a small sequential multiplier or combinational if area permits. Sequential is safer.
+
+Let's stick to a sequential implementation with a step counter.

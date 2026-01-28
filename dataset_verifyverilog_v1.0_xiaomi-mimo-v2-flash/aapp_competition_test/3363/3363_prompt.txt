@@ -1,0 +1,69 @@
+Implement a Verilog module for optimizing Stan's calorie consumption over a multi-course barbecue with variable eating rates.
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `m`: 8-bit unsigned integer representing maximum calories in first hour (0-255)
+- `calories[i]`: Array of 8-bit unsigned integers for each course's calories (n=5 courses)
+
+**Outputs:**
+- `result`: 16-bit unsigned integer representing maximum total calories
+- `done`: 1-cycle pulse when result is valid (asserts after computation completes)
+
+**Functional Requirements:**
+1. **Dynamic Programming State:** Track maximum calories for each hour (0-4) considering:
+   - `streak`: Number of consecutive hours eaten (0-2, where 2 resets rate)
+   - `skip_count`: Hours skipped (0-1, since skipping 2 hours resets to full rate m)
+   - `current_rate`: Current eating capacity based on streak
+
+2. **Rate Calculation:**
+   - Hour 0: rate = m
+   - Hour 1 (if ate previous): rate = floor(2/3 * previous_rate)
+   - Hour 2 (if ate previous): rate = floor(2/3 * previous_rate)
+   - After 2 consecutive skips: rate resets to m
+
+3. **State Transitions:**
+   - For each hour i (0-4), compute:
+     - Option 1: Eat (add min(course[i], current_rate) to total)
+     - Option 2: Skip (no addition, affects rate for next hour)
+   - Use lookup table for 2/3 division: multiply by 171 then shift right 8 (since 171/256 ≈ 2/3)
+
+4. **Timing:**
+   - Compute within 100 cycles
+   - Reset sets result=0, done=0
+   - After start, assertion of done indicates valid result
+
+5. **Constraints:**
+   - Fixed n=5 courses
+   - Maximum intermediate values: use 16-bit accumulation
+   - All operations use unsigned arithmetic
+   - 2/3 truncation: floor(m * 2/3) = (m * 171) >> 8
+
+**Example Behavior:**
+For input: m=900, calories=[800,700,400,300,200]
+Optimal: Eat all 5 hours → rates: 900,600,400,266,177
+Total: 800+600+400+266+177 = 2243
+
+**Module Declaration:**
+module calorie_optimizer(
+    input clk,
+    input rst_n,
+    input start,
+    input [7:0] m,
+    input [7:0] calories_0,
+    input [7:0] calories_1,
+    input [7:0] calories_2,
+    input [7:0] calories_3,
+    input [7:0] calories_4,
+    output reg [15:0] result,
+    output reg done
+);
+
+// Implement DP with FSM
+// States: IDLE, COMPUTE, DONE
+// Internal registers for DP table
+
+endmodule

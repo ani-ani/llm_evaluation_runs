@@ -1,0 +1,64 @@
+Implement a Verilog module that solves the card collection problem.
+
+Problem Specification:
+- You have N children (1 to N) and M known purchases (pairs of children).
+- The target card counts for each child are given.
+- You must output the total number of purchases (can be > M) and the details (child1, child2, winner) such that the final counts match.
+- The core algorithm is a constructive flow: 
+  1. Initialize all children's current cards to 0.
+  2. Iterate through the provided M purchases.
+  3. For each purchase (a, b), calculate how many cards each child gets (0, 1, or 2) to move them closer to their target.
+  4. If targets are met, add 'dummy' purchases between any two children (e.g., 1 and 2) where the winner distributes cards to fix any remaining deficits, until all targets are reached.
+
+Module Interface:
+- Inputs:
+  - clk: System clock
+  - rst_n: Active-low reset
+  - start: 1-cycle pulse to start calculation
+  - N: 4-bit unsigned (1-16)
+  - M: 8-bit unsigned (0-255)
+  - targets[0:15]: 16x8-bit array (target cards for children 1-16)
+  - purchases[0:7]: 8x16-bit array (each entry is {child_a[7:0], child_b[7:0]})
+- Outputs:
+  - out_valid: High when output is ready
+  - out_type: 2-bit (0: start of transaction list, 1: transaction line, 2: end)
+  - out_data: 64-bit vector carrying data:
+    - If out_type == 0: Total purchase count (bits 15:0)
+    - If out_type == 1: Transaction details: {a[7:0], b[7:0], winner[1:0]} (bits 23:0)
+    - If out_type == 2: End marker
+  - done: 1-cycle pulse when entire sequence is transmitted
+
+Behavior:
+- On reset: done=0, out_valid=0.
+- On start: Begin FSM.
+- The FSM maintains current card counts for 16 children.
+- Pass 1 (Process M inputs):
+  - Read targets and inputs.
+  - For each input pair (a, b):
+    - Check current counts vs targets.
+    - If a needs cards and b is full: give 2 to a.
+    - If b needs cards and a is full: give 2 to b.
+    - If both need: give 1 to each.
+    - If only one needs: give 2 to that one.
+    - If neither needs: give 1 to a (or b, arbitrary).
+    - Update counts and buffer output transaction.
+- Pass 2 (Fix deficits):
+  - If any child has count < target:
+    - Find a 'rich' child (count > target) or use a dummy donor.
+    - Create a purchase (1, 2) [or any valid pair].
+    - Adjust counts: transfer 1 card from donor to receiver.
+    - Buffer output transaction.
+  - Repeat until all counts == targets.
+- Pass 3 (Transmit):
+  - Stream out the total count, then all buffered transactions.
+  - Transmit done pulse.
+
+Constraints:
+- N <= 16 (4 bits)
+- M <= 256 (8 bits)
+- Total cards <= 2000 (fits in 11 bits, use 16 bits for safety)
+- Targets are 8-bit values.
+- Use iterative loops with bounds (max 256 iterations).
+- Output buffering: Use a BRAM or register array to store up to 512 transactions (supports dummy additions).
+  - Each transaction is 24 bits (8+8+8 padding). Store in 32-bit words.
+- The logic must be deterministic (greedy distribution).

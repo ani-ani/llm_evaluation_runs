@@ -1,0 +1,49 @@
+You are an LLM that generates Verilog HDL module specifications for benchmarking HDL code generation capabilities. The specification must be detailed and precise, suitable for conversion to Verilog. Focus on hardware-friendly constraints:
+- Scale input to ≤100 lines x 80 chars (8KB memory).
+- Extract ≤16 unique word cores (ASCII lowercase a-z only, max 16 chars).
+- Determine similarity if edit distance (insert/delete/replace/transposition) between two cores is exactly 1.
+- Output the alphabetically sorted list of pairs where both words are similarly spelled (undirected graph edges).
+- Do not output the module code. Only provide the spec.
+
+Module Specification:
+
+**Interface:**
+- Inputs:
+  - `clk`: System clock, rising edge active.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to begin processing.
+  - `char_in`: 8-bit ASCII input (data valid when `char_valid` is high).
+  - `char_valid`: 1-bit signal indicating `char_in` contains valid input data.
+  - `line_end`: 1-bit signal indicating the end of an input line (carriage return or newline).
+- Outputs:
+  - `result_word`: 16-bit index (0-15) of the current word core being listed.
+  - `result_pair`: 16-bit index (0-15) of a similar word core.
+  - `result_valid`: 1-bit signal indicating `result_word` and `result_pair` are valid.
+  - `done`: 1-cycle pulse indicating all processing is complete.
+
+**Internal State & Memory:**
+- **Input Buffer**: 8KB SRAM (8000 bits) to store the input text.
+- **Word Table**: Array of 16 entries, each containing a fixed-length 16-char ASCII string (128 bits) and a valid flag.
+- **Similarity Matrix**: 16x16 combinatorial logic or lookup table to store binary similarity results.
+
+**Control Flow (FSM):**
+1. **Reset**: Initialize buffers, counters, and flags. Wait for `start`.
+2. **Parsing**: Read `char_in` when `char_valid` is high. Store in buffer. Identify word cores (maximal sequences of alphanumeric chars, convert to lowercase). Filter non-alphabetic chars. Store up to 16 unique cores in Word Table. Stop parsing if table is full.
+3. **Comparison**: For each pair (i, j) where i < j in the Word Table, compute edit distance.
+   - **Edit Distance Logic**: Use combinational logic to check if distance is exactly 1.
+     - Allow operation: Delete (len diff = 1), Insert (len diff = 1), Replace (len diff = 0), Transpose (len diff = 0, exactly 1 swap of adjacent chars).
+     - Do not implement full dynamic programming; implement specific comparator for distance ≤1.
+4. **Sorting & Output**: For each word `i`, collect all `j` where similarity is true. Sort the list of `j` indices alphabetically (based on the word strings). Output `result_word = i`, `result_pair = j`, and pulse `result_valid` for each pair.
+5. **Completion**: When all pairs are generated, pulse `done`. If no pairs exist, pulse `done` immediately.
+
+**Timing Constraints:**
+- Start-to-Done: Within 10,000 cycles.
+- Parsing throughput: 1 char per cycle.
+- Comparison complexity: O(N^2) where N ≤ 16.
+
+**Output Format:**
+- The Verilog module must generate a stream of `(word, pair)` tuples.
+- External logic (or testbench) is expected to format this into the final text output or verify the internal logic.
+
+**Reset Behavior:**
+- On reset, all internal states reset, output signals are 0, `done` is 0.

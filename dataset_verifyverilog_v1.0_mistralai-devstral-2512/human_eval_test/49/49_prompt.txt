@@ -1,0 +1,47 @@
+Design a synchronous Verilog module that computes 2^n mod p using binary exponentiation. The core challenge is to implement modular exponentiation where the base is fixed as 2, but the exponent n and modulus p are inputs. Adapt the problem by scaling the inputs to 8-bit values and requiring 16-bit internal arithmetic.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock, rising edge triggered
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation (sampled when asserted)
+  - `n`: 8-bit unsigned integer, the exponent (range 0-255)
+  - `p`: 8-bit unsigned integer, the modulus (range 1-255, non-zero)
+- **Outputs:**
+  - `result`: 16-bit unsigned integer representing 2^n mod p (computed mod p)
+  - `done`: 1-cycle high pulse indicating valid result is ready
+
+**Behavioral Requirements:**
+1. **Algorithm**: Implement binary exponentiation (exponentiation by squaring). The base is fixed at 2. For each bit of n (from LSB to MSB):
+   - Square the current result modulo p (result = (result * result) % p)
+   - If the current bit of n is 1, multiply by 2 and take modulo p (result = (result * 2) % p)
+   - For 2^n mod p, the initial result should be 1 (since 2^0 = 1 mod p)
+2. **Operation**: 
+   - When `start` is asserted, the module should capture `n` and `p`, and begin computation
+   - The computation should process all 8 bits of `n` (even if n is smaller, consider leading zeros)
+   - For each bit, compute (result * result) % p, then conditionally (result * 2) % p
+   - Use multiplication where the multiplicands are at most 255*2=510, so 9 bits, but result can be up to (p-1)^2 for squaring, so use 16-bit storage
+   - The computation should complete in exactly 16 cycles after start (8 bits for n, each requiring 1-2 cycles for multiply/divide)
+   - When done, output the final result and pulse `done` high for one cycle
+3. **Timing**: 
+   - From `start` pulse to `done` pulse: 16 cycles maximum
+   - The module must handle `p=0` gracefully (though test suggests p>0, but design for p=1 should yield result 0 or handle div by zero)
+   - `result` should be 0 when done is low, but only valid when done=1
+4. **Reset Behavior**: 
+   - On `rst_n` low, clear all internal state, `done` = 0, `result` = 0
+   - Minimum 2 cycle reset
+   - After reset, module should be ready to accept start
+
+**Implementation Notes:**
+- Use 16-bit arithmetic for all intermediate results to prevent overflow
+- The modulus operation can be implemented using repeated subtraction (since p is ≤255 and result ≤ (p-1)*2 ≤ 510, so at most 2 subtractions needed)
+- Alternatively, use division-based modulo if available, but given the constraints, subtraction-based modulo is more hardware-friendly
+- For 2^n mod p with n=0, result should be 1 mod p = 1 (since 2^0 = 1)
+- For p=1, 2^n mod 1 = 0 for any n
+- The module should be a finite state machine with states: IDLE, CALCULATE
+
+**Testing Requirements:**
+- The module will be tested with n=0-255 and p=1-255
+- Edge cases: n=0, p=1, n=p (result should be 2^n mod p)
+- The testbench will provide these inputs and check outputs against expected 2^n mod p values
+- Performance: Within 16 cycles after start for any 8-bit input combination

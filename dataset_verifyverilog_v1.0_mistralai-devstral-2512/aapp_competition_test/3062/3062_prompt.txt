@@ -1,0 +1,32 @@
+You are to implement a hovercraft trajectory calculator in Verilog HDL. The vehicle starts at (0,0) facing +X, needs to reach target (x, y) with speed v and rotation rate w. It can perform exactly one start/stop of rotation and one start/stop of movement each (total 4 commands). Optimal paths are: 1) Rotate to optimal angle, move straight, stop. 2) Move forward first, then rotate to align with target (only if behind start). 3) Rotate while moving (not allowed as per constraints). The hardware must compute minimum time using scaled fixed-point arithmetic.
+
+Simplified Algorithm:
+1. Convert inputs to fixed-point Q16.16 (16 integer, 16 fraction bits)
+2. Compute distance d = sqrt(x² + y²)
+3. For Case A (Rotate-Move-Rotate):
+   - Compute angle α = atan2(y, x)
+   - Optimal rotation angle θ satisfies: θ = α + arcsin(d/(2v/|w|)) for |w| > 0
+   - But simplified: if d ≤ 2v/|w|, optimal time = |α|/|w| + d/v
+   - Else: optimal time = (|α| + π)/|w| + (d - 2v/|w|)/v
+4. For Case B (Move-Rotate) if y < 0 (target behind start):
+   - Time = |x|/v + π/|w| (rotate π radians after moving)
+5. Compare cases and take minimum
+6. Output result in Q16.16 format
+
+Interface:
+- Inputs: x, y: 24-bit signed (Q12.12 to handle -1000..1000)
+- Inputs: v, w: 24-bit signed Q16.8 (for 0.01..10.00)
+- Inputs: start: 1-cycle pulse, rst_n: active-low
+- Outputs: result_time: 32-bit Q16.16, done: 1-cycle valid pulse
+- Timing: Complete calculation within 500 cycles
+- Reset: Clear all registers, done=0
+
+Implement iterative fixed-point operations:
+- Square: 24x24→32-bit
+- Square root: 32-bit integer algorithm (16 iterations)
+- atan2 approximation: 8-bit lookup table for quadrant + 8-bit correction
+- arcsin approximation: limited range, 10-bit lookup
+- Division: 32/16-bit integer division (non-restoring algorithm)
+- Multiplication: 32x32→64-bit then truncate to Q16.16
+
+Note: Real inputs are provided as integers after scaling. The testbench will handle scaling.

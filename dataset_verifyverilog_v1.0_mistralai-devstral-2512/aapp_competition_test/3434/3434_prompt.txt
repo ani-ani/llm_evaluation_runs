@@ -1,0 +1,31 @@
+Implement a Verilog module that calculates the probability that an explosion spell removes all opponent minions.
+
+**Problem Adaptation:**
+- **Scaling**: Minions limited to max 10 total (n+m <= 10). Health limited to 1-6. Damage d <= 100.
+- **Algorithm**: Use dynamic programming on the state of minion healths. Since max total HP is 60 (10*6) and damage is <= 100, we can represent the state of minions as a flattened array or encoded integer. Given the complexity of dynamic minion counts, we simplify by processing damage units one by one (clock cycle) and tracking probabilities.
+- **Simplification**: Since Verilog is not ideal for recursive tree search, we implement an iterative state machine that cycles through all possible damage assignments using probability accumulation. We will use a lookup table (LUT) for the initial health states and compute the probability of all opponent minions dying over d cycles.
+- **Data Types**: Use fixed-point arithmetic (Q16.16) for probabilities. Use 4-bit integers for health (0-6).
+- **Constraints**: The module will have a `start` signal. Upon `start`, it loads the health arrays and calculates the probability over `d` cycles. Output `result` is a 32-bit fixed-point value representing the probability. Output `done` signals completion.
+
+**Interface Specification:**
+- **Inputs**: 
+  - `clk`, `rst_n` (standard synchronous reset)
+  - `start`: 1-cycle pulse to initiate calculation
+  - `my_health[0:4]`: Array of 5 integers, 4-bit each (valid count `n` is 1-5, unused entries 0)
+  - `opp_health[0:4]`: Array of 5 integers, 4-bit each (valid count `m` is 1-5, unused entries 0)
+  - `d`: 7-bit integer (1-100)
+- **Outputs**:
+  - `result`: 32-bit fixed-point Q16.16 probability
+  - `done`: 1-cycle pulse when calculation finishes
+- **Timing**: 
+  - State machine cycles through damage units. Total cycles ~ d * (search width). Use a timeout guard.
+  - Reset sets `result` to 0 and `done` to 0.
+- **Implementation Details**:
+  - Use a state machine (FSM) with states: IDLE, LOAD, CALCULATE, FINISH.
+  - In CALCULATE, iterate `d` times. For each damage unit, update a probability distribution over possible board states. 
+  - Since full state space is large (combinatorial explosion), optimize by focusing on the condition "All opponent minions dead". 
+  - *Alternate Simplification*: If the recursive DP is too complex for Verilog resource limits, approximate by iterating through a set of pre-defined random seeds (LFSR) to estimate probability (Monte Carlo method). However, deterministic DP is preferred for accuracy.
+  - **Recommended Approach**: Use a parameterized `MAX_MINIONS = 5` and `MAX_HP = 6`. Flatten the board state into a single integer for indexing a probability array. Since memory is limited, we process one damage unit per clock cycle and update a probability array.
+
+**Verilog Module Prompt:**
+Create a module `explosion_probability` that computes the probability of eliminating all opponent minions given `n` friendly minions, `m` opponent minions, and `d` damage units. Use a clocked process to handle the state transitions. Use fixed-point arithmetic for probability calculations. Ensure the logic handles the random distribution of damage (weighted by the number of alive minions). Output the result as a 32-bit fixed-point number. Provide detailed comments on the FSM logic.

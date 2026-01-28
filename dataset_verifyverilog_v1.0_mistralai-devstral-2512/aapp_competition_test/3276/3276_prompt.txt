@@ -1,0 +1,52 @@
+## Verilog Module Specification for Grid Stamp Checker
+
+### Problem Overview
+Determine if an N×M grid of colors (R, G, B, W) can be produced by repeatedly applying 3×3 stamps of a single color to an initially all-white board. Each stamp overwrites previous colors.
+
+### Design Constraints
+- **Grid size**: Fixed 8×8 grid (scaled from 3-30)
+- **Colors**: 4 states (R=0, G=1, B=2, W=3) encoded as 2-bit values
+- **Stamp**: 3×3 square (centered at integer coordinates)
+- **Algorithm**: Check if every 3×3 region in target grid is either all white (W) or all the same non-white color
+- **Processing**: Combinational logic or FSM (max 100 cycles)
+
+### Interface Specification
+
+#### Inputs:
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate checking
+- `target[0:7][0:7]`: 8×8 array, each cell 2-bit (0=R, 1=G, 2=B, 3=W)
+- `rows`: 4-bit unsigned (actual grid height, 3-8)
+- `cols`: 4-bit unsigned (actual grid width, 3-8)
+
+#### Outputs:
+- `result`: 1-bit (1=possible, 0=impossible)
+- `done`: 1-cycle pulse when computation complete
+
+### Functional Requirements
+1. **Initialization**: On `start`, reset internal state
+2. **Validation**: For each 3×3 region centered at (i,j) where 1≤i≤rows-2, 1≤j≤cols-2:
+   - Extract the 3×3 sub-grid
+   - Check if all cells in sub-grid are white (W=3) OR all cells are the same non-white color
+   - If any 3×3 region fails both conditions, result = 0 (NO)
+3. **Edge Cases**: 
+   - If all cells are white: result = 1 (YES)
+   - If any single cell is non-white but not part of a valid 3×3 block: result = 0 (NO)
+4. **Output Timing**: Set `result` when `done` pulses, valid for 1 cycle
+
+### Implementation Notes
+- Use sequential logic with state machine or combinational comparison
+- Must handle 2D grid access via indexed signals
+- Width constraints: Colors require 2 bits, coordinates 4 bits
+- Testability: Support reading 8×8 arrays via individual signals or packed format
+
+### Performance
+- Maximum cycles: 100 (from start to done)
+- Timing: Start → Done within 100 cycles
+- Reset: Done=0, result=0, min 2 cycles
+
+### Testbench Requirements
+- Provide test cases for both YES and NO scenarios
+- Verify 3×3 region checking logic
+- Include edge cases: all white, single color grids, partial fills

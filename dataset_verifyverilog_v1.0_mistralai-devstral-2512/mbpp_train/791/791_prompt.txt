@@ -1,0 +1,32 @@
+Design a Verilog module that removes nested tuples from a stream of data. The input is a fixed-size array of 16-bit elements where the upper 8 bits act as a marker: 0x00 for a normal integer, 0xFF for a tuple start marker. The module should output a filtered array of integers (excluding any elements marked as tuples or tuple contents), along with the valid output length.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: Clock, rising edge triggered
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `input_data`: 16-bit array of size 16 (packed or unpacked)
+  - `input_len`: 4-bit input length (0-15)
+- Outputs:
+  - `output_data`: 16-bit array of size 16 (filtered integers, lower 8 bits only)
+  - `output_len`: 4-bit output length
+  - `done`: 1-cycle pulse indicating completion (valid when high)
+  - `busy`: High while processing
+
+**Behavior:**
+1. On `start` pulse, latch the input data.
+2. For each element from 0 to input_len-1:
+   - Check the upper 8 bits (bits 15:8).
+   - If bits 15:8 == 0xFF, skip this element (it's a tuple marker or tuple content).
+   - If bits 15:8 == 0x00, copy the lower 8 bits to the output array.
+   - Increment output length counter.
+3. After processing all input elements, assert `done` for one cycle with valid output.
+4. The output array is pre-filled with zeros; only valid indices contain filtered data.
+
+**Constraints:**
+- Maximum 16 input elements, 16 output elements.
+- Process within 200 clock cycles.
+- On reset: `done`=0, `output_len`=0, `busy`=0.
+- Use combinational logic or sequential FSM for filtering.
+- Output `output_data` should be an array of 16 16-bit registers (e.g., `output_data [0:15]`).
+- For testing, the Python test cases map to: `input_data` with `0xFF` markers for tuples, and `0x00` for integers. Example: `(1,5,7,(4,6),10)` -> `[0x0001, 0x0005, 0x0007, 0xFF04, 0xFF06, 0x000A]` (note: tuple `(4,6)` is represented by two marked elements, but the filter skips both).

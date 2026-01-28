@@ -1,0 +1,52 @@
+### Verilog Module Specification
+
+**Problem:** Implement a hardware accelerator to find the squared Euclidean distance between a falling apple location and the nearest existing tree in an 8x8 grid. The grid supports dynamic updates: when an apple falls at a location, a new tree grows there immediately for future queries.
+
+**Module Name:** `nearest_tree_finder`
+
+**Inputs:**
+1. `clk`: System clock (rising edge triggered).
+2. `rst_n`: Active-low asynchronous reset.
+3. `start`: 1-cycle pulse indicating a new query is ready. Must be asserted when `input_valid` is high.
+4. `input_valid`: High when the apple location `apple_r`, `apple_c` and current tree map `tree_map` are stable.
+5. `apple_r` [3:0]: Row coordinate (0-7) of the falling apple.
+6. `apple_c` [3:0]: Column coordinate (0-7) of the falling apple.
+7. `tree_map` [63:0]: 64-bit vector representing the grid. Bit `i` (row-major order, `i = r*8 + c`) is set to 1 if a tree exists at `(r, c)`.
+
+**Outputs:**
+1. `result` [7:0]: The calculated squared distance to the nearest tree (0-112 max for 8x8 grid).
+2. `done`: 1-cycle pulse asserted when the calculation is complete and `result` is valid.
+3. `next_tree_map` [63:0]: Updated tree map. This is the input `tree_map` with the bit corresponding to the apple location set to 1. This allows for sequential processing of the G years where the output map becomes the input map for the next cycle.
+
+**Behavior:**
+- **Reset:** On `rst_n` low, `done` is 0, `result` is 0, and `next_tree_map` is cleared.
+- **Operation:**
+    1. Wait for `start` and `input_valid` to be high simultaneously.
+    2. In the same cycle, calculate the distance from `(apple_r, apple_c)` to *every* bit set in `tree_map`.
+    3. Since the grid is 8x8, there are 64 cells. We can unroll the loop: calculate `(r_diff^2 + c_diff^2)` for all 64 coordinates in parallel, but only where `tree_map[i]` is 1.
+    4. Use a reduction tree (comparator tree) to find the minimum squared distance among all valid trees. If no tree exists (should not happen per problem statement, but handle implicitly by outputting max value or default), result is undefined, but input guarantees at least one tree.
+    5. Assert `done` high for 1 cycle on the next clock edge.
+    6. Simultaneously, output the `result` and the `next_tree_map` (which is `tree_map | (1 << (apple_r*8 + apple_c))`).
+
+**Timing:**
+- The calculation is combinational triggered by `start`. Latency from `start` to `done` is 1 clock cycle.
+- Total throughput: 1 query per cycle.
+
+**Constraints:**
+- Input coordinates are 3-bit (0-7).
+- Squared distances range from 0 to 112 (calculated as (7-0)^2 + (7-0)^2).
+- Result width is 8 bits (covers 0-112).
+- Assume the input `tree_map` always has at least one bit set.
+
+**Implementation Hint:**
+- You need a combinational block triggered by `start`.
+- Iterate through all 64 coordinates (r=0..7, c=0..7).
+- For each coordinate, if `tree_map[r*8 + c]` is 1, compute `dist = (r - apple_r)^2 + (c - apple_c)^2`.
+- Compare these computed distances and latch the minimum.
+- Since Verilog supports loops in combinational logic, a `for` loop over the 64 indices is acceptable, or unrolled logic.
+- Use a priority or reduction structure to find the minimum.
+
+**Note on Scaling:**
+- Original constraints R,S=500 are scaled down to 8x8.
+- Original G=100,000 is scaled down to processing 1 per cycle via sequential hardware interface.
+- The core "Nearest Neighbor" search is the bottleneck parallelized in hardware.

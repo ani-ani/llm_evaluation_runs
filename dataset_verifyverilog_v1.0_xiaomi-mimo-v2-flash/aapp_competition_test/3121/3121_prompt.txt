@@ -1,0 +1,38 @@
+Design a Verilog module 'cave_nav' to find the maximum remaining health path in a directed graph with combat simulation.
+
+**Interface:**
+- Inputs:
+  - clk, rst_n: Standard synchronous control
+  - start: 1-cycle pulse to initiate computation
+  - A, H: 16-bit values for Unnar's attack and initial health
+  - n, m: 5-bit values for node/edge counts (max 16 nodes, 32 edges)
+  - edges[i]: For i=0 to 31 (fixed size), packed struct {src[4:0], dst[4:0], enemy_a[15:0], enemy_h[15:0]}
+- Outputs:
+  - result: 16-bit maximum health (or 0 for failure)
+  - done: 1-cycle pulse when result is valid
+
+**Behavior:**
+- Unnar starts at node 1, target is node n.
+- Traverse all simple paths from 1 to n (DFS style, cycle prevention). Since n≤16, max nodes in path is 16.
+- **Combat Simulation per Edge:**
+  - Unnar attacks first.
+  - Number of Unnar hits to kill enemy: `hits_to_kill = (enemy_h + A - 1) / A` (ceil division).
+  - Damage taken by Unnar: `damage = (hits_to_kill - 1) * enemy_a`. (Enemy only attacks if it survives Unnar's first hit).
+  - **Path Health Check:** For a path, if `current_health - path_damage < 1`, path is invalid.
+  - Update `current_health = current_health - path_damage`.
+- **Algorithm:**
+  - State Machine: IDLE -> SEARCH -> UPDATE_BEST -> DONE
+  - Use a stack (depth max 16) to track current path.
+  - Track visited nodes in current path to avoid cycles.
+  - Track global `best_health` (initialized to 0). If no valid path, output 0 (mapped to 'Oh no' in testbench).
+  - Since graph is small (16 nodes), iterate all simple paths.
+- **Constraints:**
+  - All math must handle 16-bit inputs; intermediate multiplication `hits * enemy_a` may overflow 16-bit, use 32-bit internally or clamp.
+  - Assume graph has no negative cycles (irrelevant here) but can be disconnected.
+  - Execution must complete within 10,000 cycles.
+
+**Implementation Details:**
+- Use combinatorial block to calculate `hits` and `damage` for a given edge.
+- Use sequential logic for graph traversal (next state logic).
+- Output `result` valid when `done` is high.
+- If `best_health` remains 0 after searching all paths, output 0.

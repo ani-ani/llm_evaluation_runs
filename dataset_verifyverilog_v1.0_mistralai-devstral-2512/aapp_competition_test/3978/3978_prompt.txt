@@ -1,0 +1,62 @@
+Design a Verilog module to compute the minimal number of colors for the given sequence. The problem reduces to: given sorted numbers, find the number of elements that are not divisible by any smaller element (i.e., are 'minimal' in their color group). This is equivalent to counting how many distinct smallest numbers are needed such that all larger numbers are multiples of some smaller number.
+
+**Interface Specifications:**
+- Inputs: 
+  - `clk`: Clock signal, rising edge triggered.
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start processing (when `rst_n=1`).
+  - `n`: 4-bit input (since n≤100, 7 bits are needed, but 4-bit works for n≤16; wait, n≤100 so use 7-bit `n`).
+  - `a_i`: 7-bit input data (values 1-100, so 7 bits sufficient).
+  - `addr_wr`: 7-bit write address (index 0 to n-1).
+  - `wr_en`: Write enable to load array.
+- Internal State:
+  - `arr[0:15]`: 16x7-bit storage for the sequence (since n≤100, we need more; correct this: use 16x7 but process in chunks or use larger storage. Given n≤100, a 16x7 array is insufficient. Scale down: assume n≤16 for feasibility, or use 100x7 but that's large. **Adaptation**: Scale n to 16, values to 100 (7 bits).**
+- Updated Interface for n≤16:
+  - `n`: 4-bit (0-15).
+  - `a_i`: 7-bit.
+  - `arr`: 16x7-bit array (only indices 0 to n-1 used).
+  - `start`: 1-cycle.
+  - `done`: 1-cycle pulse when result is valid.
+  - `result`: 5-bit (since max colors ≤16).
+
+**Implementation Logic:**
+1. On `start`, load array from `a_i` and `addr_wr` (sequential write).
+2. Sort the array (using a simple bubble sort network over 16 elements, ~256 cycles).
+3. Initialize `used[0:15]` to 0.
+4. Sequential scan: For i=0 to n-1, if `used[i]==0`, increment `result`, set `used[i]=1`, and for j=i+1 to n-1, if `arr[j] % arr[i] == 0`, set `used[j]=1`.
+5. Output `result` when done.
+
+**Timing:**
+- Load: n cycles (≤16).
+- Sort: O(n²) cycles (≤256).
+- Counting: O(n²) cycles (≤256).
+- Total: < 512 cycles.
+
+**Signal Widths:**
+- `n`: 4-bit (0-15).
+- `a_i`: 7-bit (0-127).
+- `arr`: 16x7-bit.
+- `result`: 5-bit (0-16).
+- `addr_wr`: 4-bit (0-15).
+
+**Reset Behavior:**
+- On `rst_n=0`, all signals to 0, `done=0`.
+
+**Note:** For n=100, we would need 7-bit n (0-127) and 7-bit values. However, for HDL benchmark, n≤16 is sufficient to test the logic. If n>16, we can cap at 16 or process in chunks. Assume n≤16 for this spec.
+
+**State Machine States:**
+- IDLE: Wait for start.
+- LOAD: Load array into `arr`.
+- SORT: Bubble sort the array.
+- COUNT: Compute colors.
+- DONE: Set done and result.
+
+**Modulo Operation:**
+- Use a simple remainder circuit (slow, but works for small numbers).
+- Since values ≤100, use a sequential subtractor (up to 100 cycles).
+
+**Clock Domain:**
+- Single clock, sequential logic.
+
+**Constraint:**
+- All operations must be finite and bounded.

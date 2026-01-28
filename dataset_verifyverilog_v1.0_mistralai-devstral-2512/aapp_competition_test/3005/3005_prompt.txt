@@ -1,0 +1,46 @@
+Implement a Verilog module that finds the weight of a maximal factoring of a string. The string length is scaled to a maximum of 16 characters (A-Z). The algorithm uses dynamic programming (DP) with state machine control.
+
+**Inputs:**
+- `clk`: Clock signal (rising edge)
+- `rst_n`: Active-low asynchronous reset
+- `start`: 1-cycle pulse to start computation
+- `len`: 4-bit input (0-15) representing the actual length of the string (max 16)
+- `char_in`: 8-bit input containing the ASCII character for the current position (valid when `write_enable` is high)
+- `write_enable`: 1-bit control to load characters into internal memory
+- `addr`: 4-bit address for loading characters (0 to len-1)
+
+**Outputs:**
+- `result`: 8-bit output representing the weight (max 16)
+- `done`: 1-bit signal, high for 1 cycle when computation is complete
+- `busy`: 1-bit signal, high while processing
+
+**Internal Memory:**
+- Internal storage for 16 characters (8-bit ASCII).
+
+**Computation Specification:**
+1. **Load Phase:** When `start` is asserted, the module expects characters to be loaded sequentially via `char_in` and `addr` when `write_enable` is high. Alternatively, characters can be pre-loaded before `start`.
+2. **Processing Phase:** After `start`, the module enters a processing state.
+3. **Algorithm (DP):**
+   - Compute `dp[i]`: minimal weight for substring `s[0..i]`.
+   - Base case: `dp[i] = i + 1` (if treated as individual characters).
+   - Transitions: For each position `i` (1 to len), try to split at `j` (0 to i-1): `dp[i] = min(dp[i], dp[j] + dp_substring(j+1, i))` where `dp_substring` computes the weight of the repeated pattern.
+   - Since the string is short (max 16), the state space is small. We can iterate through all substrings.
+   - For a substring `s[l..r]`, if it can be factored as `(Pattern)^k`, the weight is the length of the minimal factorization of the pattern.
+   - We need to check for repetitions. For a substring length `L`, check divisors `d` of `L`. If `s[l..l+d-1]` repeats `L/d` times, the weight is `dp[l+d-1] - dp[l-1]` (adjusted for indices).
+   - This requires iterating through substrings and lengths. Since max len is 16, we can unroll loops or use a counter-based FSM.
+
+**Timing:**
+- Start -> Done within 2000 cycles (worst case for DP on N=16).
+- Result is valid when `done` is high.
+
+**Constraints:**
+- Do not use external memory interfaces.
+- ASCII characters are 8-bit, but we only care about distinct values, not alphabetical order.
+- The weight fits in 8 bits.
+
+**Implementation Hint:**
+- Use a finite state machine (FSM) to control the DP loops.
+- Use a small Block RAM (16x8) to store the input string.
+- Use distributed RAM (16x8) for the DP table.
+- Iterate `i` from 1 to `len`. Inside, iterate `j` from 0 to `i-1`. Inside, iterate substring lengths.
+- The logic must handle the repetition check efficiently. Since N is small, a brute-force check of all pattern lengths is acceptable.

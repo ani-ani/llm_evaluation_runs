@@ -1,0 +1,57 @@
+Verilog HDL Module Specification:
+
+Design a synchronous sequential module 'fair_lawsuit_ruling' that solves a bipartite fairness problem on a scaled-down graph.
+
+**SCALED PROBLEM:**
+- Max 8 Individuals (Index 0-7)
+- Max 8 Corporations (Index 0-7)
+- Max 16 Lawsuits (Edges)
+- Max win limit K: Iteratively determined (binary search on 0-16).
+
+**MODULE INTERFACE:**
+- Inputs:
+  - `clk`: System clock (posedge active)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation
+  - `lawyers_valid`: 1-cycle pulse indicating inputs are ready (inputs sampled when start=1)
+  - `ind_idx`: 3-bit integer (0-7)
+  - `corp_idx`: 3-bit integer (0-7)
+  - `lawsuit_idx`: 4-bit integer (0-15)
+
+- Outputs:
+  - `ruling_valid`: 1-cycle pulse when a ruling for the current lawsuit is ready
+  - `ruling_party`: 1-bit signal. 0 = Individual wins (Output: "INDV"), 1 = Corporation wins (Output: "CORP")
+  - `ruling_id`: 4-bit integer matching the lawsuit index being ruled on
+  - `all_done`: High when all rulings for the loaded lawsuits are complete
+
+**FUNCTIONALITY:**
+1. **Input Storage**: On `start` and `lawyers_valid`, store up to 16 lawsuit pairs (ind_idx, corp_idx) into internal RAM.
+2. **Algorithm**: Implement an iterative loop over potential maximum wins K (starting at 0, incrementing until feasible).
+   - For each K, check if a valid assignment exists where no Individual or Corporation wins > K lawsuits.
+   - This check is a flow network feasibility problem. Simplify to: 
+     - Construct bipartite graph.
+     - Use simplified greedy matching or saturating flow logic.
+     - If feasible, lock in the winners for current K.
+3. **Output**: Stream rulings 0-15 sequentially.
+
+**HARDWARE CONSTRAINTS:**
+- Registers: Must store 16 pairs of (3-bit, 3-bit) inputs.
+- Logic: Depth-first search or iterative augmentation is too heavy; use a greedy assignment strategy per K.
+  - *Simplified Strategy*: 
+    - For lawsuit i from 0 to 15:
+      - Check current win count for Individual and Corporation.
+      - If Ind count < K, assign INDV.
+      - Else if Corp count < K, assign CORP.
+      - (This greedy approach approximates the fairness constraint).
+- State Machine: 
+  - IDLE (wait for start)
+  - LOAD (store inputs)
+  - CALCULATE (determine K and assign winners)
+  - OUTPUT (stream results)
+
+**TIMING:**
+- Output: One ruling every cycle after calculation phase.
+- Latency: Max 256 cycles for calculation.
+
+**RESET:**
+- Clears all internal memory and counters.

@@ -1,0 +1,38 @@
+You are to design a Verilog module that finds the maximum number of occurrences of any hidden string in an input string of lowercase letters. A hidden string is a subsequence whose indices form an arithmetic progression. The input string length is scaled to max 16 characters for hardware feasibility.
+
+The module should implement the following logic:
+1. Accept a fixed-size array of 16 bytes representing the input string (valid characters are 'a'-'z', unused positions are padded with null).
+2. Use a 4-bit input 'len' to specify the actual length of the string (1 to 16).
+3. The solution is simplified to counting occurrences for single characters and pairs of characters (subsequences of length 1 and 2), as these dominate the counts in the scaled problem.
+4. For single characters, count occurrences of each letter in the string.
+5. For pairs of characters, count occurrences where the second character appears after the first in the string (standard subsequence count, which covers all arithmetic progressions for length 2).
+6. The result is the maximum count found among all single characters and pairs.
+
+Inputs:
+  - clk: 1-bit, rising edge clock
+  - rst_n: 1-bit, active-low synchronous reset
+  - start: 1-bit, start pulse (1 cycle)
+  - len: 4-bit, length of valid data (1 to 16)
+  - s[15:0]: 16 x 8-bit array, ASCII values of characters ('a'=97, 'z'=122), unused entries are 0.
+
+Outputs:
+  - result: 16-bit, maximum occurrence count
+  - done: 1-bit, valid for 1 cycle when result is ready
+
+Timing:
+  - Reset: Synchronous, clears all internal registers. Min 2 cycles.
+  - Operation: After 'start' goes high, compute takes up to 256 cycles (16 iterations x 16 internal operations).
+  - Done: Should be asserted exactly 1 cycle after computation finishes.
+  - Result validity: 'result' is valid only when 'done' is high.
+
+Implementation Details:
+  - Use fixed-size registers for frequency counts: 16-bit per character (26 letters).
+  - Use fixed-size 2D register for pair counts: 26 x 26 x 16-bit.
+  - Implement a state machine: IDLE -> FETCH -> COMPUTE -> UPDATE -> DONE.
+  - In COMPUTE state, iterate through characters in the string.
+  - Maintain an array 'freq' (26 entries) updated as characters are processed.
+  - For each new character, update pair counts: 'pair[prev_char][new_char] += freq[prev_char]'.
+  - Update single count: 'freq[new_char]++'.
+  - Keep track of global max during the process.
+  - Final result is the max of the pair max and single max.
+  - Ensure all arithmetic saturates or wraps at 16 bits.

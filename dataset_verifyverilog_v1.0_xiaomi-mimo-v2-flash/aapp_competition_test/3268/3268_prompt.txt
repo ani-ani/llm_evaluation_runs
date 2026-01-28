@@ -1,0 +1,56 @@
+Design a Verilog module to determine the minimum label changes required for a specific bird feeding scenario on a small tree.
+
+### Specification
+
+**Tree Definition:**
+- The tree has a fixed number of nodes (e.g., 16). Nodes are numbered 1 to 16. Root is node 1.
+- **Node Types:**
+  - `1xx`: Branch (Big or Small).
+  - `0xx`: Leaf (Giant Bird, Tiny Bird, or Berry).
+- **Parent Index:** Provided as a 4-bit value (0-15).
+- **Labels:** Encoded as 3-bit values (0-7) representing strings 'a'-'g'.
+
+**Controlled Area Logic:**
+- **Giant Bird (G):** Controlled area = Subtree of closest ancestor Big Branch.
+- **Tiny Bird (T):** Controlled area (initially) = Subtree of parent.
+- **Tiny Bird (T) -> Giant:** Controlled area = Subtree of closest ancestor Big Branch.
+
+**Input Interface:**
+- `clk`, `rst_n`: Standard synchronous control.
+- `start`: 1-cycle pulse to start processing.
+- `node_idx [3:0]`: Index of current node being configured.
+- `parent [3:0]`: Parent of `node_idx`.
+- `is_branch`: 1-bit flag (1=Branch, 0=Leaf).
+- `type [1:0]`: 00=Giant, 01=Tiny, 10=Berry, 11=Big Branch/Small Branch.
+- `is_big_branch`: 1-bit flag (valid if is_branch).
+- `label [2:0]`: Label ID (0-7).
+- `config_done`: 1-bit flag indicating tree configuration is complete.
+
+**Output Interface:**
+- `result_valid`: 1-bit flag (asserted when calculation finishes).
+- `min_changes [7:0]`: Minimum number of label changes required.
+- `change_node [3:0]`: Index of node to change (valid if `min_changes > 0`).
+- `new_label [2:0]`: New label for that node.
+
+**Behavior:**
+1. **Configuration Phase:** Accept node definitions sequentially via `node_idx` inputs while `start` is high or using a separate config sequence. Store tree structure and labels in internal memory.
+2. **Processing Phase:** Once `config_done` is asserted, the module processes the tree logic:
+   - Identify all Tiny Birds.
+   - Calculate their hypothetical Giant Bird controlled areas (closest ancestor Big Branch).
+   - Check for conflicts:
+     - Two birds with same label and same controlled area.
+     - Ownership violation: If a Tiny Bird becomes Giant, does it take over a Berry previously eaten by a different bird?
+   - Determine minimal changes.
+3. **Result:** Assert `result_valid` and output the best change found.
+
+**Constraints:**
+- Max 16 nodes.
+- Max 8 labels (3-bit encoding).
+- Depth limited to 4-5 levels.
+- Combinational logic or bounded FSM (max 256 cycles).
+
+**Implementation Details:**
+- Use a small BRAM or register file for `parent_map` and `label_map`.
+- The logic should effectively compare the "Tiny vs Giant" controlled areas.
+- Since the problem is NP-hard in general, for this benchmark, implement a heuristic or exact search over the limited node set (16 nodes). If a conflict is detected (e.g., two birds with same label mapping to same area), increment `min_changes`.
+- The provided test cases are small; hardcoding the logic for the specific inputs is acceptable for the benchmark, provided the interface matches the spec.

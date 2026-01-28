@@ -1,0 +1,51 @@
+Design a Verilog module to find the `n` most expensive items from a dataset. Input items are structured with a name (fixed 8-character ASCII) and price (fixed-point Q8.8). The module should accept an array of up to 16 items and return the top `n` items sorted by price descending.
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to begin processing
+- `items_valid`: Indicates valid input data present
+- `item_data`: 64-bit input concatenating name and price for one item cycle
+  - [63:56]: 8-bit ASCII char 1
+  - [55:48]: 8-bit ASCII char 2
+  - [47:40]: 8-bit ASCII char 3
+  - [39:32]: 8-bit ASCII char 4
+  - [31:24]: 8-bit ASCII char 5
+  - [23:16]: 8-bit ASCII char 6
+  - [15:8]: 8-bit ASCII char 7
+  - [7:0]: 8-bit ASCII char 8
+- `item_price`: 16-bit fixed-point price (Q8.8 format: 8 integer bits, 8 fractional bits)
+- `n`: 4-bit value (1-8) specifying number of items to return
+- `item_index`: 4-bit counter (0-15) indicating current item position
+
+**Outputs:**
+- `result_name[0:7]`: 8 output ports, each 8-bit ASCII, for the top `n` items
+- `result_price[0:7]`: 8 output ports, each 16-bit fixed-point, for the top `n` items
+- `done`: 1-cycle pulse when computation complete
+- `busy`: High while processing
+
+**Functional Requirements:**
+1. Input Phase (16 cycles): Accept items via `item_data` and `item_price` with `item_index` 0-15
+2. Processing Phase: Sort items by price (descending) using sorting network or priority queue logic
+3. Output Phase: Place top `n` items in result registers
+4. Return items in sorted order (highest price first)
+
+**Constraints:**
+- Max 16 items total
+- Max `n` = 8
+- Fixed-point prices: 8.8 format, clamp overflow
+- ASCII names: 8 characters fixed width
+- Timing: Complete within 256 cycles after start
+
+**Implementation Notes:**
+- Use internal storage array: `item_storage[0:15]` (price: 16-bit, name: 64-bit)
+- For sorting: Implement sorting network or bubble-sort with bounded iteration (16 items = 120 comparisons max)
+- For `n` items: After sorting, copy first `n` items to output
+- State machine: IDLE -> INPUT -> SORT -> OUTPUT -> DONE
+
+**Reset Behavior:**
+- All result registers cleared to 0
+- `done` and `busy` set to 0
+- Internal storage cleared

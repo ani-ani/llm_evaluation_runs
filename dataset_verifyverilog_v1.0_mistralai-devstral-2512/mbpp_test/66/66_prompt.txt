@@ -1,0 +1,70 @@
+Design a sequential Verilog module to count positive numbers in a fixed-width array. The module must iterate through an array, increment a counter when each element is >= 0, and output the total count. Use an iterative state machine for the loop.
+
+Inputs:
+  clk: Clock input, rising edge active
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  arr[0:7]: 8-element array, each element is 8-bit signed (range -128 to 127)
+  len: 4-bit unsigned integer (valid range 1-8, but must handle any 4-bit value, if >8 treat as 8)
+
+Outputs:
+  result: 16-bit unsigned count of non-negative numbers
+  done: 1-cycle pulse, asserted when computation is complete and result is valid
+
+Behavior:
+  1. On reset (rst_n=0), the state machine returns to IDLE. result=0, done=0.
+  2. When start=1, the module enters PROCESSING state. The loop starts from index 0.
+  3. For each index i from 0 to (min(len,8)-1):
+     - Read the 8-bit signed value arr[i].
+     - Check if value >= 0 (i.e., MSB is 0).
+     - If true, increment the internal counter.
+     - Advance to next index.
+  4. After processing all elements (or when i >= 8), the module asserts done=1 for one clock cycle.
+  5. The result is the final count (0 to 8).
+  6. The total cycle budget: start pulse + up to 8 processing cycles + 1 done cycle. Must complete within 100 cycles.
+
+Implementation Notes:
+  - Use a simple FSM: IDLE -> PROCESSING -> DONE -> back to IDLE.
+  - Use an internal index counter (3 bits) to track position.
+  - Use an internal accumulator counter (4 bits) to count positives (max 8).
+  - The module must be purely combinational except for the FSM state and internal counters.
+  - The arr input is an array of 8 signals (not a bus). Connect them individually.
+  - No clock enable; all transitions on rising edge.
+
+Timing:
+  - Minimum reset hold time: 2 clock cycles.
+  - start pulse: single cycle high.
+  - done pulse: single cycle high, occurs after processing is finished.
+  - result is stable when done=1.
+
+Module Interface:
+  module pos_counter (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr [0:7],
+    input wire [3:0] len,
+    output reg [15:0] result,
+    output reg done
+  );
+
+  Internal signals:
+    - state: 2 bits (IDLE, PROC, DONE)
+    - idx: 3 bits
+    - cnt: 4 bits
+    - temp_val: 8-bit holder for current element
+
+  State Transitions:
+    IDLE: if (start) -> PROC, else stay. result=0, done=0.
+    PROC: if (idx < actual_len) -> check value, increment if >=0, idx++, stay PROC. Else -> DONE.
+    DONE: -> IDLE (next cycle). done=1, result=cnt.
+
+  Edge Cases:
+    - If len == 0 or >8, actual_len = 8 (but typical test uses 1-8).
+    - arr elements are signed. Check: if (temp_val[7] == 0) then non-negative.
+
+  Constraints:
+    - No nested loops. Single loop simulation via state machine.
+    - Fixed array size 8.
+    - Max cycles from start to done: 10 cycles (worst case: start cycle + 8 processing + 1 done).
+    - Ensure combinational paths are short.

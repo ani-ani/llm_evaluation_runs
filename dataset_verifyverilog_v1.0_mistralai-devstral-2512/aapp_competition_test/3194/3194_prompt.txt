@@ -1,0 +1,56 @@
+Design a Verilog module that determines if n photographs can be taken within their time windows. The core algorithm is:
+
+1. Sort n intervals by their end time (earliest finish first)
+2. For each interval in sorted order:
+   - Start time = max(current_time, a_i)
+   - Check if start_time + t <= b_i
+   - If yes, update current_time = start_time + t
+   - If no, return impossible
+3. If all intervals processed successfully, return possible
+
+Scaling Requirements:
+- n: 1 to 8 (scaled from 10^4)
+- t: 1 to 32 (scaled from 10^5)
+- Times a, b: 16-bit unsigned (0 to 65535)
+- Sorting: Use bubble sort network for simplicity
+- Pipeline: One clock cycle per interval
+
+Interface Specification:
+Inputs:
+  clk: system clock, rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  n: 4-bit unsigned (1-8)
+  t: 6-bit unsigned (1-32)
+  a[0:7]: 8x16-bit array, earliest start times
+  b[0:7]: 8x16-bit array, latest end times
+
+Outputs:
+  result: 1-bit, 1=possible, 0=impossible
+  done: 1-cycle pulse when result is valid
+
+Timing Requirements:
+- Reset: 2 cycles minimum, all outputs zero
+- Computation: Start->Done within 200 cycles
+- Pipeline: First result appears after sorting (≤64 cycles), then processing (≤8 cycles)
+
+Implementation Guidelines:
+1. Sorting Stage: Bubble sort network (8 elements) - 64 cycles
+2. Processing Stage: Sequential FSM (8 cycles)
+   - State IDLE: Wait for start
+   - State SORT: Sort intervals by b[i]
+   - State PROCESS: Iterate through sorted intervals
+   - State DONE: Assert done, present result
+3. Registers:
+   - Sorted arrays: a_sorted[0:7], b_sorted[0:7]
+   - Current_time: 16-bit register
+   - Counter: 4-bit for iteration
+   - Valid flag: 1-bit result register
+4. Math: All arithmetic in 16-bit, no overflow expected (max sum: 65535+32)
+5. Control: Simple FSM with 4 states
+
+Special Rules:
+- If n=0, result should be 1 (vacuously possible)
+- All inputs are non-negative
+- Times are monotonic (a <= b)
+- t is constant for all photographs

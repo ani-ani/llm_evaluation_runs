@@ -1,0 +1,58 @@
+You are given N points (x_i, y_i) on a 2D plane. Consider a subset S of the N points that forms a convex polygon (positive area, all interior angles < 180°). For a set S, let n be the number of points inside or on the convex hull of S. The score of S is defined as 2^(n-|S|). Compute the sum of scores for all possible convex polygon subsets S modulo 998244353.
+
+Constraints: 1 ≤ N ≤ 200, coordinates 0 ≤ x_i, y_i < 10^4, all points distinct.
+
+Required Verilog Module Specification:
+
+Module: convex_score
+
+Inputs:
+  clk: Clock signal (rising edge)
+  rst_n: Active-low synchronous reset
+  start: Start signal (1-cycle pulse)
+  x_i, y_i: Coordinate inputs for point i (0-indexed, 14-bit each for 0-16383 range)
+  point_index: 8-bit index to specify which point's coordinates are being loaded
+  valid_in: Input valid signal for coordinates
+
+Outputs:
+  result: 32-bit result (modulo 998244353)
+  done: 1-cycle pulse indicating completion
+  ready: 1-cycle pulse indicating ready for next calculation
+
+Timing:
+- start->done within 100,000 cycles (worst case for N=200)
+- result is valid when done=1
+- Reset: done=0, result=0, ready=0
+
+Implementation Details:
+1. Store all points in a register array (200 x 28-bit, 14-bit x, 14-bit y)
+2. Precompute all possible point subsets (2^N is too large, use alternative approach)
+3. Use inclusion-exclusion: Total subsets = 2^N, subtract non-convex or degenerate subsets
+4. Non-convex subsets include: empty set, single points, collinear points, and subsets where all points are on a line
+5. Use a modular exponentiation unit (pow2[i] for i up to 200)
+6. For collinear detection: For each pair (i,j), count points on line i-j
+7. A subset of points on a line forms a degenerate polygon (area=0), so exclude these subsets
+8. Final answer = (2^N - 1 - N - N*(N-1)/2 - Σ(2^c - c - 1) for each maximal collinear set of size c > 2) mod 998244353
+
+Key Functions:
+- is_collinear(i,j,k): Returns 1 if point k lies on line from i to j (cross product zero)
+- pow2_mod[n]: Returns 2^n mod 998244353
+- Modular arithmetic for all calculations
+
+Implementation Constraints:
+- Use 32-bit registers for intermediate results
+- Modular multiplication can be done with repeated addition (N≤200 so not performance-critical)
+- Collinear detection uses cross product: (xj-xi)*(yk-yi) - (xk-xi)*(yj-yi) = 0
+- For each pair (i,j), count collinear points (including i and j) in k
+- Deduplicate collinear sets using ordering (i < j < k)
+
+Testbench Requirements:
+- Provide N test cases with varying N (1 to 200)
+- Include small N for debugging and large N for stress testing
+- Verify result modulo 998244353
+
+Edge Cases:
+- N=1: Answer should be 0 (no polygon possible)
+- N=2: Answer should be 0 (no polygon possible)
+- All points collinear: Answer should be 0
+- No 3+ collinear points: Only triangles and convex polygons count

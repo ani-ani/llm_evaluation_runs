@@ -1,0 +1,16 @@
+Implement a Verilog module that computes the minimum energy released for an atom with k neutrons, based on threshold n and array a[1..n]. Constraints: n<=4, k queries up to 8 bits (0-255), a[i] scaled to 8-bit (0-255). For k>n, decompose iteratively: find min(i+j=k) where i,j>=1. Use DP table for k=1..16. For k>16, scale result from DP[16] via left-shifts (simulate large k by bit-shifts). Interface:
+
+Inputs:
+  clk: rising edge | rst_n: active-low sync reset
+  start: 1-cycle pulse | n: 4-bit | k_in: 8-bit (input k)
+  a1..a4: 8-bit energy values for neutrons 1..4
+Outputs:
+  result: 16-bit | done: 1-cycle when valid
+Timing: start->done within 200 cycles. Reset: done=0, result=0.
+
+Logic:
+1. On start, load n, k_in, a1..a4.
+2. If k_in <= 16: compute DP[1..16] using DP[0]=0, DP[i]=min(a[i] if i<=n, min over j=1..i-1 of DP[j]+DP[i-j])).
+3. If k_in > 16: result = DP[16] + (DP[16] << (k_in - 16)). Scale: result = DP[16] * (1 << (k_in-16)).
+4. Use 16-bit arithmetic for sums and products (clamp to 16 bits).
+5. done asserts after computation cycle.

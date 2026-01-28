@@ -1,0 +1,28 @@
+Implement a Verilog module that rearranges decimal digits of an input number to make it divisible by 7, given that digits 1,6,8,9 are present. The input is a stream of decimal digits (0-9) with maximum length 20 digits (scaled from 10^6). The module should compute the modulo 7 of the number formed by all digits except one each of 1,6,8,9, then append a 4-digit permutation of 1,6,8,9 such that the total is divisible by 7. Output should be the rearranged number as a stream of decimal digits (no leading zeros except for the number 0 itself).
+
+Module Interface:
+- Inputs: clk, rst_n (active-low), start (1-cycle pulse), data_in (4-bit, decimal digit 0-9), data_valid (input strobe)
+- Outputs: data_out (4-bit, decimal digit), out_valid (output strobe), done (1-cycle pulse when all digits processed), error (pulse if no valid permutation found)
+- Parameters: MAX_DIGITS = 20 (scaled from 10^6)
+
+Behavior:
+1. On start, reset processing state
+2. Count occurrences of each digit 0-9 from input stream
+3. Remove one occurrence each of 1,6,8,9 from counts
+4. Compute modulo 7 of the number formed by remaining digits (in order they appear)
+5. Find permutation of 1,6,8,9 that makes total divisible by 7: (mod_7 * 10000 + perm_val) % 7 == 0
+6. Output: all non-zero digits (in order 1-9, but respecting counts), then the 4-digit permutation, then all zeros
+7. Special case: if only 1,6,8,9 present (no other digits), output permutation with trailing zeros from original count
+8. If impossible (shouldn't happen), assert error
+
+Implementation Constraints:
+- Use combinational logic for modulo calculation
+- Store digit counts in registers (10x4-bit counters)
+- Hardcode valid permutations lookup: [1869, 1968, 1689, 6198, 1698, 1986, 1896, 8691]
+- Finite state machine: IDLE -> COLLECT -> COMPUTE -> OUTPUT
+- Maximum 256 cycles for computation
+- Output must not have leading zeros (except number is 0)
+
+Timing: start->done within 256 cycles. When done=1, data_out and out_valid are valid for all output digits. Output sequence: first all non-zero digits (excluding one each of 1,6,8,9), then the chosen 4-digit permutation, then all zeros.
+
+Note: The input length is scaled to 20 digits. The algorithm processes digits sequentially, maintaining modulo 7 value incrementally.

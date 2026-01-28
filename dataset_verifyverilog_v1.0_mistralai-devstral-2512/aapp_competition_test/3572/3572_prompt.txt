@@ -1,0 +1,40 @@
+Implement a Verilog module that checks if a Hamiltonian cycle exists with total distance exactly L. Adapt for FPGA: n≤8, L≤65536, distances scaled to 16-bit unsigned. Use meet-in-middle DP with bitmask states.
+
+MODULE SPECIFICATION:
+- Input: clk (100MHz), rst_n (active-low), start (1-cycle pulse)
+- Configuration: n (3-bit, 2-8), L (16-bit), distances d[8][8] (packed into 512-bit array input)
+- Output: result (1-bit: 1=possible, 0=impossible), done (1-cycle when valid)
+- Timing: Maximum 5000 cycles from start to done
+- Reset: done=0, result=0, active for 2 cycles
+
+ALGORITHM (Meet-in-middle):
+1. Precompute costs for first half: states mask=1<<i (i=0..n-1), cost[i][mask]=0
+2. DP forward: For mask=1 to 2^n-1:
+   - For each endpoint j in mask:
+     - For each prev k in mask (k!=j): cost[j][mask] = min(cost[j][mask], cost[k][mask^(1<<j)] + d[k][j])
+3. Store half of results (mask with bit n/2 set) in lookup table (max 256 entries)
+4. DP backward: Check complement masks for sum == L - d[j][0]
+5. Return 1 if exact match found
+
+INTERFACE (exact bit widths):
+Inputs (packed):
+- n: [2:0]
+- L: [15:0]
+- d_flat: [511:0] // d[i][j] packed as 8x8x16-bit, index = i*8+j, width=16
+
+Outputs:
+- result: 1-bit
+- done: 1-bit
+
+INTERNAL SIGNALS:
+- state: [3:0] FSM
+- cost_forward[8][256]: 8x256x16-bit (8 endpoints × 256 masks)
+- cost_complement[256]: 256x16-bit for matched half
+- match_found: 1-bit flag
+
+NOTES:
+- No floating point: all distances and L are 16-bit integers
+- Cycle count: n=8 requires ~5000 cycles for full DP
+- Clock domain: synchronous reset, single clock
+- Edge case: n=2 handled by direct check
+- Result valid when done=1, sampled result on that cycle

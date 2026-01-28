@@ -1,0 +1,60 @@
+Implement a Verilog module to calculate the probability that a random road network with N cities and N roads is connected. Each city builds exactly one road to another city (no self-loops, but bidirectional edges). The probability is (#connected graphs with N nodes, N edges) / (total possible graphs = N^(N-1) for N>1).
+
+Simplified Approach:
+1. For N ≤ 14: Use precomputed lookup tables with exact values from OEIS A000081 and A001187
+2. For N > 14: Use a rational approximation formula: P(N) ≈ 1 - (N-1)/N^(N-1) for large N
+3. Fixed-point arithmetic with Q16.16 format for probability values
+4. Use lookup tables stored in ROM for N=2..14
+
+Interface Specification:
+Inputs:
+  clk: clock signal, rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  n_in: 8-bit input for N (2 ≤ N ≤ 140)
+
+Outputs:
+  probability: 32-bit fixed-point Q16.16 result (signed, representable range [-32768, 32767.999985])
+  done: 1-cycle pulse when computation completes
+  valid: high when probability output is valid
+
+Timing:
+- start → done within 100 cycles
+- When start=1, sample n_in, compute probability
+- When done=1, probability contains valid Q16.16 result
+
+Reset Behavior:
+- rst_n=0: done=0, valid=0, probability=0, internal state reset
+- After 2 cycles of rst_n=0, module ready
+
+Implementation Details:
+- Use combinational logic for N ≤ 14 with precomputed lookup ROM
+- For N > 14, compute using formula: 1 - (N-1)/N^(N-1)
+- N^(N-1) computed via iterative multiplication (bounded loops)
+- Division via iterative subtraction or shift approximation
+- Result scaling: multiply probability by 65536 (2^16) for Q16.16
+- No floating-point: use fixed-point arithmetic throughout
+- Maximum iterations: 256 cycles for multiplication/division
+- Output format: result = round(probability * 65536) as 32-bit signed
+
+Example Cases:
+- N=4: probability ≈ 0.962962963, Q16.16 ≈ 0x0F7B0F5B
+- N=2: probability = 1.0, Q16.16 = 0x00010000
+- N=140: probability ≈ 0.999..., Q16.16 ≈ 0x00010000 (near 1.0)
+
+Constraints:
+- N input range: 2 to 140 (8-bit)
+- Fixed-point precision: Q16.16 (16-bit integer, 16-bit fraction)
+- Internal multiplier: 32-bit x 16-bit → 48-bit, truncate to 32-bit
+- Division precision: iterative, 32-bit precision
+- ROM size: 13 entries (N=2..14) × 32-bit each
+
+Timing Protocol:
+1. Wait for start=1
+2. Sample n_in on rising edge
+3. Compute probability (≤100 cycles)
+4. Set done=1 for 1 cycle
+5. Keep valid=1 while done=1 and next cycle
+6. Return to idle state
+
+Note: This is a mathematical computation module, not a real-time graph analyzer. It uses precomputed values and approximations to provide probability estimates within 1e-8 absolute error for N≤14, and reasonable estimates for N>14.

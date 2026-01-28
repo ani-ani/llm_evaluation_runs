@@ -1,0 +1,130 @@
+Implement a Verilog module that calculates the maximum smoothie a monkey can transport across a forest.
+
+The problem is mathematically equivalent to the 'Jeep Problem' or 'Desert Crossing Problem'. The optimal strategy involves making multiple trips to establish fuel depots. The amount of fuel that can be transported a distance D with total fuel W and maximum capacity C is given by:
+
+If W <= C:
+  Result = W (she carries it all at once, consuming D if W > D, but the problem asks for delivered amount).
+  Correction: If W <= C, she can carry it all. The net delivered is max(0, W - D).
+
+If W > C:
+  The optimal strategy involves moving fuel in stages. The effective cost per unit of fuel transported to distance D is a sum of a harmonic series based on the number of trips.
+  
+  Let 'k' be the number of full loads required (k = ceil(W / C)).
+  The distance the first load can be moved to establish a depot is D / (2k - 1).
+  The distance the second load can be moved is D / (2k - 3), and so on.
+  
+  The total distance reachable with W fuel is:
+  D_reachable = D / (2k - 1) + D / (2k - 3) + ... + D / 1
+  
+  However, for the standard problem where we have a specific distance D and total fuel W, we need to invert this logic or use the standard formula for distance D.
+  
+  The standard formula for fuel F needed to cross distance D with capacity C is:
+  F = C * (1 + 1/3 + 1/5 + ... + 1/(2n-1)) for the last segment + C for the remaining segments.
+  
+  Since the output must be precise and handling harmonic series summation in fixed-point requires careful iteration, we will implement a parameterized loop.
+
+  Algorithm (Iterative):
+  1. Input: Distance D (Q16.16), Total Smoothie W (Q16.16), Capacity C (Q16.16).
+  2. We need to determine the maximum distance reachable with amount W, or if W > C, calculate the delivered amount.
+  3. Actually, the problem is simpler: Calculate 'Delivered'.
+  4. If W <= C: Delivered = max(0, W - D).
+  5. If W > C: 
+     We need to compute how much fuel is consumed to move fuel to distance D.
+     Let remaining_weight = W.
+     Let distance_remaining = D.
+     Let trips = 2 * ceil(remaining_weight / C) - 1 (This is the number of trips required for the first segment).
+     Actually, the cost to move weight W a distance dist with capacity C is:
+     Cost = C * (2 * ceil(W/C) - 1) for the first segment.
+     
+     We will simulate the movement segment by segment.
+     Let current_load = W.
+     Let distance_left = D.
+     Let delivered = 0.
+     
+     While current_load > C:
+        trips = 2 * ceil(current_load / C) - 1
+        segment_dist = C / trips  // Max distance we can move the full load C in this segment
+        if segment_dist >= distance_left:
+            // We can reach the destination in this segment
+            delivered = current_load - distance_left * trips
+            current_load = 0
+            distance_left = 0
+        else:
+            // We move the full load C by segment_dist
+            // Fuel consumed = C * trips * segment_dist = C * trips * (C/trips) = C
+            // Wait, that's not right. 
+            // If we have W fuel, and we move it D distance, the consumption rate is high.
+            // Let's use the standard iterative calculation for 'fuel needed to cross D' vs 'fuel we have'.
+            
+     Alternative approach: Calculate the 'efficiency' factor.
+     The standard solution for the Jeep Problem (distance D, capacity C, total fuel W) to find delivered amount:
+     We want to find X such that W = C * (1 + 1/3 + 1/5 + ... ) * D_prefix + ... 
+     
+     Let's implement the harmonic series summation for the cost function.
+     To cross distance D with capacity C, the minimum fuel required is:
+     Fuel = 0
+     while D > 0:
+        n = ceil(Fuel / C) + 1  // Wait, number of trips depends on total fuel.
+        
+     Correct iterative logic for 'Delivered Amount':
+     Let available = W.
+     If available <= C: return max(0, available - D).
+     
+     We need to find the fuel consumed.
+     Let remaining_distance = D.
+     Let fuel_remaining = W.
+     
+     while remaining_distance > 0 and fuel_remaining > C:
+        // How many loads? 
+        n = ceil(fuel_remaining / C)
+        // The max distance we can move the *entire* remaining stock before one load is exhausted is:
+        // d_step = C / (2*n - 1)
+        // If d_step >= remaining_distance, we can reach the end.
+        // Fuel consumed to move distance d_step with n loads: (2*n - 1) * d_step
+        // Since d_step = C / (2*n - 1), fuel consumed = C.
+        // So we consume exactly C fuel to advance a distance of C / (2*n - 1).
+        // EXCEPT for the very last segment where we only have C fuel left.
+        
+        If fuel_remaining > C:
+           n = ceil(fuel_remaining / C)
+           step = C / (2*n - 1)
+           If step >= remaining_distance:
+               // We reach the end. 
+               // Fuel consumed = remaining_distance * (2*n - 1)
+               // Delivered = fuel_remaining - remaining_distance * (2*n - 1)
+               // Break.
+           Else:
+               // Advance by step
+               remaining_distance = remaining_distance - step
+               fuel_remaining = fuel_remaining - C
+     
+     If fuel_remaining > 0 and remaining_distance > 0:
+        // Now fuel_remaining <= C (or close to it)
+        // She carries it all. 
+        Delivered = max(0, fuel_remaining - remaining_distance)
+
+  Interface:
+  - Inputs: D, W, C (32-bit integers representing Q16.16 fixed point)
+  - Output: Result (32-bit Q16.16)
+  - Logic: Combinational logic with bounded loops (max iterations ~ log(W/C) which is < 20 for 10^6 range).
+
+  Implementation details:
+  - Use integer arithmetic for the logic, converting input fixed-point to integers for calculation (treat as integer ml/meters).
+  - The inputs D, W, C are given as integers up to 1,000,000. This fits in 20 bits. We can use 32-bit logic.
+  - The output requires high precision (1e-7). Fixed point Q16.16 is not enough for error tolerance on large numbers (1e7 * 1e-7 = 1). 
+  - Requirement: Use Q32.32 or similar high-precision arithmetic. Since the inputs are integers, we can perform calculations in a larger integer space (e.g., 64-bit) and scale the result.
+  - Since Verilog simulation handles integers well, we will use `longint` (64-bit) for internal calculations.
+  - Output will be scaled back to a fixed point (e.g., Q32.32) or returned as a floating point representation (tuple of integer and fraction) if the module spec allows, but typically we stick to fixed point or high-precision integer logic.
+  - Given the constraints (1e6), 64-bit integer arithmetic is sufficient for 1e-7 relative error if we scale inputs by 10^9.
+  - Let's assume inputs are passed as 64-bit integers representing the value * 10^9 (Nano-units). 
+  - Or simpler: The problem asks for standard floating point output. In Verilog, we can implement the algorithm using integer arithmetic for the logic and output a fixed-point number. 
+  - However, the prompt asks for a module specification. We will specify the interface to accept integer inputs D, W, C and output a 64-bit integer representing the value * 10^9.
+
+  Module Specification:
+  - Module: `smoothie_transport`
+  - Inputs: `clk`, `rst_n`, `start`, `D_in`, `W_in`, `C_in` (all 32-bit integers)
+  - Output: `result_high`, `result_low` (or a 64-bit interface), `done`
+  - Operation: The calculation involves a loop. It should be a sequential FSM or a combinational block with a bounded loop. Given the complexity of the loop (variable iterations), a sequential FSM is safer and more hardware-friendly.
+  - FSM States: IDLE, CALC_LOOP, FINAL_CALC, DONE.
+  - Inside CALC_LOOP: Update `fuel_rem`, `dist_rem`, `n`.
+  - Precision: Use 64-bit internal registers (`logic [63:0]`) for fuel and distance calculations to maintain precision during division and subtraction.

@@ -1,0 +1,19 @@
+Implement a Verilog module that finds the minimal cluster size for a fixed pair of weights (S, T). The module takes a list of 16 triples (a_i, b_i, c_i) sorted by the weighted sum a_i*S + b_i*T (with tie-breaking favoring c_i=1 to maximize cluster size). The cluster is defined as the consecutive sequence of c_i=1 entries in the sorted order. The input size is fixed to N=16, with a_i, b_i in [0, 2000000] (scaled to 24-bit), c_i is 1-bit. S and T are fixed 16-bit fixed-point numbers (Q8.8 format). The module should compute the weighted sum for each entry, sort the entries by this sum (using a sorting network for N=16), then scan the sorted list to find the first and last index where c_i=1, and output the cluster size (last - first + 1). The result is 5-bit (max 16).
+
+Interface:
+- Inputs: clk, rst_n, start (1-cycle pulse), S[15:0], T[15:0]
+- For each of 16 entries i (0-15): a_i[23:0], b_i[23:0], c_i
+- Outputs: result[4:0] (cluster size), done (1-cycle when valid)
+
+Operation:
+1. On start, compute weighted sums: sum_i = (a_i * S) + (b_i * T). Use 24-bit * 16-bit = 40-bit intermediate, then shift right by 8 (Q8.8) to get 32-bit result. Use only lower 32 bits for comparison.
+2. Sort 16 entries by sum_i (lower sum first). On ties (equal sums), place c_i=1 entries before c_i=0 (to maximize cluster in worst-case).
+3. Scan sorted list to find first and last index where c_i=1.
+4. Compute cluster_size = last - first + 1.
+5. Output result and assert done for 1 cycle.
+
+Timing: start->done within 1000 cycles. Reset clears result and done.
+
+Implementation: Use a sorting network (e.g., bitonic) for N=16. Compute sums in parallel, then sort. Scan with a state machine. Fixed point math: a_i*S uses 24x16=40 bits, shift right 8. S and T are 16-bit signed integers (S[15] is sign, lower 8 bits fractional). Assume unsigned a_i, b_i.
+
+Testbench: Provide cocotb testbench that instantiates the module with 16 fixed inputs, sets S/T values, verifies result matches expected cluster size for that fixed pair. Include helper functions for fixed-point conversion and array access.

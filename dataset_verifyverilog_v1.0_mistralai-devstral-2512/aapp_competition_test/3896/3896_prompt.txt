@@ -1,0 +1,44 @@
+Design a Verilog module that calculates the complexity of a dance assignment given a binary string representing the XOR mask x.
+
+**Problem Analysis:**
+The problem defines a set of 2^n members in MDC (ids 0..2^n-1) and NFC (ids 0..2^n-1). Member i in MDC dances with member (i XOR x) in NFC. The complexity is defined as the number of pairs of dance pairs (a, b) and (c, d) such that a < c and b > d. It can be mathematically proven that the complexity for a binary mask x of length n is exactly (x * 2^(n-1)), where x is interpreted as an integer. This holds for all x.
+
+**Constraints & Adaptation:**
+- Input length n is up to 100 in the original problem. In hardware, we must limit this. We will fix the input length n = 8.
+- The mask x is an 8-bit binary string (e.g., "10110010").
+- The input should be an 8-bit vector `x_mask`.
+- The output is (x * 2^7) modulo 10^9 + 7.
+- Since 2^7 is just a left shift by 7, the formula simplifies to: `Result = (x << 7) % 1000000007`.
+- `1000000007` is a 30-bit number (`0x3B9ACA07`). We will use 32-bit arithmetic for intermediate calculations to avoid overflow before the modulo operation.
+
+**Module Interface:**
+- **Inputs:**
+  - `clk`: System clock (required for sequential logic).
+  - `rst_n`: Active-low asynchronous reset.
+  - `start`: 1-cycle pulse to start the calculation.
+  - `x_mask`: 8-bit input representing the binary mask.
+- **Outputs:**
+  - `result`: 32-bit output holding the result modulo 1,000,000,007.
+  - `done`: 1-cycle pulse indicating the result is valid.
+
+**Implementation Logic:**
+1. **Input Registration:** When `start` is high, register the 8-bit `x_mask`.
+2. **Calculation:**
+   - The mathematical formula is `ans = (x << 7) % MOD`.
+   - In binary, left shifting by 7 is equivalent to multiplying by 128.
+   - To avoid large intermediates (though x is small, max 255, so 255*128=32640 which fits in 16 bits), we can use a multiplier. However, to demonstrate 32-bit handling, we will compute `product = x_extended * 128`.
+   - `x_extended` is the 8-bit input zero-extended to 32 bits.
+   - `product = {24'b0, x_mask} << 7`. This is a 32-bit value.
+   - The modulo operation with `1000000007` (a prime) is required. Since the product (max 32640) is much smaller than the modulus (1,000,000,007), the result is simply the product itself. However, to make the module general and robust for larger inputs (if scaled), we should implement a proper modulo operation. Given the `n=8` constraint, the product fits in 16 bits. We will implement a sequential division for the modulo operation to handle the case where the product might be larger (or just to satisfy the "modulo" requirement explicitly).
+   - Alternatively, since the product is small, we can compute it in one cycle if we keep the width managed. Let's calculate `product = x_mask << 7`. Since `x_mask` is 8 bits, `x_mask << 7` is 15 bits max.
+   - We will use a single-cycle calculation for `x_mask << 7` followed by a register assignment. The modulo step is technically a formality for small numbers but we'll treat the result as a 32-bit output.
+   - **State Machine:**
+     1. IDLE: Wait for `start`.
+     2. CALC: Compute `temp_result = (x_mask << 7)`. Since this is a simple shift, it can be combinational. Let's use a sequential process to latch the result.
+     3. DONE: Assert `done`.
+
+**Verilog Spec:**
+- Module name: `dance_complexity_calc`
+- Parameters: `MOD = 1000000007`, `SHIFT = 7` (2^(n-1) for n=8).
+- Internal logic: 32-bit arithmetic.
+- Timing: Start asserted -> 1 cycle to compute -> Done asserted. Result held until next start.

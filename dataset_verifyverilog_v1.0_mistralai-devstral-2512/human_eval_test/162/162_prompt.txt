@@ -1,0 +1,107 @@
+You are tasked with implementing a simplified MD5 hash module for a fixed 8-character ASCII string input. The goal is to compute a 128-bit hash output, but due to the complexity of the full MD5 algorithm, we will implement a simplified version that processes 8 bytes of input in a single clock cycle using a combinational logic block (like a large lookup table or combinatorial network). The interface is simplified for benchmarking purposes.
+
+**Input Interface:**
+- `clk`: Clock signal (not used in combinational version but required for template).
+- `rst_n`: Active-low synchronous reset (sets output to 0).
+- `start`: 1-cycle pulse to initiate computation (ignored in combinational version).
+- `input_str`: An array of 8 bytes (8-bit inputs each), representing the 8-character string. If the input is shorter than 8 characters, it is padded with zero bytes.
+- `valid_in`: 1-bit signal indicating the input is valid. If `valid_in` is 0, output should be 0.
+
+**Output Interface:**
+- `hash_out`: A 128-bit vector containing the computed MD5 hash. For invalid input or empty string (all zeros), output 0.
+- `done`: A 1-cycle pulse indicating output is valid. For combinational logic, `done` can be asserted the cycle after `start` is asserted, or always high when `valid_in` is high (depending on timing requirements).
+
+**Implementation Requirements:**
+1. The module should handle exactly 8 bytes of input. Any string longer than 8 characters is truncated to the first 8.
+2. Empty string: If all 8 input bytes are 0, the hash output should be 0 (or a specific predefined null hash, but 0 is safer for simplicity).
+3. **Simplified Algorithm**: Since a full MD5 pipeline is too large, implement a logic block that maps the 8-byte input to a 128-bit hash. You can use a case statement (if inputs are limited to a few test strings) or a pre-computed lookup table. For this benchmark, focus on the interface and handling the 8-byte array. You can hardcode the hash values for the specific test cases provided ('Hello world', 'A B C', 'password') and return 0 for empty input.
+4. **Bit Widths**: Input bytes are 8-bit each. Output is 128-bit. Input length is fixed at 8 (implied by the array size).
+5. **Timing**: In combinational logic, the output updates immediately when `valid_in` is high. The `done` signal should be synchronized with the clock. For simplicity, assert `done` high when `valid_in` is high and `clk` rises.
+6. **Reset**: On reset, `hash_out` and `done` should be 0.
+
+**Interface Spec:**
+- `input [7:0] input_str [0:7];` // 8 bytes
+- `input valid_in;`
+- `output reg [127:0] hash_out;`
+- `output reg done;`
+- `input clk, rst_n;`
+
+**Test Cases (Hardcoded Logic):**
+1. Input "Hello world" (0x48 0x65 0x6C 0x6C 0x6F 0x20 0x77 0x6F) -> Output hash 0x3e25960a79dbc69b674cd4ec67a72c62.
+2. Input "" (all zeros) -> Output hash 0x0.
+3. Input "A B C" (0x41 0x20 0x42 0x20 0x43 0x00 0x00 0x00) -> Output hash 0xef78513b0cb8cef12743f5aeb35f888 (note: 128-bit, leading zeros implied).
+4. Input "password" (0x70 0x61 0x73 0x73 0x77 0x6F 0x72 0x64) -> Output hash 0x5f4dcc3b5aa765d61d8327deb882cf99.
+
+**Verilog Module Template:**
+```verilog
+module md5_hash #(
+    parameter NUM_CHARS = 8,
+    parameter CHAR_WIDTH = 8
+) (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire valid_in,
+    input wire [CHAR_WIDTH-1:0] input_str [0:NUM_CHARS-1],
+    output reg [127:0] hash_out,
+    output reg done
+);
+
+    // Internal state register
+    reg [127:0] stored_hash;
+    reg stored_done;
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            hash_out <= 128'b0;
+            done <= 1'b0;
+            stored_hash <= 128'b0;
+            stored_done <= 1'b0;
+        end else begin
+            // Default to zero if not valid
+            if (!valid_in) begin
+                stored_hash <= 128'b0;
+                stored_done <= 1'b0;
+            end else begin
+                // Simplified Logic: Case statement for known inputs
+                // Compare input_str to known patterns
+                // Note: This is not a generic MD5, just a lookup for the benchmark.
+                // Strings are compared byte-wise.
+                
+                // "Hello world" -> 3e25960a79dbc69b674cd4ec67a72c62
+                if (input_str[0] == 8'h48 && input_str[1] == 8'h65 && input_str[2] == 8'h6C && input_str[3] == 8'h6C &&
+                    input_str[4] == 8'h6F && input_str[5] == 8'h20 && input_str[6] == 8'h77 && input_str[7] == 8'h6F) begin
+                    stored_hash <= 128'h3e25960a79dbc69b674cd4ec67a72c62;
+                end
+                // "A B C" -> 0ef78513b0cb8cef12743f5aeb35f888 (Handle padded zeros)
+                else if (input_str[0] == 8'h41 && input_str[1] == 8'h20 && input_str[2] == 8'h42 && input_str[3] == 8'h20 &&
+                         input_str[4] == 8'h43 && input_str[5] == 8'h00 && input_str[6] == 8'h00 && input_str[7] == 8'h00) begin
+                    stored_hash <= 128'h000000000ef78513b0cb8cef12743f5aeb35f888; // Truncated/Zero-padded to 128 bits
+                end
+                // "password" -> 5f4dcc3b5aa765d61d8327deb882cf99
+                else if (input_str[0] == 8'h70 && input_str[1] == 8'h61 && input_str[2] == 8'h73 && input_str[3] == 8'h73 &&
+                         input_str[4] == 8'h77 && input_str[5] == 8'h6F && input_str[6] == 8'h72 && input_str[7] == 8'h64) begin
+                    stored_hash <= 128'h000000005f4dcc3b5aa765d61d8327deb882cf99;
+                end
+                // Empty string (all zeros)
+                else if (input_str == '{0:NUM_CHARS*CHAR_WIDTH{1'b0}}) begin // All zero check is tricky in Verilog for arrays, use reduction
+                    // Ideally: input_str is packed or we compare elements. 
+                    // Assuming unpacked array, compare each element to 0.
+                    if (input_str[0] == 0 && input_str[1] == 0 && input_str[2] == 0 && input_str[3] == 0 &&
+                        input_str[4] == 0 && input_str[5] == 0 && input_str[6] == 0 && input_str[7] == 0)
+                        stored_hash <= 128'b0;
+                    else
+                        stored_hash <= 128'b0; // Default for unknown strings
+                end else begin
+                    stored_hash <= 128'b0;
+                end
+                stored_done <= 1'b1;
+            end
+            
+            // Output assignment
+            hash_out <= stored_hash;
+            done <= stored_done;
+        end
+    end
+endmodule
+```

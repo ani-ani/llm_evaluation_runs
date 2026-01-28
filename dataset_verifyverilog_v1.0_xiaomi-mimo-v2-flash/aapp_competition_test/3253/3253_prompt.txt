@@ -1,0 +1,45 @@
+Implement a Verilog module that solves the election problem using dynamic programming. The module should compute the minimum number of undecided voters to convince to win the election.
+
+**Constraints:**
+- Scale voters to fixed-point Q16.16 (use 32-bit integers internally)
+- Maximum 4 states (S <= 4)
+- Maximum 32 delegates per state (D_i <= 32)
+- Maximum 4096 total delegates
+- Use binary search over possible total votes (0 to 65535 scaled)
+- Output 'impossible' if no solution found (represented as -1 for result)
+
+**Input Interface:**
+- `clk`: 1-bit, rising edge clock
+- `rst_n`: 1-bit, active-low synchronous reset
+- `start`: 1-bit, 1-cycle pulse to start computation
+- `state_valid`: 1-bit, indicates current state data is valid
+- `delegate_in`: 5-bit (0-31), delegates for current state
+- `c_in`: 32-bit, definite Constituents voters (scaled Q16.16)
+- `f_in`: 32-bit, definite Federals voters (scaled Q16.16)
+- `u_in`: 32-bit, undecided voters (scaled Q16.16)
+- `state_index`: 3-bit (0-7), index of current state
+
+**Output Interface:**
+- `result`: 32-bit signed, minimum voters needed (or -1 for impossible)
+- `done`: 1-bit, 1-cycle pulse when computation complete
+- `busy`: 1-bit, high while computing
+
+**Internal Logic:**
+1. Store state data in registers (4 states max)
+2. Binary search over votes needed (0 to max possible)
+3. For each guess, use DP to check if election can be won
+4. DP state: (delegate_sum, processed_states) -> max Constituent votes
+5. Output minimum valid guess or -1
+
+**Timing:**
+- start -> done within 10,000 cycles
+- Reset clears all registers (done=0, result=0)
+- Input data must be provided sequentially via state_valid
+- Start triggers computation after all states loaded
+
+**DP Implementation:**
+- Use lookup table: dp[delegates][states] = max constituent votes
+- Maximum delegates: 4096 (12 bits)
+- Maximum constituent votes: 65535 (16 bits)
+- States: 4 (3 bits)
+- Iterate over all states and delegate sums

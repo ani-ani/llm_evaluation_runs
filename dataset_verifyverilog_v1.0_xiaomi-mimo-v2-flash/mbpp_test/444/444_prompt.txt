@@ -1,0 +1,63 @@
+Design a Verilog module that performs trimming of multiple fixed-length integer arrays, where each array element is removed from both ends. The module should process a batch of input arrays sequentially, where each input array has a fixed maximum length, and the output consists of arrays trimmed by k positions from start and end.
+
+**Core Requirements:**
+- Process 16 input arrays (configurable via parameter)
+- Each array has max 16 elements (8-bit integers)
+- K value determines trim amount from each end
+- Output arrays stored in a separate memory block
+- Sequential processing via FSM: idle -> read -> trim -> write
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to begin processing
+- `k_in`: 4-bit unsigned (0-15) trim amount per side
+- `total_tuples`: 5-bit unsigned (0-31) number of tuples to process
+- `arr_in`: 8-bit input array values (16x8-bit, accessed as 16 separate ports `arr_in_0` to `arr_in_15`)
+- `tuple_idx`: 5-bit index for current tuple being read
+- `element_idx`: 4-bit index for element within current tuple
+
+**Outputs:**
+- `result`: 8-bit trimmed array element at current position (tuple_idx, element_idx)
+- `done`: 1-cycle pulse when all tuples processed
+- `valid`: High when result is valid (during trimming phase)
+- `busy`: High when processing is active
+
+**Behavior:**
+1. On start pulse, FSM transitions to processing state
+2. For each tuple (0 to total_tuples-1):
+   - Read k_in elements from input, discard (no operation needed, we skip)
+   - Read elements from index k_in to (len - k_in - 1)
+   - Write trimmed elements to output storage (16x16 array)
+   - Each operation takes 1 cycle (pipelined)
+3. When done, output `done` pulse, `busy` goes low
+
+**Timing Constraints:**
+- Reset: done=0, busy=0, valid=0 (2 cycles minimum)
+- Start pulse must be single cycle (or ensure transition)
+- Processing: N tuples × M elements per tuple cycles (max 16×16 = 256 cycles)
+- Sample `result` when `valid=1` and `done=0`
+
+**Memory Structure:**
+- Input storage: 16x16x8-bit (tuples × elements × data)
+- Output storage: 16x16x8-bit (trimmed tuples × trimmed elements × data)
+- Output elements accessed via tuple_idx and element_idx
+
+**Implementation Notes:**
+- Use parameter for MAX_TUPLES (16) and MAX_ELEMENTS (16)
+- k_in must satisfy: k_in < (element_count/2) for valid trimming
+- If k_in is too large, set all output elements to 0
+- If tuple length after trimming is 0, output empty array
+- All data paths must be 8-bit width, clamp values if needed
+
+**FSM States (simplified):**
+- IDLE: waiting for start
+- SET_TRIM: configure trim parameters
+- PROCESS: read, trim, write for each tuple
+- COMPLETE: set done=1
+
+**Important:** The module should handle variable length tuples by using `actual_length` per tuple stored in a separate register. For simplicity, assume all tuples have length 16 (padded with 0). The trim operation skips first k_in elements and keeps elements until (length - k_in).
+
+**Note:** This is a sequential implementation requiring multiple cycles per tuple. The module should be synthesizable and suitable for FPGA implementation with block RAM for input/output storage.

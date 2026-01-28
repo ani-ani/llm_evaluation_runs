@@ -1,0 +1,210 @@
+Design a Verilog module that finds the lexicographically minimum path of length k (up to 16) in an N x N grid (N=2 or 4, 16 nodes max). The grid contains values 1..N*N unique.
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset
+  start: 1-cycle pulse to start computation
+  grid_data: 16x8-bit array (for N=4) or 4x8-bit array (for N=2). Packed representation: pack values row-major. For N=2: grid_data[3:0] = {val(1,1), val(1,0), val(0,1), val(0,0)}. For N=4: grid_data[63:0] = row-major packed 8-bit values.
+  k: 4-bit integer (1..16)
+  grid_size: 1-bit (0 for 2x2, 1 for 4x4)
+
+Outputs:
+  result: 8-bit, holds current cell value of the path (sequential output)
+  done: 1-cycle pulse when path computation is complete and result is valid for the current step
+  path_index: 4-bit (0..k-1), indicates which step of the path result corresponds to
+
+Internal Logic (Specification Guidelines):
+1. Represent grid as a graph with up to 16 nodes. Each node has 2-4 neighbors (up, down, left, right) depending on position.
+2. Use Dynamic Programming (DP). State: DP[step][node] = minimum path sequence (encoded or tracked via parent pointers).
+   Since k <= 16 and nodes <= 16, we can store the full sequence for each state (max 16*8 bits = 128 bits per node, but we can optimize).
+   Alternative: Store the predecessor node and the value. To reconstruct lexicographically smallest, we compare sequences.
+3. Because hardware prefers iterative/sequential output, we will compute the path nodes one by one.
+   - Step 1: Find the starting node with the minimum value (global minimum in grid).
+   - Step i (2 to k): From all valid nodes at step i-1, explore neighbors for step i. Select the neighbor that gives the lexicographically smallest sequence (comparing the full sequence so far).
+4. Implementation Strategy:
+   - Flatten grid to 1D index (0..15). Map 2D (r,c) to idx = r*N + c.
+   - Precompute neighbors for each idx (store as a small LUT in logic or compute on fly).
+   - Sequential FSM:
+     State 0: Idle
+     State 1: Find Min Start Node (scan grid values)
+     State 2: For steps 2..k:
+       - Maintain a list of 'active' nodes from previous step (width up to 4).
+       - For each active node, check its neighbors.
+       - Compare sequences. Since k is small, we can store the path history in registers or SRAM.
+       - To output sequentially: We need to store the chosen path nodes in an array (16x8 bit registers).
+     State 3: Output phase (serial shift out)
+5. Output:
+   The module should output the path values sequentially. 
+   Start 'done' pulse when valid data appears on 'result'.
+   'path_index' increments from 0 to k-1.
+
+Constraints:
+- Fixed precision: Values 1..16 fit in 8 bits.
+- Grid size known at compile time or selectable via `grid_size` pin.
+- Max cycles: 1024 (for 16 steps and 16 nodes scanning).
+- Reset: Sets done=0, path_index=0, result=0.
+
+Example Sequence (Grid 3x3, k=3, values 1..9):
+1. Find min value 1 at (0,0).
+2. Step 2: Neighbors of (0,0) are (0,1)=2 and (1,0)=4. Path so far [1,2] vs [1,4]. Min is [1,2]. Select node (0,1).
+3. Step 3: Neighbors of (0,1) are (0,0)=1, (0,2)=3, (1,1)=5. Append to path:
+   [1,2,1], [1,2,3], [1,2,5]. Min is [1,2,1].
+
+Output Interface Timing:
+- Assert start for 1 cycle.
+- After processing, assert done for 1 cycle. At this time, `result` holds value at index `path_index`.
+- `done` remains low during processing. It pulses 1 cycle for each output element? Or pulses once at end?
+  Specification: `done` pulses for each valid `result` on `path_index`. 
+  Or simpler: `done` pulses once when the entire path is ready, and `path_index` indicates the index.
+  Let's stick to the standard serial output: `done` pulses when valid data is present.
+  Actually, the prompt says "done: 1-cycle when valid".
+  Let's make it: Processing happens. When ready, we output k values. 
+  We need a mechanism to stream k values.
+  Revised Output:
+  `done` asserts for k cycles, one for each path element. `path_index` counts 0..k-1.
+  `start` initiates calculation. While calculating, `done` is 0.
+  When calculation finishes (path found), we enter an output state where we drive `result` and `done` for k cycles.
+  Wait, "done: 1-cycle when valid" usually means a single pulse at the end of the operation. 
+  But we need to return a list.
+  Alternative: Output is a single 128-bit value? No, port is 8-bit.
+  Let's interpret "done: 1-cycle when valid" as: when the module has finished its internal calculation and the *first* value is valid, or the *last* value is valid.
+  Given the Python signature returns a list, and Verilog usually streams data:
+  Let's design: 
+  1. `start` pulse.
+  2. Internal calculation (max 100 cycles).
+  3. Output state: For `k` cycles, assert `done` high. 
+     Wait, `done` is usually a single pulse.
+     Let's change `done` to `valid`.
+     Prompt says "done: 1-cycle when valid".
+     To return a list: The module should probably have an output FIFO interface or just output the sequence sequentially with a `valid` signal (which acts as `done` per element).
+     I will implement: `start` triggers calculation. When done, `result` contains the full path (if k <= 16, we can pack it? No, result is 8-bit).
+     Let's stick to the prompt's "ordered list". 
+     Actually, look at the testbench template: `dut.result.value` is read once.
+     The template assumes a single output value.
+     This is a conflict. The Python function returns a list.
+     However, the prompt says "Output: result: 16-bit".
+     Okay, I will modify the requirement slightly to fit HDL: The module computes the path and outputs the *minimum total value* or the *first element*? No, that loses info.
+     Adaptation: The module computes the path and stores it in internal registers. 
+     To verify in cocotb, we might need a way to read it back. 
+     Given the constraints of the "Standard Interface", let's assume `result` is the current value of the path at index `path_index`.
+     And `done` is asserted when the calculation is finished and the result is valid.
+     But `path_index` isn't in the original spec, I added it to make it work.
+     Let's refine the interface to match the "return list" requirement as best as possible in hardware.
+     
+     **Refined Interface:**
+     - `start`: Start calculation.
+     - `done`: Asserts for exactly `k` cycles when outputting the path. High for 1 cycle per element. 
+     - `result`: 8-bit value of the path element at the current cycle.
+     - `step_cnt`: 4-bit output indicating current step (0..k-1) during output.
+
+     **Algorithm (Hardware Friendly):**
+     1. **Parse Input**: Decode `grid_size` to determine N (2 or 4). Unpack `grid_data` into a 16-entry RAM (use registers) `grid_vals[0:15]`. Value at index `i` is grid[i//N][i%N].
+     2. **Find Start**: Find index `min_idx` with minimum value. Store `min_idx` in `path[0]`.
+     3. **DP Steps**: For `step` from 1 to k-1:
+        - List valid previous nodes (initially just `min_idx`, later expanded to neighbors).
+        - Actually, since we want the absolute minimum lexicographically, we don't just expand from a single previous node in a local sense; we consider *all* paths of length `step`. 
+        - But wait, if we pick the min start, we are committing to that start. The problem asks for the min path of length k. We can start at *any* cell. 
+        - So Step 1: Pick start node `s` such that there exists a path of length k starting at `s` which is lexicographically minimal. 
+        - This requires looking ahead or DP from all nodes.
+        - **DP State**: `dp[step][node]` = best path sequence (list of values) of length `step+1` ending at `node`. 
+        - Since `k` and `N` are small, we can store the full sequence for each node? 
+          `N=4, k=16`. Sequences are 16 bytes. 16 nodes * 16 bytes = 256 bytes. This is large for FPGA logic but feasible if we use distributed RAM or registers optimized.
+        - Optimization: Store the *parent* pointer and the value. To compare two paths of length `L`, we traverse parents back to root. 
+        - Given the small size, we can store the path values in a flattened array per node or compute on the fly.
+        - 
+        
+     **Alternative Simplified Algorithm (Greedy?)**
+     The examples show patterns like `[1, 2, 1, 2...]` or `[1, 10, 1, 10...]`. 
+     This implies the optimal path often alternates between two low values.
+     However, strict lexicographical order requires comparing full prefixes.
+     
+     **Feasibility Check:**
+     `k=16`. `N=4` (16 nodes). 
+     DP table size: `k * 16` states. 
+     Each state needs to store the path (or enough to reconstruct it).
+     If we store the full sequence (16 ints * 8 bits) per state: `16*16*8 = 2048 bits` (256 bytes). Distributed RAM on FPGA can handle this.
+     Comparisons: Need to compare two paths of length `step+1`. This takes `step+1` cycles (max 16).
+     Total cycles: Finding neighbors (constant) + comparisons. 
+     
+     **Verilog Module Spec:**
+     
+     **Inputs:**
+     `clk`, `rst_n`, `start`
+     `grid_data`: Packed 64-bit value. Row major. (For 4x4 grid, 16 values * 4 bits? Values go up to 16. 4 bits enough. Prompt said 8-bit, I'll use 4-bit for efficiency but map to 8-bit ports? No, stick to 8-bit for simplicity of alignment, but valid range 1-16). Let's assume 8-bit data in, we only use lower 4 bits for 4x4 grid. For 2x2, values 1-4, fits in 3 bits. 
+     `grid_size`: 1-bit. 0=2x2 (4 nodes), 1=4x4 (16 nodes).
+     `k`: 4-bit (1..16).
+     
+     **Outputs:**
+     `result`: 8-bit value of the path.
+     `step`: 4-bit index (0..k-1).
+     `valid`: 1-bit (active high during output).
+     `busy`: 1-bit (active high during calculation).
+     
+     **Internal Logic (Spec):**
+     1. **Setup**: On `start`, load `grid_data` into `grid_mem` (16x8-bit array, but effectively used as `N*N` size). Compute `num_nodes` = `grid_size` ? 16 : 4.
+     2. **DP Initialization**: Create `paths[0:15][0:15]` array to store the sequence for each node at each step. 
+        - `paths[step][node_idx]`: stores the list of values (flattened) for the best path ending at `node_idx` with length `step+1`.
+        - Alternatively, store `prev_node[step][node_idx]` and `value[step][node_idx]`. 
+        - Since we need lexicographical comparison, and the graph is small, we can just iterate.
+        - 
+     3. **Step Loop**:
+        - `current_step` from 0 to `k-1`.
+        - If `current_step == 0`: 
+          For each node `i` (0 to num_nodes-1): 
+            `paths[0][i] = {grid_val[i]}` (path of length 1).
+        - If `current_step > 0`:
+          For each node `curr` (0 to num_nodes-1):
+            Identify neighbors `prev` of `curr`.
+            Candidate path = `paths[current_step-1][prev]` + `grid_val[curr]`.
+            Compare candidate paths for all valid `prev`. Select minimum lexicographically.
+            Store in `paths[current_step][curr]`.
+     4. **Result Selection**:
+        After `k-1` steps are done: 
+        Scan all nodes `i` (0 to num_nodes-1). 
+        Select the node `best_node` with minimum `paths[k-1][i]` (lexicographically).
+     5. **Output**: 
+        Extract the sequence `paths[k-1][best_node]`. 
+        Shift out values sequentially on `result`. 
+        Assert `valid` and increment `step` output.
+
+     **Optimization for Hardware:**
+     - Storing full paths in `paths[16][16]` array requires 256 bytes of storage. 
+       In Verilog: `reg [7:0] paths [0:15] [0:15];` (This is 16*16*8 = 2048 bits). 
+       This is acceptable for synthesis (2Kbits BRAM or distributed logic).
+     - Comparison Logic: A lexicographical comparator for paths up to length 16.
+       Module `lex_compare` takes two path arrays and length, returns which is smaller.
+     - Neighbor Logic: A lookup table based on index and grid size.
+       For 2x2 (indices 0,1,2,3 mapped to (0,0),(0,1),(1,0),(1,1)): 
+       0 neighbors: 1, 2
+       1 neighbors: 0, 3
+       2 neighbors: 0, 3
+       3 neighbors: 1, 2
+       For 4x4: standard grid neighbors.
+     
+     **State Machine States:**
+     `IDLE`
+     `LOAD_GRID`
+     `STEP_LOOP_INIT` (step 0)
+     `STEP_LOOP_CALC` (steps 1..k-1) -> Inner loops over nodes and neighbors
+     `FIND_GLOBAL_MIN` (find best ending node)
+     `OUTPUT_SEQ` (stream path values)
+     `DONE`
+
+     **Timing Constraints:**
+     Max k=16. Max nodes=16.
+     Nested loops: `k` * `nodes` * `neighbors`. Max 16*16*4 = 1024 cycles. 
+     Comparison takes `k` cycles (16). 
+     Total < 2048 cycles. Timeout = 10000 cycles.
+
+     **Port Widths:**
+     `grid_data`: 64-bit (16 values * 4 bits) or 128-bit (16 * 8 bits). Let's use 64-bit to save space, but prompt says 8-bit arrays. 
+     Let's assume `grid_data` is a 64-bit input. We interpret it as packed 4-bit values. Or we can have 16 separate 8-bit inputs? 
+     To keep interface simple: `grid_data [63:0]`. We assume values 1-16 fit in [3:0].
+     
+     **Refined Prompt:**
+     Implement the `minPath` logic in Verilog. 
+     Inputs: `clk`, `rst_n`, `start`, `grid_data` (64-bit packed), `k` (4-bit), `grid_size` (1-bit).
+     Outputs: `result` (8-bit), `step` (4-bit), `valid` (1-bit), `busy` (1-bit).
+     Logic: Use DP to store best paths of length L ending at each node. Compare lexicographically. Finally output the global best path of length k.
+     Storage: Use `reg [7:0] path_storage [0:15][0:15]` (or smaller based on `grid_size`).
+     Constraints: Max 2048 cycles latency.

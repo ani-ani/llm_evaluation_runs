@@ -1,0 +1,62 @@
+Design a Verilog module that solves the following problem:
+
+Given a function f: [n] → [n], find m, g: [n] → [m], h: [m] → [n] such that:
+1. g(h(x)) = x for all x ∈ [m]
+2. h(g(x)) = f(x) for all x ∈ [n]
+
+The solution exists iff for every y in the image of f, we have f(y) = y.
+
+Module Interface:
+- Inputs:
+  - clk: System clock (rising edge)
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle start pulse
+  - n: 6-bit input (1 to 64)
+  - f_in: 6-bit value for current function input (1 to n)
+  - f_valid: 1-bit indicating f_in is valid for current cycle
+
+- Outputs:
+  - result_valid: 1-bit pulse when complete
+  - possible: 1-bit (0 if impossible, 1 if possible)
+  - m: 6-bit (value of m, 1 to 64)
+  - g_array: Array of 6-bit values for g[1..n] (enable g_out_idx to access)
+  - h_array: Array of 6-bit values for h[1..m] (enable h_out_idx to access)
+  - g_out_idx: 6-bit output index for g array access
+  - h_out_idx: 6-bit output index for h array access
+  - g_read_en: 1-bit (enable when reading g values)
+  - h_read_en: 1-bit (enable when reading h values)
+
+- Functionality:
+  1. On start=1, reset internal state and begin reading f(1) through f(n).
+  2. After reading all n values, check if solution exists:
+     - For each y in the image of f, verify f(y) = y.
+     - If any y fails, output possible=0.
+  3. If possible, construct:
+     - m = number of distinct values in image of f
+     - h[1..m] = sorted list of distinct image values
+     - g[i] = index j where h[j] = f(i)
+  4. Output results:
+     - Stream g[1..n] followed by h[1..m]
+     - Set g_read_en high when outputting g values
+     - Set h_read_en high when outputting h values
+     - Set result_valid=1 after completing all output
+
+- Timing:
+  - start pulse initiates computation
+  - Processing f inputs: n cycles
+  - Verification and construction: ≤16 cycles
+  - Output streaming: n + m cycles (≤128)
+  - Total: ≤256 cycles
+
+- Constraints:
+  - n ≤ 64, values 1..n
+  - Use internal arrays of size 64 for f, g, h
+  - Use 6-bit counters and indices
+  - State machine with ≤8 states
+
+- Reset behavior (rst_n=0):
+  - All outputs to zero
+  - Internal state reset
+  - Arrays cleared
+
+Implement using a finite state machine (FSM) with clear states: IDLE, READ_F, VERIFY, CONSTRUCT, OUTPUT_G, OUTPUT_H, DONE. Use a lookup table approach for checking f(y) == y using the stored f array.

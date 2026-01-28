@@ -1,0 +1,42 @@
+Design a Verilog module to count operations required to discard special items from paged lists.
+
+**Problem Adaptation:**
+- Input `n` (up to 10^18) is handled conceptually; we only process indices in `p`.
+- Input `m` (number of special items) is scaled to 1024 max for hardware (10 bits).
+- Input `k` (page size) is scaled to 256 max (8 bits).
+- `p` array (indices) is scaled to 16 bits per element (0-65535).
+- We simulate the process: maintain a counter `shift` (number of items removed so far, scaled 32-bit).
+- Iterate through `p` in a pipeline. For each item, determine its current page based on `p[i] - shift`.
+- If items are on the same page, group them (count operation later).
+- If items move to a new page, increment operation count and update `shift`.
+
+**Interface:**
+- `clk`, `rst_n`: Standard synchronous controls.
+- `start`: 1-cycle pulse to begin processing the array.
+- `p[0:1023]`: 1024-element array of 16-bit special item indices (note: unused indices should be 0).
+- `m_valid`: 10-bit input indicating valid count in `p`.
+- `k_in`: 8-bit page size.
+- `done`: 1-cycle pulse when processing finishes.
+- `result`: 10-bit output (operation count).
+
+**Implementation Logic (State Machine):**
+1. **Idle**: Wait for `start`.
+2. **Process**: Iterate index `i` from 0 to `m_valid-1`.
+   - Read current index `idx` from `p[i]`.
+   - Calculate `current_page = (idx - shift) // k_in`.
+   - Maintain `prev_page`. If `current_page != prev_page` (or first item), increment `ops_count`.
+   - Increment `shift` only after finishing a group (or processing one item? No, `shift` accumulates removed items).
+   - Actually, `shift` increases by 1 for *every* item processed (removed).
+   - Grouping logic: Detect boundaries where page number changes.
+3. **Update**: Register `shift` and `ops_count` after each iteration.
+4. **Finish**: When `i == m_valid`, assert `done`.
+
+**Constraints:**
+- Iterations bounded by 1024 cycles.
+- Use 32-bit arithmetic for intermediate calculations `(idx - shift)` to prevent underflow (though input indices are valid).
+- `shift` can grow up to 1024, which fits in 10 bits, but use 32-bit safety margin.
+- Output `result` fits in 10 bits.
+
+**Timing:**
+- `start` to `done` approx 1024 cycles.
+- Reset clears counters.

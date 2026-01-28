@@ -1,0 +1,42 @@
+Implement a Verilog module that computes the minimum length of a pack of cheetahs running in parallel. Given N cheetahs, each with a start time t_k and constant velocity v_k, the position of cheetah k at time T (where T >= max(t_k)) is pos_k = v_k * (T - t_k). The pack length at time T is max(pos_k) - min(pos_k). We need to find the minimum of this length over all T >= max(t_k).
+
+Simplification for HW:
+1. Reduce N to 16 maximum (scan inputs to first 16).
+2. Use fixed-point arithmetic: Q16.16 format for velocities and times. Inputs t_k, v_k are provided as integers. Convert v_k and t_k to Q16.16 internally by shifting left 16 bits (multiply by 65536).
+3. The minimum pack length occurs when the relative order of cheetahs by position changes, or at the start. Specifically, it occurs when the velocity-sorted order and time-sorted order produce intersections. The problem is equivalent to finding the minimum width of a set of lines y = v_k * T - v_k * t_k (where T is time). The minimum width is the minimum difference between the upper envelope (max) and lower envelope (min) of these lines.
+4. Since N is small (<=16), we can compute the intersection times of all pairs of cheetahs and check the pack length at those times and at T = max(t_k).
+5. The output should be an integer representing the fixed-point value of the minimum length. Divide by 65536 to get the real number.
+
+Interface:
+- Inputs: 16 slots for t and v. Valid inputs count N.
+- Output: Minimum length in Q16.16 format.
+- Control: Start signal to begin computation, Done signal indicates completion.
+- Timing: Computation completes within 5000 cycles.
+
+Algorithm:
+1. Read N (first 16).
+2. Convert t_k, v_k to Q16.16 (t_k << 16, v_k << 16).
+3. Calculate T_start = max(t_k) (in Q16.16).
+4. Compute pack length at T_start: max(v_k * (T_start - t_k)) - min(v_k * (T_start - t_k)).
+5. For every pair (i, j) where v_i != v_j, calculate intersection time T_int = (v_i * t_i - v_j * t_j) / (v_i - v_j). If T_int >= T_start, compute pack length at T_int.
+6. The minimum of all computed lengths is the result.
+
+Verilog Spec:
+module cheetah_pack(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [3:0] n_valid, // Number of valid cheetahs (1-16)
+    input wire [31:0] t_arr [0:15], // Input times (integers)
+    input wire [31:0] v_arr [0:15], // Input velocities (integers)
+    output reg [31:0] min_length, // Result in Q16.16 format
+    output reg done
+);
+
+Internal logic needs to handle:
+- Fixed-point arithmetic (addition, subtraction, multiplication, division) for Q16.16.
+- Sorting of values to find max/min.
+- Nested loops for pairwise intersections (bounded by 16*16).
+- State machine to sequence the calculations.
+
+Note on Division: Since Verilog synthesis might struggle with division, use a sequential divisor (iterative) for the intersection calculation (T_int = num / den). For the final output, the result is the integer representation of the Q16.16 fixed-point value.

@@ -1,0 +1,33 @@
+Implement a Verilog module that computes the maximum length of the longest non-decreasing subsequence (LNDS) for a binary sequence (values 1 or 2) after optionally reversing any contiguous subsegment. Since the values are only 1 and 2, the optimal solution can be found using dynamic programming with 4 states that track the best LNDS ending in different patterns: all 1s, all 2s, 1s followed by 2s, or 2s followed by 1s. The input is a sequence of length N (N ≤ 16 for hardware). Each element is 1-bit (0 for 1, 1 for 2). The module should process the sequence iteratively and output the maximum LNDS length.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: Clock signal (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `seq`: 16-bit input bus where each bit represents one element (bit 0: first element, bit 15: last element). Bit value 0 means 1, bit value 1 means 2.
+  - `len`: 4-bit integer (1-16) indicating the actual length of the sequence.
+- Outputs:
+  - `result`: 8-bit output (maximum LNDS length, 0-16)
+  - `done`: 1-cycle pulse when computation is complete
+- Timing:
+  - After `start` goes high, computation takes at most 16 cycles (one per element).
+  - `done` pulses for one cycle when computation finishes.
+  - `result` is valid when `done` is high.
+- Reset:
+  - On reset (`rst_n=0`), `done` and `result` are 0.
+  - Reset requires at least 2 clock cycles.
+
+**Implementation Guidelines:**
+- Use 4 internal registers (8-bit) to track the DP states: state_1 (prefix of 1s), state_2 (prefix of 2s), state_12 (pattern 1...2), state_21 (pattern 2...1).
+- Process elements sequentially over the sequence length.
+- For each element (bit in `seq`):
+  - If bit is 0 (value 1):
+    - state_1 = state_1 + 1
+    - state_12 = max(state_2, state_12) + 1
+  - If bit is 1 (value 2):
+    - state_2 = max(state_1, state_2) + 1
+    - state_21 = max(state_12, state_21) + 1
+- Update the maximum of these 4 states as the final result.
+- Ensure all increments and comparisons respect 8-bit widths (max 255).
+- No floating point, only integer arithmetic.

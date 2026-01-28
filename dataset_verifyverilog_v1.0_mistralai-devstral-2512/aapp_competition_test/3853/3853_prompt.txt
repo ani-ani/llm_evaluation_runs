@@ -1,0 +1,69 @@
+Implement a Verilog module that calculates the minimum container box size `2^p` for a collection of boxes with side lengths `2^k` and counts `a`. The core algorithm is: 
+1. Iterate through inputs sorted by `k`.
+2. Maintain a carry-over count of boxes needing to be packed into the current level `k`. 
+3. At level `k`, total boxes = current carry + input count `a_k`. 
+4. These boxes are packed into containers of size `4`. The number of boxes remaining after packing (carry-over to next level `k+1`) is `ceil(total / 4)`. 
+5. If `total == 1` and it's the last box, the container size is exactly `k` (plus 1 if more boxes exist). 
+6. The final answer is the maximum of (processing level + container size) or `max_k + 1` if a single box remains.
+
+**Module Interface:**
+- Inputs: `clk`, `rst_n` (active low), `start` (1-cycle pulse).
+- Input Stream: `in_k` (32-bit), `in_a` (32-bit), `in_valid` (1-bit). 
+- Outputs: `result_p` (32-bit), `done` (1-cycle pulse).
+
+**Constraints:**
+- Max inputs: 100,000. k up to 10^9. a up to 10^9.
+- Use 64-bit arithmetic for intermediate calculations to prevent overflow (e.g., `total = carry + a`).
+- Iteration bounds: Process inputs sequentially. The carry-over `ceil(total/4)` shrinks rapidly, so simulation depth is manageable.
+- Logic: Use a state machine to consume inputs. Store inputs in a buffer or stream them in (external testbench provides sorted stream). 
+- Sorting: Assume inputs are provided sorted by `k` ascending (standard for this problem).
+
+**Algorithm Details:**
+- `current_carry` (register, 64-bit).
+- `current_level` (register, 32-bit).
+- `max_p` (register, 32-bit).
+- When `in_valid` is high:
+  - `total = current_carry + in_a`.
+  - `next_carry = (total + 3) >> 2` (integer division by 4, rounding up).
+  - If `total == 1`:
+    - `p_candidate = in_k` (if no other boxes).
+    - If `next_carry > 0`, `p_candidate = in_k + 1`.
+  - Else:
+    - `p_candidate = in_k + ceil(log2(total))` approximated by loop or bit scan, or simply calculate `(total + 3) >> 1` (since container size is 2^p, and 4 boxes of size 2^k fit in 2^(k+1), so p relates to the number of doubling steps needed to contain `total` boxes of size 2^k? No, the problem is simpler: We pack boxes of size 2^k into size 2^(k+1). A box of size 2^(k+1) holds 4 boxes of size 2^k.
+    - Correct logic: 
+      - We have `total` boxes of size `2^k`. 
+      - We pack them into `2^(k+1)` boxes. 
+      - `num_containers = ceil(total / 4)`.
+      - These containers are effectively boxes of size `2^(k+1)` for the next level.
+      - The final container size is determined by the level where `total == 1`.
+      - The required size `p` is the level where the single container remains.
+      - Let `required_p` be the level of the final container. 
+      - If `total` boxes of size `2^k` are packed, the size of the smallest container containing them is `k + ceil(log2(ceil(total/4)))`? No, that's not quite right either. 
+      - Standard solution: 
+        - Maintain `rem` (boxes at current size).
+        - `rem = ceil(rem / 4)` moving to size `2^(k+1)`.
+        - Answer is the level where `rem == 1`.
+        - Actually, the output is `p` such that container size is `2^p`. 
+        - If we process level `k` with `count`, the `count` boxes are packed into `ceil(count/4)` containers of size `2^(k+1)`.
+        - If `ceil(count/4) == 1`, then the container size is `2^(k+1)`, so `p = k+1`.
+        - If we have multiple levels, we propagate the `ceil(count/4)` up.
+
+**Hardware Implementation:**
+- Since `k` can be huge, we cannot iterate through every level physically if there are gaps. 
+- However, if `current_carry` is 0 and we receive `in_k`, the carry becomes `ceil(in_a / 4)` at level `in_k + 1`.
+- If `current_carry > 0` and we receive `in_k`:
+  - If `in_k == current_level`, merge counts.
+  - If `in_k > current_level`, we need to propagate `current_carry` through empty levels.
+    - `current_carry = ceil(current_carry / 4)` for each step until `current_level == in_k`.
+    - Since `current_carry` divides by 4 each step, this loop runs at most `log4(MAX_VAL)` times (~16 for 32-bit, ~32 for 64-bit). This is bounded and fast.
+
+- **Verilog Spec:**
+  - State Machine: `IDLE`, `PROPAGATE`, `PROCESS_INPUT`, `DONE`.
+  - `PROPAGATE` state handles the loop `while current_level < in_k`: `carry = (carry + 3) >> 2; current_level++;`.
+  - `PROCESS_INPUT` state calculates `total = carry + in_a`, updates `carry = ceil(total/4)`, sets `current_level = in_k + 1`.
+  - `DONE` state asserts `done`.
+  - Result `result_p` is `current_level` if `carry == 1`, else if `carry > 1` after all inputs, we continue propagating `carry` (simulated in `PROPAGATE` state until `carry == 1`) then `result_p = current_level`.
+  - Note: If `carry == 0` (should not happen with valid inputs >0), handle edge case.
+
+  **Inputs:** `in_k`, `in_a`, `in_valid`.
+  **Outputs:** `result_p`, `done`.

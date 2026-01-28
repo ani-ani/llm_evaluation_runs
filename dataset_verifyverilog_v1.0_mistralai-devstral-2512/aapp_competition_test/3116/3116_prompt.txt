@@ -1,0 +1,37 @@
+Implement a Verilog module that approximates the smallest cylinder volume enclosing a set of 3D points. The solution scales the problem to 8 points max and uses a simplified approach: instead of finding the optimal orientation (which requires complex algorithms), test 8 canonical axis directions (x, y, z, and 6 diagonal directions). For each axis direction:
+
+1. Project all points onto that axis to get 1D coordinates (scalar dot product)
+2. Find the minimum and maximum projected values (defining the cylinder height)
+3. For the radius, find the maximum perpendicular distance from any point to the axis line
+4. Calculate volume: π * r² * height
+5. Track the minimum volume across all 8 orientations
+
+Use fixed-point arithmetic (Q16.16) for all calculations. The output should be scaled by 2^16 to maintain precision.
+
+Interface Specification:
+- Inputs:
+  - clk: system clock (rising edge)
+  - rst_n: active-low synchronous reset
+  - start: 1-cycle pulse to begin computation
+  - points_x[0:7], points_y[0:7], points_z[0:7]: 8x16-bit arrays for coordinates (fixed-point Q16.16)
+  - n: 4-bit input (number of points, 4-8)
+- Outputs:
+  - result: 32-bit output (volume * 2^16, fixed-point Q16.16)
+  - done: 1-cycle pulse when computation complete
+
+Algorithm:
+1. On start, reset state machine
+2. For each of 8 directions (0: +X, 1: -X, 2: +Y, 3: -Y, 4: +Z, 5: -Z, 6: +X+Y, 7: +X-Y):
+   a. Compute projected value for each point (dot product with axis)
+   b. Find min/max projections (height)
+   c. For each point, compute squared distance from axis line (for radius)
+   d. Compute volume = π * max_dist² * (max_proj - min_proj)
+3. Keep minimum volume across all directions
+4. Output result and assert done
+
+Constraints:
+- Pipeline orientation loops for timing
+- Use 32-bit internal accumulators for dot products
+- Clip final result to 32-bit
+- Complete within 256 clock cycles
+- Reset: result=0, done=0

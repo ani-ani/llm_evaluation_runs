@@ -1,0 +1,36 @@
+You need to design a Verilog module to find the minimum number of messages to send to inform all non-enemy spies in a directed graph, avoiding enemies.
+
+**Problem Transformation (Hardware Constraints):**
+- Max spies (nodes): 16 (indexed 0-15)
+- Max connections (edges): 32 (directed)
+- Enemy identification: 16-bit input mask
+- You (spy 0) are not in the network. We model this by having 'you' connect to the first non-enemy spy in the list or treat the input as the set of spies you need to message.
+- **Strategy**: Since you can message any spy directly (cost 1 per message), and private messages don't propagate, while public messages propagate to all reachable non-enemy spies (but stop at enemies). To minimize messages, we want to select a minimum set of start nodes (via public messages) such that all reachable non-enemy nodes are covered, where the reachable set stops at enemies. This is equivalent to finding the number of source components in the graph induced by non-enemy nodes, where edges originating from enemies are ignored (or enemies are removed).
+
+**Algorithm**: 
+1. Create a 16x16 adjacency matrix (max 16 nodes, 1 bool per edge).
+2. Mark enemy nodes (16-bit input).
+3. Perform BFS/DFS from each non-enemy node not yet visited.
+4. If a node is not an enemy and not visited, increment message count and traverse all reachable non-enemy nodes via public message propagation rules (i.e., traverse edges only if the destination is not an enemy).
+5. Output the count.
+
+**Module Interface**:
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low reset
+  - `start`: 1-cycle pulse to start processing
+  - `enemies`: 16-bit vector, bit `i` set if spy `i` is an enemy
+  - `edges_valid`: 32-bit vector indicating which of the 32 fixed edge slots are valid
+  - `edge_src`: 5-bit array[32] (source node index)
+  - `edge_dst`: 5-bit array[32] (dest node index)
+- Outputs:
+  - `result`: 4-bit integer (min messages, max 16)
+  - `done`: 1-cycle pulse when result is valid
+
+**Implementation Details**:
+- Use a finite state machine (FSM) to manage BFS traversal.
+- Store adjacency as a list or matrix; since 16 nodes, a 16x16 bit matrix is feasible (256 bits).
+- Use a visited array (16 bits) and a queue (FIFO, depth 16) for BFS.
+- Cycle budget: < 512 cycles.
+- Reset: Initialize all matrices and counters to 0.
+- Constraints: Node indices are 0-15. Ignore edges where src or dst is an enemy (or treat as blocked).

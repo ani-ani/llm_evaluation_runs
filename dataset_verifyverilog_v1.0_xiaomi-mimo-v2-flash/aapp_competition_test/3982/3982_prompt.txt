@@ -1,0 +1,38 @@
+Design a Verilog module to count valid Morse code sequences in a dynamically built binary string. The input string grows one bit at a time (up to 3000 bits), but we process it incrementally.
+
+**Core Algorithm (Hardware Adaptation):**
+1. Maintain a sliding window of the last 4 bits appended to the string.
+2. For each new bit, update a DP array `f[0:4]` where `f[i]` represents the number of valid sequences ending `i` positions before the current end (relative to the 4-bit window).
+3. Use a 4-bit state register to store the suffix of the string.
+4. Check for invalid patterns in the current 4-bit window: `0011`, `0101`, `1110`, `1111`.
+5. Update the total sum modulo 10^9+7.
+
+**Interface Specification:**
+- **Inputs:**
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to indicate a new bit is ready
+  - `new_bit`: 1-bit input, the next character to append to the string
+- **Outputs:**
+  - `result`: 32-bit output, the cumulative count of valid sequences modulo 10^9+7
+  - `done`: 1-cycle pulse indicating `result` is valid
+
+**Implementation Details:**
+- **String Storage:** Only store the last 4 bits of the string in a register (`window_reg`).
+- **DP State:** Maintain a 4-element array of 32-bit registers (`dp[0:3]`). `dp[i]` holds counts for sequences ending `i` bits before the current position.
+- **Logic:**
+  1. On `start` and `rst_n == 1`:
+     - Shift `window_reg`: `window_reg[3:1] <= window_reg[2:0]`, `window_reg[0] <= new_bit`.
+     - Evaluate the 4-bit window `window_reg`.
+     - If `window_reg` is one of the invalid patterns (`0011`, `0101`, `1110`, `1111`), set the contribution of sequences ending at this position to 0.
+     - Calculate new DP values: The number of valid sequences ending at the current position is the sum of valid sequences from the previous positions (shifted from `dp`) plus 1 for the sequence consisting of just the current letter, provided the current suffix is valid.
+     - Update `dp` registers: `dp[3] <= dp[2]`, `dp[2] <= dp[1]`, `dp[1] <= dp[0]`, `dp[0] <= new_value`.
+     - Accumulate to `result` register.
+     - Assert `done` for 1 cycle.
+- **Timing:** `start` triggers a single cycle of computation. `done` follows 1 cycle later. Total latency per bit is ~2 clock cycles.
+- **Modulo:** All additions must be modulo 10^9+7 (use 32-bit arithmetic with subtraction for modulo).
+- **Constraints:** 
+  - `result`: 32-bit (enough for 3000 iterations).
+  - `dp` registers: 32-bit.
+  - `window_reg`: 4-bit.
+  - Reset: Clears `dp`, `result`, `window_reg`, `done`.

@@ -1,0 +1,28 @@
+Implement a Verilog module that splits an input array into 'step' sub-sequences based on stride indexing. The module should support up to 16 input elements and a step size up to 8. The output is provided as separate arrays for each sub-sequence, packed into bit vectors.
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: System clock (rising edge triggered).
+- `rst_n`: Active-low asynchronous reset.
+- `start`: 1-cycle pulse to initiate the operation.
+- `len`: 4-bit input indicating the actual number of valid elements in the input array (1 to 16).
+- `step`: 4-bit input indicating the splitting step size (1 to 8).
+- `data_in`: 16x8-bit packed vector. The first `len` elements contain the input values. Example: For input [1,2,3], index 0=1, 1=2, 2=3.
+
+**Outputs:**
+- `result_out`: 8x16x8-bit packed vector (8 sub-sequences, 16 elements each, 8 bits per element). Each sub-sequence is packed sequentially. Sub-sequence `i` (0 to `step-1`) starts at offset `i*128`.
+- `valid_out`: 1-cycle pulse indicating that `result_out` contains valid data.
+
+**Functional Behavior:**
+1. On reset (`rst_n=0`), the module should be idle. `valid_out` should be 0.
+2. When `start` is high, capture `data_in`, `len`, and `step`.
+3. The module must compute the sub-sequences. Since hardware cannot return variable-sized arrays directly, output a fixed-size matrix where each column (sub-sequence) contains the elements. Unused positions in the sub-sequences should be padded with 0 (or don't care).
+4. **Algorithm**: Iterate through the input indices `j` from 0 to `len-1`. The element `data_in[j]` belongs to sub-sequence `i = j % step` and position `k = j / step` (integer division). Store `data_in[j]` at the logical position `result[i][k]` in the output vector.
+5. Operation must complete within 32 clock cycles.
+
+**Implementation Details:**
+- Use a finite state machine (FSM) with states: IDLE, COMPUTE, DONE.
+- Use a counter to iterate through input indices.
+- Bit widths: 8-bit for data, 4-bit for len/step/counters.
+- Output packing: `result_out[(i*128) + (k*8) +: 8] = data_in[j]` where `i` is sub-sequence ID and `k` is position in sub-sequence.

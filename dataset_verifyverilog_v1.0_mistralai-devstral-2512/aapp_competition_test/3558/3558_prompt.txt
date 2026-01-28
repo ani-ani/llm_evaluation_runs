@@ -1,0 +1,74 @@
+Verilog HDL module specification:
+
+### PROBLEM:
+Calculate total length of city segment covered by TV signals from transmitters. Buildings block signal lines.
+
+### SCALING:
+- N (buildings): 16 max
+- D (city length): 32-bit fixed-point Q16.16 (0 to ~65535.999)
+- Heights: 24-bit Q12.12
+- Positions: 32-bit Q16.16
+- Coverage intervals: 16 max (2x transmitters)
+- Output length: 32-bit Q16.16
+
+### ALGORITHM (Hardware-Friendly):
+1. Parse building data into arrays (N <= 16)
+2. For each transmitter at (X, H):
+   - Left shadow: line from (X, H) to ground at x = 0
+   - Right shadow: line to ground at x = D
+   - Actually, signal spreads in all directions, but blocked by taller buildings
+   - Simplification: Each transmitter covers (0, D) unless blocked
+   - Block detection: For any building at (x_i, h_i):
+     - If h_i > H: blocks signal
+     - Left block: x_i blocks left side if (x_i < X)
+     - Right block: x_i blocks right side if (x_i > X)
+   - For each blocker, calculate shadow boundary using similar triangles
+3. Collect all visible intervals from all transmitters
+4. Merge overlapping intervals
+5. Sum lengths
+
+### SIMPLIFIED VISIBLE INTERVAL CALCULATION:
+For transmitter at (X_t, H_t):
+- Find leftmost and rightmost buildings that block
+- Left boundary: max(0, X_t - (H_t * (X_t / min_blocking_height)) )
+  Wait, need geometric calculation:
+  Line from (X_t, H_t) to (x_b, 0) where x_b is blocker position
+  Slope = H_t / (X_t - x_b) if x_b < X_t
+  The shadow extends to left until ground intersection at x = X_t - H_t
+  Actually, visible range is [max_blocked_left, min_blocked_right]
+- For each transmitter, it sees the visible sky in 180 degrees
+- Let's use scan: Divide D into 16 segments, check visibility at segment centers
+
+### VERILOG INTERFACE:
+Inputs:
+  clk: clock
+  rst_n: active-low reset
+  start: 1-cycle start pulse
+  N: 4-bit (number of buildings, max 16)
+  D: 32-bit Q16.16 (city length)
+  buildings_tx[i]: 1-bit array (has transmitter)
+  buildings_x[i]: 32-bit Q16.16 array (position)
+  buildings_h[i]: 24-bit Q12.12 array (height)
+Outputs:
+  result: 32-bit Q16.16 (covered length)
+  done: 1-cycle pulse when valid
+Timing: Within 1000 cycles
+
+### IMPLEMENTATION GUIDELINES:
+1. Store buildings in BRAM-style registers
+2. For sweep: discretize [0, D] into 16-32 segments
+3. For each segment center point P (32-bit fixed):
+   - Check if any transmitter at (X_t, H_t) can see P without building blockage
+   - For visibility: line from (X_t, H_t) to (P, 0) must not intersect any building
+   - Building at (X_b, H_b) intersects if H_b > line height at X_b
+   - Line height at X_b = H_t * (X_t - X_b) / (X_t - P)  (if X_b between P and X_t)
+   - Use fixed-point division (Q16.16 / Q16.16 -> Q16.16)
+4. If visible, mark segment as covered
+5. Sum segment lengths (each segment width = D / 16)
+6. Output total covered length
+
+### PRECISE SIGNAL DEFINITIONS:
+- All coordinates and heights use fixed-point representation
+- Division: Use iterated approximation or pre-computed LUT
+- Result accumulation: 32-bit with overflow check
+- Done signal: 1-cycle pulse after computation completes

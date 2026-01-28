@@ -1,0 +1,61 @@
+Design a Verilog module to count encounters between pairs of trucks on a linear road.
+
+**Constraints & Scaling**:
+- Maximum trucks (N): 16
+- Maximum queries (M): 16
+- Maximum cities per route: 8 (scaled from original problem)
+- City coordinates: 0-127 (8-bit unsigned)
+- Time: 0-255 (8-bit unsigned, representing minutes scaled by 8 for Q8.8)
+- Encounters: Output 8-bit count per query
+- Velocity: 1 unit distance per 1 time unit (assuming 1 city distance = 1 time unit)
+- Truck movement: Piecewise linear segments connecting route cities.
+
+**Input Interface**:
+- `clk`, `rst_n`: Standard synchronous reset logic
+- `start`: 1-cycle pulse to initiate calculation
+- `config_en`: 1-bit select signal (0=Route config, 1=Query config)
+- `data_in`: 8-bit data input for configuration
+- `addr_in`: 4-bit address input for selecting truck or query index
+
+**Configuration Protocol**:
+1. **Routes** (`config_en=0`):
+   - `addr_in` selects Truck ID (0-15).
+   - `data_in` sends route length (K), followed by K city coordinates (8-bit).
+   - Data stream: [Length (8-bit), City_A0 (8-bit), City_A1 (8-bit), ...]
+   - Total cities per truck limit: 8.
+2. **Queries** (`config_en=1`):
+   - `addr_in` selects Query ID (0-15).
+   - `data_in` sends Truck ID A (4-bit) and Truck ID B (4-bit) concatenated [A:4, B:4].
+
+**Output Interface**:
+- `result_valid`: 1-bit high when result is available
+- `result_count`: 8-bit output for the encounter count of the current query
+- `busy`: 1-bit high while processing
+
+**Processing Logic**:
+1. On `start` signal, begin processing queries in order.
+2. For each pair (Truck A, Truck B):
+   - Generate linear segments (Time start, Time end, Pos start, Pos end) for both trucks.
+   - A segment is defined by two consecutive cities: `City_i` at time `t_i` and `City_{i+1}` at time `t_{i+1}`.
+   - `Time = |City_{i+1} - City_i| * 1 cycle` (scaled, but for intersection we use raw distance values).
+   - Calculate intersections of all segments from A with all segments from B.
+   - An intersection occurs if the lines cross at a unique point within the valid time intervals of both segments.
+   - Check intersection condition: For segments (t1, p1) -> (t2, p2) and (t3, p3) -> (t4, p4).
+     - Solve for time `t` where `p1 + v1*(t-t1) = p3 + v2*(t-t3)`.
+     - Use cross-multiplication to avoid floating point: `(p2-p1)*(t4-t3) != (p4-p3)*(t2-t1)` for non-parallel.
+     - Check if intersection time is strictly inside `(t1, t2)` and `(t3, t4)` (excluding endpoints due to problem constraints).
+   - Count valid intersections.
+3. Assert `result_valid` and output count.
+4. Deassert `busy` when all queries are processed.
+
+**Timing**:
+- Configuration: Cycle-accurate loading of arrays.
+- Processing: Estimate 100-500 cycles per query depending on segment counts (max 7 segments per truck -> 49 intersections per query).
+- Latency: `start` to first result: ~50 cycles. Subsequent results pipelined.
+
+**Implementation Details**:
+- Use fixed-point arithmetic (Q8.8) for intersection calculations to handle positions.
+- Segments are stored in BRAMs (arrays) indexed by Truck ID and Segment ID.
+- State Machine: IDLE -> CONFIG -> PROCESS -> OUTPUT.
+
+Provide the Verilog module specification for the `truck_encounter_counter`.

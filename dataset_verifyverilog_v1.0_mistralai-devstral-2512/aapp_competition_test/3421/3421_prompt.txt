@@ -1,0 +1,39 @@
+Implement a Verilog module that finds the subsequence of length at least k with the maximum success rate (density of 1s). 
+
+**Algorithm Overview (Hardware Implementation):**
+1. **Binary Search on Density**: Since the success rate is a rational number, perform a binary search on the numerator (number of successes) or use a fixed-point representation. 
+2. **Feasibility Check**: For a target density threshold T, convert the problem into finding a subarray of length >= k where the sum of (value - T) >= 0. 
+   - Precompute prefix sums.
+   - Check if there exists indices i, j such that j - i >= k and prefix[j] - prefix[i] >= 0.
+3. **Data Representation**: 
+   - Input string 's' of length N (max 256) is provided as an 8-bit wide array `s[0:255]`.
+   - 'k' is a 9-bit integer (0-255).
+   - Success counts are 8-bit integers.
+   - Prefix sums are 16-bit integers to prevent overflow.
+   - The density threshold is compared using scaled integers (multiply by 256 to avoid floating point).
+4. **Output**: 
+   - `start_index`: 8-bit, 1-based index.
+   - `length`: 8-bit length.
+   - `done`: Single cycle pulse when calculation is finished.
+
+**Module Interface:**
+- Inputs: 
+  - `clk`, `rst_n`: System clock and active-low reset.
+  - `start`: 1-cycle pulse to start calculation.
+  - `k`: [8:0] Minimum length (1-255).
+  - `s`: [7:0] array [255:0] Input string (0 or 1).
+- Outputs:
+  - `start_idx`: [7:0] 1-based start index of best subarray.
+  - `length`: [7:0] Length of best subarray.
+  - `done`: 1 when valid results are ready.
+
+**Implementation Details:**
+1. Store the input string `s` in a register array when `start` is asserted.
+2. Implement a binary search controller that iterates 8-16 times (enough for 1/256 precision).
+3. In each iteration, calculate the feasibility of the current threshold.
+4. To calculate feasibility: 
+   - Compute cumulative sums of `(2*s[i] - 1)` for i=0..N-1 (mapping 1->1, 0->-1).
+   - Find the minimum prefix sum in the first `N-k` positions.
+   - Check if the current prefix sum minus the minimum prefix sum found so far is >= 0.
+5. Use a state machine to manage the binary search and prefix sum calculations.
+6. Track the best found length and start index globally.

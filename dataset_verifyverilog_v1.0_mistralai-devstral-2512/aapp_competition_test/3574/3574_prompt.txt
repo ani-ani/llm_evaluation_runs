@@ -1,0 +1,90 @@
+Verilog HDL module specification for processing array queries with magical subarray property.
+
+## MODULE: magical_subarray
+
+### PURPOSE
+Process 8 queries on a fixed-size array of 8 numbers to find the longest contiguous magical subarray within each query range.
+
+### MAGIC PROPERTY
+An array is magical if all values are between the first and last values (inclusive). The longest magical subarray length is required for each query.
+
+### SCALING
+- N = 8 (fixed array size)
+- Q = 8 (max queries)
+- Data width: 8-bit integers (1-255)
+- Query indices: 3-bit (0-7)
+- Result width: 4-bit (1-8)
+- Processing: Serial with 8 cycles per query
+
+### INTERFACE
+
+#### Inputs
+- `clk`: System clock (rising edge active)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start query processing
+- `query_l`: 3-bit, left index (0-based) for current query
+- `query_r`: 3-bit, right index (0-based) for current query
+- `array_data`: 8-bit, current array value being loaded
+- `array_addr`: 3-bit, address for array loading
+- `array_wr`: 1-bit, write enable for array loading
+
+#### Outputs
+- `result`: 4-bit, length of longest magical subarray for current query
+- `done`: 1-cycle pulse when result is valid
+- `state`: 3-bit (for debug): 0=idle, 1=loading, 2=processing, 3=done
+
+### FUNCTIONAL BEHAVIOR
+
+1. **Initialization**: Reset clears all registers, sets state to idle.
+
+2. **Array Loading**: When `array_wr` is high, store `array_data` at `array_addr`.
+
+3. **Query Processing** (when `start` is high):
+   - Accept `query_l` and `query_r` (3-bit each)
+   - Process the subarray `array[query_l:query_r]`
+   - Find longest contiguous magical subarray
+   - Compute in 64 cycles (8 queries × 8 elements)
+
+4. **Magic Check Logic**:
+   For each potential subarray (l' to r' within query):
+   - First = array[l'], Last = array[r']
+   - Check if all elements between are between First and Last
+   - Track maximum length where condition holds
+
+5. **Output**: Set `result` to maximum magical length, pulse `done` for 1 cycle.
+
+### TIMING
+- Reset: 2 cycles (done=0, result=0, state=0)
+- Array loading: 8 cycles (write 8 values)
+- Query processing: 8 cycles per query (8 queries = 64 cycles)
+- Total: ~74 cycles after start
+- `done` pulses exactly once per query when valid
+
+### STATE MACHINE
+0: IDLE - waiting for start or array load
+1: LOADING - loading array data
+2: PROCESSING - computing query result
+3: DONE - result ready, pulse done
+
+### IMPLEMENTATION NOTES
+- Use dual-port RAM for array storage (8x8-bit)
+- Implement comparison logic in combinational path
+- Use counters for query processing and element checking
+- Maximum subarray length is 8 (4-bit result)
+- All operations must complete within 100 cycles
+- Ensure no combinational loops
+- Pipeline ready-valid handshake for queries
+
+### CONSTRAINTS
+- Input values clamped to 8-bit range
+- Indices are 0-based (0 to 7)
+- Single query processed at a time
+- Results are valid only after done pulse
+
+### EXAMPLE
+For array [5,4,3,3,2] (indices 0-4), query L=0,R=4:
+- Check subarrays: [5,4] (First=5,Last=4: all values between 4-5? No)
+- [5,4,3] (First=5,Last=3: values between 3-5? Yes) length=3
+- Result: 3
+
+Note: The hardware implementation will be optimized for 8x8 array size and 8-bit data.

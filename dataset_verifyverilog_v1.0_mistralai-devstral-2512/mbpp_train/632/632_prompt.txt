@@ -1,0 +1,80 @@
+Verilog Module Specification for Move Zeroes to End
+
+Design a synchronous digital circuit that moves all zeroes to the end of an array while preserving order of non-zero elements. The circuit must operate on a fixed-size array of 16 elements, each element is an 8-bit unsigned integer.
+
+**Interface Requirements:**
+- Inputs:
+  * clk: System clock, rising edge triggered
+  * rst_n: Active-low asynchronous reset
+  * start: 1-cycle pulse to start processing (sampled at rising edge)
+  * arr[15:0]: 16-element input array, each element is 8 bits wide
+  * valid[15:0]: 16-element valid mask (1=valid, 0=ignore) - OR count input
+  * arr_len: 4-bit value (1-16) indicating actual number of elements to process
+- Outputs:
+  * result[15:0]: 16-element output array, each 8 bits
+  * done: 1-cycle pulse when processing is complete (output valid)
+  * busy: Signal indicates processing in progress
+
+**Algorithm Requirements:**
+- Implementation must preserve relative order of non-zero elements
+- Zeros must be moved to the end (right side) of the output array
+- Unused positions in output array (beyond arr_len) should be zeros
+- Processing must complete within 100 clock cycles maximum
+- Use sequential scanning approach: maintain write pointer for non-zeroes
+
+**Behavioral Specification:**
+1. On start pulse (and not busy), copy input to internal buffer
+2. Process element-by-element from index 0 to (arr_len-1):
+   - If element != 0: write to next available non-zero position in output
+   - If element == 0: increment zero counter (to be appended later)
+3. After scanning all elements, fill remaining positions with zeros
+4. Clear unused positions (indices >= arr_len) to zero
+5. Assert done pulse for 1 cycle, clear busy
+
+**Signal Widths:**
+- Data width: 8 bits
+- Index width: 4 bits (16 elements)
+- Address width: 4 bits
+- Counters: 8 bits (support up to 256 cycles)
+
+**Timing:**
+- reset: 2 cycles minimum, clears all signals
+- start to done: ≤ 100 cycles
+- result is valid when done=1
+- done pulse is single-cycle
+
+**Reset Behavior:**
+- On rst_n=0: clear all outputs, busy=0, done=0
+- result array = 0
+
+**Implementation Notes:**
+- Use state machine: IDLE, SCAN, COMPLETE
+- IDLE: wait for start
+- SCAN: process each element sequentially
+- COMPLETE: generate done pulse
+- Use internal RAM or registers for input buffer and output buffer
+- Must handle variable length (arr_len) from 1 to 16
+
+**Test Cases:**
+1. arr=[1,0,2,0,3,4], arr_len=6 → [1,2,3,4,0,0,0,0,0,0,0,0,0,0,0,0]
+2. arr=[2,3,2,0,0,4,0,5,0], arr_len=9 → [2,3,2,4,5,0,0,0,0,0,0,0,0,0,0,0]
+3. arr=[0,1,0,1,1], arr_len=5 → [1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0]
+
+**Module Declaration:**
+module move_zeroes_to_end (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] arr [0:15],  // 16x8-bit input array
+    input wire [3:0] arr_len,      // actual length (1-16)
+    output reg [7:0] result [0:15], // 16x8-bit output array
+    output reg done,
+    output reg busy
+);
+
+**Implementation Constraints:**
+- Must use sequential logic (no combinational loops)
+- State machine required
+- Maximum 256 cycle timeout
+- Result array cleared on reset
+- Valid output only when done=1

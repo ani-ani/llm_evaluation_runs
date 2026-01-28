@@ -1,0 +1,37 @@
+Design a Verilog module that selects a subset of spectators to maximize total influence while satisfying two constraints: at least half support Alice (2*a >= m) and at least half support Bob (2*b >= m). The core algorithm uses a greedy approach:
+
+1. Always take all '11' supporters (they count for both)
+2. Pair '10' and '01' supporters equally until one runs out
+3. Take remaining '10'/'01' or '00' supporters, prioritizing higher influence
+4. Ensure final selection meets constraints
+
+Implement with fixed-size arrays (max 16 elements per category), Q16.16 fixed-point for influence values (5000 max = 0.07629 in Q16.16). Use sorting networks (bitonic) for up to 16 elements. State machine to coordinate selection phases.
+
+Interface Specification:
+- Inputs:
+  * clk: rising edge
+  * rst_n: active-low synchronous reset
+  * start: 1-cycle pulse to initiate selection
+  * N: 4-bit count of people (max 16)
+  * people_type[0:15]: 16x2-bit array (00, 01, 10, 11)
+  * people_influence[0:15]: 16x16-bit array (Q16.16 fixed-point, max 5000*65536 = 327,680,000)
+
+- Outputs:
+  * result: 16-bit integer (max influence, scale down from Q16.16: divide by 65536)
+  * done: 1-cycle pulse when selection complete
+  * valid: high if a valid non-empty set exists
+
+- Timing: Within 1000 cycles
+- Reset: result=0, valid=0, done=0
+
+Implementation steps:
+1. Partition inputs into 4 categories (00,01,10,11) using 4x16 FIFOs
+2. Sort each category using bitonic network (max 16 elements)
+3. State machine:
+   S0: Idle
+   S1: Take all 11s
+   S2: Pair 10s and 01s (min count)
+   S3: Fill remainder with remaining highest values from all categories
+   S4: Validate constraints and output
+4. Use 32-bit accumulators for Q16.16 sums, then right-shift by 16
+5. Constraint check: 2*a >= m and 2*b >= m (all counts in 8-bit counters)

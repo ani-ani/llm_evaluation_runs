@@ -1,0 +1,55 @@
+Create a Verilog HDL module that counts how many numbers in an input array have a digit sum greater than zero. The input is a fixed-size array of 8-bit signed integers. Negative numbers are handled by considering their signed digits (e.g., -123 has digits -1, 2, 3). The module should operate sequentially or in a pipeline within a bounded number of cycles.
+
+**Interface Specification:**
+
+**Inputs:**
+- `clk`: Clock signal (rising edge triggered).
+- `rst_n`: Active-low synchronous reset signal.
+- `start`: 1-cycle pulse to start processing the current input array.
+- `arr[0:15]`: 16-element array of 8-bit signed integers (`int8`). Valid elements are defined by `len`.
+- `len`: 4-bit unsigned integer (0-15) indicating the number of valid elements in `arr`.
+
+**Outputs:**
+- `result`: 5-bit unsigned integer (maximum count is 16, fits in 5 bits).
+- `done`: 1-cycle pulse indicating processing is complete and `result` is valid.
+
+**Functional Requirements:**
+1. **Digit Extraction:** For each integer in the array, extract its decimal digits. Since the input range is small (-128 to 127), a simple absolute value calculation followed by modulo 10 operations is sufficient.
+   - If `number >= 0`: Sum the digits directly.
+   - If `number < 0`: The first digit is negative, subsequent digits are positive. For example, -123 -> digits are -1, 2, 3. Sum = 4. In hardware, this is equivalent to `(sum of absolute digits) - 2 * (first digit)`. Or simply: `sum = -digit_0 + digit_1 + digit_2...`
+   - Simplification for implementation: Convert all numbers to their absolute value for digit extraction, then adjust the sum based on the sign.
+   - Specifically: `AbsSum = sum(abs(digits))`. If `number < 0`, `SignedSum = AbsSum - 2 * (first digit)`. If `number >= 0`, `SignedSum = AbsSum`.
+   - Then check if `SignedSum > 0`.
+
+2. **Processing Logic:**
+   - The module must iterate through the array from index 0 to `len-1`.
+   - For each number, calculate the signed digit sum.
+   - Increment a counter if the sum is greater than 0.
+   - The algorithm must complete within a bounded number of cycles (e.g., `len * 20` cycles max).
+
+3. **State Machine:** Implement a Finite State Machine (FSM) to control the iteration and calculation.
+   - `IDLE`: Wait for `start` signal.
+   - `LOAD`: Load the current number from the array.
+   - `CALC`: Perform digit extraction and summation. This may take multiple cycles.
+   - `CHECK`: Compare sum to 0 and update the counter if valid.
+   - `DONE`: Pulse the `done` signal.
+
+**Constraints:**
+- Array size: Max 16 elements.
+- Input bit width: 8 bits (signed).
+- Output bit width: 5 bits (0-16).
+- Timing: The `done` signal must be asserted within a reasonable time (e.g., 1000 clock cycles).
+- Reset: Asserting `rst_n` clears internal counters and state, sets `result` to 0, and `done` to 0.
+
+**Implementation Notes:**
+- Since division/modulo by 10 is expensive in hardware, for 8-bit numbers, a lookup table (LUT) for digit sums might be efficient, or a sequential subtraction-based digit extractor.
+- If using sequential extraction: Repeatedly take modulo 10, divide by 10 (shifts and subtracts for base 10).
+- The digit sum for -123: `abs(123)` -> `1, 2, 3`. Sum=6. First digit `1`. Adjusted sum = `6 - 2*1 = 4`.
+- For 0: Digits sum is 0. Not > 0.
+
+**Example Trace:**
+Input: `[-1, 11, -11]`, `len=3`
+1. `-1`: Abs digits `1`. Adjusted sum = `1 - 2*1 = -1`. (<=0, no count)
+2. `11`: Abs digits `1, 1`. Adjusted sum = `2`. (>0, count++)
+3. `-11`: Abs digits `1, 1`. Adjusted sum = `2 - 2*1 = 0`. (<=0, no count)
+Result: `1`

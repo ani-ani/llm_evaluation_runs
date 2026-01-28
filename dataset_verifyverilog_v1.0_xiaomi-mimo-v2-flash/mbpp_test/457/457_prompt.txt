@@ -1,0 +1,40 @@
+Implement a Verilog module that finds the sublist with minimum length from an array of byte arrays.
+
+**Specification:**
+- The module receives up to 4 sublists, each containing up to 8 bytes (ASCII characters).
+- Each sublist is represented as a packed 64-bit value (8 bytes × 8 bits) to reduce signal count.
+- The module processes the sublists in sequence and identifies the one with the smallest length.
+- Length is determined by the position of the first null byte (0x00) in the sublist, or 8 if no null byte exists.
+- The output should be the packed 64-bit value of the shortest sublist found.
+- Include a length output for verification.
+
+**Interface:**
+- Inputs:
+  - `clk`: system clock (rising edge)
+  - `rst_n`: active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `sublist_packed[0:3]`: 4 × 64-bit packed byte arrays
+  - `valid_len[0:3]`: 4 × 4-bit flags indicating actual length of each sublist (1-8)
+- Outputs:
+  - `result_packed`: 64-bit packed byte array of the shortest sublist
+  - `result_len`: 4-bit length of the shortest sublist
+  - `done`: 1-cycle pulse indicating completion
+
+**Behavior:**
+1. On `start` pulse, begin comparing sublist lengths.
+2. Initialize `min_idx = 0`, `min_len = valid_len[0]`.
+3. For each subsequent sublist (1 to 3):
+   - If `valid_len[i] < min_len`, update `min_idx = i` and `min_len = valid_len[i]`.
+4. After comparing all sublists, output `result_packed = sublist_packed[min_idx]` and `result_len = min_len`.
+5. Assert `done` for one cycle when finished.
+
+**Timing Constraints:**
+- Start-to-done: within 60 cycles (4 sublists × 15 cycles max).
+- Reset: sets `done=0`, `result_packed=0`, `result_len=0`, requires 2 cycles.
+
+**Simplifications:**
+- Maximum 4 sublists (hardcoded loop bound).
+- Maximum 8 bytes per sublist (fixed 64-bit packed format).
+- Length is pre-computed (provided via `valid_len` ports) to avoid runtime null-byte scanning.
+- Use sequential FSM for comparison loop.
+- Sublists are compared by length only; if lengths are equal, the earlier one is retained.

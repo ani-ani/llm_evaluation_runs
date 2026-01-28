@@ -1,0 +1,27 @@
+Implement a Verilog module that simulates the peg hammering game on an 8x8 board. The core insight is that hammering a peg (i, j) toggles the state of ALL pegs in row i and column j. This means the effect of hammering multiple pegs is independent and commutative. If we represent the board as a matrix B where 1=up (O) and 0=down (X), hammering peg (i, j) is equivalent to XORing the entire row i and column j with 1. Since XOR is commutative and associative, the order doesn't matter. The problem reduces to checking if the difference between Start and Target boards can be represented as the sum (XOR) of row/column operations.
+
+Mathematically: Let S be Start (8x8 bit array), T be Target (8x8 bit array). We need to find row toggles R[0:7] (1 bit each) and column toggles C[0:7] (1 bit each) such that:
+T[i][j] = S[i][j] XOR R[i] XOR C[j]
+
+This is solvable if and only if for any i1, i2, j1, j2:
+S[i1][j1] XOR S[i1][j2] XOR S[i2][j1] XOR S[i2][j2] = T[i1][j1] XOR T[i1][j2] XOR T[i2][j1] XOR T[i2][j2]
+
+Module Interface:
+- Inputs:
+  - clk: Rising edge clock
+  - rst_n: Active-low synchronous reset
+  - start: 1-cycle pulse to start computation
+  - start_board[0:7][0:7]: 8x8-bit array representing Start configuration (1=up/O, 0=down/X)
+  - target_board[0:7][0:7]: 8x8-bit array representing Target configuration (1=up/O, 0=down/X)
+- Outputs:
+  - result: 1-bit (1=possible, 0=impossible)
+  - done: 1-cycle pulse indicating valid result is available
+- Timing: Operation must complete within 100 clock cycles after start goes high.
+- Reset: When rst_n=0, result=0, done=0, internal state=0.
+
+Implementation Strategy:
+1. The condition S[i1][j1] XOR S[i1][j2] XOR S[i2][j1] XOR S[i2][j2] must equal the same for T for all pairs. This is equivalent to checking if the XOR of the 2x2 submatrix for S matches T for all possible 2x2 submatrices.
+2. Since 8x8 is small, you can implement this check using a finite state machine that iterates through rows and columns.
+3. A simpler combinatorial approach: Compute the difference matrix D = S XOR T. We need to check if D can be decomposed into row XOR column bits. This holds if for all i1, i2, j1, j2: D[i1][j1] XOR D[i1][j2] XOR D[i2][j1] XOR D[i2][j2] == 0.
+4. In hardware, you can compute row parity and column parity constraints. For each row i, compute parity P_row[i] = XOR of D[i][0..7]. For each column j, compute parity P_col[j] = XOR of D[0..7][j]. The condition holds if all P_row[i] are equal and all P_col[j] are equal (or more generally, if the bipartite graph constraints are satisfied). For the 8x8 case, a direct check of the 2x2 invariant is feasible with pipelining.
+5. Use a single cycle delay to compute intermediate XOR sums and then verify the invariant condition.

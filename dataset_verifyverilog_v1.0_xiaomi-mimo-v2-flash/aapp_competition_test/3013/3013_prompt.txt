@@ -1,0 +1,35 @@
+Design a Verilog module that solves the Archimedean spiral target hitting problem using fixed-point arithmetic. The module must compute the detachment point (x_det, y_det) on the spiral r = b*phi such that the linear trajectory from that point hits the target (tx, ty) without intersecting the spiral.
+
+**Algorithm Overview:**
+1. Convert inputs to Q16.16 fixed-point format (16 integer bits, 16 fractional bits).
+2. For angle phi from 0 to 2*pi*6 (3 full rotations) with step 0.01 rad, compute spiral points and velocity vectors.
+3. For each phi, compute the linear trajectory: x(t) = x_det + v_x*t, y(t) = y_det + v_y*t where v = derivative of spiral.
+4. Solve for time t where trajectory hits target: solve linear equations for t and check if the line segment between (x_det, y_det) and (tx, ty) intersects the spiral.
+5. Use binary search over phi to find the correct detachment point.
+6. Output the coordinates with 16-bit integer part and 16-bit fractional part.
+
+**Interface Specification:**
+- Inputs (all 32-bit signed fixed-point Q16.16):
+  - b: spiral parameter
+  - tx, ty: target coordinates
+- Outputs:
+  - x_det, y_det: 32-bit fixed-point Q16.16
+  - done: single-cycle pulse when valid
+- Control signals:
+  - clk: system clock
+  - rst_n: active-low reset
+  - start: start computation (1-cycle pulse)
+
+**Implementation Constraints:**
+- Use fixed-point arithmetic throughout
+- Iterate phi from 0 to 6.28318530718 * 6 (6 rotations max)
+- Step size: 0.01 rad (~628 steps)
+- For each phi, compute spiral point and velocity
+- Check trajectory intersection using line-segment-to-curve distance
+- Use pipelined computation to meet timing
+- Timeout: 1000 cycles max
+
+**Output Format:**
+- 32-bit Q16.16 fixed-point values
+- Pack into 64-bit result (x_det | y_det)
+- Error tolerance: 10^-5 (enforced via fixed-point precision)

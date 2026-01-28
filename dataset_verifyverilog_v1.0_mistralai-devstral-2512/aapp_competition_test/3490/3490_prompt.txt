@@ -1,0 +1,43 @@
+Implement a Verilog module that detects if any brooms collide in a witch dance simulation. Given N witches (scaled to ≤16), each with position (x, y) and initial rotation r (0-2π), and a fixed broom length of 1 meter, check if rotating brooms (clockwise) collide within a bounded time window.
+
+**Adaptations:**
+- N ≤ 16 (scaled from 200,000)
+- Coordinates: Q16.16 fixed-point (x, y in range -32768 to 32768)
+- Rotation: 16-bit (0-65535 representing 0-2π)
+- Time: Fixed 256-cycle simulation window
+- Collision: Check if broom endpoints intersect or pass within 1 LSB distance
+
+**Interface:**
+- Inputs: clk, rst_n, start (1-cycle pulse)
+- For each witch i (0-15):
+  - x_i[15:0]: 16-bit Q16.16
+  - y_i[15:0]: 16-bit Q16.16  
+  - r_i[15:0]: 16-bit rotation (0-65535)
+  - valid_i: 1-bit, indicates active witch
+- Outputs:
+  - result: 2-bit (0=ok, 1=crash, 2=timeout, 3=error)
+  - done: 1-cycle pulse when result is valid
+  - busy: high during computation
+
+**Algorithm:**
+1. Convert rotation to endpoint: (x_i + cos(r), y_i + sin(r)) using pre-computed 256-entry LUTs for cos/sin (16-bit fixed-point)
+2. For each pair of active witches (i, j):
+   - Compute distance between endpoints: √((x1-x2)² + (y1-y2)²)
+   - Compare squared distance with (2*length)² = 4.0 (fixed-point 4.0 = 0x00040000)
+   - If distance < 1.0e-3 (collision threshold), trigger crash
+3. Pipeline: Stage 1 = endpoint calc, Stage 2 = distance check
+4. Output crash if any pair collides within 256 cycles
+
+**Timing:**
+- Reset: done=0, result=0, busy=0
+- Start pulse → busy=1
+- Within 256 cycles: compute all pairwise checks
+- done=1 for 1 cycle when complete
+- result indicates status
+
+**Constraints:**
+- No sequential loops > 256 cycles
+- All arithmetic 16-32 bit
+- Cos/Sin via 256-entry ROM
+- Distance: compare squared (avoid sqrt) with threshold 0x00040000 (4.0)
+- Collision threshold: 0x00000004 (≈1.0e-6 scaled)

@@ -1,0 +1,28 @@
+Design a Verilog module to determine if a robot starting at (0,0) will ever reach target coordinates (a,b) by repeatedly executing a command sequence. The robot executes commands sequentially and repeats the sequence infinitely. You must check if target is reachable.
+
+**Requirements:**
+1. **Coordinate Scaling:** Target coordinates a and b are in range [-16384, 16383] (14-bit signed). Command sequence length max 16.
+2. **Algorithm:**
+   - Pre-calculate cumulative positions after each command in the sequence (max 17 positions including start)
+   - Calculate net displacement per full sequence (dx, dy)
+   - For each intermediate position (xi, yi):
+     - If dx == 0: Check if a == xi and (b - yi) has same sign as dy and is divisible by dy
+     - If dy == 0: Check if b == yi and (a - xi) has same sign as dx and is divisible by dx
+     - If both dx != 0 and dy != 0: Check if (a - xi) % dx == 0 AND (b - yi) % dy == 0 AND quotient is equal AND non-negative
+3. **Bit Widths:**
+   - Input: a, b: 14-bit signed (S14.0)
+   - Command: 'U','D','L','R' encoded as 2-bit: 00,01,10,11
+   - Sequence length: 4-bit (0-16)
+   - Intermediate positions: 16-bit signed (S16.0) for cumulative x,y (max 16 steps × ±1 = ±16)
+   - Net displacement: 6-bit signed (S6.0) for dx,dy (max ±16)
+   - Result: 1-bit (Yes/No)
+4. **Interface:**
+   - Inputs: rst_n, clk, start, a[13:0], b[13:0], seq_len[3:0], cmd[0:15][1:0] (16 commands, 2-bit each)
+   - Outputs: done (1-cycle pulse), result (1-bit)
+   - Timing: start triggers computation, done asserts within 100 cycles
+   - Reset: done=0, result=0, state machine reset
+5. **Implementation:**
+   - Finite state machine: IDLE → PRECALC → CHECK (with inner loop over 17 positions)
+   - Use signed arithmetic for modulo checks with correct sign handling
+   - Handle division by zero cases for dx/dy
+   - Return 'Yes' if any check passes, 'No' after all checks fail

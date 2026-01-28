@@ -1,0 +1,31 @@
+Design a Verilog module to compute the minimum operations to transform a small string (max 16 chars) into one containing the substring 'meow'. Operations: Insert (1 op), Delete (1 op), Replace (1 op), Swap adjacent (1 op). Use a simplified DP approach: iterate through input chars, maintain a state representing the best cost to match 'meow' prefix, using a lookback of 2 chars for swaps.
+
+Module Interface:
+- Inputs: 
+  - clk, rst_n: Standard clock and active-low reset
+  - start: 1-cycle high pulse to start computation
+  - char_in: 8-bit ASCII input character (current character of the string)
+  - char_valid: 1-cycle high when char_in is valid (next character of string)
+  - last_char: 1-cycle high indicates end of input string (no more chars)
+- Outputs:
+  - result: 16-bit integer (minimum operations)
+  - done: 1-cycle high when result is valid
+
+Implementation Details:
+1. State Machine: Accept characters sequentially. For each new character, update costs to match 'meow' prefixes ('', 'm', 'me', 'meo', 'meow').
+2. Cost Management: Maintain 5 DP states (cost to match empty prefix, 'm', 'me', 'meo', 'meow'). Initialize costs to 0 for empty prefix, INF for others.
+3. Transition Logic (per input char):
+   - Delete current char: Add 1 op, cost state unchanged.
+   - Replace/Match: If current char equals next needed in 'meow', cost for that prefix improves. If different, add 1 op (replace).
+   - Insert: Theoretically infinite, but bounded by considering insertion before current char (add 1 op, shift state).
+   - Swap: Only relevant if we look back at previous char. Maintain a history buffer of last 2 chars. If previous char and current char can be swapped to match next needed char (e.g., 'em' -> 'me'), update cost with +1 op.
+4. Bounded Depth: Since string length is capped at 16, and 'meow' length is 4, we can limit DP state size. Output the minimum cost across all final states.
+5. Reset: On reset, clear DP states, buffers, and set done=0.
+
+Timing: 
+- start resets the logic.
+- Feed characters via char_in and char_valid.
+- After last_char is high, wait 1-2 cycles for final computation.
+- Assert done and output result.
+
+Constraint: Input string length <= 16 chars. Output <= 255 (8-bit max). Use 16-bit for result safety.

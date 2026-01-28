@@ -1,0 +1,37 @@
+Design a Verilog module that generates the first K lexicographically sorted non-empty subsequences of a fixed-size input array and computes their hashes. The input array size is N=10 (maximum 10 elements). K is the number of subsequences to output (maximum 10). B and M are hash parameters (16-bit values).
+
+**Core Logic:**
+1. **Subsequence Generation:** Treat subsequences as bitmasks over the input array. For N=10, there are 2^10-1 non-empty subsequences. We must generate them in lexicographic order.
+   - *Simplification:* Lexicographic order of subsequences corresponds to a specific order of bitmasks. A hardware-friendly approach is to generate all bitmasks from 1 to (1<<N)-1, but sort them based on the lexicographic comparison of the resulting sequences. 
+   - *Hardware Approach:* Store the input array in a register file. We will generate subsequences iteratively. To simulate lexicographic sorting without full sorting network overhead, we can use a priority scheme or generate candidates and buffer them.
+   - *Feasibility:* Since N is small (<=10) and K is small (<=10), we can generate all 2^N-1 subsequences (1023 max) in parallel or in a loop, but the constraint is the `lexicographically sorted` requirement. We will implement a comparator that compares two subsequences (given their indices/masks).
+   - *Refined Approach:* We will generate subsequences in increasing order of their binary representation (mask 1 to 1023), insert them into a buffer, and use a bubble-sort-like approach to keep the buffer sorted according to the lexicographic rule, but only keeping the top K smallest.
+   - *Comparison Logic:* Two subsequences A and B are compared element by element. Since lengths differ, the shorter one is smaller if it is a prefix.
+
+2. **Hash Calculation:**
+   - For each valid subsequence in the sorted buffer, calculate $h(s) = (v_1 B^{p-1} + ... + v_p) \pmod M$.
+   - Modular exponentiation can be pre-calculated or computed iteratively. Since K is small and B/M are 16-bit, we can use 32-bit accumulators.
+
+3. **Control:**
+   - Start signal initiates the process.
+   - Done signal goes high when K hashes are output.
+   - Output stream: Valid signal with Hash value.
+
+**Interface:**
+- Inputs:
+  - `clk`, `rst_n`: System clock and active-low reset.
+  - `start`: 1-cycle pulse to start generation.
+  - `B[15:0]`: Base for hash.
+  - `M[15:0]`: Modulus for hash.
+  - `K[9:0]`: Number of subsequences to output (max 10).
+  - `arr[0:9][7:0]`: Input array (10 elements, 8-bit each).
+- Outputs:
+  - `hash_out[31:0]`: The computed hash value.
+  - `valid`: High when `hash_out` is valid.
+  - `done`: High when all K hashes have been generated.
+
+**Implementation Details:**
+- **Comparator:** A sequential comparator to compare two subsequences. It iterates through the array indices enabled by the bitmask.
+- **Sorting/Selection:** A state machine manages the generation of subsequences (mask 1 to 1023). It calculates the hash and inserts it into a small buffer (size K+1) if it is lexicographically smaller than the current max in the buffer. The buffer is kept sorted.
+- **Timing:** The process will take many cycles (N * 2^N roughly). Timeout should be generous (e.g., 100,000 cycles).
+- **Memory:** Use registers for the input array and the buffer of K+1 hashes/masks.

@@ -1,0 +1,61 @@
+Implement a Verilog module to solve the "Exploding Worms" chain reaction problem. 
+
+**Problem**: Given N cans on a 1D line, each with a location x and blast radius r. When a can explodes, it triggers any can within distance r. This causes a chain reaction. For each can, determine how many total cans explode if it is the initial trigger.
+
+**Constraints**: Scale to N=16 cans, 16-bit signed coordinates (-32768 to 32767), 16-bit unsigned radii (0 to 65535).
+
+**Algorithm**: 
+1. Read 16 cans (x, r) into internal registers.
+2. Sort cans by x-coordinate (insertion sort network, 16 stages).
+3. For each can i (0 to 15):
+   - Initialize a visited mask to 0.
+   - Perform a Breadth-First Search (BFS) using a queue implemented as a 16-element circular buffer.
+   - Start with can i. Mark visited.
+   - For each exploded can j, scan all other cans k. If |x_j - x_k| <= r_j and k not visited, add to queue.
+   - Count bits in visited mask to get explosion count.
+4. Output the 16 counts.
+
+**Interface**:
+- Inputs: 
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start calculation
+  - `cans_x[15:0][15:0]`: 16x16-bit array of coordinates (signed)
+  - `cans_r[15:0][15:0]`: 16x16-bit array of radii (unsigned)
+- Outputs:
+  - `results[15:0][3:0]`: 16x4-bit array of explosion counts (max 16 cans)
+  - `done`: 1-cycle pulse when all results are valid
+
+**Timing**:
+- Start signal initiates the sequence.
+- Processing must complete within 2000 clock cycles.
+- `done` pulses high for 1 cycle when finished.
+- `results` are valid while `done` is high.
+
+**Reset**: On reset (`rst_n=0`), `done` is 0, `results` are 0. Requires 2 cycles minimum.
+
+**Implementation Details**:
+- Use a Finite State Machine (FSM) with states: IDLE, SORT, CALC_START, CALC_BFS_LOOP, CALC_CHECK, CALC_COUNT, OUTPUT.
+- **SORT State**: Use an iterative bubble sort (16 passes) to sort `cans_x` and `cans_r` together based on `cans_x`.
+- **CALC_START State**: Reset the outer loop counter (target can index).
+- **CALC_BFS_LOOP State**: Implement the BFS. 
+  - Maintain a `queue_head`, `queue_tail`, and `queue_count`.
+  - Maintain a `visited_mask` register (16 bits).
+  - Maintain a `current_cans` register (16 bits, initially `1 << current_target`).
+  - If `current_cans` is not zero, extract one bit (pop from queue), mark visited, and expand.
+- **EXPAND Sub-state**: Scan all 16 cans. If distance check passes and not visited, set bit in `queue_buffer` (FIFO) and mark as visited (add to `visited_mask`).
+- **CALC_COUNT State**: Count set bits in `visited_mask` (use a 16-bit population count logic, 4 stages).
+- **OUTPUT State**: Store the count into the `results` array at index `current_target`. Increment target index. If < 16, go back to CALC_START. If == 16, go to DONE.
+
+**Bit Widths**:
+- Coordinates: 16-bit signed (Q0.15 concept, but just int16).
+- Radii: 16-bit unsigned.
+- Distance: 16-bit (clamped, diff of 16-bit signed fits in 17 bits, absolute value needs 17 bits but 16-bit max range covers input constraints).
+- Explosion count: 4-bit (0-15).
+- State: 4-bit (8 states).
+- Queue indices: 4-bit (0-15).
+
+**Constraints**:
+- Hardcode N=16.
+- Input arrays are fixed width.
+- Internal logic uses bounded loops (max 16 iterations).

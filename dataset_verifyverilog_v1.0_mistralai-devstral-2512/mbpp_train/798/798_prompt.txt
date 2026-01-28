@@ -1,0 +1,51 @@
+Verilog HDL Module Specification: Array Sum Accumulator
+
+**Objective**: Implement a synchronous sequential circuit that calculates the sum of a fixed-size array of integers.
+
+**Interface Requirements**:
+- **Inputs**:
+  - `clk`: System clock, rising edge active
+  - `rst_n`: Active-low asynchronous reset
+  - `start`: 1-cycle pulse to initiate calculation (high for one clock cycle)
+  - `arr`: 16-bit array input (16 elements, each 8 bits wide). Signal names: arr_0 through arr_15 (each 8 bits)
+  - `len`: 4-bit input indicating the number of valid elements in the array (1-16, if 0 treat as empty)
+- **Outputs**:
+  - `result`: 16-bit output representing the sum of the array elements
+  - `done`: 1-cycle pulse indicating calculation completion (high for one clock cycle)
+
+**Functionality**:
+1. On `start` pulse (when `rst_n` is high):
+   - Load `len` into a counter (4-bit) and store in a temporary register
+   - Reset accumulator (16-bit register) to 0
+   - Reset array index counter to 0
+   - Assert `done` = 0
+2. While counter > 0 (on each subsequent clock cycle):
+   - Read current array element `arr[index]` (8 bits)
+   - Add to accumulator (16-bit, handle overflow by saturating or wrapping per specification)
+   - Increment index counter and decrement element counter
+3. When counter reaches 0:
+   - Transfer accumulator value to `result`
+   - Assert `done` = 1 for exactly one clock cycle
+   - Remain in idle state until next `start`
+
+**Timing Constraints**:
+- `start` to `done`: Within 100 clock cycles maximum
+- `done` is a single-cycle pulse (rising edge triggers completion)
+- `result` is valid only when `done` = 1
+
+**Reset Behavior**:
+- On reset (`rst_n` = 0): `result` = 0, `done` = 0, state machine returns to IDLE
+- Minimum reset assertion: 2 clock cycles
+
+**Bit Widths**:
+- Array elements: 8 bits (unsigned)
+- Sum result: 16 bits (unsigned, max sum = 16 * 255 = 4080 < 65535)
+- Length counter: 4 bits (0-15)
+- Index counter: 4 bits (0-15)
+- Accumulator: 16 bits
+
+**Implementation Notes**:
+- Use a simple FSM with IDLE, FETCH, ADD, DONE states
+- Implement counter logic for element tracking
+- No asynchronous operations; all logic synchronous to clock
+- Handle zero-length input (if len=0, done should pulse immediately with result=0)

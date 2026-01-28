@@ -1,0 +1,49 @@
+Design a Verilog module that validates if a given node sequence is a valid BFS traversal of a tree starting from node 1. The tree has at most 16 nodes numbered 1-16.
+
+**Interface:**
+- Inputs: clk, rst_n (active-low), start (1-cycle pulse), seq_valid, seq_data[4:0] (node number 1-16, 5-bit), seq_len[4:0] (number of nodes, 5-bit)
+- Outputs: result (1-bit: 1=Yes, 0=No), done (1-cycle when valid)
+
+**Functionality:**
+1. On start pulse, reset internal state. Accept sequence data over `seq_len` cycles (one node per cycle via `seq_data`).
+2. Validate sequence: node 1 must be first (seq[0]==1).
+3. Use an adjacency matrix (16x16 bits) to represent the tree.
+4. Implement BFS with a FIFO queue (depth 16) using two pointers (head, tail).
+5. Processing: For each node v from queue, its children must appear consecutively in the sequence. Check that all children of v are present in the next `degree(v)` positions in sequence (degree is number of unvisited neighbors).
+6. Use a visited array (16 bits) to track processed nodes.
+7. Key constraint: The order of children in sequence must match the unvisited neighbors of current node.
+8. After processing all nodes, if sequence is exhausted and all nodes visited, result=1.
+
+**Scalability:**
+- Graph: 16 nodes max, adjacency matrix 16x16 bits.
+- Queue: depth 16, indices 0-15.
+- Sequence: max 16 elements, stored in register array.
+- Degrees: computed on-the-fly, max 15.
+- Timing: Complete within 256 cycles (16 nodes * 16 checks).
+
+**Edge Cases:**
+- Single node (n=1): sequence [1] valid.
+- Disconnected nodes in sequence: result=0.
+- Wrong parent-child order: result=0.
+- All nodes visited but sequence incomplete: result=0.
+- Sequence contains non-tree node: result=0.
+
+**Hardware constraints:**
+- Use 5-bit addressing for nodes 1-16 (0 unused).
+- Store adjacency as bitset for each node: adj[16][16].
+- Queue stores node indices (5-bit).
+- State machine: IDLE -> LOAD_SEQ -> BFS_LOOP -> VALIDATE -> DONE.
+- Reset clears all registers: visited bits, queue, adjacency, sequence array.
+
+**Implementation details:**
+- Start signal initiates loading of sequence data over `seq_len` cycles.
+- During BFS_LOOP: dequeue node v, find its unvisited neighbors count.
+- Extract next `degree(v)` elements from sequence, verify each is unvisited neighbor of v.
+- Mark those nodes as visited and enqueue them.
+- If any check fails, set result=0 and jump to DONE.
+- After sequence exhausted, verify all 16 nodes visited (or up to n nodes).
+- result=1 only if all checks pass and sequence consumed correctly.
+
+**Output timing:** done=1 for one cycle when result is valid. Result available on same cycle.
+
+**Note:** Node numbers are 1-indexed in input but stored as 0-indexed internally (subtract 1). Use 5-bit vectors [4:0].

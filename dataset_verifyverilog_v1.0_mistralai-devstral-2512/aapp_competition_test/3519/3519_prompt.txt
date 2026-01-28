@@ -1,0 +1,35 @@
+Implement a Verilog module that computes the expected number of turns to solve a Memory game with N pairs of cards.
+
+**Analysis:**
+The expected number of turns E(N) for N pairs follows a recurrence derived from the strategy:
+- If you know a match, you take 1 turn (removing the pair).
+- If you flip an unknown card:
+  - If it matches a known card (probability K/(2N-1) where K is known unmatched cards), you flip the match (1 turn).
+  - If it's new (probability (2N-1-K)/(2N-1)), you flip a second unknown card. If it matches (probability 1/(2N-2)), it takes 1 turn. If it doesn't match (probability (2N-3)/(2N-2)), it takes 1 turn plus the expected turns for the new state.
+
+The recurrence simplifies to:
+E(0) = 0
+E(1) = 1.0
+E(N) = 1.0 + (E(N-1) + 2.0 * E(N-2)) / 3.0 for N >= 2
+
+**Implementation Constraints:**
+- N is limited to 8 (since N=1000 requires large storage/FPU).
+- Use fixed-point arithmetic (Q16.16 format) for calculations.
+- Use a lookup table or iterative calculation for the first 8 values.
+- Inputs/Outputs are integer-based, but the result is fixed-point.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock
+  - `rst_n`: Active-low synchronous reset
+  - `start`: Input valid signal (1-cycle pulse)
+  - `n`: 4-bit input integer (value 1-8)
+- Outputs:
+  - `result`: 32-bit output (fixed-point Q16.16)
+  - `done`: Output valid signal (1-cycle pulse)
+
+**Behavior:**
+- When `start` is asserted, load `n`.
+- Compute E(n) using the recurrence relation iteratively.
+- Assert `done` when calculation is complete (within 200 cycles).
+- On reset, `result` = 0, `done` = 0.

@@ -1,0 +1,35 @@
+Implement a Verilog module that calculates the number of sequences of length n (1-16) with values from 0 to 2^m-1 (m 1-16) that contain no consecutive subsequence with XOR sum 0. The result is the product of (2^m - 1 - i) for i = 0 to n-1, modulo 1000000009. The module must use a 32-bit width for calculations. The input n and m will be provided as 16-bit unsigned integers. The module is combinational or semi-combinational (FSM). The calculation requires up to 16 cycles.
+
+Inputs:
+  clk: Clock signal (rising edge active).
+  rst_n: Active-low synchronous reset.
+  start: 1-cycle high to start calculation.
+  n_in: 16-bit input, sequence length.
+  m_in: 16-bit input, exponent for value range.
+
+Outputs:
+  result: 32-bit output holding the final answer modulo 1000000009.
+  done: 1-cycle high when calculation is finished and result is valid.
+
+Timing:
+  - On reset, result is 0, done is 0.
+  - Assertion of start initiates the calculation.
+  - Calculation takes approximately n cycles (max 16).
+  - When done goes high, result is the correct answer.
+  - start should remain low during calculation.
+
+Behavior:
+  1. Calculate p = (2^m) mod 1000000009. Note: m is small (≤16), so 2^m fits in 17 bits. For m=0, p=1. For m>0, 1<<m fits in 32 bits.
+  2. Initialize product = (p - 1) mod 1000000009. Handle subtraction underflow by adding modulus.
+  3. For i from 0 to n-1 (cyclic counter):
+     - term = (p - 1 - i) mod 1000000009.
+     - product = (product * term) mod 1000000009.
+     - Use a 32-bit unsigned multiplier and adder for modular arithmetic. Division is not needed as modulus is prime but we just do multiplication and manual subtraction.
+     - Since i < n <= 16, (p-1-i) is easily computed by subtracting i from previous term or recalculating.
+  4. Output the final product when i reaches n-1.
+
+Constraints:
+  - All intermediate calculations must be modulo 1000000009 (0x3B9ACA11). 
+  - Ensure no overflows in 32-bit variables (use 33-34 bits for intermediate multiplication result and reduce modulo).
+  - The system is an FSM with states: IDLE, CALCULATING, DONE.
+  - Assume n <= 16 and m <= 16 for this simplified benchmark version. If input n or m is 0, handle gracefully (e.g., result 1 if n=0, or p-1 if n=1).

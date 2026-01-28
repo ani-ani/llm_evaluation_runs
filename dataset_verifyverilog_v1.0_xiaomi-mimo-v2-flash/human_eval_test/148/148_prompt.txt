@@ -1,0 +1,27 @@
+You are to implement a Verilog module that solves the 'Between Planets' problem. Given two 3-bit planet identifiers (representing Mercury=0, Venus=1, Earth=2, Mars=3, Jupiter=4, Saturn=5, Uranus=6, Neptune=7), the module must output all planets strictly between them in orbital order, packed into a 64-bit result register (8 slots of 8 bits each).
+
+**Interface Requirements:**
+- **Inputs:**
+  - `clk`, `rst_n`: Standard synchronous logic signals
+  - `start`: 1-cycle pulse to initiate computation
+  - `p1`, `p2`: 3-bit unsigned binary inputs representing the two planets. Invalid values (8-15) are allowed for input but will result in an empty output.
+- **Outputs:**
+  - `result`: 64-bit output. Each byte (bits [7:0], [15:8], etc.) corresponds to a planet slot. Valid planet codes (0-7) are packed starting from the least significant byte. Unused slots should be 0xFF (255).
+  - `done`: 1-cycle pulse indicating result is valid. Output 0xFF in all result slots if inputs are invalid (p1==p2 or invalid codes) or if no planets exist between them.
+
+**Algorithm:**
+1. Wait for `start` pulse.
+2. Validate inputs: check if `p1` or `p2` are out of range (8-15) or equal. If invalid, set `result` to 64'hFFFFFFFFFFFFFFFF and assert `done`.
+3. Determine lower and upper bounds: `low = (p1 < p2) ? p1 : p2`, `high = (p2 < p1) ? p2 : p1`.
+4. Iterate through planets 0 to 7 (binary 000 to 111). For each planet `i`:
+   - If `i > low` AND `i < high`, write `i` (as 8-bit value) to the next available byte in the `result` vector.
+   - Keep track of the write pointer (0 to 7).
+5. If no planets were found between bounds, set `result` to 64'hFFFFFFFFFFFFFFFF.
+6. Assert `done` signal for exactly one clock cycle. Reset internal pointers and state.
+
+**Constraints:**
+- Use a maximum of 8 iterations (combinatorial or FSM based).
+- Bit widths: Inputs 3-bit, Internal counters 4-bit, Output 64-bit.
+- Timing: Must complete within 20 clock cycles from start.
+- Reset: `done` must be 0, `result` must be 0 after reset.
+- Do not use external memory; use a small FSM or combinational logic with fixed loop bounds.

@@ -1,0 +1,49 @@
+Implement a Verilog module that determines if an array of integers can be split into two non-empty groups such that each group's GCD is 1.
+
+**Simplified Problem (Hardware-Friendly):**
+- Input: n integers (1 <= n <= 16), each <= 32 bits
+- Constraint: Only consider integers that share prime factors. If all integers are coprime to each other, it's impossible.
+- Algorithm: Extract unique prime factors from first few numbers (max 8 primes). For each integer, create a mask of which primes divide it (if any). Solve subset-sum: find if there's a non-empty subset of numbers such that the union of their prime masks equals all primes (GCD=1) AND the complement set also covers all primes.
+- Limitations: Max 8 unique primes. Max 16 numbers. Primes limited to small factors.
+
+**Verilog Module Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `data_in`: 32-bit input value (serial input of array elements)
+  - `valid_in`: 1-cycle pulse when `data_in` is valid
+  - `last_in`: 1-cycle pulse indicating the last element
+- Outputs:
+  - `result`: 2-bit output (0=NO, 1=YES_GROUP1, 2=YES_GROUP2)
+  - `assignment`: 16-bit output vector (bit i = 1 if element i in group 1, 0 if group 2)
+  - `done`: 1-cycle pulse when result is valid
+  - `ready`: High when ready to accept new data
+
+**Implementation Details:**
+1. **State Machine:**
+   - IDLE: Wait for start
+   - COLLECT: Read data_in into a buffer (max 16 entries). Extract prime factors (limit to first 8 unique primes). Store masks.
+   - COMPUTE: Perform BFS/DP over prime masks. State: 8-bit mask (primes covered so far). Transition: Add a number's mask to current state.
+   - CHECK: Verify if there exists a non-empty subset covering all primes, and the remaining numbers also cover all primes.
+   - OUTPUT: Set result and assignment bits.
+2. **Prime Factorization (Simplified):**
+   - Hardcode small primes: 2, 3, 5, 7, 11, 13, 17, 19.
+   - For each input, check divisibility by these primes to generate an 8-bit mask.
+3. **DP Buffer:**
+   - Use a 256-entry LUT (256 x 16-bit) for reachable states and assignment trace.
+   - Max 16 iterations in COMPUTE state.
+4. **Output:**
+   - If solution found, set `result` (1 or 2) and `assignment` vector.
+   - If impossible, `result` = 0.
+
+**Timing:**
+- Reset: 2 cycles, clears buffers.
+- Processing: start->done within 256 cycles.
+- `done` is a single cycle pulse.
+
+**Constraints:**
+- Max 16 input numbers.
+- Max 8 unique primes.
+- 32-bit data width.
+- 16-bit assignment output.

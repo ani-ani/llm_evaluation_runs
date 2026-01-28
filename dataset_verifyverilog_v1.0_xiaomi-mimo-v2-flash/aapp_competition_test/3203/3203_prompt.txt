@@ -1,0 +1,152 @@
+Implement a Verilog module to solve the assignment problem maximizing the product of probabilities.
+
+Specifications:
+- N ≤ 20, fixed to maximum 20 (array size 20x20)
+- Input probabilities are integers 0-100 (percentages)
+- Convert percentages to Q8.8 fixed-point (0-256.0)
+- Output: Maximum product as percentage with 0.01% resolution (Q8.8 scaled back)
+
+Module Interface:
+Inputs:
+  clk: system clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  prob[19:0][19:0]: 20x20 array of 8-bit probabilities (0-100)
+  n: 5-bit value (1-20), number of agents and missions
+
+Outputs:
+  result: 16-bit fixed-point Q8.8 percentage (0-256.0, 0.01% resolution)
+  done: 1-cycle pulse indicating valid result
+
+Implementation Details:
+- Use brute-force permutation generation over n agents
+- Generate all n! permutations (for n=20, this is impossible but we'll handle n≤8 realistically for HW, or implement DP)
+- Actually, for n≤20, use DP with bitmask: dp[mask] = best product for assigned missions
+- Since we need floating-point products, use Q16.16 fixed-point for intermediate products
+- 32-bit registers for DP state
+- Transition: For each state, assign next agent to next mission
+- Memory: 2^20 entries is too large (1M entries). Scale to n≤8 (256 entries) or implement iterative DP
+- Better: Use branch-and-bound or limit to n≤8, or use 20-bit loop with early termination
+- Actually, since product is monotonic decreasing with probabilities, we can use DP with bitmask if we limit n to 8-10
+- For n≤8: 2^8 = 256 states, each state stores best product (32-bit Q16.16)
+- For n≤20: Would need 2^20 = 1,048,576 states, not feasible
+- Decision: Scale n to maximum 8 (as per philosophy) or implement iterative greedy approximation
+- Let's implement DP for n≤8 (256 states) with 32-bit fixed-point arithmetic
+- State machine: IDLE → READING → COMPUTING → DONE
+- Reading: Load probabilities from 2D array
+- Computing: Iterate over masks from 0 to (1<<n)-1, update dp values
+- Use 256x32-bit SRAM for dp array
+- Each cycle: process one mask, compute for each unset bit
+- Result: dp[(1<<n)-1] converted back to percentage
+- Timing: ≤256 cycles for computing phase
+
+Signal Widths:
+- probabilities: 8-bit (0-100)
+- n: 5-bit
+- dp array: 256 entries × 32-bit (Q16.16)
+- result: 16-bit Q8.8 (0-256.0)
+- address: 8-bit
+- control: 4-bit FSM
+
+Constraints:
+- n ≤ 8 for feasible implementation (scaling per philosophy)
+- If n > 8, clamp to 8
+- Use Q16.16 for intermediate products (16 integer bits, 16 fractional bits)
+- Final conversion: dp >> 8 to get Q8.8 result
+- Probability multiplication: (prob × dp) / 100 (since input is percentage)
+- Scaling: 100% = 256 (Q8.8), so 1% = 2.56, need to multiply by 256/100 = 2.56 per multiplication
+- Better: Convert input to Q16.16: val * 65536 / 100 = val * 655
+- Then product of probabilities
+- Finally divide by 65536 and multiply by 100 to get percentage back
+- Actually simpler: Store probabilities as Q8.8 (val * 256 / 100 = val * 2.56 = val * 655 / 256)
+- For multiplication: (prob1 * prob2) >> 8
+- For division by 100: not needed if we keep as percentage units
+- Let's use Q8.8: input val → val * 256 / 100 = (val * 655) >> 8
+- Actually val * 2.56 = val * 256/100, but we want integer math
+- So store as (val * 256) / 100 using integer division
+- For val=100: 25600/100 = 256 (0x0100)
+- For val=50: 12800/100 = 128 (0x0080)
+- Then product = (prob1 * prob2) >> 8
+- Result percentage = (product * 100) >> 8 = product * 25 / 64
+- Use 32-bit intermediates, 16-bit final
+
+FSM States:
+0: IDLE
+1: READING (load prob array)
+2: COMPUTING (DP loop)
+3: DONE
+
+DP Algorithm (N≤8):
+- dp[0] = 256 (100% in Q8.8)
+- For mask from 1 to (1<<n)-1:
+    dp[mask] = 0
+    For each agent i (0 to n-1):
+        If mission i not in mask:
+            mission_idx = popcount(mask)
+            prob = prob[agent_i][mission_idx]
+            new_mask = mask | (1<<i)
+            candidate = (dp[mask] * prob) >> 8
+            dp[new_mask] = max(dp[new_mask], candidate)
+- Actually, for assignment, we need to track which agent gets which mission
+- Standard DP: dp[mask] where mask represents assigned missions
+- For each state, try assigning next unassigned mission to any available agent
+- Wait, missions and agents are both size n
+- Let mask represent assigned missions (bits 0..n-1 = missions assigned)
+- For each state dp[mask], we need to know which agents are used? Actually we assign missions to agents
+- Better: We're choosing a permutation. For each mission j, assign an agent i
+- Use DP with mask: dp[mask] = best product for first popcount(mask) missions assigned to agents in mask
+- No, mask should represent which agents are already assigned missions
+- For mission k (0-indexed), we assign it to an available agent
+- dp[mask] = best product when agents in mask are assigned missions 0..|mask|-1
+- Transition: For next mission (|mask|), assign to any agent not in mask
+- dp[new_mask] = max(dp[new_mask], dp[mask] * prob[agent][mission])
+- Result: dp[(1<<n)-1]
+- This requires 2^n states, each processing n agents → O(n * 2^n) cycles
+- For n=8: 8 * 256 = 2048 cycles
+- For n=10: 10 * 1024 = 10,240 cycles
+- Limit n to 8, allow up to 16 cycles per state processing
+
+Memory Requirements:
+- dp array: 256 × 32-bit = 8192 bits (1 KB) - feasible
+- prob array: 20×20 × 8-bit = 3200 bits - feasible
+- Current dp array could be doubled for read-modify-write
+- Use 2-port SRAM or register file
+- For simplicity, use 256-entry register array
+
+Timing:
+- IDLE → READING: wait for start
+- READING: 1 cycle per input element, 20×20 = 400 cycles (or stream)
+- Actually, assume probabilities are available at startup or stream in
+- For spec simplicity: assume prob array is pre-loaded or available combinatorially
+- COMPUTING: iterate through 2^n masks, for each iterate n agents
+- Total: ≤ 8 × 256 = 2048 cycles
+- DONE: 1 cycle
+- Total: ~2500 cycles, < 10000 max
+
+Edge Cases:
+- n=0: result = 100 (256 in Q8.8)
+- Probabilities 0: dp becomes 0, optimal should be 0
+- Clamp n to max 8 if input n > 8
+
+Output Conversion:
+- Final dp[(1<<n)-1] is in Q8.8 (0-256)
+- Already represents percentage*2.56
+- Result is this value directly (16-bit)
+- Example: 100% = 256, 50% = 128, 25% = 64, 9.1% ≈ 23 (9.1*2.56=23.296)
+
+Testing:
+- Provide test cases with n=2,3 as examples
+- Use Q8.8 fixed-point for results
+- Expected outputs: 50→128, 25→64, 9.1→23
+- Note: Due to integer division, slight rounding error allowed
+- Absolute error tolerance in Q8.8: ±0.5 (0.2%)
+
+Module Structure:
+- Main FSM with 4 states
+- Register array for dp[255:0][31:0]
+- Register array for prob[19:0][19:0]
+- Control logic for DP loop
+- Counter for mask and agent index
+- Combinatorial multiplication unit
+- Max operation logic
+- Output registration

@@ -1,0 +1,36 @@
+Design a Verilog module that calculates the minimum time for a rescue dirigible to reach a destination with changing wind conditions. The solution must use binary search on time (0 to 1e15 scaled to Q32.32) with up to 1000 iterations for required precision.
+
+Module Interface:
+- Inputs: 14x16-bit signed integers (x1, y1, x2, y2, vmax, t, vx, vy, wx, wy) and a 1-bit start signal
+- Output: 64-bit fixed-point time result (Q32.32 format, LSB represents 2^-32 seconds) and 1-bit done signal
+- Clock and reset signals for synchronous operation
+
+Algorithm Specification:
+1. Compute Δx = (x2 - x1) and Δy = (y2 - y1) as 32-bit signed values (scale by 2^16 for fixed-point)
+2. Binary search range: low = 0, high = 2^48 (≈1.1259e14 scaled seconds)
+3. For each iteration (1000 cycles):
+   - Compute T = (low + high) >> 1
+   - If T ≤ t: wind effect = (vx * T, vy * T)
+   - Else: wind effect = (vx * t + wx * (T - t), vy * t + wy * (T - t))
+   - Compute remaining distance squared: D² = (Δx - wind_x)² + (Δy - wind_y)²
+   - Compute max reachable distance squared: R² = (vmax * T)²
+   - If R² ≥ D²: high = T, else: low = T
+4. After 1000 iterations, output high as the result
+
+Numerical Requirements:
+- Use Q32.32 fixed-point arithmetic throughout (64-bit intermediate values)
+- All multiplications must produce 64-bit results before comparison
+- Implement binary adders/subtractors with carry logic
+- 1000 iteration counter for binary search
+- The wind change time 't' is in Q16.16 format for comparison
+
+Control Signals:
+- start: Active-high, initiates calculation (single cycle pulse)
+- done: Active-high, indicates result valid (single cycle pulse after 1000 iterations)
+- State machine: IDLE → CALCULATING → DONE
+
+Constraints:
+- Clock frequency: 100 MHz
+- Latency: ≤ 10,000 cycles for complete calculation
+- Area optimization: Reuse multipliers for wind/distance calculations
+- No external memory access required

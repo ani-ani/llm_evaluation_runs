@@ -1,0 +1,32 @@
+Implement a Verilog module that computes the expected Manhattan distance between two uniformly random points inside a convex polygon.
+
+**SCALING & SIMPLIFICATION:**
+1. Input polygon is limited to **n=3 to 16 vertices** (max 16).
+2. Coordinates are scaled to **16-bit signed integers** (Q16.13 format, range -8192 to +8191.875).
+3. The expected value is approximated via **Monte Carlo simulation**.
+4. Number of samples fixed at **N_SAMPLES = 1024**.
+5. Random number generation uses a **Linear Feedback Shift Register (LFSR)** for pseudo-random bits.
+6. Point-in-Polygon test uses the **Ray Casting algorithm** with fixed-point arithmetic.
+
+**INTERFACE:**
+- **Inputs:**
+  - `clk`: System clock (rising edge).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: Start signal (1-cycle pulse).
+  - `vertex_count`: 4-bit unsigned integer (3-16).
+  - `vertex_x[0:15]`: Array of 16 16-bit signed integers (valid only for indices < vertex_count).
+  - `vertex_y[0:15]`: Array of 16 16-bit signed integers (valid only for indices < vertex_count).
+- **Outputs:**
+  - `result`: 32-bit fixed-point result (Q16.16 format).
+  - `done`: 1-cycle pulse indicating calculation completion.
+
+**IMPLEMENTATION DETAILS:**
+1. **Random Point Generation:** Use two 16-bit LFSRs (one for X, one for Y) running continuously after `start`.
+2. **Point-in-Polygon:** Since the input coordinates are already scaled integers, the ray casting algorithm checks intersections of the ray from the generated point to a point at infinity (e.g., X=10000). Use fixed-point comparisons.
+3. **Accumulation:** If a generated point is inside the polygon, sample it. Accumulate the Manhattan distance between two consecutive valid points into a 48-bit accumulator.
+4. **Average:** After 1024 samples, divide the total distance by 1024. Since 1024 is a power of 2, use a right shift (dropping lower bits) to perform division.
+5. **Control:** A Finite State Machine (FSM) manages the sequence: Reset -> Wait_Start -> Generate_Points -> Check_Inside -> Accumulate -> Divide -> Done.
+6. **Timing:** The operation should complete within 1,000,000 clock cycles (allowing for 1024 samples * ~800 cycles for LFSR settling and checks).
+
+**OUTPUT FORMAT:**
+The 32-bit result represents the Q16.16 fixed-point value. For example, 0.6666 in Q16.16 is approximately 43690 (0xAAAA).

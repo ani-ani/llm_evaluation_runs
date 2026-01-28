@@ -1,0 +1,30 @@
+You are to design a Verilog module that counts the number of consecutive subsequences (subarrays) where the average value is greater than or equal to a threshold P.
+
+**Core Algorithm:**
+1.  **Input Constraints (Scaled):** The original problem handles N up to 1,000,000. We will scale this down to **N = 16** to fit within hardware resources. Prices are up to 1e9; we scale these to **16-bit unsigned integers (0-65535)**. P is scaled to a **16-bit unsigned integer**.
+2.  **Data Representation:** Since we need to calculate averages, we will use a **prefix sum** array. Sum of up to 16 elements of 16-bit values fits in 24 bits. For simplicity in Verilog, we will use **32-bit integers (with lower 16 bits representing fractional part)** for sums to maintain precision during comparison.
+3.  **Average Condition:** A subarray from index `i` to `j` (inclusive) has average `>= P` if `(sum[j] - sum[i-1]) / (j - i + 1) >= P`.
+    To avoid division, multiply both sides by length: `(sum[j] - sum[i-1]) >= P * (j - i + 1)`.
+    Since we use fixed-point representation for sums, `P` should be treated as an integer scaling factor, or we calculate `P * length` as an integer. Given the constraints, we will calculate the integer threshold `Threshold = P * length`.
+4.  **Hardware Implementation:**
+    -   **Inputs:** 16 data elements (16-bit each), `P` (16-bit), `start` signal.
+    -   **Outputs:** `result` (32-bit count), `done` flag.
+    -   **Stages:**
+        -   **Stage 1 (Prefix Sum):** Compute prefix sums `S[0..16]`. `S[0] = 0`. `S[k] = S[k-1] + data[k-1]`.
+        -   **Stage 2 (Comparison):** Iterate through all possible subarrays (O(N^2) = 256 iterations max). Use a nested loop structure in a Finite State Machine (FSM). Outer loop `i` from 0 to N-1, Inner loop `j` from `i` to N-1.
+        -   **Logic:** Calculate `sub_sum = S[j+1] - S[i]` (requires 32-bit subtraction). Calculate `len = j - i + 1`. Calculate `threshold = P * len` (requires 16x4 bit multiplication, result fits 32-bit). If `sub_sum >= threshold`, increment counter.
+    -   **Optimization:** Since N is small (16), a fully unrolled combinatorial implementation (sorting network style) is possible but results in massive logic usage. A sequential FSM is preferred for synthesizability.
+
+**Module Interface:**
+-   **Clock & Reset:** `clk` (input), `rst_n` (input, active low).
+-   **Control:** `start` (input, 1-cycle pulse).
+-   **Data Inputs:** `data_in` (input [15:0]). Data is written into a BRAM-like internal storage 16 words deep. We use an address bus `addr_in` (input [3:0]) and `we` (input) to load data sequentially. `p_in` (input [15:0]) for P.
+-   **Outputs:** `result` (output [31:0]), `done` (output).
+
+**Implementation Details:**
+-   Use an FSM with states: IDLE, LOAD, CALC_IDLE, CALC_LOOP, FINISH.
+-   LOAD state accepts 16 words over 16 cycles.
+-   CALC_LOOP state iterates `i` from 0 to 15 and `j` from `i` to 15.
+-   Use internal registers for prefix sums, loop counters, and the accumulator.
+-   Output `done` goes high for 1 cycle when calculation is complete.
+-   Handle the math logic carefully to avoid overflow (use 32-bit wide registers).

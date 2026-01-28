@@ -1,0 +1,74 @@
+## Verilog Module Specification: OS Space Node Collector
+
+### Objective
+Design a hardware accelerator to compute the maximum number of data nodes Aroma can collect within time `t` in the OS space.
+
+### Interface Specification
+
+#### Inputs
+- `clk`: Clock signal (rising edge triggered)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate computation (only sampled when idle)
+- `x0`, `y0`: Initial node coordinates (64-bit unsigned)
+- `ax`, `ay`: Scaling factors for x/y (8-bit unsigned, 2-100)
+- `bx`, `by`: Offset values for x/y (64-bit unsigned)
+- `xs`, `ys`: Aroma's starting position (64-bit unsigned)
+- `t`: Maximum time budget (64-bit unsigned)
+
+#### Outputs
+- `result`: Maximum collectable nodes (8-bit unsigned)
+- `done`: 1-cycle pulse indicating result is valid (active high)
+
+### Internal Implementation Requirements
+
+1. **Node Generation**: 
+   - Generate nodes sequentially: `node[i] = (x_i, y_i)` where `x_i = ax * x_{i-1} + bx` and `y_i = ay * y_{i-1} + by`
+   - Generate maximum 64 nodes (indices 0-63)
+   - Stop generation when coordinates exceed 2^60 (preventing overflow)
+   - Store coordinates in two 64-bit arrays: `node_x[0:63]`, `node_y[0:63]`
+   - Also store cumulative Manhattan distances between adjacent nodes for efficiency
+
+2. **Distance Calculation**:
+   - Use Manhattan distance: `|x1 - x2| + |y1 - y2|`
+   - For large numbers (up to 64-bit), use fixed-point or iterative subtraction
+   - Clamp intermediate results to 32-bit signed range to prevent overflow
+   - Use 33-bit intermediate registers for absolute difference
+
+3. **Algorithm Flow**:
+   - **State Machine** (FSM):
+     - IDLE: Wait for `start` pulse
+     - GENERATE: Generate up to 64 nodes, store coordinates
+     - COMPUTE: For each possible segment [i..j] (0 <= i <= j < 64):
+       - Calculate cost = distance from (xs,ys) to node[i] + distance from node[i] to node[j]
+       - If cost <= t, update max_nodes = max(max_nodes, j-i+1)
+     - DONE: Assert `done` and present result
+   - **Bounded Loops**: Maximum 64x64 = 4096 iterations for segment checking
+   - **Cycle Budget**: Complete within 5000 cycles
+
+4. **Data Widths**:
+   - Input coordinates: 64-bit
+   - Internal arithmetic: 64-bit with 33-bit intermediate for differences
+   - Node count: 8-bit (max 64 nodes)
+   - Time budget: 64-bit
+   - Result: 8-bit
+
+5. **Timing Constraints**:
+   - Start-to-done: ≤ 5000 cycles
+   - Reset: 2 cycles minimum, sets all counters to 0
+   - Done pulse: 1 cycle, valid result available when done=1
+
+6. **Resource Constraints**:
+   - Internal memory: 64x64-bit arrays for node_x and node_y
+   - Comparators: For each distance comparison
+   - Accumulators: For time budget tracking
+
+7. **Corner Cases**:
+   - If no nodes reachable within time t: result = 0
+   - If start position equals a node: distance = 0
+   - If coordinates grow too large: stop generation
+
+### Testbench Requirements
+- Verify with all provided test cases
+- Check boundary conditions (large numbers, zero time, equal coordinates)
+- Ensure FSM transitions correctly
+- Validate result accuracy against expected outputs

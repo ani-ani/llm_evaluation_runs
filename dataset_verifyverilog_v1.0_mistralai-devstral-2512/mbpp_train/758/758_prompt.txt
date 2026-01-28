@@ -1,0 +1,27 @@
+Design a Verilog module that processes a sequence of fixed-length sublists (max 4 bytes each) and counts occurrences of unique sublists. The input stream contains 4 sublists (indices 0-3).
+
+**Inputs:**
+- `clk`: System clock (100 MHz)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate processing
+- `sublists[i][j]`: 4x4 array of 8-bit bytes (ASCII codes) where `i` is sublist index (0-3) and `j` is character index (0-3). 
+  *Note: Use 1D array `sublist_flat[15:0]` or separate ports `sublist_i_j` for simplicity.*
+
+**Outputs:**
+- `result_valid[3:0]`: 4-bit flag indicating which result slots are valid
+- `result_hash[3:0][31:0]`: 4x32-bit hash values (FNV-1a variant: hash = hash ^ byte; hash = hash * 16777619)
+- `result_count[3:0][7:0]`: 4x8-bit counts
+- `done`: 1-cycle pulse when all processing is complete
+
+**Behavior:**
+1. On `start` assertion, latch the 4 input sublists.
+2. Compute a 32-bit hash for each sublist (padding unused bytes with 0).
+3. Compare hashes to find unique occurrences.
+4. Populate output slots (0 to n_unique-1) with hash and count.
+5. Assert `done` when finished (max 100 cycles from start).
+
+**Constraints:**
+- Fixed 4 sublists, 4 bytes each.
+- Hashing: FNV-1a algorithm (0x01000193 multiplier).
+- Output: Up to 4 unique entries, ordered by first appearance.
+- Timing: start-to-done < 100 cycles.

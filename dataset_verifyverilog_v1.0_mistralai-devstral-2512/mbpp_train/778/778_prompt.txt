@@ -1,0 +1,81 @@
+Implement a Verilog module that packs consecutive duplicates of an 8-bit input array into sublists, processing values one per cycle. The module should have an input array of 16 elements (8-bit each), a start signal, and produce an output array of grouped elements.
+
+## Module Interface
+
+Inputs:
+- `clk`: Clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start processing (sampled on rising edge)
+- `len`: 5-bit input (0-16) indicating number of valid elements in arr
+- `arr[0:15]`: 16x8-bit array containing the input values
+
+Outputs:
+- `result`: 8-bit output (single element for sublists - see algorithm below)
+- `done`: 1-cycle pulse when processing complete
+- `result_valid`: 1-cycle pulse when `result` contains a valid element
+- `result_is_group_start`: 1-bit output indicating the start of a new group
+
+## Algorithm Specification
+
+1. **Input Processing**: Read input values sequentially (one per cycle) from arr[0] to arr[len-1]
+2. **Grouping**: Compare current value with previous value:
+   - If same as previous, append to current group buffer
+   - If different, flush current group to output and start new group
+3. **Output**: Stream elements one per cycle with group boundaries indicated
+
+### State Machine States:
+- `IDLE`: Wait for start signal
+- `RESET_BUFFER`: Clear internal group buffer
+- `READ_INPUT`: Read next input value
+- `COMPARE`: Compare with previous value
+- `FLUSH_BUFFER`: Output buffered group elements
+- `PROCESS_NEW_GROUP`: Start new group with current value
+- `DONE`: All input processed
+
+### Internal Signals:
+- `buffer[0:15]`: 16x8-bit FIFO for current group
+- `buffer_ptr`: 5-bit pointer (0-16) indicating current group size
+- `prev_value`: 8-bit storage for previous value
+- `input_ptr`: 5-bit pointer to current input index (0-16)
+- `state`: 3-bit state encoding
+
+## Behavior
+
+1. On start=1, initialize input_ptr=0, buffer_ptr=0, prev_value=undefined
+2. For each input value (until input_ptr == len):
+   - If buffer_ptr == 0 (first element of group):
+     * Store in buffer[0], buffer_ptr = 1
+     * Set prev_value = current value
+     * Output first element with result_is_group_start = 1
+   - Else if current value == prev_value:
+     * Store in buffer[buffer_ptr], buffer_ptr increment
+     * Output with result_is_group_start = 0
+   - Else (different value):
+     * If buffer_ptr > 0: flush remaining buffered elements (except first)
+     * Start new group: buffer[0] = current, buffer_ptr = 1
+     * prev_value = current
+     * Output with result_is_group_start = 1
+3. After processing all inputs, flush any remaining buffered elements
+4. When done, all inputs processed and buffers flushed
+
+## Timing
+- start->done within 100 cycles
+- result_valid pulses when result is ready (may be multiple pulses per group)
+- result_is_group_start pulses high on first element of each new group
+
+## Reset Behavior
+- When rst_n=0: buffer all zeros, ptrs=0, done=0, result_valid=0
+
+## Constraints
+- Input length: 0-16 elements
+- Element width: 8 bits
+- Maximum cycles: 100 (for worst case: 16 elements, each group of 1)
+- Buffer size: 16 elements (sufficient for max input)
+
+Note: The output is streamed element-by-element. For example, input [0,0,1,2] produces:
+- Cycle 1: result=0, result_is_group_start=1, result_valid=1
+- Cycle 2: result=0, result_is_group_start=0, result_valid=1
+- Cycle 3: result=1, result_is_group_start=1, result_valid=1
+- Cycle 4: result=2, result_is_group_start=1, result_valid=1
+
+This streaming approach allows reconstructing the full group structure in testbench.

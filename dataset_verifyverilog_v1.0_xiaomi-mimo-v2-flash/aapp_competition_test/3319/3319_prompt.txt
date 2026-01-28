@@ -1,0 +1,35 @@
+Implement a Verilog module `planetoids` that simulates planetoid collisions on a 3D grid. The module must handle up to 16 planetoids on an 8x8x8 grid.
+
+**Inputs:**
+- `clk`: System clock.
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start the simulation.
+- `config_addr`: 4-bit address for configuring initial planetoid parameters (0 to 15).
+- `config_data`: 64-bit input data packed as `{vx[15:0], vy[15:0], vz[15:0], x[7:0], y[7:0], z[7:0], mass[7:0], active[0]}`. Note: Velocities are signed integers; positions are 8-bit (0-255).
+- `num_planetoids`: 4-bit input indicating number of active planetoids (used for simulation termination).
+
+**Outputs:**
+- `result_mass`: 16-bit output for the mass of the current planetoid (indexed by `result_idx`).
+- `result_vx`, `result_vy`, `result_vz`: 16-bit signed outputs for velocity components.
+- `result_x`, `result_y`, `result_z`: 8-bit outputs for location.
+- `result_idx`: 4-bit index output for the current planetoid being reported.
+- `result_valid`: 1-bit output, high when the result is valid.
+- `done`: 1-bit output, high when the simulation is complete (no more collisions possible).
+
+**Internal Logic Constraints:**
+1. **Grid:** 8x8x8 (indices 0-7). Use modulo arithmetic for position updates (wrapping).
+2. **Velocities:** Map input signed range [-1000, 1000] to a 16-bit signed fixed-point representation (Q1.15 is not ideal for magnitude; use standard 16-bit signed int, e.g., value = raw * 4 to fit precision or just raw). For simplicity, use `raw_input * 1` scaled to 16-bit signed. Velocities are integers.
+3. **Time:** Simulate in discrete steps. Max 1024 time steps.
+4. **Collision:** At each time step, check all pairs. If two planetoids occupy the same coordinate `(x,y,z)`, merge them:
+   - Mass: `mass_a + mass_b`
+   - Velocity: `(vx_a + vx_b) >> 1` (average, truncate towards zero).
+   - The survivor keeps the location.
+   - Disable the merged planetoid.
+5. **Termination:** Stop when no collisions occur for a full time step or max cycles reached.
+6. **Output:** Stream out all active planetoids (1 per clock cycle) when `done` is high. Order by mass descending, then lexicographically by (x,y,z).
+
+**Control Sequence:**
+1. Reset: Clears all planetoid registers.
+2. Config: On `start`, expect `num_planetoids` writes to `config_addr` (0 to N-1) with `config_data`. The module should internally latch these.
+3. Run: Perform collision simulation.
+4. Report: After `done` is asserted, cycle through active planetoids and output stats via `result_*` ports.

@@ -1,0 +1,46 @@
+Implement a Verilog module that counts the number of valid permutations (wirings) of n switches to n lights consistent with m binary observation matrices. 
+
+### Problem Adaptation
+- Scaled to n <= 16 (instead of 1000) for hardware feasibility
+- m <= 8 observation matrices (photos)
+- Each observation provides a mapping constraint: if a switch is ON (1) in observation, the corresponding light must be ON (1) in the same observation
+- Valid wiring is a permutation p where for every observation matrix j, switch i and light p(i) have the same bit value
+
+### Interface Specification
+
+**Inputs:**
+- `clk`: System clock
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `n`: 4-bit input (number of switches/lights, 1-16)
+- `m`: 3-bit input (number of observations, 0-8)
+- `obs_switch[8][16]`: 8 observation matrices for switches (each 16-bit)
+- `obs_light[8][16]`: 8 observation matrices for lights (each 16-bit)
+
+**Outputs:**
+- `result`: 24-bit output (result modulo 1000003)
+- `done`: 1-cycle pulse indicating valid result
+
+**Implementation Details:**
+1. Use dynamic programming with bitmask states
+2. State represents: current switch index (0 to n-1) and mask of used lights
+3. Transition: for current switch, try all unused lights that are consistent with all observations
+4. Consistency check: for all observations j, obs_switch[j][i] == obs_light[j][k]
+5. Count valid permutations modulo 1000003
+6. Timing: Complete within 1000 cycles for n=16
+7. Reset state: done=0, result=0
+
+**Constraints:**
+- Clock frequency: 100 MHz (10ns period)
+- No combinatorial loops
+- All arithmetic modulo 1000003
+- Fixed-size buffers for observations
+
+### Example Behavior
+For n=3, m=1, observation switch=110, light=011:
+- Switch 0 (1) must connect to light 1 (1)
+- Switch 1 (1) must connect to light 2 (1)  
+- Switch 2 (0) must connect to light 0 (0)
+- Valid permutations: (1,2,0) and (2,1,0) = 2
+
+Return result modulo 1000003.

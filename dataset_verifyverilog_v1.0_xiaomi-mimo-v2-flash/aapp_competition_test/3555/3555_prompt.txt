@@ -1,0 +1,50 @@
+Design a Verilog module `spot_leash` that calculates the minimum leash length required for Spot to reach all toys given tree obstacles. Implement a simplified algorithm where coordinates are scaled to 16-bit signed integers (Q16.0), maximum 16 toys, and 8 trees. The module uses a FIFO-based input interface for coordinates and computes the path sum dynamically.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: Clock signal (rising edge triggered).
+  - `rst_n`: Active-low synchronous reset.
+  - `start`: 1-cycle pulse to start the computation.
+  - `data_in`: 32-bit input containing {toy_x, toy_y} or {tree_x, tree_y} packed as two 16-bit signed values.
+  - `data_valid`: High when `data_in` contains valid data.
+  - `data_type`: 1-bit signal (0=Toy, 1=Tree).
+  - `data_count`: 6-bit input indicating total number of subsequent data points (n+m).
+- Outputs:
+  - `result`: 32-bit fixed-point output (Q16.16) representing the minimum leash length. The integer part is in the upper 16 bits, fractional part in the lower 16 bits.
+  - `done`: 1-cycle pulse asserted when computation is complete and `result` is valid.
+  - `busy`: High while processing.
+
+**Functionality:**
+1. The module must accept `n` toys and `m` trees sequentially via `data_in`.
+2. Toys must be processed in the order they are received (decreasing shininess).
+3. Trees act as obstacles. For the simplified hardware version, implement a basic avoidance check: if the direct line segment from the current position to the next toy intersects any stored tree coordinate, add a penalty distance to the leash length (simulating wrapping). Use a Euclidean distance approximation (Manhattan + Diagonal for speed).
+4. Start position is always (0,0). Track current position (curr_x, curr_y) as 16-bit registers.
+5. For each toy, calculate distance from current position to toy. If obstacle detected, add 1.5x distance (fixed-point multiply).
+6. Accumulate total distance in `total_length` (32-bit register, Q16.16).
+7. After processing all `data_count` items, output `total_length` to `result` and pulse `done`.
+
+**Constraints:**
+- Max 16 toys, 8 trees.
+- Coordinates: -10000 to 10000 (fits in 16-bit signed).
+- Leash length fits in 16.16 fixed-point (max ~65535).
+- Avoidance logic: Use a small circular buffer to store tree coordinates (depth 8).
+- Timing: Reset to ready in 2 cycles. Computation within 1000 cycles.
+
+**Algorithm Steps:**
+1. Reset: Clear internal pointers, `total_length` = 0, `curr_x/y` = 0.
+2. Input Phase: While `data_valid` is high, latch `data_in` into a buffer based on `data_type`. Increment data counter.
+3. Processing Phase: Once all data is loaded (counter == `data_count`), iterate through the toy buffer.
+4. For each toy:
+   a. Calculate vector to toy: `dx = toy_x - curr_x`, `dy = toy_y - curr_y`.
+   b. Check intersection: Iterate through stored trees. For each tree, check if it lies 'close' to the line segment (using cross-product check: |(tree_x - curr_x)*dy - (tree_y - curr_y)*dx| < threshold).
+   c. Calculate distance: `dist = sqrt(dx^2 + dy^2)` or simplified `max(|dx|, |dy|) + (min(|dx|,|dy|) >> 1)`. Store in Q16.16.
+   d. If obstacle detected, multiply `dist` by 1.5 (shift left 1, add `dist>>1`).
+   e. Add to `total_length`.
+   f. Update `curr_x` and `curr_y` to the toy's coordinates.
+5. Output: When done, assert `done` pulse.
+
+**State Machine:**
+- IDLE: Wait for start.
+- LOAD: Read input data into buffers.
+- CALC: Process toys one by one.
+- DONE: Output result.

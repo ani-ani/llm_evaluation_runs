@@ -1,0 +1,38 @@
+Implement a Verilog module that solves the juice mixing problem. The problem is: Given N people, each with minimum fractions (A,B,C) of three juices (scaled 0-10000, sum <=10000), find the maximum number of people that can be simultaneously satisfied by choosing a single drink mix (A,B,C) where A+B+C=10000 and each juice fraction is >= the person's minimum.
+
+Key insight: A person is satisfied if A >= minA, B >= minB, C >= minC, and A+B+C=10000. Since A+B+C=10000, this means 10000 >= minA+minB+minC, which is always true per constraints. The real constraint is that for each juice, our mix must be >= their minimum. Since the sum is fixed, this becomes a geometric problem: find the point (A,B,C) in the simplex that lies in the maximum number of axis-aligned orthants defined by each person's minimums.
+
+Simplified approach: The optimal drink mix will always have at least one juice at exactly a person's minimum constraint. We can try all 3*N possible 'critical' constraints (for each person, try setting A=minA, B=minB, or C=minC) and verify the resulting mix.
+
+For a given critical point (A,B,C) where one coordinate equals someone's minimum, we compute the remaining mix: A+B+C=10000. If we fix one coordinate, the other two must sum to 10000 - fixed_coord. We can choose the remaining two to satisfy as many people as possible.
+
+Simpler approach: Since N <= 12 in our scaled version (for hardware feasibility), we can enumerate all possible subsets of people and check if there exists a valid drink that satisfies everyone in the subset.
+
+For a subset S, the constraints are: For each person p in S: A >= A_p, B >= B_p, C >= C_p, and A+B+C=10000.
+This is feasible iff: max(A_p for p in S) + max(B_p for p in S) + max(C_p for p in S) <= 10000.
+
+So the problem reduces to: Find the largest subset S such that the sum of component-wise maximums <= 10000.
+
+Since N <= 12, we can try all 2^N subsets and find the maximum size satisfying the constraint.
+
+Module Interface:
+- Inputs: N (4 bits), and arrays of 12 people with their A,B,C values (each 14 bits, since 0-10000 fits in 14 bits)
+- Output: max_people (4 bits, since N <= 12)
+- Control: start, done signals
+
+Implementation:
+1. Store all people's constraints in registers
+2. Use a state machine to iterate through all 2^N subsets
+3. For each subset, compute the component-wise maximums and check if sum <= 10000
+4. Track the maximum subset size found
+5. Output result when done
+
+Timing: 2^12 = 4096 iterations, each taking ~100 cycles = ~400K cycles total, feasible in simulation.
+
+Exact interface:
+- Input clock/reset: clk, rst_n
+- Start signal: 1-cycle pulse
+- Input data: N (4 bits), and for i=0 to 11: A_i, B_i, C_i (each 14 bits)
+- Output: result (4 bits, max people), done (1-cycle pulse)
+- Reset: result=0, done=0
+- Timing: start->done within 5000 cycles

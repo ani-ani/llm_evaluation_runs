@@ -1,0 +1,67 @@
+Design a Verilog module `arcade_expected_payout` that computes the expected payout of a triangular arcade game. The module solves a linear system E[i] = v[i] + sum(P[j->i] * E[j]) where E[i] is expected value starting at hole i. 
+
+Constraints:
+- Max N=32 rows, H=526 holes
+- Payouts: -100 to 100 (scale 100)
+- Probabilities: 0.0 to 1.0 (scale 1000 for Q8.8 or Q16.16 fixed-point)
+- Use iterative solver (Gauss-Seidel) with max 1000 iterations
+- Holes are indexed 0 to H-1. Hole i is in row r where r(r+1)/2 <= i < (r+1)(r+2)/2.
+- Neighbors for hole i in row r:
+  - Top-Left: r > 0 && c > 0 ? index(r-1, c-1) : null
+  - Top-Right: r > 0 && c < r-1 ? index(r-1, c) : null
+  - Bottom-Left: r < N-1 ? index(r+1, c) : null
+  - Bottom-Right: r < N-1 ? index(r+1, c+1) : null
+- Inputs: clk, rst_n, start, valid_input (payout/prob flags). 
+- Data Interface: 5 inputs (p0, p1, p2, p3, p4) and 1 payout value v_i. We need a way to load 526 sets of data. 
+- Implementation Strategy: 
+  1. Load phase: Accept data sequentially via a shared interface.
+  2. Solve phase: Initialize E[i] = v[i]. Iterate: For each hole i, compute `new_E = v[i] + P0*E[TL] + P1*E[TR] + P2*E[BL] + P3*E[BR]`. Update E[i] in-place (Gauss-Seidel). 
+  3. Use Q16.16 fixed-point for probabilities and expected values (scaling: multiply probabilities by 65536, payouts by 65536). 
+  4. Stop when max error < 1 (scaled) or after 1000 iterations.
+- Output: Final expected value (scaled Q16.16) on 'result' when 'done' is high.
+- Modules needed: 
+  - `storage`: Dual-port BRAM for E values (526 x 32-bit).
+  - `load_controller`: Handles input stream.
+  - `solve_fsm`: Iterates through all holes, fetches neighbors, performs fixed-point MAC, updates storage.
+  - `neighbor_logic`: Calculates index offsets based on row/column.
+
+Inputs:
+  clk: clock
+  rst_n: active-low reset
+  start: high to start calculation (must be after data load)
+  data_v: payout value (8-bit signed)
+  data_p0..p4: probabilities (16-bit fixed point Q8.8 or integer scaled 0-1000)
+  data_idx: current hole index (0-525)
+  data_valid: strobe to load current data
+
+Outputs:
+  result: 32-bit fixed-point expected value
+  done: pulse when calculation complete
+  busy: high during solve phase
+
+Timing:
+  1. Reset: done=0, result=0, busy=0.
+  2. Load: Data provided sequentially with data_valid=1.
+  3. Start: Pulse start=1 to begin solving.
+  4. Solve: busy=1 for many cycles (<= 1000 * 526 * latency).
+  5. Result: done=1, result holds valid value for 1 cycle.
+
+Detailed Implementation Guide:
+- Use Q16.16 for probabilities and expected values. Scale integer inputs by 256 (for 8-bit) or 65536.
+- Use two-port RAM: Port A for writing (solver updates), Port B for reading (solver reads neighbors).
+- Neighbor Logic: 
+  - Input: hole index `i`. 
+  - Logic: Determine row `r` and col `c` (0-indexed). 
+  - Row r: smallest integer s.t. `s(s+1)/2 > i`. Equivalently, `r = floor((sqrt(8*i + 1) - 1)/2)`.
+  - Col c = `i - r(r+1)/2`.
+  - Compute neighbor indices. Check bounds (0 <= idx < H).
+- Solver Loop:
+  - State: S_IDLE, S_ITERATE, S_UPDATE, S_CHECK_ERROR, S_FINISH.
+  - S_ITERATE: For i from 0 to H-1:
+    1. Read E[i] (old) from RAM.
+    2. Read neighbors E[TL], E[TR], E[BL], E[BR] from RAM (or 0 if null).
+    3. Compute `sum_prob_neighbors = P0*E[TL] + ... + P3*E[BR]`. Use 64-bit accumulation.
+    4. `new_E = v[i] + sum_prob_neighbors`. (v[i] scaled to Q16.16).
+    5. Write `new_E` to RAM (Port A).
+    6. Compute `diff = |new_E - old_E|`. Accumulate max_diff.
+  - After full pass, check `max_diff`. If < threshold (e.g., 256 in Q16.16), finish. Else increment iteration count and repeat.

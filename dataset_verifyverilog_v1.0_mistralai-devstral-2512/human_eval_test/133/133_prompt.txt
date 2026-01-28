@@ -1,0 +1,48 @@
+Design a Verilog module that computes the sum of squares of a list of numbers after rounding each to the ceiling (upper integer). The input list contains 16-bit Q8.8 fixed-point numbers (8 integer bits, 8 fractional bits). The ceiling operation: for positive numbers, if fractional part > 0, add 1 to integer part; for negative numbers, ceiling moves toward positive infinity (e.g., -2.4 → -2, -1.4 → -1). The output is the sum of squares as a 32-bit signed integer (clamped if overflow).
+
+Interface:
+- Inputs:
+  - clk: 1-bit, rising edge clock
+  - rst_n: 1-bit, active-low synchronous reset
+  - start: 1-bit, 1-cycle pulse to start computation
+  - data_in: 8x16-bit array, list of fixed-point numbers (Q8.8)
+  - len: 4-bit, number of elements (0-15)
+- Outputs:
+  - result: 32-bit signed integer, sum of squares
+  - done: 1-bit, 1-cycle pulse when result is ready
+
+Behavior:
+1. When start=1 on rising edge, begin processing
+2. For each element i from 0 to len-1:
+   - Extract sign bit (bit 15), integer part (bits 14-8), fractional part (bits 7-0)
+   - Ceiling algorithm:
+     * If sign=0 (positive): ceiling = integer + (fractional>0 ? 1 : 0)
+     * If sign=1 (negative): ceiling = integer - (fractional==0 ? 0 : 1) [moves toward 0]
+     * Example: -2.4 = sign=1, int=2, frac=102 → ceiling = 2-1 = 1
+     * Example: -1.0 = sign=1, int=1, frac=0 → ceiling = 1
+   - Square: ceiling * ceiling (32-bit signed)
+   - Accumulate into running sum (32-bit signed)
+3. After len cycles, assert done=1 for one cycle with result valid
+4. Reset clears all registers, done=0, result=0
+
+Timing:
+- Process one element per clock cycle
+- Throughput: len + 2 cycles (2 cycles for startup/handshake)
+- No external latency requirement
+
+Implementation Notes:
+- Use finite state machine (IDLE, COMPUTE, DONE)
+- Integer part: bits 14-8 of input (7 bits, signed)
+- Fractional part: bits 7-0 of input (8 bits, unsigned)
+- For ceiling of negative numbers: if fractional != 0, subtract 1 from integer
+- Ceiling value is 16-bit signed integer
+- Square uses signed multiplication
+- Accumulate with saturation protection (optional, or just wrap)
+- Output result is 32-bit signed integer
+
+Example:
+Input: [1.4, 4.2, 0.0] in Q8.8
+- 1.4 → ceiling = 2, square = 4
+- 4.2 → ceiling = 5, square = 25
+- 0.0 → ceiling = 0, square = 0
+Result: 4 + 25 + 0 = 29

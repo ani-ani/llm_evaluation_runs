@@ -1,0 +1,24 @@
+Implement a Verilog module to compute minimum damage for a player in a shrinking safety zone. Use fixed-point Q32.16 arithmetic (32-bit integer, 16-bit fractional). Scale inputs: divide coordinates by 1024 (2^10) to fit 32 bits. The safety zone is a circle shrinking from radius ri to rf at rate ss. Player moves at speed sa. 
+
+Inputs (all 32-bit signed fixed-point):
+  xs, ys: Center coordinates (scaled by 2^10)
+  ss: Shrink speed (m/s) (scaled by 2^16)
+  ri, rf: Initial and final radii (scaled by 2^10)
+  xa, ya: Player start coordinates (scaled by 2^10)
+  sa: Player speed (m/s) (scaled by 2^16)
+  start: 1-cycle pulse
+  clk, rst_n: Standard clock and reset
+
+Outputs:
+  result: 32-bit signed fixed-point damage (Q32.16), valid when done=1
+  done: 1-cycle pulse indicating computation complete
+
+Implementation: 
+1. Compute Euclidean distance between start and center (D). 
+2. Binary search for optimal arrival time t (0 to 1000 cycles, fixed 64 iterations). 
+3. For each candidate t, calculate radius at t: r_t = ri - ss*t (clamp to rf). 
+4. Calculate required movement distance to be inside zone: if D <= r_t, move_dist = 0; else move_dist = D - r_t. 
+5. Check if player can reach in time: if move_dist <= sa*t, then damage = max(0, t - (D/sa)) (but use fixed-point ops). 
+6. Find minimum damage across iterations. 
+
+Timing: start->done within 100 cycles (binary search). Reset sets result=0, done=0.

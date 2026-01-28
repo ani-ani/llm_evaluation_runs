@@ -1,0 +1,47 @@
+Implement a Verilog module that calculates the maximum sum of digits S(a) + S(b) for integers a, b such that 0 <= a, b <= n and a + b = n.
+
+### Specification
+
+**Inputs:**
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `n`: Input integer (32-bit, max value 10^12 which fits in 32 bits)
+
+**Outputs:**
+- `result`: 16-bit integer (maximum sum of digits)
+- `done`: 1-cycle pulse indicating result is valid (goes high when computation finishes)
+
+**Algorithm:**
+The maximum sum of digits is found by iterating through candidate values for `a`.
+For each candidate `a`:
+1. `b` is simply `n - a`.
+2. Compute `S(a)` and `S(b)`, where `S(x)` is the sum of decimal digits of `x`.
+3. Keep track of `S(a) + S(b)`.
+
+The optimal candidates for `a` are numbers of the form `d * 10^k - 1` (e.g., 9, 19, 99, 199, 999, 1999...) and the boundary cases `a=0` and `a=n`.
+
+**Constraints:**
+- `n` is up to 10^12 (32-bit integer).
+- The result `S(a)+S(b)` is small (max 9 * number of digits, approx 100-120), so 16 bits is sufficient.
+- Computation must finish within a bounded number of clock cycles (e.g., 1000 cycles) after `start` is asserted.
+- The digit sum calculation should be done serially: for each candidate, calculate digit sum of `a` and `b` by repeatedly taking modulo 10 and dividing by 10.
+
+**State Machine:**
+1. **IDLE**: Wait for `start`. If `start` is high, initialize candidates.
+2. **CALC**: For each candidate `a` (generated iteratively): 
+   - Compute `b = n - a`.
+   - Compute `sum_digits_a` and `sum_digits_b`.
+   - Update `max_sum` if current sum is larger.
+   - Generate next candidate (e.g., multiply by 10, add 9).
+   - Stop when candidate `a > n`.
+3. **DONE**: Assert `done` signal for 1 cycle, output `result`.
+
+**Interface Details:**
+- Inputs are sampled when `start` is high.
+- `done` is a single cycle pulse.
+- `result` is valid only when `done` is high.
+- Reset sets `done=0`, `result=0`.
+
+**Verilog Module:**
+Write the Verilog module code that implements this logic.

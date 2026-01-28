@@ -1,0 +1,73 @@
+Implement a Verilog module that computes exponial(n) mod m for n ≤ 1e9 and m ≤ 1e9. Since n/m scale is huge, we use Euler's theorem: a^b mod m = a^(b mod φ(m) + φ(m)) mod m when b ≥ φ(m). For small n (≤8), compute directly. For large n, note that exponial(n) = n^(exponial(n-1)), and exponial(n-1) grows extremely fast, so for n ≥ 5, exponial(n-1) ≥ 4^3^2^1 > 10000, which is >> φ(m) for any m ≤ 1e9 (max φ(m) < 1e9). Thus for n ≥ 5, we can treat exponial(n-1) as >= φ(m) and use the reduced exponent. However, we need to handle the modular exponentiation carefully.
+
+Interface:
+- Inputs: clk, rst_n (active-low), start (1-cycle pulse), n[31:0], m[31:0]
+- Outputs: result[31:0] (0 ≤ result < m), done (1-cycle when valid)
+- Constraints: Fixed 32-bit for n,m, result. Since m ≤ 1e9 < 2^30, 32-bit is sufficient.
+- Timing: Within 5000 cycles max. Use state machine.
+
+Algorithm: Use recursive formula with iteration bound ≤ 8.
+Base cases: exponial(1)=1, exponial(2)=2, exponial(3)=9, exponial(4)=262144
+For n ≥ 5: exponial(n) = n^(exponial(n-1)) mod m
+But exponial(n-1) is huge, so we compute:
+  Let e = exponial(n-1) mod φ(m) if e ≥ φ(m) else e
+  But since for n≥5, exponial(n-1) > 1e9 ≥ φ(m), we can set e = exponial(n-1) mod φ(m) + φ(m)
+
+We need φ(m) computation for m up to 1e9 (requires factorization - we'll precompute small primes up to 31623 ≈ sqrt(1e9)).
+
+Simplify: Since n is bounded by ≤8 for direct computation (for larger n, exponial(n-1) is astronomically large), we can just handle n≤8 directly. For n>8, we note that exponial(8) is already 8^7^... which is huge, and mod m will just be computed as n^... mod m with exponent reduction.
+
+Better approach: Implement modular exponentiation (powmod) as separate unit. For exponial:
+- Compute φ(m) using trial division (since m≤1e9, trial division with primes up to 31623 works in ≤4000 cycles).
+- For n=1,2,3,4: return constant.
+- For n≥5: compute e = exponial(n-1) mod φ(m) + φ(m) (since exponial(n-1) > φ(m) for n≥5).
+  But this is recursive! We can compute iteratively from k=n down to 1, tracking current modulus.
+
+Actually, standard solution: Compute from bottom up:
+  result = 1
+  for i from n down to 1:
+    result = i^result mod current_m
+    if i > 1: current_m = φ(current_m)  # but only if result >= φ(current_m)
+
+We'll implement this with loop bounded to 8 iterations (since n≤8 for practical purposes, and for n>8 we treat specially). Since n can be up to 1e9, we need to handle large n efficiently: For n≥5, the tower is so high that exponial(n-1) > 1e9, so we can just set exponent = φ(m) + (exponial(n-1) mod φ(m)). But computing exponial(n-1) is same problem.
+
+Simplification: Since n is input but m is up to 1e9, we only need to compute for n up to ~5-6 because beyond that, the result is n^(huge) mod m which equals n^(huge mod φ(m) + φ(m)) mod m. And since huge > φ(m), we can compute n^( (exponial(n-1) mod φ(m)) + φ(m) ) mod m. This is recursive but depth ≤ 8. So we can compute with recursion depth ≤ 8.
+
+Implementation: State machine with depth counter ≤ 8.
+- Precompute Euler totient for input m.
+- For n≤4: return constants.
+- For n≥5: compute exponent e = exponial(n-1) mod φ(m) + φ(m) using recursive call (or iterative). Since depth ≤ 8, we can unroll.
+
+Actually, we can compute bottom-up: start from k=1, current_mod = m, current_val = 1. Then for k=2 to n: current_val = k^current_val mod current_mod; current_mod = φ(current_mod). But this requires φ computation each step.
+
+Given constraints, implement:
+1. Function to compute φ(x) for x≤1e9 (trial division, primes up to 31623). Max ~3400 primes.
+2. Recursive exponial function with memoization (but depth ≤ 8, so no need for memo).
+3. Modular exponentiation (binary exponentiation).
+
+Verilog module with:
+- State: IDLE, COMPUTE_PHI, COMPUTE_POWER, FINAL_RESULT
+- Internal counters for depth (≤8)
+- Since m≤1e9 < 2^30, use 32-bit arithmetic
+- φ(m) can be up to 1e9, 32-bit
+- For n≥5, we compute exponial(n-1) first, which requires computing exponial(n-2) with modulus φ(m), etc. So we need to keep track of current modulus at each depth.
+- Since depth is small (≤8), we can unroll the computation in state machine.
+
+Simplify further: Because for n≥5, exponial(n-1) is huge, and we only need it mod φ(m), which is ≤1e9, we can compute it recursively. But in hardware, we'll compute iteratively from k=1 to n-1 with decreasing moduli.
+
+Final spec: 
+- Input: n (32-bit), m (32-bit)
+- Output: result (32-bit)
+- Use state machine with max 20000 cycles.
+- Steps: 
+  1. If n≤4: return constant.
+  2. Else: compute φ(m) -> mod1
+  3. Compute exponial(n-1) mod mod1 -> e1
+  4. Compute e2 = e1 + mod1 (since exponial(n-1) > mod1)
+  5. Compute n^e2 mod m
+
+But computing exponial(n-1) mod mod1 is same problem with n-1 and modulus mod1. Since n≤8 for practical hardware (n>8 gives same result as n=8 due to huge tower), we can handle n=5..8 specially.
+
+Thus: For n=5,6,7,8: compute exponial(n-1) (which is 4,5,6,7 exponial) which are constants (262144, huge, huge, huge). For n=5: e1 = exponial(4) mod φ(m) = 262144 mod φ(m). For n=6: e1 = exponial(5) mod φ(m) = 5^(262144) mod φ(m) which is computable. For n=7: 6^(5^(262144)) mod φ(m) - this is deep. But φ(m) ≤ 1e9, so we can compute these recursively.
+
+Given the complexity, we'll implement a bounded recursive function in Verilog with depth ≤ 8 and using iterative modular exponentiation.

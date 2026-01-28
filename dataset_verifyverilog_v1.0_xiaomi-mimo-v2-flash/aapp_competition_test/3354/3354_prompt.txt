@@ -1,0 +1,55 @@
+Implement a Verilog module to find the maximum number of pickles that can be placed on a circular sandwich without overlapping and respecting an area coverage limit. 
+
+## Inputs:
+  - `s_i`, `s_f`: Fixed-point integers representing the sandwich radius (16-bit integer, 16-bit fractional part).
+  - `r_i`, `r_f`: Fixed-point integers representing the pickle radius (16-bit integer, 16-bit fractional part).
+  - `n`: Number of available pickles (3-bit unsigned integer, max 7).
+  - `z`: Max area coverage percentage (7-bit unsigned integer, 0-100).
+  - `start`: 1-bit start pulse.
+  - `clk`, `rst_n`: Standard synchronous signals.
+
+## Outputs:
+  - `result`: Maximum number of pickles that can be placed (3-bit unsigned integer).
+  - `done`: 1-bit signal indicating calculation is complete (valid on rising edge of `clk`).
+
+## Constraints & Logic:
+  1.  **Area Check**: 
+      - Calculate total area of `k` pickles: `Area_k = k * π * r^2`.
+      - Calculate area of sandwich: `Area_sandwich = π * s^2`.
+      - Check: `(Area_k * 100) <= (Area_sandwich * z)`.
+      - Use fixed-point arithmetic (Q16.16) for π and radii. Constants must be approximated as 16-bit fractions (e.g., π ≈ 40908? * 2^-13). 
+  2.  **Non-Overlapping Check**:
+      - Since `n <= 7`, use a pre-calculated lookup table or iterative check for valid configurations.
+      - For `k` pickles, they must fit within a bounding circle of radius `s - r` (for packing centered pickles) or calculate specific distances.
+      - For simplicity in hardware, implement a comparator `can_fit(k, s, r)` logic:
+        - `k=1`: Always fits (if `r <= s`).
+        - `k=2`: Fit if `2*r <= s` (touching opposite edges) or simply `2*r <= 2*s` (width constraint). Strictly: center distance `d = 2*r` must satisfy `d <= 2*(s - r)`? No, if centers are on a diameter, max diameter is `2*(s-r)`. Condition: `2*r <= 2*(s-r) => r <= s - r` is too strict for random placement. 
+        - Simplified Logic for `k` (since `n` is small):
+          - `k <= (s / (2*r))^2` (approximate packing density check).
+          - For exactness within the problem constraints (input stability), implement a matrix of known valid configurations for `s/r` ratios or check the constraint `s >= r * (1 + 2/sin(π/k))` for regular polygons (if `k > 2`).
+  3.  **Algorithm**:
+      - On `start`, iterate `k` from `n` down to `0`.
+      - For each `k`, check Area constraint (fixed-point multiply and compare).
+      - If Area OK, check geometric constraint `can_place(k, s, r)`.
+      - First `k` satisfying both is the result.
+  4.  **Timing**:
+      - Must finish within 256 clock cycles.
+      - `done` goes high for 1 cycle when finished.
+
+## Implementation Details:
+  - **Fixed Point**: Q16.16. `π ≈ 3.14159265 * 65536 = 205887`. 
+  - **Geometry Logic**: 
+    - If `k=1`: Valid.
+    - If `k=2`: Valid if `2*r <= s`. (Simplified: fit within diameter).
+    - If `k=3`: Valid if `s >= r + r * sqrt(3)`. (Circumradius of equilateral triangle).
+    - If `k=4`: Valid if `s >= r + r * sqrt(2)` (Square corner distance).
+    - If `k>4`: Likely valid only for large `s/r`, but with `n<=7`, we can hardcode the critical radius ratios for `k=5,6,7`.
+      - `k=5`: `s/r >= 1 + 1/sin(36°) ≈ 1 + 1.7015 ≈ 2.7015`
+      - `k=6`: `s/r >= 1 + 1/sin(30°) = 1 + 2 = 3`
+      - `k=7`: `s/r >= 1 + 1/sin(25.7°) ≈ 1 + 2.304 ≈ 3.304`
+  - Since `s` and `r` are fixed inputs, calculate `s/r` once (division is computationally heavy, but `s/r` is limited to `10/0.5 = 20`, so a multiplier inverse approach or simple comparison can work).
+
+## Reset Behavior:
+  - `result` = 0.
+  - `done` = 0.
+  - State machine resets to IDLE.

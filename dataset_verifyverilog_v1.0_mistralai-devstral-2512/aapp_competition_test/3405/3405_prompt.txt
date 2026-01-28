@@ -1,0 +1,39 @@
+Implement a Verilog module that finds integers N (1 <= N < 10^8) where rotating the first digit to the end multiplies the number by X (input as fixed-point Q8.8). Constraints: N has up to 8 decimal digits, X has up to 4 decimal places. The module should: 1) Accept X as 16-bit fixed-point input (8 integer, 8 fractional bits), 2) Accept a starting search number (16-bit), 3) Generate candidate numbers by rotating digits, 4) Check if N * X == rotated(N) using fixed-point multiplication, 5) Output found numbers and a done signal. The search logic should be implemented iteratively over digit lengths 1 to 8, generating numbers by appending digits 0-9 and checking rotation condition. Use 24-bit registers for intermediate calculations (16 bits integer, 8 bits fractional). Output format: found numbers on 32-bit data bus with valid signal. Timing: 1000 cycles max per search, 10MHz clock. Reset: 2 cycles, done=0, output valid=0.
+
+Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset
+  start: 1-cycle pulse initiates search
+  x_in: 16-bit Q8.8 fixed-point input (X value)
+  start_num: 16-bit starting candidate (0 for full search)
+Outputs:
+  found_num: 32-bit valid number
+  found_valid: 1-cycle pulse when found
+  done: 1-cycle pulse when search complete
+  solution_count: 8-bit count of found solutions
+
+Internal Logic:
+- State machine: IDLE -> SEARCHING -> CHECKING -> OUTPUT -> DONE
+- Digit generation: Build numbers 1-8 digits, avoid leading zeros
+- Rotation check: For N with D digits, rotated = (N % 10^(D-1))*10 + (N // 10^(D-1))
+- Fixed-point compare: |N*X - rotated| < epsilon (epsilon=0.01 in Q8.8)
+- Use 24-bit accumulator for N*X (N up to 10^8 < 2^27, X < 1024, product < 2^37, scale to 24-bit)
+- Bounded search: generate numbers iteratively, check rotation condition
+- Store found numbers in 8-entry buffer (32-bit each) for output
+
+Implementation details:
+- Use fixed-point Q16.8 for X (allow up to 256.0)
+- Rotation: extract digits via repeated division, reconstruct rotated number
+- Comparison: compute (N * X_fixed) >> 8 vs rotated, check difference < threshold
+- Search: iterate length 1-8, for each length generate all numbers, check condition
+- Since 10^8 is too large for exhaustive search, implement smart generation:
+  - For D digits: range is 10^(D-1) to 10^D - 1
+  - Check rotation condition analytically: N * X = rotated(N)
+  - Use equation: N * X = (N % 10^(D-1)) * 10 + (N // 10^(D-1))
+  - Simplify: N * X = N + 9 * (N // 10^(D-1)) * 10^(D-1) - (N % 10^(D-1))
+  - Rearrange to find candidates efficiently
+- Output found numbers in ascending order (buffer sorted by generation order)
+- Use 1000 cycle timeout for each candidate check
+
+Memory: 8-entry buffer (256 bits) for results, 32-bit counter for N, 24-bit for calculation

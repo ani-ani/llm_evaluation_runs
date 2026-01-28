@@ -1,0 +1,33 @@
+Implement a Verilog module that partitions a 16-character string into the minimum number of equal-length palindromes. The module should accept a fixed-width input string (8-bit ASCII per character, padded with zeros for shorter inputs) and output the optimal partition.
+
+### Core Logic Adaptation
+1. **Input**: 16 characters (ASCII) packed into 128-bit vector.
+2. **Character Counting**: Use a FSM to count occurrences of each character. Since the alphabet is limited (alphanumeric), we can map characters to indices (0-61) or use a lookup table.
+3. **Odd Count Calculation**: Compute the number of characters with odd counts.
+4. **Partition Search**: Since input length is fixed (16), the possible number of palindromes k ranges from 1 to 16. The length of each palindrome L = 16/k. We must check if a valid partition exists for each k. A partition is valid if:
+   - If L is even, the number of odd-count characters must be 0.
+   - If L is odd, the number of odd-count characters must be <= k, and (k - odd_count) must be even (since each remaining palindrome needs a center character, which comes from pairs).
+5. **String Construction**: Once k and L are determined, construct k strings. Use a greedy approach: fill pairs of characters symmetrically into the palindromes. If L is odd, assign one unique character (from odd counts or duplicated even counts) as the center for each palindrome.
+
+### Module Interface
+- **Inputs**:
+  - `clk`, `rst_n`: System clock and active-low reset.
+  - `start`: 1-cycle pulse to initiate processing.
+  - `char_in [127:0]`: Packed 16x8-bit string. Valid characters are '0'-'9', 'A'-'Z', 'a'-'z'. Unused characters are padded with 0.
+- **Outputs**:
+  - `result [255:0]`: Packed result. For k palindromes of length L, packed as k strings. If k=2, L=8, result[127:0] = first palindrome, result[255:128] = second. Padding zeros if strings are shorter. (Note: For simplicity, we limit k to max 4 for this 256-bit output width, ensuring L <= 64 bits total).
+  - `done`: 1-cycle pulse when result is valid.
+  - `k_out [3:0]`: Number of palindromes found.
+
+### Implementation Details
+- **FSM States**: IDLE, COUNT, CHECK, BUILD, DONE.
+- **Counting**: 16-cycle loop to count characters. Use 64-bit counters (enough for 16 chars).
+- **Search**: Iterate k from 1 to 16. Check validity conditions using combinational logic on odd count.
+- **Construction**: Sequentially assign characters to result slots. Use a secondary loop to pack strings.
+- **Timing**: Start-to-done within 256 cycles.
+- **Reset**: `k_out` = 0, `result` = 0, `done` = 0.
+
+### Constraints
+- Input string length is fixed at 16 characters.
+- Character set: 0-9, A-Z, a-z (62 possible values). Mapping can be ASCII or index-based.
+- Output is a packed bitstream. The testbench will unpack and format for verification.

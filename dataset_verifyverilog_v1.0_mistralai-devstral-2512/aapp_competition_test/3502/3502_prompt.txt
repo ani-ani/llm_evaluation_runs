@@ -1,0 +1,39 @@
+Implement a Verilog module that computes the probability of stopping at specific traffic lights and the probability of passing all lights. 
+
+**Problem Transformation:**
+The car arrives at time T (uniform in [0, LARGE_TIME]) and moves at 1 m/s. It stops at the first light where T + distance > Red interval. The probability distribution of T is uniform. We compute the function P_survive(x, t), the probability of passing all lights after x meters by time t, which is a piecewise linear function.
+
+**Interface Specification:**
+- Inputs:
+  - `clk`, `rst_n`: Standard synchronous signals.
+  - `start`: 1-cycle pulse to initiate calculation.
+  - `lights_x[i]`: 32-bit array of positions (scaled integers, e.g., meters * 1000). Size N=16.
+  - `lights_r[i]`: 16-bit array of red durations (seconds). Size N=16.
+  - `lights_g[i]`: 16-bit array of green durations. Size N=16.
+  - `n`: 4-bit input indicating number of valid lights (N ≤ 16).
+- Outputs:
+  - `prob_light_i[i]`: 64-bit array of fixed-point probabilities (Q32.32 format). One per light.
+  - `prob_all_pass`: 64-bit fixed-point probability (Q32.32).
+  - `done`: 1-cycle pulse when calculation is complete.
+
+**Implementation Details:**
+1.  **Scale:** Use 32-bit fixed point (Q16.16 or Q32.32) for probabilities and time values. Distances are integers (meters). Time is integer seconds.
+2.  **Algorithm (Iterative/Systolic):**
+    - The survival probability at position x (light i) as a function of arrival time t is a periodic function. We can compute this recursively from the last light backward, or forward.
+    - Forward pass: For each light, calculate the 'forbidden' time intervals [t_stop_start, t_stop_end] where the car is forced to stop. This is the complement of the 'allowed' interval [t_start, t_end] where T + distance lands in a green light.
+    - Since the arrival time distribution is uniform, the probability of stopping at light i is the measure of the set of times T such that T passes lights 0..i-1 but is stopped by light i.
+    - **Hardware Constraint:** Iterate through lights 1 to N. Maintain a set of 'survival intervals' for T. Each interval is defined by start time, end time, and probability density (which is constant 1/TOTAL_TIME over the range [0, TOTAL_TIME], but we can normalize).
+    - We only need to consider times within the Least Common Multiple (LCM) of all periods to determine the periodic behavior. Given constraints (r+g ≤ 100, N ≤ 16), LCM might be large but bounded. A safer hardware approach is to compute the survival function over a single period or use the property that the probability is linear between breakpoints.
+    - **Simplified Logic:**
+        1.  Compute the 'survival' probability function `P(t)` which is the probability of passing all lights given arrival time `t`. This function is periodic with period `L` (LCM of all periods). It is a piecewise constant or linear function.
+        2.  The probability of stopping at light `i` is the integral of `P_{i-1}(t)` over the intervals where light `i` blocks the car, divided by the total time.
+        3.  The probability of passing all is the integral of `P_N(t)` over the full range.
+    - **Fixed-point arithmetic:** Use 64-bit accumulators for sums, 32-bit for intermediate values. 
+
+**Module Structure:**
+-  **State Machine:** IDLE -> LOAD_LIGHTS -> CALC_PROBS -> DONE.
+-  **Datapath:** Accumulators for probabilities, counters for time steps (or interval integration).
+-  **Integration:** Since we cannot simulate continuous time, we will evaluate the function at specific time points (e.g., every second or every boundary event) and sum the weighted probabilities.
+
+**Testing:**
+The testbench will provide a small set of lights (N=4), generate the expected floating-point probabilities using Python's arbitrary precision integers for LCM calculation (or high precision float), convert to fixed-point, and verify the module outputs against these expected values.

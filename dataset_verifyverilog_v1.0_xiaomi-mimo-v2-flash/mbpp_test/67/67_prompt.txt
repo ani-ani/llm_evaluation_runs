@@ -1,0 +1,67 @@
+Implement a Verilog module that computes the Bell number for n ≤ 8 using a fixed-size triangular lookup table (maximum 9×9). The Bell number B(n) represents the number of ways to partition a set of n elements.
+
+## Module Interface
+
+**Inputs:**
+- `clk`: Clock signal, rising edge triggered
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to start computation
+- `n`: 4-bit unsigned input (0 ≤ n ≤ 8)
+
+**Outputs:**
+- `result`: 32-bit unsigned output containing B(n)
+- `done`: 1-cycle pulse indicating result is valid
+
+## Functionality
+
+1. **Computation Method**: Use dynamic programming with a triangular storage table (like the provided Python algorithm):
+   - `bell[i][0] = bell[i-1][i-1]` for i ≥ 1
+   - `bell[i][j] = bell[i-1][j-1] + bell[i][j-1]` for 1 ≤ j ≤ i
+   - Result = `bell[n][0]`
+
+2. **Timing**: 
+   - Must complete within 200 clock cycles after `start` is asserted
+   - `done` pulse should last exactly 1 cycle
+   - When `done=1`, `result` contains valid Bell number B(n)
+
+3. **State Machine**: Implement a control FSM with states:
+   - IDLE: Wait for start pulse
+   - INIT: Initialize bell[0][0] = 1
+   - ROW_LOOP: For each i from 1 to n
+   - COL_LOOP: For each j from 1 to i
+   - RESULT: Output bell[n][0] and pulse done
+
+4. **Storage Constraints**:
+   - Use a 2D array `bell[8:0][8:0]` (9×9 = 81 entries)
+   - Each entry is 32 bits
+   - Only store values for valid indices (i ≤ 8, j ≤ i)
+
+5. **Register Requirements**:
+   - `bell`: 9×9 × 32-bit register array
+   - `i_reg`, `j_reg`: 4-bit loop counters
+   - `state`: 3-bit state register
+   - `start_reg`: 1-bit to latch start pulse
+   - `result_reg`: 32-bit output register
+   - `done_reg`: 1-bit output register
+
+## Test Cases (for n ≤ 8)
+- n=0 → B(0)=1
+- n=1 → B(1)=1
+- n=2 → B(2)=2
+- n=3 → B(3)=5
+- n=4 → B(4)=15
+- n=5 → B(5)=52
+- n=6 → B(6)=203
+- n=7 → B(7)=877
+- n=8 → B(8)=4140
+
+## Reset Behavior
+- On reset (rst_n=0), all registers clear to zero
+- `done` and `result` should be 0 after reset
+- Minimum 2 cycles reset pulse required
+
+## Implementation Notes
+- Use blocking assignments for sequential logic
+- Complete all computation within the 200-cycle budget
+- No combinatorial loops - all loops must have iteration bounds
+- For n > 8, behavior is undefined (test with n ≤ 8 only)

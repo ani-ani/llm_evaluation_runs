@@ -1,0 +1,26 @@
+Implement a Verilog module that solves the envelope minimization problem for exactly 5 card types with max 3 envelope types. 
+
+Inputs:
+  clk: rising edge
+  rst_n: active-low sync reset  
+  start: 1-cycle pulse to begin computation
+  card_w[0:4]: 5x8-bit array (widths of cards, values 0-127)
+  card_h[0:4]: 5x8-bit array (heights of cards, values 0-127)
+  card_q[0:4]: 5x16-bit array (quantities of cards, values 0-65535)
+  max_k: 3-bit (number of envelope types, 1-3)
+
+Outputs:
+  result: 32-bit total waste (scaled by 64, so divide by 64 for actual value)
+  done: 1-cycle pulse when computation complete
+
+Constraints:
+- Use Q8.8 fixed-point scaling for waste calculations (multiply by 64 to avoid floating point)
+- Only 5 fixed card types, no dynamic allocation
+- Max 3 envelope types (k=1,2,3 only)
+- Precompute envelope candidates: enumerate all possible envelopes as max_w x max_h for any subset of cards. For 5 cards, max 31 subsets, but we only need top 10 candidates by waste efficiency to keep logic bounded.
+- Use dynamic programming: dp[mask][t] = min waste for subset of cards (bitmask) using t envelope types.
+- Total states: 2^5 * 4 = 128 states, manageable in hardware.
+- Waste calculation: for envelope (ew,eh) and card (cw,ch,q): waste = (ew*eh - cw*ch) * q * 64. Note: ew and eh must be >= cw and ch respectively.
+- Computation flow: 1) Input register, 2) Generate candidate envelopes (FSM, ~50 cycles), 3) DP computation (FSM, ~100 cycles), 4) Output result.
+- Timing: start->done within 200 cycles
+- Reset: done=0, result=0, all internal registers cleared

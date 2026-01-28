@@ -1,0 +1,87 @@
+Verilog HDL Module Specification: Sticker Message Processor
+
+OBJECTIVE:
+Implement a hardware accelerator that solves the sticker overlay problem using dynamic programming and minimal cost flow on a bounded graph.
+
+ADAPTATIONS:
+1. Message length scaled to 8 chars (BUYSTICKERS→BUYRICK), stickers scaled to 6 chars max
+2. DP state: Position (0-7) × Layer (0-2) → Cost (Q16.16 fixed-point)
+3. Graph: Max 16 nodes (8 positions × 2 layers + 2 source/sink)
+4. Stickers: Pre-processed into 16-bit binary: start|end|price|chars[6]
+5. Overlap constraint: Layer 0 accepts any sticker, Layer 1 accepts only if not overlapping Layer 0
+6. Output: 16-bit cost (Q16.16) or IMPOSSIBLE flag
+
+INTERFACE:
+Inputs:
+  clk: Clock (rising edge)
+  rst_n: Active-low synchronous reset
+  start: 1-cycle pulse to initiate processing
+  msg_valid: Input data valid
+  msg_data: 8-bit ASCII character (current position)
+  sticker_valid: Input data valid  
+  sticker_data: 64-bit {start:3b, end:3b, price:16b, chars:32b}
+
+Outputs:
+  result_cost: 32-bit Q16.16 fixed-point result
+  result_valid: 1-cycle when cost is valid
+  impossible: 1-bit flag (1 if impossible, 0 if possible)
+  done: 1-cycle when entire operation completes
+
+INTERNAL ARCHITECTURE:
+- 8-cycle pipeline to load message (character by character)
+- 16-cycle pipeline to load stickers (up to 16 stickers, 4 cycles each)
+- Processing State Machine:
+  * State 0: Reset/Idle
+  * State 1: Parse Input (load msg/stickers)
+  * State 2: Build Cost Matrix (precompute sticker matches)
+  * State 3: DP Pass 1 (forward pass, layer 0)
+  * State 4: DP Pass 2 (forward pass, layer 1 with overlap check)
+  * State 5: Minimal Cost Extract (find min over final layers)
+  * State 6: Done
+
+DATA STRUCTURES (Internal):
+- msg_ram[8]: 8-bit ASCII chars
+- sticker_ram[16]: 64-bit stickers
+- cost_lut[8][3]: 32-bit Q16.16 costs (position × layer)
+- adjacency_matrix[16][16]: 1-bit connectivity (max 16 nodes)
+
+FLOW CONTROL:
+1. When start=1, assert busy=1
+2. Load message into msg_ram over 8 cycles
+3. Load stickers into sticker_ram over up to 16 cycles
+4. Compute DP: For each position i (0 to 7):
+   - For layer 0: cost[i][0] = min(cost[i-1][*] + transition_cost)
+   - For layer 1: cost[i][1] = min(cost[i-1][*] + transition_cost) if overlap valid
+5. Answer: min(cost[7][0], cost[7][1])
+6. If no valid path found, set impossible=1
+
+TIMING:
+- Max latency: 128 cycles (8 msg + 16 stickers * 4 + 64 processing)
+- Throughput: 1 message per operation
+
+CONSTRAINTS:
+- Message: 8 chars max (ASCII A-Z)
+- Stickers: 16 types max, 6 chars max each
+- Price: 0-65535 (Q16.16 fixed point for fractional precision)
+- Overlap check: Comparator network to ensure no triple overlap
+- Graph nodes: 16 (fits in 4-bit addressing)
+
+RESET BEHAVIOR:
+- All internal registers reset to 0
+- cost_lut[0][0] initialized to 0 (starting cost)
+- impossible flag cleared
+- done signal low
+
+EXAMPLE OPERATION:
+For "BUYRICK" with 4 stickers:
+- Message: B U Y R I C K (7 chars)
+- Sticker 1: BUYER (0-4), cost 10.0
+- Sticker 2: STICKY (2-7), cost 10.0  
+- Sticker 3: TICKERS (3-7), cost 1.0
+- Sticker 4: ERS (5-7), cost 8.0
+- Expected result: 28.0 (Q16.16 = 1835008)
+
+VERIFICATION:
+Implement as combinational logic where possible, sequential for state transitions.
+Use synchronous reset for reliability.
+Ensure all signals are defined on every path.

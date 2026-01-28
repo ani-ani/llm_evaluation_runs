@@ -1,0 +1,63 @@
+Implement a Verilog module that inserts spaces between words starting with capital letters in a fixed-width string. 
+
+**Interface Specification:**
+- Inputs:
+  - `clk`: Clock signal (rising edge triggered)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start processing
+  - `char_in`: 8-bit ASCII character input (valid when start=1)
+  - `len`: 4-bit input specifying string length (max 16 chars)
+- Outputs:
+  - `char_out`: 8-bit ASCII character output (includes spaces and original chars)
+  - `valid`: 1-bit output valid signal (high when char_out is valid)
+  - `done`: 1-cycle pulse when output string is complete
+- Constraints:
+  - Input string: max 16 ASCII characters
+  - Output string: max 32 characters (due to inserted spaces)
+  - Processing time: ≤256 cycles
+  - Only insert space before capital letters that follow a lowercase letter
+  - Preserve original characters and their order
+  - Output ASCII only (no control characters)
+- Implementation approach:
+  - Use FSM to scan input characters
+  - Buffer input string in 16x8-bit RAM
+  - Use shift register for output generation
+  - Detect patterns: [a-z][A-Z] triggers space insertion before uppercase
+  - Start with first character, then check each subsequent character
+  - For "PythonProgrammingExamples" → "Python Programming Examples"
+
+**Reset behavior:**
+- When rst_n=0: done=0, valid=0, char_out=0, FSM in IDLE
+- After reset: Module ready for start pulse
+
+**Timing:**
+- start pulse occurs on rising edge
+- Processing begins immediately after start
+- done pulse occurs when last character is written
+- valid is high only when char_out contains current output character
+
+**Example test cases:**
+- Input: "Python" (len=6) → Output: "Python" (6 chars, no spaces needed)
+- Input: "PythonProgrammingExamples" (len=24) → Output: "Python Programming Examples" (27 chars)
+- Input: "GetReadyToBeCodingFreak" (len=22) → Output: "Get Ready To Be Coding Freak" (28 chars)
+
+**Design considerations:**
+- Use 16-byte input buffer for original string
+- Use 32-byte output buffer for result
+- FSM states: IDLE, READ_INPUT, SCAN, INSERT_SPACE, OUTPUT_CHAR, DONE
+- Insert space if current char is uppercase AND previous char was lowercase
+- Do NOT insert space if previous char was uppercase (e.g., "XMLParser")
+- Edge case: first character is uppercase (like "Python") - no leading space
+- Output valid characters one per cycle after processing completes
+
+**Module ports:**
+module capital_words_spaces (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [7:0] char_in,
+    input wire [3:0] len,
+    output reg [7:0] char_out,
+    output reg valid,
+    output reg done
+);

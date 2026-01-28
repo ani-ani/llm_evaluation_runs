@@ -1,0 +1,31 @@
+Design a Verilog module that calculates the proportion of a square courtyard watered by 4 corner sprinklers. Each sprinkler has a fixed angle (0-90 degrees) measured from the respective wall. Sprinklers spray infinitely far. The task is to compute the area of the watered region relative to the total square area (1.0).
+
+**Core Algorithm Adaptation:**
+1.  **Fixed-Point Arithmetic**: Use Q16.16 format for all calculations (16 integer bits, 16 fractional bits). 1.0 in Q16.16 is `65536`.
+2.  **Input Mapping**: 4 input angles (0-90 degrees) are provided as 16-bit integers representing degrees * 1000 (e.g., 45.0 degrees = 45000). Convert these to radians for calculation: `rad = angle * pi / 180`. Pre-calculate `pi/180` as a constant `38763` (approx 0.59153) in Q16.16.
+3.  **Intersection Points**: The watered area is a polygon defined by the intersection of the 4 infinite wedges. Assuming the square is `[0,1]x[0,1]`, the relevant intersection points (if they fall inside or on the square) are:
+    *   Intersection of Sprinkler 1 (Bottom-Right) and Sprinkler 2 (Top-Right).
+    *   Intersection of Sprinkler 2 (Top-Right) and Sprinkler 3 (Top-Left).
+    *   Intersection of Sprinkler 3 (Top-Left) and Sprinkler 4 (Bottom-Left).
+    *   Intersection of Sprinkler 4 (Bottom-Left) and Sprinkler 1 (Bottom-Right).
+    *   *Note:* If an intersection lies outside `[0,1]x[0,1]`, use the nearest square corner (0,0, 1,0, 1,1, or 0,1) as a vertex.
+4.  **Area Calculation**: Calculate the polygon area using the Shoelace Formula. The vertices must be sorted counter-clockwise. Assuming the points are derived in order (BR->TR->TL->BL), they are likely CCW. Sum `x[i]*y[i+1] - x[i+1]*y[i]` for i=0 to 3 (with wrap-around). Take absolute value and divide by 2.
+5.  **Scaling**: The result is the ratio of polygon area to total square area (1x1). Output is a 16-bit integer representing the percentage (e.g., 75% = 7500) or scaled Q16.16 value. Let's output Q16.16 fixed point directly.
+
+**Module Interface:**
+*   **Inputs:**
+    *   `clk`, `rst_n`: Standard synchronous control.
+    *   `start`: 1-cycle pulse to begin computation.
+    *   `angle_a`, `angle_b`, `angle_c`, `angle_d`: 16-bit unsigned integers. Values range 0 to 90000 (representing 0.0 to 90.0 degrees).
+*   **Outputs:**
+    *   `result`: 32-bit output. Upper 16 bits are integer part (0 or 1), lower 16 bits are fractional part (Q16.16). Represents proportion (0.0 to 1.0).
+    *   `done`: 1-cycle high when calculation is complete.
+
+**Implementation Constraints:**
+*   **Iterative**: Use a finite state machine (FSM) with ~20-30 states to sequentially perform:
+    1.  Angle to Radian conversion (multiplication by `pi/180`).
+    2.  Trigonometry (Sine/Cosine). Use a small lookup table (LUT) for 0-90 degrees or CORDIC approximation. Since inputs are discrete (0-90000), a LUT is feasible if compressed or approximated. A simpler approach for benchmarking is to use a pre-calculated LUT for critical values (e.g., every degree) or a basic multiplier logic.
+    3.  Intersection calculation (solving linear equations for 2 lines).
+    4.  Area summation (Shoelace).
+*   **Bit Widths**: Internal multipliers must handle 32-bit intermediate results. Use saturation logic to prevent overflow.
+*   **Timing**: Should complete within 200-500 clock cycles.

@@ -1,0 +1,52 @@
+Design a Verilog module that finds the maximum grade by rounding a decimal number up to t times. The grade is a positive decimal string with exactly one decimal point, length n (1 <= n <= 200), and t is up to 10^9 (scaled to 32 bits).
+
+Constraints & Adaptation:
+- The grade is represented as two separate arrays: digits_int (max 100 digits before decimal) and digits_frac (max 100 digits after decimal).
+- The module operates in a pipelined state machine.
+- Logic: Find the first fractional digit >= 5. Then perform up to t rounds of rounding: if a digit is >= 5, round up the digit to the left. This may cause a carry chain propagating leftwards (through integer digits and potentially creating a new digit at the MSB).
+- Since t is large, the module will calculate the necessary number of rounds based on consecutive digits >= 5 starting from the first found position.
+- Scaling: Input length n is scaled to max 200 bits. Output length is scaled to max 201 bits (possible carry overflow).
+
+Module Interface:
+- Inputs:
+  - clk, rst_n: Standard synchronous reset signals.
+  - start: 1-cycle pulse to begin processing.
+  - n[7:0]: 8-bit unsigned integer representing total length of the string (max 200).
+  - t[31:0]: 32-bit unsigned integer representing remaining seconds.
+  - grade_int[99:0]: Packed array representing integer part digits (LSB is rightmost digit, MSB is leftmost). Unused upper bits should be 0.
+  - grade_frac[99:0]: Packed array representing fractional part digits (LSB is leftmost fractional digit, MSB is rightmost). Unused upper bits should be 0.
+- Outputs:
+  - result_int[100:0]: Packed array for integer part of result (1 extra bit for overflow).
+  - result_frac[99:0]: Packed array for fractional part of result.
+  - result_len[7:0]: Total length of the output string (excluding decimal point if fraction is empty).
+  - done: 1-cycle pulse indicating valid result.
+
+Implementation Details:
+1.  **Parsing**: Extract the decimal point position from 'n'. Separate digits into 'grade_int' and 'grade_frac'.
+2.  **Find First Roundable Position**: Scan 'grade_frac' from LSB (left of decimal) to MSB (right). Find the first digit >= 5. If none, output original number.
+3.  **Calculate Rounds**: If a roundable digit is found at index 'pos' (0 is leftmost fractional), count how many consecutive digits to the right (MSB side) of 'pos' are also >= 5 or become >= 5 due to rounding. Let this count be 'k'.
+4.  **Perform Rounding**:
+    - If 'k' <= 't': Perform rounding on digit at 'pos'. If the digit to the left (integer part) is 9, propagate carry leftwards.
+    - If 'k' > 't': We can only perform 't' rounds. We stop at 'pos - t' (effectively rounding the digit at that position). Note: The problem statement implies rounding at any place; typically this means we can skip rounding intermediate digits if they are < 5, but the greedy approach is to round the leftmost possible digit. The provided code logic suggests rounding a chain of digits >= 5. We will implement the chain rounding logic: if we have enough 't', we round the chain.
+5.  **Output Formatting**: Combine 'result_int' and 'result_frac'. If the fractional part becomes all zeros (due to rounding to integer), 'result_frac' should be 0 and 'result_len' adjusted.
+
+State Machine States:
+- IDLE: Wait for start.
+- PARSE: Process input digit arrays.
+- SCAN: Find first fractional digit >= 5.
+- ROUND: Perform carry logic based on 't'.
+- FINALIZE: Prepare output.
+- DONE: Assert done signal.
+
+Example:
+Input: 10.245, t=1
+Digits: Int={1,0}, Frac={2,4,5}
+Scan: Finds 5 at Frac[2] (rightmost).
+Round: 5 >= 5. Round Frac[2] (drop it), increment Frac[1] (4->5).
+Result: 10.25
+
+Input: 10.245, t=2
+After 1st round: 10.25
+Scan: Finds 5 at Frac[1].
+Round: 5 >= 5. Round Frac[1] (drop it), increment Frac[0] (2->3).
+Result: 10.3

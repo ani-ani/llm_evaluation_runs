@@ -1,0 +1,60 @@
+Module Specification:
+
+Design a Verilog module that counts how many strings of length n (2 ≤ n ≤ 6) over the alphabet {a,b,c,d,e,f} can be transformed to the single character 'a' using a given set of reduction rules.
+
+Rules: Each rule is a two-character string 'XY' that reduces to a single character 'Z'. The rule set contains 1 to 36 unique two-character inputs (no duplicate 'XY'). You may apply rules greedily from the left repeatedly until no more rules apply. A string is valid if the final single character is 'a'.
+
+Algorithm: Work backwards from 'a'. Start with a set of strings that evaluate to 'a'. These are all strings of length 1 that equal 'a', plus any string that starts with a pattern 'XY' that reduces to 'a' (i.e., 'X' can be any letter such that rule 'XY'->'a' exists, and 'Y' is the second letter). Repeat this process (n-1) times to generate strings of increasing length up to n. The result is the number of distinct strings of length n generated this way.
+
+Interface:
+  Inputs:
+    clk: clock (rising edge)
+    rst_n: active-low synchronous reset (1 cycle)
+    start: 1-cycle pulse to start computation
+    rule_in_idx: 6-bit index (0 to 35) for rule input
+    rule_in_2char: 12-bit (packed 2 letters, 6-bit each: letter 'a'=0, 'f'=5)
+    rule_in_dest: 6-bit (destination letter)
+    rule_write: 1-cycle pulse (active when start=0, computation idle)
+    n: 3-bit unsigned (2 to 6)
+  Outputs:
+    result: 24-bit (count of valid strings, max 46656 for n=6)
+    done: 1-cycle pulse when result is valid
+    busy: 1 when computing or accepting rules
+
+Internal Behavior:
+  1. Reset: busy=0, done=0, result=0. Rule table cleared.
+  2. Programming Phase (busy=1, start=0):
+     - Each rising clk with rule_write=1 stores the rule.
+     - rule_in_idx selects entry 0..35. rule_in_2char[11:6] is first letter, rule_in_2char[5:0] is second letter. rule_in_dest is destination.
+     - Non-programmed entries default to 'no rule'.
+  3. Compute Phase (start=1 pulse):
+     - busy=1, done=0. Internal state machine runs.
+     - Algorithm: Start with array 'current' of size 6 (count of 1-char strings ending with each letter). Initialize current['a']=1 (letter index 0), others 0.
+     - Loop (n-1) times:
+       - Initialize array 'next' of size 6 to 0.
+       - For each letter 'j' (0 to 5):
+         - For each rule 'i' where destination is 'j' (rule dest == 'j'):
+           - Let rule first letter = 'k' (0 to 5).
+           - Add count current['j'] to next['k'].
+         - Note: This builds strings backwards. E.g., if we have strings S of length L ending in 'j', and rule 'k?j' exists, we prepend 'k' to get a string of length L+1 ending in 'k'.
+       - Copy 'next' to 'current'.
+     - Final result = sum of counts in 'current' array (total strings of length n).
+  4. Timing: Compute phase takes at most (n-1) * 36 cycles (max 5*36=180 cycles). Must complete within 256 cycles.
+  5. Reset during compute: Abort and reset to idle.
+
+Data Widths:
+  - Letter encoding: 6 bits (0..5).
+  - Rule table: 36 entries. Each entry: {valid, first(6), second(6), dest(6)}.
+  - Counters: 24-bit (enough for 6^6 = 46656).
+  - State: 2-bit (IDLE, COMPUTE).
+
+Constraints:
+  - No rule output corresponds to a string of length > 6 (irrelevant for this problem).
+  - Parallel logic: Inner loops (6 letters * 36 rules) can be pipelined or unrolled. Target < 200 cycles.
+  - Result available when done=1.
+
+Testbench Expectation:
+  - Write rules using rule_write pulses.
+  - Set n, assert start.
+  - Wait for done.
+  - Verify result matches expected count.

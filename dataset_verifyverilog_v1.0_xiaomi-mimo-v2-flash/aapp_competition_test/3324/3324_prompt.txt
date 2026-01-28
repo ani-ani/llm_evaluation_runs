@@ -1,0 +1,61 @@
+Design a Verilog module that balances a chemical equation given molecular coefficients. The module must solve a system of linear equations derived from element conservation.
+
+**Inputs:**
+- `clk`, `rst_n`: Standard synchronous control signals (active-low reset).
+- `start`: 1-cycle pulse to begin processing.
+- `config_valid`: 1-bit, indicates valid input configuration (elements and molecules).
+- `molecule_idx`: 4-bit index (0-15) for current molecule configuration.
+- `sign`: 1-bit (1 for left side, 0 for right side) for the current molecule.
+- `num_elements`: 4-bit (1-10) for current molecule.
+- `element_id`: 4-bit (0-9) identifying the element.
+- `count`: 4-bit (1-12) atom count for the element.
+- `coeff_in`: 16-bit integer coefficient for the current molecule (used during solution step).
+
+**Outputs:**
+- `result_valid`: 1-bit, asserted when balanced coefficients are ready.
+- `coeff_out`: 16-bit integer coefficient for the current molecule index.
+- `done`: 1-bit, asserted for one cycle when the entire solution is computed.
+
+**Functionality:**
+1. **Configuration Phase (Input):**
+   - Accept molecule definitions one by one. For each molecule `m`:
+     - Store `sign_m`.
+     - For each `element_id` and `count`, accumulate the total atom count for that element in the molecule.
+   - Maintain a list of unique elements (up to 10).
+
+2. **Matrix Construction Phase:**
+   - Construct a matrix `A` of size `(num_unique_elements) x (num_molecules)`. 
+   - Column `j` corresponds to molecule `j`. Row `i` corresponds to element `i`.
+   - `A[i][j] = sign_j * (count of element_i in molecule_j)`.
+
+3. **Solving Phase:**
+   - The goal is to find a vector `X` (coefficients) such that `A * X = 0`, minimizing integer values and removing common factors.
+   - This corresponds to finding the null space of the matrix.
+   - Since the problem guarantees a unique solution for inputs, the null space is 1-dimensional.
+   - Use an iterative method or fixed-point arithmetic to find the ratios. For example, use Q16.16 fixed-point format to handle fractions.
+   - Implement a Gauss-Jordan elimination variant to solve for variables relative to a free variable (e.g., set the last variable to 1).
+   - Calculate the least common multiple (LCM) of the denominators to scale all coefficients to integers.
+   - Divide by the greatest common divisor (GCD) to find the minimal integers.
+
+4. **Output Phase:**
+   - Once `X` is computed, assert `result_valid`.
+   - Output `coeff_out` corresponding to the requested `molecule_idx`.
+   - Assert `done` when all coefficients have been output or computed.
+
+**Constraints:**
+- Max Molecules: 16
+- Max Elements: 10
+- Coefficients fit in 16-bit unsigned integers.
+- Use internal memory (Block RAM or Registers) for matrix storage.
+- Timing: Should complete within 1000 cycles for standard inputs.
+
+**Interface Summary:**
+- Clock and Reset: `clk`, `rst_n`
+- Control: `start`, `done`
+- Input Data: `config_valid`, `molecule_idx`, `sign`, `num_elements`, `element_id`, `count`
+- Output Data: `result_valid`, `coeff_out`
+
+**Implementation Notes:**
+- The core algorithm is matrix manipulation. Verilog requires explicit handling of loops and memory accesses.
+- Fixed-point arithmetic (Q16.16) is recommended for intermediate division steps to avoid floating point usage.
+- The module must manage state transitions: IDLE -> CONFIG -> MATRIX_BUILD -> SOLVE -> OUTPUT.

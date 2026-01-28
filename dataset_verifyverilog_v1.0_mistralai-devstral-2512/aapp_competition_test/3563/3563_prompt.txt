@@ -1,0 +1,53 @@
+Implement a Verilog module that computes the minimum number of straight lines needed to cover all vertices of a convex polygon.
+
+### Interface
+Inputs:
+  - clk: global clock (rising edge)
+  - rst_n: active-low asynchronous reset
+  - start: 1-cycle start pulse
+  - n: 4-bit input (number of vertices, 3-16)
+  - x[0:15], y[0:15]: 16-bit coordinate arrays (x_i, y_i for i in 0..15)
+
+Outputs:
+  - result: 4-bit minimum line count
+  - done: 1-cycle pulse when result is valid (stays high for 1 cycle)
+
+### Constraints
+- Maximum n = 16 (use n as valid vertex count)
+- Coordinates: 16-bit signed integers (range -32768 to 32767, scaled from -1000000..1000000)
+- Clock cycles: ≤ 1000 cycles from start to done
+- All vertices lie on convex polygon boundary (given)
+
+### Algorithm Specification
+1. When start=1, sample n and first n vertices from x[0..15], y[0..15]
+2. Compute minimum lines to cover all vertices:
+   - For k = 1 to n:
+     - Check all possible line configurations using k lines
+     - A line is defined by two distinct vertices (i,j) where 0≤i<j<n
+     - A vertex v is covered if it lies on line formed by (i,j) or on line formed by (i,i) (degenerate case)
+     - Use iterative approach: try all combinations of k lines (choose C(total_lines,k))
+     - For each line combination, check if all vertices are covered
+     - If found, output k
+3. Vertex-on-line check:
+   - Given vertices A(x1,y1), B(x2,y2), C(x3,y3)
+   - C is on line AB iff (x2-x1)*(y3-y1) == (x3-x1)*(y3-y1)
+   - Special case: if A == B, line is just point A
+
+### Implementation Notes
+- Use integer arithmetic only (no floating point)
+- Implement as a finite state machine
+- States: IDLE, INIT, CHECK_COMBOS, FOUND
+- For k=1: Check if all points collinear
+- For k>1: Use nested loops (max 16 choose 2 = 120 possible lines)
+- Pre-compute all possible lines (store in LUT)
+- For each k, generate combinations systematically
+- Output result when found
+
+### Timing
+- Start pulse starts computation
+- Result is available when done=1
+- Reset initializes result=0, done=0
+
+### Example
+Input: 4 vertices at (0,0), (1,1), (1,0), (0,1)
+Expected: 2 lines (e.g., line through (0,0)-(1,1) and line through (0,1)-(1,0))

@@ -1,0 +1,47 @@
+Design a Verilog module `multiple_to_single` that concatenates a list of integers into a single integer. The input integers are represented as 8-bit signed values (two's complement). The output is a 32-bit signed integer. The module accepts a fixed-size array of 8 integers (use a 'len' input to specify the number of valid elements, from 1 to 8). Each input integer can be positive or negative. The concatenation is performed by sequentially multiplying the current result by an appropriate power of 10 and adding the absolute value of the next integer, while preserving the sign of the first non-zero integer (or handling the negative sign correctly for the final output). For simplicity, assume each integer in the input array has a magnitude less than 100 (i.e., fits in 2 decimal digits), so the output 32-bit integer can represent the concatenation of up to 8 numbers (16 decimal digits, max value < 10^16). 
+
+Interface Specification:
+Inputs:
+  clk: Clock signal (rising edge).
+  rst_n: Active-low synchronous reset.
+  start: 1-cycle pulse to initiate the operation.
+  input_integers[0:7]: Array of 8 input integers, each 8-bit signed.
+  len: 4-bit unsigned integer (1-8) indicating how many integers in the array are valid.
+Outputs:
+  result: 32-bit signed integer output.
+  done: 1-cycle pulse indicating valid result is available on 'result'.
+
+Timing Behavior:
+  - On reset (rst_n=0), internal state is cleared, done=0, result=0.
+  - When start=1, the module begins processing.
+  - The operation should complete within 20 clock cycles.
+  - When done=1, 'result' holds the concatenated integer.
+
+Implementation Notes:
+  - Handle the sign: If the first integer is negative, the final result should be negative.
+  - Calculate the multiplier for each step. Since inputs are limited to <100 (2 digits), multiplying the current result by 100 is sufficient to shift two decimal places for the next number.
+  - Use a finite state machine (FSM) to iterate through the array elements.
+  - Example: Input [11, 33, 50] -> 11 * 10000 + 33 * 100 + 50 = 113350 (Note: Multiplier is 100 for each step except the first).
+  - For negative numbers: e.g., [-1, 2, 3] -> -1 * 1000 + 2 * 100 + 3 = -1000 + 200 + 3 = -797 (This is not the intended output for string concatenation. Correction: The Python example implies string concatenation: '-1' + '2' + '3' = '-123'. In hardware, we handle this by taking the absolute value of each number and applying the sign of the first number to the final result, or parsing sign digits directly. However, to stay within integer arithmetic, we will implement the digit-packing logic: multiply by 10^k (where k depends on the number of digits of the next number). To simplify for hardware, we assume fixed digit width per element (e.g., 2 digits) or handle variable digits by checking value < 10 (1 digit) vs >= 10 (2 digits). Given the constraints, we'll assume all numbers are 2-digit unless the user specifies otherwise in a more complex version, but here we will implement a simplified version where we treat the numbers as fixed 2-digit blocks. If a number is negative, it effectively breaks the concatenation rule (e.g., -1 and 2 becomes -12, not -123). To strictly follow the Python example, we must parse the decimal digits. 
+
+  Revised Logic for Hardware:
+  1. Initialize `current_result = 0`, `sign = 0` (positive).
+  2. Iterate `i` from 0 to `len-1`:
+     a. Get `val = input_integers[i]`.
+     b. If `i == 0`, set `sign = val < 0 ? 1 : 0`. Store `abs_val = val < 0 ? -val : val`.
+     c. Calculate `num_digits` of `abs_val`: if `abs_val < 10`, 1 digit; else 2 digits (max 8-bit). 
+     d. `current_result = current_result * (10 ** num_digits) + abs_val`.
+  3. Apply sign: If `sign`, `result = -current_result`.
+  
+  To avoid large multipliers, use a shift-add multiplier for powers of 10.
+  The maximum cycle count is 8 * 2 = 16 cycles.
+  
+  Module Interface (Refined):
+  Inputs: clk, rst_n, start, input_integers[0:7] (8-bit signed), len (3-bit, 1-8).
+  Outputs: result (32-bit signed), done.
+  
+  Implementation Strategy:
+  - FSM: IDLE, LOAD, PROCESS, FINISH.
+  - State PROCESS handles the loop.
+  - Internal registers: idx (count), accumulator (32-bit), temp_val (8-bit), multiplier (32-bit).
+  - Use a lookup for powers of 10 (10, 100) or compute by shift-add.

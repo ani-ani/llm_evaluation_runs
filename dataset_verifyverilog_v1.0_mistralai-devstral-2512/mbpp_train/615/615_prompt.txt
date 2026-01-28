@@ -1,0 +1,27 @@
+Design a Verilog module that computes column-wise averages of a 4x4 matrix of 8-bit signed integers. The input is a 4x4 matrix (4 rows, 4 columns). The module should output 4 average values, one for each column, in Q8.8 fixed-point format (scaled by 256). The matrix input should be provided as a packed 128-bit integer (4 rows * 4 columns * 8 bits). The computation is synchronous, requiring a start pulse. The output should be valid when a done signal is asserted.
+
+Interface:
+Inputs:
+  clk: rising edge
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  matrix_in: 128-bit input, packed as {row3_col3, row3_col2, row3_col1, row3_col0, row2_col3, ..., row0_col3, row0_col2, row0_col1, row0_col0} (8-bit segments, little-endian column-major order)
+Outputs:
+  result_col0: 16-bit output (average of column 0, Q8.8)
+  result_col1: 16-bit output (average of column 1, Q8.8)
+  result_col2: 16-bit output (average of column 2, Q8.8)
+  result_col3: 16-bit output (average of column 3, Q8.8)
+  done: 1-cycle pulse indicating valid outputs
+
+Timing:
+  - Reset: done=0, result outputs=0, min 2 cycles
+  - Operation: start pulse initiates computation. done=1 after fixed latency (e.g., 16 cycles). Outputs are valid when done=1.
+  - Computation: For each column c (0-3), sum the 4 values from rows 0-3 (16-bit sum), then compute average = (sum * 256) / 4. The division by 4 is a right shift by 2 bits.
+
+Constraints:
+  - Input values are 8-bit signed (-128 to 127).
+  - Sum of 4 values fits in 16 bits (-512 to 508).
+  - Output is Q8.8 fixed-point (16-bit). No overflow expected for valid inputs.
+  - No floating-point logic; use integer arithmetic.
+  - Assume 4 columns fixed. Matrix size is fixed 4x4.
+  - Use combinational logic for sum/shift or sequential steps (state machine). Specify a 16-cycle sequential approach or a fully combinational path with registered outputs.

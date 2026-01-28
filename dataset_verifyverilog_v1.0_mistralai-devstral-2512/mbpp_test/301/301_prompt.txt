@@ -1,0 +1,49 @@
+Design a Verilog module that computes the maximum depth of a nested dictionary structure, modeled as a fixed-size adjacency matrix representing a tree. The module processes a pre-loaded tree structure where nodes are 4-bit IDs (0-15), and depths are computed via iterative traversal.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to initiate computation (after tree is loaded)
+  - `tree_loaded`: 1-cycle pulse indicating tree structure is fully loaded (max 16 nodes, 15 edges)
+  - `load_addr`: 4-bit address for tree loading (0-15)
+  - `load_parent`: 4-bit parent node ID (0-15, root=0)
+  - `load_child`: 4-bit child node ID (0-15, 0xFF for none)
+  - `load_valid`: 1-bit valid flag for load operation
+- Outputs:
+  - `result`: 8-bit unsigned integer (max depth 0-255)
+  - `done`: 1-cycle pulse when computation completes
+  - `error`: 1-bit flag (invalid tree structure)
+
+**Functional Requirements:**
+1. **Tree Representation**: Use a 16x16 adjacency matrix `adj[15:0][15:0]` where `adj[parent][child]=1` indicates a parent-child relationship. Node 0 is root.
+2. **Load Phase**: When `load_valid` is asserted, store parent-child relationship at `load_parent` row. Clear matrix on `start`.
+3. **Computation Phase**: On `start`, compute maximum depth using BFS-like iterative approach with queue size 16:
+   - Initialize depth[0] = 1 (root at depth 1)
+   - For each level (max 8 levels), compute depths of children
+   - Use an internal FSM with states: IDLE, LOAD, COMPUTE, DONE
+   - Track maximum depth across all nodes
+4. **Constraints**: 
+   - Max 16 nodes, tree depth ≤ 8
+   - All node IDs 0-15, root must be node 0
+   - Handle invalid inputs by asserting `error`
+   - Time: Compute within 256 clock cycles
+   - No cycles (parent == child) or invalid IDs
+
+**Implementation Notes:**
+- Use 8-bit counters for depth tracking
+- Implement queue using 16 registers (16x4 bits)
+- Depth storage: 16x8-bit array
+- FSM states (3-bit encoding)
+- Output: `result` shows maximum depth when `done=1`
+
+**Timing:**
+- Reset: 2 cycles, `done=0`, `result=0`, `error=0`
+- Load: After `tree_loaded=1`, `start` initiates computation
+- Compute: `start` to `done` ≤ 256 cycles
+- Result valid only when `done=1`
+
+**Verification:**
+- Ensure `tree_loaded` precedes `start`
+- Test with various tree shapes (line, star, balanced)
+- Verify `error` for invalid structures (cycles, isolated nodes)

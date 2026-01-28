@@ -1,0 +1,37 @@
+Implement a Verilog module that counts permutations of length N with exactly C inversions (confused pairs). Constraints: N (1-10), C (0-256 scaled). Output modulo 1,000,000,007. Use an iterative DP state machine with 32-bit arithmetic.
+
+Module Interface:
+- Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset (1=normal)
+  start: 1-cycle pulse to start computation
+  N[3:0]: 4-bit input for sequence length (1-10)
+  C[7:0]: 8-bit input for target inversions (0-256)
+- Outputs:
+  result[31:0]: 32-bit result (valid when done=1)
+  done: 1-cycle pulse when calculation completes
+  busy: signal indicating operation in progress
+
+Timing & Behavior:
+- Reset (rst_n=0): Set result=0, done=0, busy=0, internal state=IDLE
+- Start pulse (start=1): Begin calculation. busy=1 remains high until completion.
+- Computation: Must complete within 10,000 cycles maximum.
+- Result: Valid only when done=1. Output modulo 1,000,000,007.
+- After done=1, busy returns to 0, and ready for new start.
+
+Implementation Guidelines:
+1. Use DP table dp[n][c] where n=0..N, c=0..C (scaled). Each entry is 32-bit.
+2. Initialize dp[0][0] = 1, all others = 0.
+3. Iterate n from 1 to N:
+   - For each c from 0 to C:
+     - dp[n][c] = sum over k=0..min(c, n-1) of dp[n-1][c-k]
+   - Use modulo 1,000,000,007 at each addition.
+4. Use iterative FSM with states: IDLE, INIT, COMPUTE_n, COMPUTE_c, UPDATE, DONE.
+5. Capped C to 256 to ensure memory fits (11*257 ≈ 2827 entries of 32-bit = ~11KB).
+6. When N>10 or C>256, clamp internally to max values.
+7. No external memory: use internal BRAM-like registers (flattened array).
+8. Use 32-bit addition with overflow protection: result = (a + b) % MOD.
+
+Optimization: Use pipelined accumulation for sum over k to keep within cycles.
+
+Do NOT provide module code, only this specification.

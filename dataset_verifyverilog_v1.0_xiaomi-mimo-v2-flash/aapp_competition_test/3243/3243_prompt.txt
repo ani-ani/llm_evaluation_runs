@@ -1,0 +1,43 @@
+Design a Verilog module that determines if a graph of n servers can be connected using at most k edits. 
+
+**Adaptation**: Since n=100k in the original problem is too large for hardware, we scale to n=16 nodes, m=16 edges, and k=8 edits. We use a Union-Find (Disjoint Set Union) algorithm to check connectivity and count needed edits. Server capacities (sockets) are simplified: each server has a maximum degree (0-3). The problem reduces to checking if the graph can be made connected (single component) by adding/removing edges within k operations, respecting degree limits.
+
+**Interface Specification**:
+- **Inputs**:
+  - `clk`: System clock (rising edge)
+  - `rst_n`: Active-low synchronous reset
+  - `start`: 1-cycle pulse to start computation
+  - `n_in`: 4-bit input for number of servers (1-16)
+  - `k_in`: 4-bit input for max edits (0-8)
+  - `edge_u_in`: 4-bit input for edge endpoint U
+  - `edge_v_in`: 4-bit input for edge endpoint V
+  - `edge_valid_in`: 1-bit flag indicating valid edge input (for loading edges sequentially)
+  - `deg_in`: 4-bit array [0:15] representing max degree (sockets) per server (0-3)
+
+- **Outputs**:
+  - `result`: 1-bit output (1=yes, 0=no)
+  - `done`: 1-cycle pulse indicating result is valid
+
+- **Operation Sequence**:
+  1. Reset (rst_n=0): Clear all state (DSU parent array, degree counters, edge count)
+  2. Load Phase: When `edge_valid_in` is high, register edge `u,v` (check if u<v to avoid duplicates). Update internal degree usage.
+  3. Compute Phase: After all edges loaded (or when timeout), perform Union-Find to count connected components `C`. 
+  4. Calculate needed edits: 
+     - Edges needed to connect C components = (C - 1)
+     - Edges to remove due to degree violations = sum(max(0, degree[i] - deg_in[i]))
+     - Total edits required = (C - 1) + edges_to_remove
+     - Check if total_edits <= k_in
+  5. Output: Set `result` and assert `done` for one cycle.
+
+**Implementation Constraints**:
+- **Memory**: Use 16x4-bit BRAM for parent array (DSU). Use 16x4-bit registers for degree counters.
+- **Logic**: Combinational logic for DSU Find and Union operations. Sequential for main state machine.
+- **Timing**: Must complete within 256 clock cycles.
+- **Scaling**: Input IDs are 0-15. Capacities `deg_in` are scaled: original problem `c_i` (1 to n) maps to `deg_in` = `c_i % 4` (capped at 3) to fit hardware limits.
+- **Edge Loading**: Since inputs are streams, the module must handle sequential edge loading via `edge_u_in`, `edge_v_in`, `edge_valid_in`. Assume `n` and `k` are provided at the start of loading.
+
+**State Machine**:
+1. `IDLE`: Wait for `start`. Then load `n_in`, `k_in`. Transition to `LOAD`.
+2. `LOAD`: Accept edges via `edge_valid_in`. Count edges. Store valid edges. Transition to `COMPUTE` when loading finished (external trigger or cycle limit).
+3. `COMPUTE`: Run Union-Find to find components. Count degree violations. Calculate edits. Transition to `DONE`.
+4. `DONE`: Assert `done`, output `result`. Wait for reset.

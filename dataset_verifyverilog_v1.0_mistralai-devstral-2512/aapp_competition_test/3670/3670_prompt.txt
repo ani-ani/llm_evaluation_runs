@@ -1,0 +1,27 @@
+Implement a Verilog module `find_modulus` that finds all integers M > 1 such that N distinct integers (scaled to 10-bit) give the same remainder when divided by M. The condition 'A[i] % M == A[j] % M' for all i,j is equivalent to M dividing (A[i] - A[j]) for all i,j. Since N <= 8, compute all pairwise absolute differences (max 28 differences) and find all common divisors of these differences.
+
+**Interface:**
+Inputs:
+  clk: 1-bit clock
+  rst_n: 1-bit active-low reset
+  start: 1-bit start pulse
+  num_data: 8*10-bit input vector (packed) containing N valid numbers (N <= 8)
+  N: 4-bit input specifying count of valid numbers
+Outputs:
+  result_M: 10-bit output (1 divisor per cycle)
+  valid: 1-bit output (high when result_M is valid)
+  done: 1-bit output (pulsed when all divisors found, stays high until next start)
+
+**Implementation Details:**
+1. **Scaling:** Input numbers must be scaled down to 10-bit (0-1023) to fit hardware constraints. Input values > 1023 should be mapped using: val_scaled = (val >> shift) (assume shift=1 for large values in testbench).
+2. **Difference Calculation:** In state S0, compute absolute differences for all pairs (i,j) where i < j. Store differences in a local array (e.g., 8x11 bits to hold max diff 1023).
+3. **GCD Calculation:** In state S1, compute the GCD of all non-zero differences using a binary GCD or Euclidean algorithm. The result `g` is the maximum possible M.
+4. **Divisor Enumeration:** In state S2, iterate from 2 to `g` (bounded by 1024). For each candidate `d`, check if `g % d == 0`. Since `d` divides `g`, `d` will divide all differences, satisfying the original condition.
+5. **Output:** Stream valid divisors (2 to g) one per cycle via `result_M` and assert `valid`. When finished, assert `done`.
+6. **Timing:** Start->Done within 512 cycles (worst case g=1024).
+7. **Reset:** Reset all internal states, counters, and outputs (done=0, valid=0, result_M=0).
+
+**Constraints:**
+- Bit widths: Inputs 10-bit, Differences 11-bit (for abs), GCD 10-bit.
+- N is <= 8 (hardcoded loop bound).
+- Iterations: GCD calculation max ~10 cycles, Divisor loop max 1024 cycles.

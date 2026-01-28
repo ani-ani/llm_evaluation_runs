@@ -1,0 +1,28 @@
+Design a Verilog module to count distinct paths from a starting position (bottom row, fixed column) to a castle ('@') on a grid. The grid size is Y=8 rows, X=8 columns maximum. Each cell contains: '~' (open sea, can move north), '#' (blocked), '>' (current moves right to x+1), '<' (current moves left to x-1), '@' (target). Movement rules: 1. Lower sails: Move north one row (if current cell allows: '~', '>', '<', or '@'). 2. Retract sails: If on '>' current, move east to (x+1, y) in same row; if on '<' current, move west to (x-1, y) in same row. Cannot move into '#' cells. Ship starts at row Y-1 (bottom), column x_init. Count all distinct paths to '@' modulo 1000003. Output 'begin repairs' if zero paths.
+
+Interface:
+Inputs:
+  clk: system clock
+  rst_n: active-low async reset
+  start: 1-cycle pulse to start computation
+  x_init: 3-bit input (0-7)
+  grid_0_0 to grid_7_7: 64 inputs, each 3-bit encoding for cell type: 0=~, 1=#, 2=>, 3=<, 4=@ (encoded as 3-bit)
+Outputs:
+  result: 20-bit output (modulo 1000003 < 2^20)
+  done: 1-cycle pulse when computation finished (result valid)
+  begin_repairs: 1-bit flag (high when zero paths, 'done' will also be high)
+
+Implementation Details:
+- Use DP with states: current row and column (8x8=64 states).
+- Process rows from bottom to top (Y-1 to 0).
+- For each cell, compute paths to castle using forward DP or backward propagation.
+- Handle currents: '>' transitions to right neighbor in same row, '<' transitions to left neighbor.
+- '~' allows transition to (x, y-1) (north).
+- '@' is the target with base case 1 path.
+- '#' blocks all movement.
+- Clock cycles: Compute within 256 cycles.
+- State machine: IDLE -> LOAD_GRID -> COMPUTE -> DONE.
+- Grid input is serial/parallel: Provide all grid cells as inputs (grid_0_0 to grid_7_7).
+- Bit widths: grid cells 3-bit, row/col indices 3-bit, paths 20-bit (mod 1000003).
+- Reset: Clear all internal DP registers, done=0, result=0, begin_repairs=0.
+- Timing: start->done within 200 cycles.

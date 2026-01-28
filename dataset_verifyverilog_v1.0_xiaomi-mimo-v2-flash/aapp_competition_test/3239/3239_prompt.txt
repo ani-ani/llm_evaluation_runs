@@ -1,0 +1,34 @@
+Implement a Verilog module to calculate the expected cost of Pokeballs for catching N Pokemon with probability P per throw. Since N can be up to 10^9, we use mathematical formulas: Expected cost per Pokemon = (cost to refill)/(expected Pokemon per refill), where expected Pokemon per refill is computed using probability (1-P)^100 for 100 Pokeballs. Use Q16.16 fixed-point arithmetic. P is input as 3 decimal places (0-1000 representing 0.000-1.000). N is input as 16-bit integer. The module should have:
+
+Inputs:
+- clk: rising edge clock
+- rst_n: active-low synchronous reset
+- start: 1-cycle pulse to start calculation
+- N_in[15:0]: unsigned integer number of Pokemon (1 to 65535, scaled from 10^9)
+- P_in[9:0]: unsigned integer representing P*1000 (0 to 1000)
+
+Outputs:
+- result[31:0]: Q16.16 fixed-point result
+- done: 1-cycle pulse when calculation complete (within 100 cycles)
+- valid: indicates result is valid (0 on reset)
+
+Internal Logic:
+1. On start, begin computing (1-P)^100 using 100 iterations of multiplication
+2. Compute expected Pokemon per refill = 1 / (1 - (1-P)^100)
+3. Compute cost per Pokemon = 5 / expected_pokemon
+4. Multiply by N to get total cost
+5. Use Q16.16 arithmetic: Q8.8 for intermediate steps if needed
+6. Handle edge cases: P=0 (infinite cost, clamp to max), P=1 (cost = 0.05 per Pokemon, total = 5*N/100)
+
+State Machine:
+- IDLE: wait for start
+- COMPUTE_PROB: iterate 100 times to compute (1-P)^100
+- COMPUTE_EXPECTED: compute 1/(1-prob)
+- COMPUTE_COST: compute 5/expected
+- FINAL: multiply by N
+- DONE: assert done
+
+Timing: start->done within 100 cycles. Reset sets all outputs to 0.
+Use 32-bit registers for intermediate calculations to prevent overflow. Scale P*1000 to Q16.16 by shifting: P_fixed = (P_in * 256) >> 8 (approx).
+Implement fixed-point reciprocal using iterative Newton-Raphson (max 16 iterations).
+Assert done pulse for 1 cycle when complete.

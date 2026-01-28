@@ -1,0 +1,64 @@
+You are to implement an FSM-based solver for the GL-bot problem in Verilog. The goal is to detect if the robot's movement eventually cycles or terminates.
+
+**SCALING & CONSTRAINTS:**
+- Grid: N x N, but we scale to 8x8 max for HDL implementation (8 bits per coordinate).
+- Program string: Max length 16 characters (4 bits for program counter).
+- States: (row, col, pc) = 8 + 8 + 4 = 20 bits total state space. Max 128 unique states.
+- Since borders are impassable, valid coordinates are 1 to 6 for an 8x8 grid (0 and 7 are walls).
+- Use 8-bit coordinates (0-255) but restrict valid range to 1..N-2.
+- Data representation: Grid encoded as 8x8 matrix of 1-bit (0=empty, 1=impassable). Start position fixed at row=2, col=2 for testing.
+- Program encoded as 16x4-bit array (0-3 for <,>,^,v).
+
+**INTERFACE SPEC:**
+Inputs:
+  clk: clock signal
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to begin simulation
+  grid[0:7][0:7]: 8x8 array of 1-bit (packed or unpacked)
+  prog[0:15]: 16x4-bit array for program instructions
+  prog_len: 4-bit (actual program length)
+  start_row: 4-bit (1..6)
+  start_col: 4-bit (1..6)
+
+Outputs:
+  result: 2-bit output (0=finite, 1=cycle length 1, 2=cycle length 2, 3=cycle length 4) - scaled from problem
+  done: 1-bit flag indicating computation complete
+  valid: 1-bit flag indicating result is valid
+
+**IMPLEMENTATION REQUIREMENTS:**
+1. State Machine: Implement a Moore machine with states: IDLE, INIT, CHECK_CYCLE, UPDATE, COMPLETE.
+2. Cycle Detection: Use a visited table of 128 states (8x8x4). Track visited states during simulation.
+3. Maximum Cycles: Limit simulation to 256 steps to ensure termination. If not terminated by then, assume cycle detected.
+4. Program Counter: 4-bit counter wrapping at prog_len.
+5. Movement Logic: Check grid boundaries and impassable cells before updating position.
+6. Output Encoding: 
+   - Finite trail: result = 2'b00
+   - Cycle length 1: result = 2'b01 (stuck in same cell)
+   - Cycle length 2: result = 2'b10 (oscillating between 2 cells)
+   - Cycle length 4: result = 2'b11 (larger cycles)
+7. Timing: Complete within 512 clock cycles after start.
+
+**EXAMPLE BEHAVIOR:**
+For Sample 1: Grid with obstacles, program ">^<^", start at (3,4) in 1-indexed. The trail repeats every 2 moves.
+
+**VERILOG MODULE HEADER:**
+gl_bot_solver (
+  input clk,
+  input rst_n,
+  input start,
+  input [7:0] grid [0:7][0:7],
+  input [3:0] prog [0:15],
+  input [3:0] prog_len,
+  input [3:0] start_row,
+  input [3:0] start_col,
+  output reg [1:0] result,
+  output reg done,
+  output reg valid
+);
+
+**IMPLEMENTATION NOTES:**
+- Use parameter for max states (128).
+- Implement visited flag array for state detection.
+- Reset clears all internal state machines and visited flags.
+- The module should be synthesizable with a clock domain constraint.
+- All combinational logic must be registered to meet timing.

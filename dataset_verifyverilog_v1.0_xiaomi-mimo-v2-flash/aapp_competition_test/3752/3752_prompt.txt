@@ -1,0 +1,12 @@
+Design a Verilog module to compute cooking time based on stove auto-off duration `k`, check interval `d`, and cooking time `t`. All inputs are 64-bit unsigned integers. Output is a 64-bit fixed-point number with 32 bits of fractional precision (i.e., multiply by 2^32). The algorithm must use a binary search over time to find the minimum `T` where total cooked units ≥ `t`. The cooked units per time interval `T` is computed as:
+1. Determine the period `P`: If `k % d == 0`, `P = k`; else `P = ceil(k/d) * d`. Note: `ceil(k/d) = (k + d - 1) / d` (integer division).
+2. In each period `P`, stove is ON for `k` minutes (cooking rate 1 unit/min), OFF for `P - k` minutes (rate 0.5 unit/min).
+3. Total cooked units in one period `U = k + (P - k) / 2`.
+4. Perform binary search for `T` from 0 to 2 * `t` (or safe upper bound like 2^63). For a given `T`:
+   - Calculate `full_periods = T / P`.
+   - Calculate `remainder_time = T % P`.
+   - Calculate `cooked = full_periods * U`.
+   - If `remainder_time <= k`, add `remainder_time` to `cooked`.
+   - Else, add `k + (remainder_time - k) / 2`.
+5. Stop when `cooked >= t` and `T` is minimal with tolerance 1/2^32. Output `T` scaled by 2^32.
+Inputs: `k`, `d`, `t` (64-bit). Output: `result` (64-bit, Q32.32). Timing: Reset `result=0`. Compute with 1000 clock cycles. Use fixed-point arithmetic: multiply by `2^32` (scale factor `SCALE = 1<<32`). For division by 2, shift right by 1.

@@ -1,0 +1,30 @@
+Design a Verilog module `river_crossing` that computes the minimum time for P people to cross a river using logs (edges) between boulders (nodes) and banks. The solution uses a shortest-path-first approach: repeatedly find the shortest path from left bank (-2) to right bank (-1), remove used edges, and sum the path lengths.
+
+**Constraints:**
+- Scale: P=4, R=8, L=16 (nodes indexed 0-9: 0-7 are boulders, 8 is left bank (-2), 9 is right bank (-1)).
+- Edge weights are always 1 second.
+- Graph is represented as an adjacency matrix where edges are removed by setting a 'valid' bit to 0.
+- Maximum path length is 15 hops.
+
+**Inputs:**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to start computation.
+- `edges_valid[0:15]`: 16-bit vector where bit `i` indicates if log `i` exists (1) or is removed (0). Log indices 0-15 map to input lines.
+- `edge_u[0:15]`: 16x4-bit array of endpoint 1 (0-9).
+- `edge_v[0:15]`: 16x4-bit array of endpoint 2 (0-9).
+
+**Outputs:**
+- `result`: 16-bit integer representing total time. If impossible for all people, the lower 4 bits represent the number of people left behind (0-4), and bit 4 is set to indicate failure.
+- `done`: 1-cycle pulse asserted when computation is complete.
+
+**Behavior:**
+1. On `start`, reset internal state. The module iterates 4 times (for P=4 people).
+2. In each iteration, perform a Breadth-First Search (BFS) on the graph defined by `edges_valid` to find the shortest path from node 8 (left) to node 9 (right).
+3. If a path is found, add its length (number of edges) to `result`. Mark the edges in the path as used (update `edges_valid` internally).
+4. If no path is found for a person, increment a `left_behind` counter.
+5. After 4 iterations, assert `done` and output the result.
+   - If `left_behind` is 0: `result` = total time.
+   - If `left_behind` > 0: `result` = `left_behind` + (1 << 4).
+
+**Timing:** The operation should complete within 5000 clock cycles.

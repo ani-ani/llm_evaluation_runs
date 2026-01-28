@@ -1,0 +1,23 @@
+Implement a Verilog module that counts the number of valid streamer configurations for n students in a circle, where n is fixed to a maximum of 16. The students are assigned integers from 2 to 100 (scaled down from 10^9). Two students can connect if their assigned numbers share a common factor greater than 1. The constraints are: 1. Exactly one path between any two students (tree property). 2. No streamers may cross (planar constraint on a ring). 3. Adjacent students in the input order are also neighbors in the circle (neighbors can connect, but no streamers crossing). The output is the number of valid configurations modulo 1000000007.
+
+Inputs:
+  clk: rising edge | rst_n: active-low sync reset
+  start: 1-cycle pulse initiating calculation
+  len: 4-bit input (number of students, 2 to 16)
+  arr[0:15]: 16x8-bit array, each element is the assigned number (2-100)
+
+Outputs:
+  result: 32-bit (mod 10^9+7)
+  done: 1-cycle pulse indicating calculation complete
+
+Internal Logic:
+  1. Precompute adjacency matrix (16x16): adj[i][j] = 1 if gcd(arr[i], arr[j]) > 1. Scale inputs by dividing by 2 if > 100 to fit 8 bits, or map directly to 8 bits (2-100 fits in 8 bits).
+  2. Count spanning trees of the graph induced by valid edges, restricted by the planar constraint on a ring. For n <= 16, iterate over all possible subsets of edges (bitmask of size n*(n-1)/2) and check: a) Connected, b) Has n-1 edges, c) No crossing edges (check indices i<j and k<l such that edges (i,j) and (k,l) cross if i<k<j<l).
+  3. Use 32-bit arithmetic for modulo 10^9+7.
+  4. Timing: within 2000 cycles for n=16.
+
+Interface Specification:
+  - Reset: Clear internal state, result=0, done=0.
+  - Start: Begin calculation for current arr/len.
+  - Done: Assert for 1 cycle when result is ready.
+  - Result is valid only when done=1.

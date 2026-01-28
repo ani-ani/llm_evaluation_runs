@@ -1,0 +1,37 @@
+Implement a Verilog module that converts an 8-bit decimal input to a binary string with 'db' prefix and suffix. The input is a single 8-bit number (0-255). The output is a fixed 16-character ASCII string (byte array) representing the binary conversion with 'db' at both ends. For example, input 15 (binary 1111) should produce the ASCII string 'db1111db' (10 chars, padded with spaces to 16 chars for fixed-width storage). The conversion should use iterative division to extract bits, converting each bit to ASCII '0' or '1'. The module must complete within 256 clock cycles. Use a state machine for control.
+
+Interface:
+Inputs:
+  clk: rising edge clock
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to initiate conversion
+  decimal_in: 8-bit unsigned input (0-255)
+Outputs:
+  done: 1-cycle pulse when conversion complete
+  binary_str[0:15]: 16x8-bit array of ASCII characters (byte per character)
+  valid: 1-bit flag indicating binary_str is valid (1 when done=1)
+
+Timing:
+- Start pulse resets the process and begins conversion
+- Reset takes 2 cycles: done=0, valid=0, binary_str=0
+- Start to done: within 256 cycles max
+- Binary string format: first two chars 'd', 'b'; then up to 8 bits as '0'/'1'; then 'd', 'b'; remaining chars are space (ASCII 32) for padding
+- For input 0: binary_str should be "db0db" followed by 11 spaces
+- For input 15: binary_str should be "db1111db" followed by 8 spaces
+- For input 32: binary_str should be "db100000db" followed by 6 spaces
+- For input 255: binary_str should be "db11111111db" followed by 4 spaces
+
+Implementation hints:
+1. Use a state machine with states: IDLE, START_CONVERSION, DIVIDE_LOOP, CONVERT_BITS, BUILD_STRING, COMPLETE
+2. Use a temporary register to hold the decimal value during division
+3. Use a bit counter (0-7) to extract bits from MSB to LSB
+4. Build the string in a 16-byte array, writing 'd','b' at positions 0 and 1, then bits at positions 2-9, then 'd','b' at 10 and 11, then spaces (ASCII 32) at positions 12-15
+5. Division by 2: right shift the temporary register, store quotient and remainder
+6. ASCII conversion: remainder (0 or 1) + '0' (ASCII 48)
+7. Ensure no overflow: input limited to 8 bits, output fixed 16 bytes
+
+Constraints:
+- Maximum 256 clock cycles for conversion
+- No dynamic memory, all arrays fixed-size
+- Use combinatorial logic for division and string building within each state
+- Reset must initialize all registers and arrays to zero

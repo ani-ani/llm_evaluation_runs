@@ -1,0 +1,83 @@
+You are to implement a Verilog module that checks if the length of a string is a prime number.
+
+## SCOPE & CONSTRAINTS
+- Input string: fixed at 8 ASCII characters maximum (8x8-bit array)
+- String length: 0-8 (4-bit integer)
+- Primes to check: 2, 3, 5, 7 (only primes in 0-8 range)
+- Use a lookup table (LUT) for primality testing to avoid complex loops
+- Output: 1-bit boolean (1 if length is prime, 0 otherwise)
+
+## INTERFACE SPECIFICATION
+
+### Inputs
+- `clk`: System clock (rising edge)
+- `rst_n`: Active-low synchronous reset
+- `start`: 1-cycle pulse to initiate computation
+- `str_len`: 4-bit input, represents length of string (0-8)
+- `string_data`: 8x8-bit array input, representing ASCII characters (only the first `str_len` characters are valid)
+
+### Outputs
+- `result`: 1-bit output, valid when `done` is high (1 for prime length, 0 otherwise)
+- `done`: 1-cycle pulse indicating result is valid
+
+### Timing
+- After `start` pulse, computation completes within 10 cycles
+- `result` should be valid when `done` is asserted
+- `done` should be de-asserted after one cycle
+
+### Reset Behavior
+- On reset (`rst_n=0`), `result` = 0, `done` = 0
+- Reset must be held for at least 2 clock cycles
+
+## IMPLEMENTATION GUIDELINES
+
+### Logic Structure
+1. **Prime LUT**: Create a combinational lookup table for numbers 0-8
+   - Index 0: 0 (not prime)
+   - Index 1: 0 (not prime)
+   - Index 2: 1 (prime)
+   - Index 3: 1 (prime)
+   - Index 4: 0 (not prime)
+   - Index 5: 1 (prime)
+   - Index 6: 0 (not prime)
+   - Index 7: 1 (prime)
+   - Index 8: 0 (not prime)
+   
+   Implementation hint: Use a case statement or a bit vector `9'b001010110` where bit 2,3,5,7 are set.
+
+2. **State Machine**: Simple 2-state FSM
+   - `IDLE`: Wait for `start` signal
+   - `PROCESS`: Read from LUT and set `result`, generate `done` pulse
+
+3. **String Interface**: The 8x8-bit `string_data` array is provided, but length is the only relevant input for primality. String data is included to match interface constraints but not used in computation.
+
+### Data Path
+- Input length `str_len` (4-bit) directly indexes the prime LUT
+- LUT output is combinational
+- Result is registered and synchronized with `done` pulse
+
+### Timing Details
+- On `start` pulse, sample `str_len` and compute in same cycle
+- Generate `done` pulse on next clock edge
+- Output `result` remains valid for one cycle
+
+### Verification Requirements
+- All test cases must pass (string lengths 0-8)
+- Focus on correct LUT implementation
+- Handle boundary cases: length 0 (not prime), length 2 (prime), etc.
+
+### Example Behavior
+- Input: "Hello" (length 5) -> `result` = 1
+- Input: "orange" (length 6) -> `result` = 0
+- Input: "" (length 0) -> `result` = 0
+- Input: "HI" (length 2) -> `result` = 1
+
+### Hardware Constraints
+- Do not use division or modulo operations
+- Use only 10 cycles maximum for computation
+- No recursion, only sequential logic
+- Clock domain is single
+
+**NOTE**: The actual string content doesn't affect the result—only its length matters. The module must accept the full 8-character array interface but will only use the `str_len` input for the primality test.
+
+**Task**: Write the Verilog module with the specified interface and behavior.

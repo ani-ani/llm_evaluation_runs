@@ -1,0 +1,53 @@
+Implement a Verilog module to find the minimum maximum hop count (graph diameter) after connecting disconnected tree components.
+
+**Problem Analysis**:
+- Given: Disconnected trees (existing cables are already minimal)
+- Goal: Connect components with minimal added cables to minimize max hop count
+- Scale: 16 computers max, 15 cables max
+
+**Algorithm** (Simplified for Hardware):
+1. Parse input into 16x16 adjacency matrix (packed array)
+2. For each component (tree):
+   - Find diameter using BFS from all nodes
+   - Find center node (minimizes max distance to any node)
+3. Connect all component centers in a star topology (add cables from one center to all others)
+4. Calculate final diameter: max of (component diameter) and (path through center network)
+
+**Interface**:
+- Inputs (parallel, 1 cycle latency):
+  - `clk`: System clock (100MHz base)
+  - `rst_n`: Active-low reset
+  - `start`: 1-cycle pulse to start computation
+  - `num_computers`: 4-bit (1-16)
+  - `num_cables`: 4-bit (0-15)
+  - `cable_a[31:0]`: 32-bit packed (8 pairs, 4 bits each) - list of cable endpoints
+  - `cable_b[31:0]`: 32-bit packed (8 pairs, 4 bits each) - list of cable endpoints
+
+- Outputs:
+  - `result`: 8-bit (max diameter 15)
+  - `done`: 1-cycle pulse when result valid
+  - `busy`: High during computation
+
+**Timing Constraints**:
+- Single cycle to load configuration
+- Up to 256 cycles for BFS/diameter calculation
+- Done signal asserts when computation completes
+- Result latched until next start
+
+**Implementation Details**:
+- Use 16x16 boolean matrix (256 bits total, packed into 8x32-bit registers)
+- BFS: Use 2-level state machine for traversal
+- Component tracking: 4-bit counter for 16 nodes
+- Diameter calculation: max distance from any node in component
+- Center selection: node with minimal max distance
+- Star connection: result = max(diameter_all, 1 + ceil(log2(num_components)))
+
+**Reset Behavior**:
+- `done` = 0, `result` = 0, `busy` = 0
+- Minimum 2 cycles reset duration
+
+**Testing Requirements**:
+- Test with 2, 3, and 4 disconnected trees
+- Verify diameter calculation matches expected
+- Test with single component (no added cables)
+- Edge case: 1 computer (diameter 0)

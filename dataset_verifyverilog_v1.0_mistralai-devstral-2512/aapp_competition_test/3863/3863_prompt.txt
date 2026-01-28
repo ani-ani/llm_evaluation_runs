@@ -1,0 +1,42 @@
+Implement a Verilog module that counts distinct cyclic palindromes. Given N (1-10^9) and K (1-10^9), compute the number modulo 10^9+7.
+
+Core Algorithm:
+1. Find all divisors of N (max ~1344 for N=10^9, scaled to 256)
+2. For each divisor d, compute f(d) = K^ceil(d/2) mod MOD (cyclic palindromes of length d)
+3. Use inclusion-exclusion: f_clean(d) = f(d) - sum_{e|d, e<d} f_clean(e)
+4. Sum contribution: if d odd: d * f_clean(d), if even: d/2 * f_clean(d)
+
+Interface:
+  Inputs:
+    clk: 100MHz clock
+    rst_n: active-low synchronous reset
+    start: 1-cycle pulse to start computation
+    N_in: 32-bit (scaled from 1-10^9)
+    K_in: 32-bit (scaled from 1-10^9)
+    MOD_in: 32-bit (1000000007)
+  Outputs:
+    result: 64-bit sum modulo MOD
+    done: 1-cycle pulse when computation completes
+    valid: indicates result is valid
+
+Timing Constraints:
+  - Maximum 256 divisors for N=10^9
+  - Each divisor computation: max 256 cycles for inner loop
+  - Total cycles: 256 * 256 = 65536 cycles maximum
+  - Power: K^ceil(d/2) computed via exponentiation in 32 cycles
+  - Result ready within 70,000 cycles from start
+
+Internal Architecture:
+  - State Machine: IDLE → FIND_DIVISORS → COMPUTE_F → CLEAN_F → SUM
+  - Divider: 32-bit / 32-bit for finding divisors (square root method)
+  - Exponentiation: Fast modular exponentiation (binary method)
+  - Storage: Array of 256 divisors (16-bit each), 256 f_clean values (32-bit each)
+  - Loop Counters: 16-bit for divisor enumeration, 8-bit for loops
+
+Critical Requirements:
+  - Clock frequency: 100MHz
+  - Use combinational logic for MOD operations
+  - Pipeline exponentiation: 32 cycles for 32-bit exponent
+  - Handle overflow in multiplication (64-bit intermediates)
+  - Clear internal state on reset
+  - Never assert done until all computation complete

@@ -1,0 +1,62 @@
+You are to implement a Verilog module that solves the dice re-roll optimization problem. The module should compute the optimal number of dice to re-roll to maximize the probability of reaching a target sum.
+
+**Problem Specification:**
+Given K dice (2 <= K <= 24) with initial values (1-6 each), a target sum T (K <= T <= 6K), determine the number of dice (0 to K) to re-roll. The optimal choice is the one that maximizes the probability that the sum of all dice after re-rolling equals T. If multiple choices give the same max probability, pick the smallest number of dice.
+
+**Input Interface:**
+- `clk`: Clock signal (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle high pulse to start computation.
+- `K`: 5-bit input (since max K=24, 5 bits sufficient). Represents number of dice.
+- `T`: 8-bit input (since max sum 6*24=144, 8 bits sufficient). Represents target sum.
+- `initial_dice[23:0]`: 24 inputs, each 3-bit wide (values 1-6). These represent the first roll values. Note: Only the first K inputs are valid; the rest are ignored.
+
+**Output Interface:**
+- `result`: 5-bit output. The number of dice (0 to K) to re-roll.
+- `done`: 1-cycle high pulse indicating computation is finished and `result` is valid.
+
+**Computation Logic:**
+1. Upon `start` pulse, latch inputs.
+2. For each possible number of dice to re-roll `d` (from 0 to K):
+   a. Select the best subset of `d` dice to re-roll from the initial K. The goal is to keep the dice with values closest to what is needed to reach T.
+   b. For a specific `d`, the optimal strategy is to re-roll the dice that are furthest from the target contribution or simply the lowest/highest values depending on whether we are below or above T. However, a generalized approach: We want to maximize the probability of hitting the target sum `S_target = T - (sum of kept dice)`.
+   c. Calculate the probability `P(d)` of rolling a sum of `S_target` using `d` dice.
+   d. If `S_target` is out of range for `d` dice (min `d`, max `6d`), probability is 0.
+3. The probability calculation `P(d, S)` for `d` dice summing to `S` can be pre-calculated or computed iteratively. Since K <= 24, and `d` <= 24, we can use a DP approach. The number of ways to get sum `S` with `d` dice is `ways[d][S] = sum(ways[d-1][S-v] for v=1..6)`.
+   - Max sum for 24 dice is 144. Max `ways` count fits in 32-bit integer (actually 6^24 is huge, but we only care about relative probability, or normalized values. However, exact probabilities might require large integers. Let's scale or use 64-bit fixed point. Since we only compare probabilities, we can use 64-bit integer counters for ways.
+   - Pre-compute `ways` table in a ROM or compute on the fly. Given the constraints, a sequential DP calculation inside the module is feasible. It takes roughly 24 * 144 cycles.
+4. Optimization: Instead of brute forcing all subsets of size `d`, note that the optimal subset to keep is deterministic: if `current_sum < T`, we should keep the largest dice values to minimize the gap we need to fill. If `current_sum > T`, we should keep the smallest dice values to minimize the negative gap (i.e., reduce the sum as much as possible by re-rolling high values). 
+   - Sort the initial dice values (using a simple bubble sort network since K<=24).
+   - For each `d`, calculate `current_sum` of the best `K-d` kept dice.
+   - Calculate `needed_sum = T - current_sum`.
+   - If `needed_sum` is within `d` and `6d`, lookup `ways[d][needed_sum]`.
+   - Compare these counts to find the maximum.
+5. Output the `d` that maximizes the count (or `0` if all are 0).
+
+**Constraints & Scaling:**
+- K is up to 24. Sums are up to 144.
+- Use 32-bit or 64-bit arithmetic for counting ways to avoid overflow.
+- The module must be purely combinational logic driven by a finite state machine (FSM) or fully pipelined.
+- Reset sets `done` to 0 and `result` to 0.
+
+**Implementation Details:**
+- State Machine: IDLE -> SORT -> DP_INIT -> DP_COMPUTE (loop d=1..K, s=1..6d) -> EVAL -> DONE.
+- Sorting: Implement a bubble sort or insertion sort network for the 24 3-bit values.
+- DP: Use a memory block (BRAM) or registers. Since max sum is 144, we can maintain a 1D array of size 145 for the current number of ways.
+- Interface: Ensure `start` is a pulse. Inputs are latched at `start`.
+
+**Verilog Module Definition:**
+```verilog
+module dice_optimal_reroll (
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [4:0] K,
+    input wire [7:0] T,
+    input wire [2:0] initial_dice [23:0], // Array of 24 3-bit values
+    output reg [4:0] result,
+    output reg done
+);
+// ... implementation ...
+endmodule
+```

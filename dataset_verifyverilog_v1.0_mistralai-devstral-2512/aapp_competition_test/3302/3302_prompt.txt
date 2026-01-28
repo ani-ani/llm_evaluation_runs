@@ -1,0 +1,43 @@
+Design a Verilog module `color_code_finder` that constructs an n-bit color code sequence for given palette P.
+
+**Module Interface:**
+- Inputs:
+  - `clk`: system clock (rising edge)
+  - `rst_n`: active-low asynchronous reset
+  - `start`: 1-cycle high to initiate search
+  - `n`: 4-bit integer (1 to 15, n <= 16)
+  - `palette_valid`: 16-bit mask, where bit `i` (1-indexed) is set if distance `i` is in palette P
+  - `palette_count`: 4-bit integer (number of valid distances in P)
+- Outputs:
+  - `done`: 1-cycle high when sequence found or impossible
+  - `result_valid`: high when `result_data` contains valid output
+  - `result_data`: 16-bit vector (current n-bit Gray code value)
+  - `result_index`: 4-bit counter (0 to 15) indicating position in sequence
+  - `impossible`: high if no valid sequence exists
+
+**Internal Logic:**
+1. **State Machine:** IDLE -> SEARCH -> FOUND -> IMPOSSIBLE
+2. **Search Algorithm:** DFS with backtracking. Maintain:
+   - `visited[0:15]`: 16-bit register array (tracking used numbers)
+   - `path[0:15]`: 16-bit register array (current sequence)
+   - `depth`: 4-bit register (0 to 15, current position)
+3. **Hamming Distance:** Use XOR and population count. For 16-bit numbers, compute distance via `dist = number_of_ones(a ^ b)`. Implement a sequential population counter (takes 16 cycles) or a combinational priority encoder tree.
+4. **Generation:** 
+   - Start with `path[0] = 0`.
+   - At depth `d`, try to set `path[d+1]` to any unused number `u`.
+   - Compute Hamming distance between `path[d]` and `u`.
+   - Check if distance is in `palette_valid` (mask check).
+   - If valid, mark `u` visited, increment depth.
+   - If depth reaches `2^n`, assert `done`.
+   - If no valid moves, backtrack: clear `visited[path[depth]]`, decrement depth.
+5. **Scaling:** 
+   - n is 1-16 (4 bits).
+   - `2^n` values (max 65536, but implementation is sequential).
+   - Palette distances (1-16).
+   - Internal state size: 16 * 16 bits = 256 bits for path/visited (manageable).
+6. **Output:** Sequential output of `path[0]` to `path[2^n - 1]` on `result_data` when `result_valid` is high.
+
+**Constraints:**
+- Sequence length = 2^n (max 65536).
+- If impossible, set `impossible` and `done` high.
+- Reset: `path`, `visited`, `depth` to zero. `impossible` low.

@@ -1,0 +1,58 @@
+Implement a Verilog module `plagiarism_detector` that detects the longest consecutive matching line sequence between a query code snippet and a repository of code fragments.
+
+**Input Interface:**
+- `clk`, `rst_n`: Standard synchronous controls.
+- `start`: Single cycle pulse to start processing.
+- `fragments_count`: 4-bit input (0-10 fragments).
+- `fragment_lines_valid`: 1-bit, asserted when `fragment_data` contains a valid line.
+- `fragment_data`: 256-bit vector, ASCII line (256 chars max).
+- `fragment_file_name`: 128-bit vector, ASCII filename (128 chars max).
+- `query_lines_valid`: 1-bit, asserted when `query_data` contains a valid line.
+- `query_data`: 256-bit vector, ASCII line (256 chars max).
+- `input_done`: 1-bit, asserted when all input data has been provided.
+
+**Output Interface:**
+- `result`: 16-bit integer, the longest match length found.
+- `filenames`: Variable length list of filenames. Since Verilog outputs are fixed width, use a stateful approach or return the index of the fragment. For this benchmark, output the **index** (3-bit) of the fragment that has the longest match (or 0 if no match). If multiple fragments have the same max length, return the first one encountered.
+- `done`: 1-bit, asserted for one cycle when result is valid.
+
+**Algorithm Requirements:**
+1. **Line Normalization:**
+   - Strip leading/trailing spaces.
+   - Collapse multiple consecutive spaces into a single space.
+   - If the line is empty or contains only spaces after normalization, discard it (do not store).
+   - Lines are case-sensitive.
+   - Use ASCII encoding.
+2. **Storage Limits:**
+   - Max 10 fragments.
+   - Max 50 lines per fragment (including query).
+   - Max normalized line length: 8 chars (to fit in 64-bit storage for comparison efficiency). Store lines as 64-bit integers (ASCII bytes packed).
+3. **Matching:**
+   - Find the maximum number of consecutive lines in the query that match a consecutive sequence in any repository fragment.
+   - Comparison is done line-by-line (normalized).
+4. **Output:**
+   - Return the max match length (16-bit integer).
+   - Return the 3-bit index of the fragment containing this max match.
+
+**State Machine:**
+- `IDLE`: Wait for start.
+- `INPUT_FRAGMENTS`: Read `fragment_lines_valid`, normalize lines, pack into storage (e.g., BRAM or registers). Store filename index.
+- `INPUT_QUERY`: Read `query_lines_valid`, normalize lines, store in query buffer.
+- `COMPARE`: Iterate through query lines against fragment lines. Use a sliding window comparison.
+- `DONE`: Assert `done` and output `result` and `filenames`.
+
+**Implementation Details:**
+- Use a fixed-size buffer for lines (64-bit packed ASCII).
+- `normalize_line`: A combinational logic block that takes 256-bit ASCII input and produces 64-bit packed ASCII output (normalized). Note: Only first 8 non-space characters or normalized spaces are kept; ignore the rest to fit 64-bit limit.
+- Handle empty lines by skipping storage.
+- The `fragments_count` determines how many fragments to process.
+- The `input_done` signal transitions the FSM from Input to Compare state.
+
+**Timing:**
+- Start-to-done within 10,000 cycles (given max 10*50 + 50 lines).
+
+**Constraints:**
+- Max 10 fragments.
+- Max 50 lines per fragment.
+- Normalized line storage: 64 bits.
+- Result width: 16 bits.

@@ -1,0 +1,56 @@
+Implement a Verilog module to calculate the maximal damage Jiro can take in a card battle.
+
+**Problem Definition:**
+Ciel has 'm' Attack cards with strengths S_c[0..m-1]. Jiro has 'n' cards, each is either Attack or Defense with strengths S_j[0..n-1].
+Ciel can choose to:
+1. Attack Jiro's Defense cards if Ciel's strength > Jiro's strength (no damage).
+2. Attack Jiro's Attack cards if Ciel's strength >= Jiro's strength (damage = Ciel - Jiro).
+3. If Jiro has no remaining cards, attack directly (damage = Ciel's strength).
+Ciel can stop at any time. Find the maximum total damage.
+
+**Hardware Adaptation:**
+- Scale inputs: n <= 16, m <= 16.
+- Strengths: 0-8192 (13 bits). Use 16-bit signed arithmetic for differences.
+- Strategy 1: Must destroy ALL cards (Def first, then Atk). If impossible, strategy fails (0 damage).
+- Strategy 2: Match a subset of Ciel's cards to Jiro's Attack cards to maximize sum(Ciel - Jiro). Only use cards that are strong enough. Sort Jiro's Atk ascending, sort Ciel's descending. Greedy match.
+- Strategy 3 (Direct Attack): Only applies if Strategy 1 succeeds. Sum of remaining unused Ciel cards.
+
+**Inputs:**
+- `clk`, `rst_n`: Standard synchronous signals.
+- `start`: 1-cycle pulse to start computation.
+- `jiro_pos[15:0]`: 16-bit vector, bit i=1 if Jiro card i is Attack, 0 if Defense. Valid for n <= 16.
+- `jiro_str[15:0][12:0]`: 16x13-bit array of Jiro card strengths. Use packed array or individual signals.
+- `ciel_str[15:0][12:0]`: 16x13-bit array of Ciel card strengths.
+- `n[3:0]`: Number of Jiro cards (0-16).
+- `m[3:0]`: Number of Ciel cards (0-16).
+
+**Outputs:**
+- `result[23:0]`: 24-bit unsigned result (Max damage). (Max possible: 16 * 8192 = 131072, fits in 18 bits).
+- `done`: High when result is valid.
+
+**Behavior:**
+1. **Parsing (FSM State 0-3):** Read input arrays. Separate Jiro cards into two lists: `def_str` (Defense) and `atk_str` (Attack).
+2. **Strategy 1 Check (FSM State 4-10):**
+   - Sort `def_str` ascending.
+   - Sort `atk_str` ascending.
+   - Sort `ciel_str` ascending.
+   - Try to match Ciel cards to Def cards: `ciel[i] > def[j]`. If any Def card cannot be matched, Strategy 1 fails.
+   - Try to match remaining Ciel cards to Atk cards: `ciel[k] >= atk[l]`. If any Atk card cannot be matched, Strategy 1 fails.
+   - Calculate damage: Sum of `(ciel_used_for_atk - atk_str)`.
+   - Sum of unused Ciel cards (Direct attack damage).
+3. **Strategy 2 Check (FSM State 11-15):**
+   - Sort `atk_str` ascending.
+   - Sort `ciel_str` descending.
+   - Greedy match: Iterate through sorted `ciel_str`. If `ciel[i] >= atk[j]`, take the pair and add `ciel[i] - atk[j]` to damage. Increment `j`.
+4. **Result Selection (FSM State 16):**
+   - `result = max(strategy1_damage, strategy2_damage)`.
+   - Latch result and assert `done`.
+
+**Timing:**
+- Start to Done: Max 1000 cycles (sorting takes O(k^2) or O(k log k)).
+- Reset: Clear all internal registers, result=0, done=0.
+
+**Implementation Notes:**
+- Use Bubble Sort or Sorting Network for sorting (max 16 elements).
+- Use comparator blocks.
+- Use fixed-width arithmetic (16-bit or 24-bit).

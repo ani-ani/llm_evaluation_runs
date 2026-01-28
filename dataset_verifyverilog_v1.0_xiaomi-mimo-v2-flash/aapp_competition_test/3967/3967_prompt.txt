@@ -1,0 +1,53 @@
+Design a Verilog module to find the maximum interval d such that the total wasted bamboo length is ≤ k meters.
+
+Problem: n bamboos, target heights a[0..n-1]. Each bamboo grows 1 meter/day. You check at multiples of d days and cut when height ≥ target. Total cut-off length (waste) must be ≤ k.
+
+For a given d, waste for bamboo i is: (d-1) - ((a[i]-1) mod d). Total waste = sum over all bamboos.
+
+Find max d (1 ≤ d ≤ max(a)+k) where total waste ≤ k.
+
+Interface:
+- Inputs:
+  clk: clock (rising edge)
+  rst_n: active-low synchronous reset
+  start: 1-cycle pulse to start computation
+  n: 8-bit, number of bamboos (1..100)
+  k: 64-bit, max waste allowed
+  a[0:99]: 100x 32-bit array, target heights (each 1..1e9)
+
+- Outputs:
+  result: 32-bit, maximum d value
+  done: 1-cycle pulse, asserted when computation complete
+
+Behavior:
+1. On start=1 with rst_n=1, begin binary search for d in [1, max(a)+k]
+2. For each candidate d, compute total waste: sum over i=0..n-1 of (d-1 - ((a[i]-1) mod d))
+3. Use binary search to find largest d where waste ≤ k
+4. Output result and assert done for 1 cycle
+
+Constraints:
+- n ≤ 100, max 100 elements
+- a[i] ≤ 1e9 (fits 32-bit)
+- k ≤ 1e11 (fits 64-bit)
+- max d ≤ 1e9 + 1e11 ≈ 1e11 (fits 32-bit for practical range, but use 32-bit with overflow handling)
+- Time: start→done within 100,000 cycles (binary search depth ≈ log2(1e11) ≈ 37, each with 100 iterations = 3700 cycles)
+
+Implementation notes:
+- Use 32-bit for d and intermediate calculations
+- Use 64-bit for waste accumulation (to handle k up to 1e11)
+- Binary search bounds: low=1, high=max_a + k + 1 (exclusive)
+- Mid computation: (low+high)//2
+- For each mid d, compute sum waste for all n bamboos
+- If waste ≤ k, set low=mid, else set high=mid
+- Result = low when search completes
+
+Reset behavior:
+- On reset: result=0, done=0, internal state reset
+- min 2 cycles of reset
+
+Timing diagram:
+start asserted for 1 cycle at t0
+→ done asserted at tN (N ≤ 100k cycles)
+→ result valid during same cycle as done=1
+
+Module name: BambooCutScheduler

@@ -1,0 +1,28 @@
+Design a Verilog module that computes the minimum cost to convert a binary string to all ones using substring reversal (cost x) and inversion (cost y). The core insight is counting contiguous zero segments (groups). For k zero groups, the optimal cost is (k-1)*min(x,y) + y if k > 0, else 0.
+
+Interface Specification:
+- Inputs: clk (1-bit), rst_n (1-bit, active-low sync reset), start (1-bit, 1-cycle pulse)
+- Input data: string [0:15] (16-bit, bit 0 is first char, bit 15 is last char). Valid values: 0 or 1.
+- Parameters: x_cost (16-bit, 0 to 65535), y_cost (16-bit, 0 to 65535)
+- Outputs: result (16-bit, min cost), done (1-bit, asserted for 1 cycle when valid)
+
+Implementation requirements:
+1. Wait for start pulse.
+2. Count zero groups in the 16-bit input string.
+   - A zero group is a maximal consecutive sequence of zeros.
+   - Count transitions from 1 to 0, plus check if the first bit is 0.
+   - Use a 3-bit counter (max 8 groups for 16 chars).
+3. If groups == 0, output 0.
+4. Otherwise, compute: (groups - 1) * min(x_cost, y_cost) + y_cost.
+   - min(x_cost, y_cost) requires a comparator and multiplexer.
+   - Multiplication is limited to small numbers (groups <= 8, min_cost <= 16-bit).
+   - Use a simple sequential multiplier or unrolled logic for (groups-1) <= 7.
+5. Assert done signal when calculation is complete (within 50 cycles).
+
+Timing:
+- Start to Done: ≤ 50 cycles.
+- Reset: Clear all counters and flags, assert done=0.
+
+Verification:
+- Test with strings like '01000' (k=2, cost=11), '11111' (k=0, cost=0).
+- Test edge cases: single '0', single '1', alternating patterns.

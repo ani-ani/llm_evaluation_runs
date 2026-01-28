@@ -1,0 +1,27 @@
+Implement a Verilog module that solves the Toy Train problem for n stations (2-16) and m candies (1-200). The core logic relies on pre-computed per-station statistics which are provided as inputs, avoiding the need for dynamic candy management in hardware.
+
+**Input Interface:**
+- `clk`: System clock (rising edge).
+- `rst_n`: Active-low synchronous reset.
+- `start`: 1-cycle pulse to initiate calculation for all starting stations.
+- `n_in`: 4-bit integer (2-16), number of stations.
+- `candy_count[0:15]`: 16x4-bit array. `candy_count[i]` is the number of candies starting at station `i`.
+- `min_dist[0:15]`: 16x4-bit array. `min_dist[i]` is the minimum clockwise distance from station `i` to any of its destination stations. If `candy_count[i]` is 0, `min_dist[i]` is undefined/don't care.
+
+**Output Interface:**
+- `result[0:15]`: 16x16-bit array. `result[s]` is the minimum time required if the train starts at station `s`.
+- `done`: 1-cycle pulse indicating valid `result` data is present.
+
+**Algorithm Description:**
+For each starting station `s` (0 to n-1), the time required is the maximum over all stations `i` (0 to n-1) that have candies (`candy_count[i] > 0`) of:
+`Time(s, i) = dist(s, i) + n * (candy_count[i] - 1) + min_dist[i]`
+Where `dist(s, i)` is the clockwise distance from `s` to `i`.
+
+**Implementation Requirements:**
+1. **Parallelization:** Since `n <= 16`, you can compute the result for all starting stations `s` in parallel to minimize latency, or compute them sequentially over `n` cycles. A fully parallel approach is recommended.
+2. **Distance Calculation:** Implement `dist(s, i) = (i >= s) ? (i - s) : (i + n - s)` using adders/subtractors.
+3. **Max Operation:** For each `s`, you need a tree of comparators to find the maximum `Time(s, i)` across all `i` where `candy_count[i] > 0`.
+4. **Timing:** The module should assert `done` after the calculation is complete (within 10-20 cycles for a parallel implementation). `result` must be valid when `done` is high.
+5. **Reset:** On reset, `result` and `done` should be cleared/invalidated.
+
+**Constraint:** Use 16-bit data paths (sufficient for n=16, m=200, max result ~4000). Use 4-bit counters/indices.
